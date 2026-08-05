@@ -22,6 +22,7 @@ from service.customers.customers import CustomerService
 from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
 from service.intervention_types.intervention_types import InterventionTypeService
+from service.messaging.publisher import EventPublisher
 from service.notifications.notifications import NotificationService
 from service.planning.plannings import PlanningService
 from service.quotes.quotes import QuoteService
@@ -48,6 +49,10 @@ _connection_manager: Optional[DatabaseConnectionManager] = None
 _notification_broadcaster: NotificationBroadcaster = NotificationBroadcaster(
     logger=logger
 )
+# Also process-wide, and for the same reason: it holds a broker connection that
+# must be shared and reused rather than opened per request. Built on first use
+# rather than at import, because the configuration is not loaded yet here.
+_event_publisher: Optional[EventPublisher] = None
 
 
 @lru_cache
@@ -271,6 +276,25 @@ async def get_notification_service(
         NotificationService: The service.
     """
     return NotificationService(notifications=notifications, users=users, logger=logger)
+
+
+def get_event_publisher() -> EventPublisher:
+    """Return the process-wide broker publisher.
+
+    Returns:
+        EventPublisher: The publisher, holding this process's connection.
+
+    Notes:
+        A module-level instance rather than a per-request one. Opening an AMQP
+        connection costs a round trip and a channel; doing it per request would
+        make publishing an event more expensive than the work that caused it.
+    """
+    global _event_publisher
+    if _event_publisher is None:
+        _event_publisher = EventPublisher(
+            config=get_app_config().rabbitmq, logger=logger
+        )
+    return _event_publisher
 
 
 def get_notification_broadcaster() -> NotificationBroadcaster:

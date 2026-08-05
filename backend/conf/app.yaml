@@ -118,3 +118,21 @@ webhook:
   url: http://localhost:8000/api/v1/webhooks/planning-completed
   token_env: PLANNING_WEBHOOK_TOKEN
   timeout_seconds: 10.0
+
+rabbitmq:
+  # Carries the quote-validation events and the planning runs. Disabled by
+  # default so a developer running the API alone is not blocked by the absence
+  # of a broker: a publish that cannot connect is logged and dropped, and the
+  # database still holds every fact the message would have carried.
+  enabled: false
+  host: localhost
+  port: 5672
+  virtual_host: /
+  username: rt_erp
+  password_env: RABBITMQ_PASSWORD
+  exchange: rt-erp
+  publish_timeout_seconds: 5.0
+  # One at a time: the heaviest consumer runs an OR-Tools solve, which pins a
+  # core for its whole budget. Taking a second message while the first solves
+  # would only delay acknowledging both.
+  prefetch: 1

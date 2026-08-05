@@ -370,6 +370,63 @@ class HcaService:
         )
         return await self.hcas.list_availability(hca_id, start=start, end=end)
 
+    async def update_profile(
+        self,
+        hca_id: str,
+        first_name: str,
+        last_name: str,
+        phone_number: str,
+        email: str,
+        address: PostalAddress,
+    ) -> Hca:
+        """Change an assistant's own contact details and address.
+
+        Args:
+            hca_id (str): The assistant being updated.
+            first_name (str): Given name.
+            last_name (str): Family name.
+            phone_number (str): Contact telephone number.
+            email (str): Contact email address.
+            address (PostalAddress): Home address.
+
+        Returns:
+            Hca: The updated assistant.
+
+        Raises:
+            MTHcaNotFound: If no such assistant exists.
+
+        Notes:
+            The stored record is read first and the five editable fields are
+            copied onto it, rather than a new assistant being built from the
+            payload. That is what preserves the contract type, the
+            certifications, the driving licence, the photograph and the declared
+            absences — none of which appear in the request, and all of which
+            would be silently cleared by a wholesale replacement.
+        """
+        existing = await self.get(hca_id)
+        self.logger.info("Updating the contact details of assistant %s.", hca_id)
+        updated = await self.hcas.update(
+            existing.model_copy(
+                update={
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "phone_number": phone_number,
+                    "email": email,
+                    "address": address,
+                }
+            )
+        )
+        if updated is None:
+            raise MTHcaNotFound(f"No assistant {hca_id!r} exists.")
+        if address.geocoding_error:
+            self.logger.warning(
+                "Assistant %s saved an address that did not resolve (%s); they "
+                "cannot be routed until it does.",
+                hca_id,
+                address.geocoding_error,
+            )
+        return updated
+
     async def set_photo(self, hca_id: str, payload: bytes) -> Hca:
         """Store an assistant's photograph and attach it to their record.
 

@@ -36,3 +36,7 @@ class MTAppConfigNotFound(MTInvalidAppConfigException):
 
 class MTAppConfigUnreadable(MTInvalidAppConfigException):
     """Exception raised when the configuration file cannot be parsed."""
+
+
+class MTAppConfigInvalidRabbitMq(MTInvalidAppConfigException):
+    """Exception raised when the rabbitmq section is not a mapping."""

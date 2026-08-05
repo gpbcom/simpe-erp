@@ -34,7 +34,10 @@ from .customer_request_exceptions import (
 from .hca_request_exceptions import (
     MTEmploymentUpdateRequestInvalidCertifications,
     MTEmploymentUpdateRequestInvalidContractType,
+    MTHcaProfileUpdateRequestInvalidAddress,
+    MTHcaProfileUpdateRequestInvalidName,
     MTInvalidEmploymentUpdateRequestException,
+    MTInvalidHcaProfileUpdateRequestException,
 )
 from .hca_response_exceptions import (
     MTHcaResponseInvalidContractType,
@@ -91,6 +94,8 @@ __all__ = [
     "MTHcaApplicationRequestInvalidCompany",
     "MTHcaApplicationRequestInvalidName",
     "MTHcaApplicationRequestInvalidPassword",
+    "MTHcaProfileUpdateRequestInvalidAddress",
+    "MTHcaProfileUpdateRequestInvalidName",
     "MTHcaResponseInvalidContractType",
     "MTHcaResponseInvalidDate",
     "MTHcaResponseInvalidId",
@@ -101,6 +106,7 @@ __all__ = [
     "MTInvalidEmailDispatchResponseException",
     "MTInvalidEmploymentUpdateRequestException",
     "MTInvalidHcaApplicationRequestException",
+    "MTInvalidHcaProfileUpdateRequestException",
     "MTInvalidHcaResponseException",
     "MTInvalidHealthResponseException",
     "MTInvalidLoginRequestException",

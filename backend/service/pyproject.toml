@@ -10,6 +10,7 @@ dependencies = [
     "ortools>=9.15.6755",
     "httpx>=0.28.1",
     "openpyxl>=3.1.5",
+    "aio-pika>=9.5.0",
 ]
 
 [build-system]

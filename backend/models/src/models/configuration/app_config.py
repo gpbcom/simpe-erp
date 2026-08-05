@@ -19,6 +19,7 @@ from models.configuration.exceptions import (
     MTAppConfigInvalidGeocoding,
     MTAppConfigInvalidPlanning,
     MTAppConfigInvalidPricing,
+    MTAppConfigInvalidRabbitMq,
     MTAppConfigInvalidS3,
     MTAppConfigInvalidServer,
     MTAppConfigNotFound,
@@ -27,6 +28,7 @@ from models.configuration.exceptions import (
 from models.configuration.geocoding_config import GeocodingConfig
 from models.configuration.planning_config import PlanningConfig
 from models.configuration.pricing_config import PricingConfig
+from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.configuration.s3_config import S3Config
 from models.configuration.server_config import ServerConfig
 from models.configuration.webhook_config import WebhookConfig
@@ -49,6 +51,7 @@ class AppConfig(BaseModel):
         email (EmailConfig): Outbound SMTP settings.
         webhook (WebhookConfig): Settings for the planning-completed webhook.
         s3 (S3Config): Object-store settings for assistant photographs.
+        rabbitmq (RabbitMqConfig): Message-broker settings.
 
     Notes:
         Every section carries a default, so an absent section in the YAML file
@@ -90,6 +93,10 @@ class AppConfig(BaseModel):
     webhook: WebhookConfig = Field(
         default_factory=WebhookConfig,
         description="Settings for the planning-completed webhook.",
+    )
+    rabbitmq: RabbitMqConfig = Field(
+        default_factory=RabbitMqConfig,
+        description="Message-broker settings.",
     )
     s3: S3Config = Field(
         default_factory=S3Config,
@@ -225,6 +232,26 @@ class AppConfig(BaseModel):
         if not isinstance(value, (GeocodingConfig, dict)):
             raise MTAppConfigInvalidGeocoding(
                 f"Invalid geocoding section: {value!r}. Must be a mapping."
+            )
+        return value
+
+    @field_validator("rabbitmq", mode="before")
+    def validate_rabbitmq(cls, value: JsonValue) -> JsonValue:
+        """Validates that ``rabbitmq`` is a mapping or an already-built section.
+
+        Args:
+            value (JsonValue): Raw ``rabbitmq`` payload.
+
+        Returns:
+            JsonValue: The payload handed back for Pydantic to build.
+
+        Raises:
+            MTAppConfigInvalidRabbitMq: If ``value`` is neither a mapping nor a
+                :class:`~models.configuration.rabbitmq_config.RabbitMqConfig`.
+        """
+        if not isinstance(value, (RabbitMqConfig, dict)):
+            raise MTAppConfigInvalidRabbitMq(
+                f"Invalid rabbitmq section: {value!r}. Must be a mapping."
             )
         return value
 

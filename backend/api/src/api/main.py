@@ -35,6 +35,7 @@ from api.v1.hcas.photos import router as hca_photos_router
 from api.v1.intervention_types.intervention_types import (
     router as intervention_types_router,
 )
+from api.v1.me.me import router as me_router
 from api.v1.notifications.notifications import router as notifications_router
 from api.v1.planning.plannings import router as plannings_router
 from api.v1.planning.runs import router as planning_runs_router
@@ -176,6 +177,10 @@ app.include_router(availability_router)
 app.include_router(intervention_types_router)
 app.include_router(quotes_router)
 app.include_router(notifications_router)
+# Mounted after the manager-facing routers: /api/v1/me is a distinct prefix,
+# so the order is not load-bearing, but keeping the self-service surface last
+# keeps the list reading as 'what staff do' then 'what I do'.
+app.include_router(me_router)
 app.include_router(planning_runs_router)
 app.include_router(planning_settings_router)
 app.include_router(plannings_router)

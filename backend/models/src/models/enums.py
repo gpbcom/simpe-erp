@@ -596,3 +596,45 @@ class NotificationKind(StrEnum):
             which is what makes the notification clickable.
         """
         return self is not NotificationKind.PLANNING_COMPLETED
+
+
+@unique
+class EventRoutingKey(StrEnum):
+    """Enumeration for the topics the agency publishes events under.
+
+    Attributes:
+        QUOTE_SUBMITTED (str): An assistant sent a quote for validation.
+        QUOTE_VALIDATED (str): A manager approved a submitted quote.
+        QUOTE_REFUSED (str): A manager sent a submitted quote back.
+        PLANNING_RUN_REQUESTED (str): A planning computation was asked for.
+        PLANNING_RUN_COMPLETED (str): A planning computation finished.
+
+    Notes:
+        An enumeration rather than string literals scattered across the
+        publisher and the consumers, because a routing key typed differently in
+        two places does not fail — it binds a queue that never receives
+        anything, which looks exactly like a quiet system.
+    """
+
+    QUOTE_SUBMITTED = "quote.submitted"
+    QUOTE_VALIDATED = "quote.validated"
+    QUOTE_REFUSED = "quote.refused"
+    PLANNING_RUN_REQUESTED = "planning.run.requested"
+    PLANNING_RUN_COMPLETED = "planning.run.completed"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every routing key.
+
+        Returns:
+            Tuple[str, ...]: The five supported routing keys.
+        """
+        return tuple(key.value for key in cls)
+
+    def is_quote_event(self) -> bool:
+        """Return whether the key belongs to the quote workflow.
+
+        Returns:
+            bool: ``True`` for the three quote topics.
+        """
+        return self.value.startswith("quote.")

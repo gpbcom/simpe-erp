@@ -1,0 +1,84 @@
+import { useTranslation } from 'react-i18next';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemText from '@mui/material/ListItemText';
+import Stack from '@mui/material/Stack';
+import Typography from '@mui/material/Typography';
+import { useMarkAllRead, useNotifications } from '@/api/queries';
+import { NOTIFICATION_KIND_COLOUR } from '@/theme/palette';
+import { formatDateTime } from '@/utils/format';
+
+/**
+ * The full notification centre.
+ *
+ * @returns The rendered page.
+ */
+export function NotificationsPage() {
+  const { t, i18n } = useTranslation();
+  const { data, isLoading } = useNotifications();
+  const markAllRead = useMarkAllRead();
+  const notifications = data ?? [];
+  const unread = notifications.filter((entry) => !entry.is_read).length;
+
+  return (
+    <Stack spacing={2}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Typography variant="h1" sx={{ flexGrow: 1 }}>
+          {t('notification.title')}
+        </Typography>
+        {unread > 0 ? (
+          <Chip label={t('notification.unread', { count: unread })} color="secondary" />
+        ) : null}
+        <Button
+          variant="outlined"
+          onClick={() => markAllRead.mutate()}
+          disabled={unread === 0}
+          data-testid="page-mark-all-read"
+        >
+          {t('notification.markAllRead')}
+        </Button>
+      </Box>
+
+      <Card>
+        {isLoading ? (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="body2">{t('common.loading')}</Typography>
+          </Box>
+        ) : notifications.length === 0 ? (
+          <Box sx={{ p: 6, textAlign: 'center' }}>
+            <Typography color="text.secondary">{t('notification.empty')}</Typography>
+          </Box>
+        ) : (
+          <List disablePadding data-testid="notifications-page-list">
+            {notifications.map((notification) => (
+              <ListItem
+                key={notification.id}
+                divider
+                sx={{
+                  borderLeft: 4,
+                  borderColor: NOTIFICATION_KIND_COLOUR[notification.kind],
+                  bgcolor: notification.is_read ? 'transparent' : 'action.hover',
+                }}
+              >
+                <ListItemText
+                  primary={notification.title}
+                  secondary={notification.body}
+                  primaryTypographyProps={{
+                    fontWeight: notification.is_read ? 400 : 600,
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {formatDateTime(notification.created_at, i18n.language)}
+                </Typography>
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </Card>
+    </Stack>
+  );
+}

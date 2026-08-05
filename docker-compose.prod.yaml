@@ -1,0 +1,86 @@
+# rt-erp — production overlay.
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+#
+# The differences from development are all subtractions and hardening: nothing
+# is bind-mounted, nothing reloads, the stores publish no ports to the host, and
+# every secret must be supplied rather than falling back to a development
+# default.
+#
+# **Every ${VAR:?} below fails the launch when the variable is unset.** That is
+# the point: a stack that silently came up with `change-me-in-any-real-deployment`
+# as its signing key is worse than one that refused to start.
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    restart: unless-stopped
+    # No ports: the database is reachable on the compose network and nowhere
+    # else. Administration goes through `docker compose exec`.
+
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY must be set}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY must be set}
+    restart: unless-stopped
+
+  rabbitmq:
+    environment:
+      RABBITMQ_DEFAULT_USER: rt_erp
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+    restart: unless-stopped
+    # The management UI is not published. It is reachable through the network
+    # for a operator who wants it, via an SSH tunnel or `compose exec`.
+
+  backend:
+    environment:
+      RT_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY must be set}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY must be set}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      SMTP_USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME must be set}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD must be set}
+      PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:?PLANNING_WEBHOOK_TOKEN must be set}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  worker:
+    environment:
+      RT_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?S3_ACCESS_KEY must be set}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY must be set}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      SMTP_USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME must be set}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD must be set}
+    restart: unless-stopped
+    deploy:
+      # The queues are already separate, so scaling this adds solver capacity
+      # without any code change. Each replica gets one message at a time.
+      replicas: 2
+      resources:
+        limits:
+          # An OR-Tools solve pins a core for its whole budget; giving a worker
+          # two means one solve and one notification fan-out can overlap.
+          cpus: "2.0"
+          memory: 2G
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?VITE_API_BASE_URL must be set}
+    # nginx serves the built assets and proxies /api to the backend, so the
+    # browser talks to one origin and CORS stops being load-bearing in
+    # production. It remains configured, for the development server.
+    ports:
+      - "80:80"
+    restart: unless-stopped

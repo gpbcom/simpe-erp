@@ -9,6 +9,8 @@ dependencies = [
     "storage",
     "service",
     "api",
+    "worker",
+    "seed",
 ]
 
 [tool.uv.workspace]
@@ -17,6 +19,8 @@ members = [
     "storage",
     "service",
     "api",
+    "worker",
+    "seed",
 ]
 
 # Every member resolves to the local checkout, installed in editable mode: a
@@ -30,6 +34,8 @@ models = { workspace = true, editable = true }
 storage = { workspace = true, editable = true }
 service = { workspace = true, editable = true }
 api = { workspace = true, editable = true }
+worker = { workspace = true, editable = true }
+seed = { workspace = true, editable = true }
 
 [tool.ruff]
 target-version = "py314"

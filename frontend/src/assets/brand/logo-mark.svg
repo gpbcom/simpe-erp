@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="rt-erp">
+  <title>rt-erp</title>
+  <!--
+    A roof over a heart formed from two hands: care delivered at home, which is
+    the whole product in one shape. Built on a 48-unit grid with 3.5-unit
+    strokes so it survives being drawn at 16 pixels in a browser tab.
+  -->
+  <defs>
+    <linearGradient id="rtErpMark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F6E6E" />
+      <stop offset="100%" stop-color="#12A19A" />
+    </linearGradient>
+  </defs>
+  <!-- The roof. Deliberately open at the bottom: a home, not a box. -->
+  <path
+    d="M6 22 L24 7 L42 22"
+    fill="none"
+    stroke="url(#rtErpMark)"
+    stroke-width="3.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- The heart, drawn as two arcs meeting at a point. -->
+  <path
+    d="M24 40 C16 33 12 29.5 12 25.5 A5.5 5.5 0 0 1 24 22.5 A5.5 5.5 0 0 1 36 25.5 C36 29.5 32 33 24 40 Z"
+    fill="url(#rtErpMark)"
+  />
+  <!-- Two hands cupping it, as short arcs either side. -->
+  <path
+    d="M8.5 30 A9 9 0 0 0 13 38.5"
+    fill="none"
+    stroke="#C8791A"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+  <path
+    d="M39.5 30 A9 9 0 0 1 35 38.5"
+    fill="none"
+    stroke="#C8791A"
+    stroke-width="3"
+    stroke-linecap="round"
+  />
+</svg>

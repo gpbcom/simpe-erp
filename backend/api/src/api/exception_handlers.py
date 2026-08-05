@@ -24,6 +24,7 @@ from models.configuration.exceptions import (
     MTInvalidHolidaySurchargeException,
     MTInvalidPlanningConfigException,
     MTInvalidPricingConfigException,
+    MTInvalidRabbitMqConfigException,
     MTInvalidS3ConfigException,
     MTInvalidServerConfigException,
     MTInvalidWebhookConfigException,
@@ -33,6 +34,7 @@ from models.geo.exceptions import (
     MTInvalidGeoPointException,
     MTInvalidPostalAddressException,
 )
+from models.messaging.exceptions import MTInvalidEventEnvelopeException
 from models.notifications.exceptions import MTInvalidNotificationException
 from models.people.exceptions import (
     MTInvalidAvailabilitySlotException,
@@ -60,6 +62,7 @@ from models.schemas.exceptions import (
     MTInvalidEmailDispatchResponseException,
     MTInvalidEmploymentUpdateRequestException,
     MTInvalidHcaApplicationRequestException,
+    MTInvalidHcaProfileUpdateRequestException,
     MTInvalidHcaResponseException,
     MTInvalidHealthResponseException,
     MTInvalidLoginRequestException,
@@ -220,6 +223,9 @@ class ExceptionHandlers:
         MTInvalidEmploymentUpdateRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidHcaProfileUpdateRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
         MTInvalidStatusUpdateRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         # People
         MTHcaNotFound: status.HTTP_404_NOT_FOUND,
@@ -283,6 +289,10 @@ class ExceptionHandlers:
         MTInvalidHcaApplicationException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidAvailabilitySlotException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidNotificationException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # A malformed broker message never reaches a client — the consumer
+        # dead-letters it. The row exists so the family is covered rather than
+        # answering an opaque 500 if one ever surfaces through an endpoint.
+        MTInvalidEventEnvelopeException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidCertificationException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidDrivingLicenseException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidCompanyException: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -340,6 +350,7 @@ class ExceptionHandlers:
         MTInvalidPricingConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHolidaySurchargeException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidS3ConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTInvalidRabbitMqConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidServerConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         # Storage. A store that cannot be reached is temporary; a row that will
         # not map is not.

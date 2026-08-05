@@ -14,6 +14,8 @@ from models.enums import RegistrationStatus
 from models.people.customer import Customer
 from storage.mappers.customer_mapper import CustomerMapper
 from storage.orm.customer_row import CustomerRow
+from storage.orm.intervention_row import InterventionRow
+from storage.orm.quote_row import QuoteRow
 from storage.repositories.base import BaseRepository
 
 
@@ -219,6 +221,98 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             int: The number of matching customers.
         """
         return await self._count(self._build_query(search=search, status=status))
+
+    async def list_for_hca(
+        self,
+        hca_id: str,
+        page: int = 1,
+        size: Optional[int] = None,
+        search: Optional[str] = None,
+    ) -> List[Customer]:
+        """Return the customers one assistant is entitled to see.
+
+        Args:
+            hca_id (str): The assistant whose portfolio is being read.
+            page (int): One-based page number.
+            size (Optional[int]): Page size.
+            search (Optional[str]): Restrict by name or address.
+
+        Returns:
+            List[Customer]: The matching customers, by family name.
+
+        Notes:
+            - The portfolio is the **union** of two sets: customers the
+              assistant has a planned intervention with, and customers of quotes
+              they wrote. The union is what makes the screen usable — a newly
+              hired assistant has no interventions yet, and with only the first
+              half their customer list would be empty, so they could quote for
+              nobody and the feature would appear broken on their first day.
+            - Scoped in the statement rather than by filtering rows afterwards.
+              A page of fifty narrowed to three has already read forty-seven
+              customers this assistant is not entitled to.
+        """
+        by_intervention = select(InterventionRow.customer_id).where(
+            InterventionRow.hca_id == hca_id
+        )
+        by_quote = select(QuoteRow.customer_id).where(QuoteRow.authored_by == hca_id)
+        statement = (
+            self._build_query(search=search)
+            .where(
+                CustomerRow.id.in_(by_intervention.union(by_quote)),
+            )
+            .order_by(CustomerRow.last_name, CustomerRow.first_name)
+        )
+        self.logger.debug(
+            "Listing the customer portfolio of assistant %s: page=%d search=%s.",
+            hca_id,
+            page,
+            search,
+        )
+        rows = await self._fetch_all(self._paginate(statement, page, size))
+        if not rows:
+            self.logger.info(
+                "Assistant %s has no customer yet: no planned visit and no "
+                "quote of their own.",
+                hca_id,
+            )
+        return self.mapper.to_models(rows)
+
+    async def is_served_by(self, customer_id: str, hca_id: str) -> bool:
+        """Return whether a customer is in an assistant's portfolio.
+
+        Args:
+            customer_id (str): The customer being opened.
+            hca_id (str): The assistant asking.
+
+        Returns:
+            bool: ``True`` when the assistant may see that customer.
+
+        Notes:
+            Asked before serving a single customer, so guessing an identifier
+            does not reach somebody else's file. A care agency's customer record
+            carries an address, a telephone number and a care schedule; it is
+            not something to hand to whoever asks.
+        """
+        by_intervention = select(InterventionRow.customer_id).where(
+            InterventionRow.hca_id == hca_id,
+            InterventionRow.customer_id == customer_id,
+        )
+        by_quote = select(QuoteRow.customer_id).where(
+            QuoteRow.authored_by == hca_id,
+            QuoteRow.customer_id == customer_id,
+        )
+        statement = select(CustomerRow.id).where(
+            CustomerRow.id == customer_id,
+            CustomerRow.id.in_(by_intervention.union(by_quote)),
+        )
+        found = await self._fetch_one(statement)
+        if found is None:
+            self.logger.warning(
+                "Assistant %s asked for customer %s, who is not theirs.",
+                hca_id,
+                customer_id,
+            )
+        return found is not None
 
     async def delete(self, customer_id: str) -> bool:
         """Delete a customer.

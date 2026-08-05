@@ -6,12 +6,18 @@ from logging import Logger, getLogger
 from typing import List
 
 # Third-party imports
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 # First-party imports
-from api.dependencies import get_admin_user, get_planning_service, run_planning_job
+from api.dependencies import (
+    get_admin_user,
+    get_event_publisher,
+    get_planning_service,
+)
 from models.auth.user import User
+from models.enums import EventRoutingKey
 from models.planning.planning_run import PlanningRun
+from service.messaging.publisher import EventPublisher
 from service.planning.exceptions import (
     MTPlanningPeriodTooLong,
 )
@@ -24,19 +30,19 @@ router = APIRouter(prefix="/api/v1/planning", tags=["Planning runs"])
 
 @router.post("/runs", response_model=PlanningRun, status_code=status.HTTP_202_ACCEPTED)
 async def start_planning_run(
-    background_tasks: BackgroundTasks,
     period_start: date = Query(...),
     period_end: date = Query(...),
     service: PlanningService = Depends(get_planning_service),
+    publisher: EventPublisher = Depends(get_event_publisher),
     caller: User = Depends(get_admin_user),
 ) -> PlanningRun:
     """Start a planning computation over a period.
 
     Args:
-        background_tasks (BackgroundTasks): Schedules the solve.
         period_start (date): First day to plan, inclusive.
         period_end (date): Last day to plan, inclusive.
         service (PlanningService): The planning service.
+        publisher (EventPublisher): Queues the solve for a worker.
         caller (User): The authenticated caller; enforces administrator access.
 
     Returns:
@@ -48,9 +54,16 @@ async def start_planning_run(
 
     Notes:
         Answers **202**, not 200. The solve is CPU-bound and runs for the
-        configured budget on a worker thread, so holding the request open for
-        it would tie up a connection and time out the client. Poll
+        configured budget in a separate worker process, so holding the request
+        open for it would tie up a connection and time out the client. Poll
         ``GET /runs/{id}`` until the status is terminal.
+
+        The run is **recorded before it is queued**, and the record is what the
+        caller is given. If the broker is unreachable the run stays ``pending``
+        rather than vanishing: the identifier the caller polls is real either
+        way, and the work can be re-queued without anybody having to reconstruct
+        what was asked for. That is the whole reason this moved off a FastAPI
+        background task — one lost the run entirely on a restart.
 
         Running the computation is administrator-only: it rewrites every
         assistant's calendar for the period.
@@ -75,7 +88,15 @@ async def start_planning_run(
         period_start,
         period_end,
     )
-    background_tasks.add_task(run_planning_job, run.id)
+    queued = await publisher.publish(
+        EventRoutingKey.PLANNING_RUN_REQUESTED, {"run_id": run.id}
+    )
+    if not queued:
+        logger.error(
+            "Planning run %s is recorded but could not be queued; it stays "
+            "pending until the broker is reachable.",
+            run.id,
+        )
     return run
 
 

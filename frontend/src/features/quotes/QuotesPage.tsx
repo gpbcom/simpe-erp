@@ -1,0 +1,167 @@
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
+import Stack from '@mui/material/Stack';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
+import Typography from '@mui/material/Typography';
+import { useCustomers, useQuotes, useRefuseQuote, useValidateQuote } from '@/api/queries';
+import { QuoteStatusChip } from './QuoteStatusChip';
+import { AppIcon } from '@/components/icons/AppIcon';
+import { formatDate, formatMoney } from '@/utils/format';
+import type { Quote, QuoteStatus } from '@/api/types';
+
+/** The tabs across the top, in the order work flows through them. */
+const TABS: { key: string; status?: QuoteStatus }[] = [
+  { key: 'all' },
+  { key: 'pending', status: 'pending-validation' },
+  { key: 'draft', status: 'draft' },
+  { key: 'sent', status: 'sent' },
+  { key: 'accepted', status: 'accepted' },
+  { key: 'rejected', status: 'rejected' },
+];
+
+/**
+ * Every quote in the agency, and the manager's validation queue.
+ *
+ * @returns The rendered page.
+ *
+ * @remarks
+ * The validation queue is not a separate screen — it is this one, filtered to
+ * `pending-validation`, and it is the second tab so it is the first thing a
+ * manager reaches. Building it as its own page would have meant two grids to
+ * keep in step and two places to fix a column.
+ */
+export function QuotesPage() {
+  const { t, i18n } = useTranslation();
+  const [tab, setTab] = useState(1);
+  const status = TABS[tab]?.status;
+  const { data, isLoading } = useQuotes(status);
+  const { data: customers } = useCustomers();
+  const validate = useValidateQuote();
+  const refuse = useRefuseQuote();
+
+  const customerName = (customerId: string): string => {
+    const found = (customers ?? []).find((entry) => entry.id === customerId);
+    return found ? `${found.first_name} ${found.last_name}` : customerId;
+  };
+
+  const total = (quote: Quote): number =>
+    quote.lines.reduce((running, line) => running + Number(line.total_ttc ?? 0), 0);
+
+  const columns: GridColDef<Quote>[] = [
+    { field: 'reference', headerName: t('quote.reference'), width: 110 },
+    {
+      field: 'customer_id',
+      headerName: t('quote.customer'),
+      flex: 1,
+      minWidth: 180,
+      valueGetter: (_value, row) => customerName(row.customer_id),
+    },
+    {
+      field: 'status',
+      headerName: t('quote.status'),
+      width: 170,
+      renderCell: (params) => <QuoteStatusChip status={params.row.status} />,
+    },
+    {
+      field: 'lines',
+      headerName: t('quote.lines'),
+      width: 90,
+      valueGetter: (_value, row) => row.lines.length,
+    },
+    {
+      field: 'total',
+      headerName: t('quote.totalTtc'),
+      width: 130,
+      valueGetter: (_value, row) => total(row),
+      valueFormatter: (value: number) => formatMoney(value.toFixed(2), i18n.language),
+    },
+    {
+      field: 'issued_on',
+      headerName: t('quote.issuedOn'),
+      width: 140,
+      valueGetter: (_value, row) => formatDate(row.issued_on, i18n.language),
+    },
+    {
+      field: 'actions',
+      headerName: t('common.actions'),
+      width: 280,
+      sortable: false,
+      // Rendered only for a quote awaiting validation. A manager looking at an
+      // accepted quote has no decision to make about it, and a row of greyed
+      // buttons on every other line would bury the ones that matter.
+      renderCell: (params) =>
+        params.row.status === 'pending-validation' ? (
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="contained"
+              color="success"
+              startIcon={<AppIcon name="quoteValidate" />}
+              onClick={() => validate.mutate(params.row.id ?? '')}
+              data-testid={`validate-${params.row.reference}`}
+            >
+              {t('quote.validate')}
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              color="warning"
+              startIcon={<AppIcon name="quoteRefuse" />}
+              onClick={() => refuse.mutate(params.row.id ?? '')}
+              data-testid={`refuse-${params.row.reference}`}
+            >
+              {t('quote.refuse')}
+            </Button>
+          </Stack>
+        ) : null,
+    },
+  ];
+
+  return (
+    <Stack spacing={2}>
+      <Typography variant="h1">{t('nav.quotes')}</Typography>
+
+      <Card>
+        <Tabs
+          value={tab}
+          onChange={(_event, next: number) => setTab(next)}
+          data-testid="quote-tabs"
+        >
+          {TABS.map((entry, index) => (
+            <Tab
+              key={entry.key}
+              label={
+                entry.status ? t(`quote.status_${entry.status}`) : t('common.filter')
+              }
+              data-testid={`quote-tab-${entry.key}`}
+              value={index}
+            />
+          ))}
+        </Tabs>
+
+        {!isLoading && (data ?? []).length === 0 && status === 'pending-validation' ? (
+          <Box sx={{ p: 6, textAlign: 'center' }} data-testid="empty-validation-queue">
+            <Typography color="text.secondary">{t('quote.emptyQueue')}</Typography>
+          </Box>
+        ) : (
+          <DataGrid
+            rows={data ?? []}
+            columns={columns}
+            getRowId={(row) => row.id ?? row.reference}
+            loading={isLoading}
+            autoHeight
+            disableRowSelectionOnClick
+            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+            pageSizeOptions={[25, 50, 100]}
+            data-testid="quotes-grid"
+          />
+        )}
+      </Card>
+    </Stack>
+  );
+}

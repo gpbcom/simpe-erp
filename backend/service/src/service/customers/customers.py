@@ -138,6 +138,52 @@ class CustomerService:
             )
         return customers
 
+    async def list_for_hca(
+        self,
+        hca_id: str,
+        page: int = 1,
+        size: Optional[int] = None,
+        search: Optional[str] = None,
+    ) -> List[Customer]:
+        """Return the customers one assistant is entitled to see.
+
+        Args:
+            hca_id (str): The assistant whose portfolio is being read.
+            page (int): One-based page number.
+            size (Optional[int]): Page size.
+            search (Optional[str]): Restrict by name or address.
+
+        Returns:
+            List[Customer]: The assistant's own portfolio.
+        """
+        return await self.customers.list_for_hca(
+            hca_id=hca_id, page=page, size=size, search=search
+        )
+
+    async def get_for_hca(self, customer_id: str, hca_id: str) -> Customer:
+        """Return one customer, if the assistant is entitled to see them.
+
+        Args:
+            customer_id (str): The customer to read.
+            hca_id (str): The assistant asking.
+
+        Returns:
+            Customer: The customer.
+
+        Raises:
+            MTCustomerNotFound: If the customer does not exist, or is not in
+                the assistant's portfolio.
+
+        Notes:
+            The entitlement check comes **first**, and its failure is reported
+            as "not found" rather than "not yours". A distinct answer would let
+            an assistant walk the identifier space and learn which customers the
+            agency has, which is most of what a customer list is worth.
+        """
+        if not await self.customers.is_served_by(customer_id, hca_id):
+            raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
+        return await self.get(customer_id)
+
     async def update(self, customer_id: str, customer: Customer) -> Customer:
         """Replace a customer's details.
 

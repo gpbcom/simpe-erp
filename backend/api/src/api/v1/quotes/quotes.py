@@ -8,11 +8,16 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 
 # First-party imports
-from api.dependencies import get_manager_user, get_quote_service
+from api.dependencies import (
+    get_event_publisher,
+    get_manager_user,
+    get_quote_service,
+)
 from models.auth.user import User
-from models.enums import QuoteStatus
+from models.enums import EventRoutingKey, QuoteStatus
 from models.quoting.quote import Quote
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
+from service.messaging.publisher import EventPublisher
 from service.quotes.quotes import QuoteService
 
 logger: Logger = getLogger(__name__)
@@ -201,6 +206,7 @@ async def reprice_quote(
 async def validate_quote(
     quote_id: str,
     service: QuoteService = Depends(get_quote_service),
+    publisher: EventPublisher = Depends(get_event_publisher),
     caller: User = Depends(get_manager_user),
 ) -> Quote:
     """Approve a quote an assistant submitted, and issue it.
@@ -227,13 +233,23 @@ async def validate_quote(
         agrees to it. Who agreed is recorded on the quote.
     """
     logger.info("Validating quote %s at the request of %s.", quote_id, caller.email)
-    return await service.validate(quote_id, validator_id=caller.id or caller.email)
+    validated = await service.validate(quote_id, validator_id=caller.id or caller.email)
+    await publisher.publish(
+        EventRoutingKey.QUOTE_VALIDATED,
+        {
+            "quote_id": validated.id,
+            "reference": validated.reference,
+            "author_id": validated.authored_by,
+        },
+    )
+    return validated
 
 
 @router.post("/{quote_id}/refuse-validation", response_model=Quote)
 async def refuse_quote_validation(
     quote_id: str,
     service: QuoteService = Depends(get_quote_service),
+    publisher: EventPublisher = Depends(get_event_publisher),
     caller: User = Depends(get_manager_user),
 ) -> Quote:
     """Send a submitted quote back to its author.
@@ -258,9 +274,18 @@ async def refuse_quote_validation(
         returns it to the assistant to correct.
     """
     logger.warning("Refusing quote %s at the request of %s.", quote_id, caller.email)
-    return await service.refuse_validation(
+    refused = await service.refuse_validation(
         quote_id, validator_id=caller.id or caller.email
     )
+    await publisher.publish(
+        EventRoutingKey.QUOTE_REFUSED,
+        {
+            "quote_id": refused.id,
+            "reference": refused.reference,
+            "author_id": refused.authored_by,
+        },
+    )
+    return refused
 
 
 @router.post("/{quote_id}/send", response_model=Quote)
