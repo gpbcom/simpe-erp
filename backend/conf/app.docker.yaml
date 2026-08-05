@@ -1,0 +1,102 @@
+# rt-erp backend configuration, for the docker-compose stack.
+#
+# Identical to app.yaml except for the three addresses a container cannot
+# reach on localhost: PostgreSQL, MinIO, and the browser-facing URL the
+# photograph links are built from. Selected with RT_ERP_CONFIG.
+#
+# Secrets are never stored here: a ``*_env`` key names the environment variable
+# that carries the value, and the secret is resolved at connection time.
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  title: rt-erp API
+  version: 1.0.0
+  # Named explicitly rather than "*": the API answers credentialed requests, so
+  # a wildcard origin would let any site drive it with a logged-in user's token.
+  cors_origins:
+    - http://localhost:5173
+    - http://localhost:4173
+
+database:
+  host: postgres
+  port: 5432
+  database: rt_erp
+  username: rt_erp
+  password_env: POSTGRES_PASSWORD
+  pool_size: 10
+  max_overflow: 5
+  pool_timeout_seconds: 30.0
+  echo_sql: false
+
+auth:
+  jwt_secret_env: JWT_SECRET_KEY
+  jwt_algorithm: HS256
+  access_token_expire_minutes: 720
+
+pricing:
+  # Contractual base rate, excluding tax, in EUR per hour.
+  base_hourly_rate_ht: 31.905
+  # Fractional uplifts, not percentages: 0.25 means +25%.
+  weekday_surcharges:
+    sunday: 0.25
+  # Surcharges are never cumulative — a date matching several rules takes the
+  # single largest uplift, so 1 January falling on a Sunday bills at +50%.
+  holiday_surcharges:
+    - month: 12
+      day: 25
+      surcharge: 0.50
+      label: Christmas Day
+    - month: 1
+      day: 1
+      surcharge: 0.50
+      label: New Year's Day
+
+planning:
+  # Minutes from midnight: 540 = 09:00, 1200 = 20:00.
+  day_start_minute: 540
+  day_end_minute: 1200
+  # The business floor is one hour; the value is configurable by requirement.
+  lunch_break_minutes: 60
+  lunch_window_start_minute: 690   # 11:30
+  lunch_window_end_minute: 870     # 14:30
+  # Average speeds used to turn a straight-line distance into a duration.
+  average_speed_kmh: 30.0
+  average_speed_without_license_kmh: 12.0
+  # Seeds the stored planning settings the first time they are read. After
+  # that a manager owns the value through the API, and this is not consulted
+  # again — editing it here will not move a running deployment.
+  max_intervention_radius_km: 30.0
+  solver_time_limit_seconds: 30.0
+  travel_weight: 1
+  # Must dominate any realistic travel cost, so leaving a requirement
+  # unassigned stays a last resort rather than a cheap way to avoid a drive.
+  unassigned_penalty: 100000
+
+geocoding:
+  # Nominatim resolves a postal address to a coordinate during model
+  # validation. Its usage policy requires an identifying User-Agent and, on the
+  # public instance, at most one request per second. The User-Agent is sent;
+  # the rate is NOT throttled by this application, so a deployment entering
+  # addresses in bulk should point base_url at its own Nominatim instance or
+  # risk having its address blocked.
+  base_url: https://nominatim.openstreetmap.org/search
+  user_agent: "rt-erp/0.1 (home-care planning; contact: ops@rt-erp.local)"
+  timeout_seconds: 10.0
+  country_codes:
+    - fr
+
+s3:
+  # Assistant photographs are stored here; the HCA record holds the object URL.
+  bucket: rt-erp
+  region: fr-par
+  # MinIO stands in for S3 in the stack; the bucket is created on boot.
+  endpoint_url: http://minio:9000
+  # Set public_base_url when the URL a browser fetches differs from the
+  # endpoint the backend writes through (a CDN, or an in-cluster address).
+  # A browser cannot resolve 'minio', so links are built against localhost.
+  public_base_url: http://localhost:9000
+  access_key_env: S3_ACCESS_KEY
+  secret_key_env: S3_SECRET_KEY
+  photo_key_prefix: hca-photos/
+  max_upload_bytes: 5242880   # 5 MiB

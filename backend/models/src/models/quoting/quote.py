@@ -1,0 +1,432 @@
+from __future__ import annotations
+
+# Standard library imports
+from datetime import date, datetime
+from decimal import Decimal
+from typing import ClassVar, List, Optional, Union
+
+# Third-party imports
+from pydantic import (  # noqa: E501
+    BaseModel,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
+
+# First-party imports
+from models.enums import QuoteStatus
+from models.quoting.exceptions import (
+    MTQuoteInvalidAggregates,
+    MTQuoteInvalidCustomerId,
+    MTQuoteInvalidDate,
+    MTQuoteInvalidId,
+    MTQuoteInvalidLines,
+    MTQuoteInvalidReference,
+    MTQuoteInvalidStatus,
+    MTQuoteInvalidValidity,
+)
+from models.quoting.quote_line import QuoteLine
+from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
+
+
+class Quote(BaseModel):
+    """A priced offer of home care, addressed to one customer.
+
+    Attributes:
+        CENTS (ClassVar[Decimal]): The quantum money is rounded to.
+        SCHEDULABLE_STATUSES (ClassVar[frozenset]): The statuses whose lines
+            feed the planning computation.
+        id (Optional[str]): Identifier, populated on read from the store.
+        reference (str): Human-facing quote number.
+        customer_id (str): The customer the offer is addressed to.
+        status (QuoteStatus): Where the quote is in its lifecycle.
+        lines (List[QuoteLine]): The services offered, priced.
+        aggregates (List[QuoteTypeWeekAggregate]): The lines summed by type and
+            by ISO week.
+        issued_on (Optional[date]): The day the quote was sent.
+        valid_until (Optional[date]): The day the offer lapses.
+        authored_by (Optional[str]): The account that wrote the quote.
+        submitted_at (Optional[datetime]): When it was submitted for validation.
+        validated_by (Optional[str]): The account that validated it.
+        validated_at (Optional[datetime]): When it was validated.
+
+    Notes:
+        - Only an **accepted** quote feeds the planner. A draft is still being
+          composed and a rejected one was declined, so scheduling either would
+          commit assistants to work nobody agreed to.
+
+        - ``aggregates`` is derived from ``lines`` but stored alongside them.
+          Recomputing on read would be cheap; the reason to store it is that a
+          reprinted quote must show the figures it showed when it was issued,
+          even after a type is renamed or repriced.
+
+        - The four authorship fields exist because a quote is now written by one
+          person and approved by another. ``authored_by`` is what scopes an
+          assistant's own list; ``validated_by`` is the answer to "who agreed to
+          this price?", which the record could not answer at all before — a
+          quote simply became accepted, with nothing saying by whom.
+    """
+
+    CENTS: ClassVar[Decimal] = Decimal("0.01")
+    SCHEDULABLE_STATUSES: ClassVar[frozenset] = frozenset({QuoteStatus.ACCEPTED})  # noqa: E501
+
+    id: Optional[str] = Field(
+        default=None,
+        description="Identifier, populated on read from the store.",
+    )
+    reference: str = Field(description="Human-facing quote number.")
+    customer_id: str = Field(description="The customer the offer is addressed to.")
+    status: QuoteStatus = Field(
+        default=QuoteStatus.DRAFT,
+        description="Where the quote is in its lifecycle.",
+    )
+    lines: List[QuoteLine] = Field(
+        default_factory=list,
+        description="The services offered, priced.",
+    )
+    aggregates: List[QuoteTypeWeekAggregate] = Field(
+        default_factory=list,
+        description="The lines summed by intervention type and ISO week.",
+    )
+    issued_on: Optional[date] = Field(
+        default=None,
+        description="The day the quote was sent.",
+    )
+    valid_until: Optional[date] = Field(
+        default=None,
+        description="The day the offer lapses.",
+    )
+    authored_by: Optional[str] = Field(
+        default=None,
+        description="The account that wrote the quote.",
+    )
+    submitted_at: Optional[datetime] = Field(
+        default=None,
+        description="When it was submitted for validation.",
+    )
+    validated_by: Optional[str] = Field(
+        default=None,
+        description="The account that validated it.",
+    )
+    validated_at: Optional[datetime] = Field(
+        default=None,
+        description="When it was validated.",
+    )
+
+    @field_validator("id", mode="before")
+    def validate_id(cls, value: Optional[str]) -> Optional[str]:
+        """Validates that ``id`` is ``None`` or a non-empty string.
+
+        Args:
+            value (Optional[str]): Raw ``id`` value.
+
+        Returns:
+            Optional[str]: The identifier, or ``None``.
+
+        Raises:
+            MTQuoteInvalidId: If ``value`` is neither ``None`` nor a non-empty
+                string.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise MTQuoteInvalidId(
+                f"Invalid id: {value!r}. Must be a non-empty string or None."
+            )
+        return value.strip()
+
+    @field_validator("reference", mode="before")
+    def validate_reference(cls, value: Optional[str]) -> str:
+        """Validates that ``reference`` is a non-empty string.
+
+        Args:
+            value (Optional[str]): Raw ``reference`` value.
+
+        Returns:
+            str: The stripped, upper-cased reference.
+
+        Raises:
+            MTQuoteInvalidReference: If ``value`` is not a non-empty string.
+        """
+        if not isinstance(value, str) or not value.strip():
+            raise MTQuoteInvalidReference(
+                f"Invalid reference: {value!r}. Must be a non-empty string."
+            )
+        return value.strip().upper()
+
+    @field_validator("customer_id", mode="before")
+    def validate_customer_id(cls, value: Optional[str]) -> str:
+        """Validates that ``customer_id`` is a non-empty string.
+
+        Args:
+            value (Optional[str]): Raw ``customer_id`` value.
+
+        Returns:
+            str: The stripped identifier.
+
+        Raises:
+            MTQuoteInvalidCustomerId: If ``value`` is not a non-empty string.
+        """
+        if not isinstance(value, str) or not value.strip():
+            raise MTQuoteInvalidCustomerId(
+                f"Invalid customer_id: {value!r}. Must be a non-empty string."
+            )
+        return value.strip()
+
+    @field_validator("status", mode="before")
+    def validate_status(cls, value: Union[str, QuoteStatus, None]) -> QuoteStatus:  # noqa: E501
+        """Validates that ``status`` is a known quote status.
+
+        Args:
+            value (Union[str, QuoteStatus, None]): Raw status. ``None`` falls
+                back to :attr:`QuoteStatus.DRAFT`.
+
+        Returns:
+            QuoteStatus: The coerced status.
+
+        Raises:
+            MTQuoteInvalidStatus: If ``value`` is not a known status.
+
+        Notes:
+            The default is the least committal one. A quote whose status was
+            lost must not fail open into "accepted", which is what puts work on
+            an assistant's calendar.
+        """
+        if value is None:
+            return QuoteStatus.DRAFT
+        if isinstance(value, QuoteStatus):
+            return value
+        try:
+            return QuoteStatus(value)
+        except ValueError:
+            raise MTQuoteInvalidStatus(
+                f"Invalid status: {value!r}. Must be one of: "
+                f"{', '.join(QuoteStatus.values())}."
+            ) from None
+
+    @field_validator("lines", mode="before")
+    def validate_lines(cls, value: JsonValue) -> JsonValue:
+        """Validates that ``lines`` is a list of quote lines.
+
+        Args:
+            value (JsonValue): Raw list of line payloads.
+
+        Returns:
+            JsonValue: The list handed back for Pydantic to build.
+
+        Raises:
+            MTQuoteInvalidLines: If ``value`` is neither ``None`` nor a list,
+                or if an entry is neither a mapping nor a built line.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise MTQuoteInvalidLines(
+                f"Invalid lines: {value!r}. Must be a list or None."
+            )
+        for entry in value:
+            if not isinstance(entry, (QuoteLine, dict)):
+                raise MTQuoteInvalidLines(
+                    f"Invalid lines entry: {entry!r}. Must be a QuoteLine or a mapping."
+                )
+        return value
+
+    @field_validator("aggregates", mode="before")
+    def validate_aggregates(cls, value: JsonValue) -> JsonValue:
+        """Validates that ``aggregates`` is a list of weekly aggregates.
+
+        Args:
+            value (JsonValue): Raw list of aggregate payloads.
+
+        Returns:
+            JsonValue: The list handed back for Pydantic to build.
+
+        Raises:
+            MTQuoteInvalidAggregates: If ``value`` is neither ``None`` nor a
+                list, or if an entry is neither a mapping nor a built
+                aggregate.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise MTQuoteInvalidAggregates(
+                f"Invalid aggregates: {value!r}. Must be a list or None."
+            )
+        for entry in value:
+            if not isinstance(entry, (QuoteTypeWeekAggregate, dict)):
+                raise MTQuoteInvalidAggregates(
+                    f"Invalid aggregates entry: {entry!r}. "
+                    f"Must be a QuoteTypeWeekAggregate or a mapping."
+                )
+        return value
+
+    @field_validator("issued_on", "valid_until", mode="before")
+    def validate_date(
+        cls, value: Union[str, date, datetime, None]
+    ) -> Union[str, date, None]:
+        """Validates that a date field is date-like or ``None``.
+
+        Args:
+            value (Union[str, date, datetime, None]): Raw date value.
+
+        Returns:
+            Union[str, date, None]: The value handed back for Pydantic.
+
+        Raises:
+            MTQuoteInvalidDate: If ``value`` is neither ``None`` nor date-like.
+        """
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, (str, date)):
+            return value
+        raise MTQuoteInvalidDate(
+            f"Invalid date: {value!r}. Must be a date, an ISO string, or None."
+        )
+
+    @field_validator("authored_by", "validated_by", mode="before")
+    def validate_actor(cls, value: Optional[str]) -> Optional[str]:
+        """Validates that an actor identifier is ``None`` or non-empty.
+
+        Args:
+            value (Optional[str]): Raw ``authored_by`` or ``validated_by``
+                value.
+
+        Returns:
+            Optional[str]: The account identifier, or ``None``.
+
+        Raises:
+            MTQuoteInvalidId: If ``value`` is neither ``None`` nor a non-empty
+                string.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise MTQuoteInvalidId(
+                f"Invalid account identifier: {value!r}. Must be a non-empty "
+                f"string or None."
+            )
+        return value.strip()
+
+    @field_validator("submitted_at", "validated_at", mode="before")
+    def validate_moment(
+        cls, value: Union[str, datetime, None]
+    ) -> Union[str, datetime, None]:
+        """Validates that a workflow timestamp is datetime-like or ``None``.
+
+        Args:
+            value (Union[str, datetime, None]): Raw timestamp value.
+
+        Returns:
+            Union[str, datetime, None]: The value handed back for Pydantic.
+
+        Raises:
+            MTQuoteInvalidDate: If ``value`` is neither ``None`` nor
+                datetime-like.
+
+        Notes:
+            Kept apart from :meth:`validate_date`, which narrows a datetime to
+            a date. These two record the instant a decision was taken, and the
+            hour of it is exactly what an audit of "who approved this, and
+            when?" is asking for.
+        """
+        if value is None:
+            return None
+        if isinstance(value, (str, datetime)):
+            return value
+        raise MTQuoteInvalidDate(
+            f"Invalid timestamp: {value!r}. Must be a datetime, an ISO string, or None."
+        )
+
+    @model_validator(mode="after")
+    def check_validity_window(self) -> Quote:
+        """Ensure the offer does not lapse before it is issued.
+
+        Returns:
+            Quote: ``self`` for chaining.
+
+        Raises:
+            MTQuoteInvalidValidity: If ``valid_until`` precedes ``issued_on``.
+        """
+        if (
+            self.issued_on is not None
+            and self.valid_until is not None
+            and self.valid_until < self.issued_on
+        ):
+            raise MTQuoteInvalidValidity(
+                f"Invalid valid_until: {self.valid_until}. "
+                f"Must be on or after issued_on ({self.issued_on})."
+            )
+        return self
+
+    ############################
+    # Publicly Exposed Methods #
+    ############################
+
+    def is_priced(self) -> bool:
+        """Return whether every line carries its computed amounts.
+
+        Returns:
+            bool: ``True`` when the quote has lines and all of them are priced.
+
+        Notes:
+            An empty quote is **not** priced. Treating it as priced would let a
+            quote with nothing on it be accepted and sent for zero euros.
+        """
+        return bool(self.lines) and all(line.is_priced() for line in self.lines)
+
+    def is_schedulable(self) -> bool:
+        """Return whether this quote's lines may be planned.
+
+        Returns:
+            bool: ``True`` when the quote is accepted and priced.
+        """
+        return self.status in self.SCHEDULABLE_STATUSES and self.is_priced()
+
+    def total_ht(self) -> Decimal:
+        """Return the quote total excluding tax.
+
+        Returns:
+            Decimal: The sum of the weekly aggregates, or zero.
+
+        Notes:
+            Summed from the aggregates rather than the lines. Both give the
+            same figure — the aggregates are themselves sums of rounded line
+            amounts — but taking it from the aggregates guarantees the weekly
+            subtotals printed on the quote add up to the total printed beneath
+            them, whatever rounding happened along the way.
+        """
+        return sum(
+            (aggregate.total_ht for aggregate in self.aggregates), Decimal("0.00")
+        )
+
+    def total_vat(self) -> Decimal:
+        """Return the total tax on the quote.
+
+        Returns:
+            Decimal: The sum of the weekly aggregates, or zero.
+        """
+        return sum(
+            (aggregate.vat_amount for aggregate in self.aggregates), Decimal("0.00")
+        )
+
+    def total_ttc(self) -> Decimal:
+        """Return the quote total including tax.
+
+        Returns:
+            Decimal: The sum of the weekly aggregates, or zero.
+        """
+        return sum(
+            (aggregate.total_ttc for aggregate in self.aggregates), Decimal("0.00")
+        )
+
+    def sorted_aggregates(self) -> List[QuoteTypeWeekAggregate]:
+        """Return the aggregates in display order.
+
+        Returns:
+            List[QuoteTypeWeekAggregate]: Ordered by ISO year, ISO week, then
+            the intervention type's name.
+        """
+        return sorted(self.aggregates, key=lambda entry: entry.sort_key())

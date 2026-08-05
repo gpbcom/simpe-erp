@@ -1,0 +1,106 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "rt-erp backend — uv workspace aggregating the models, storage, service and api packages"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "models",
+    "storage",
+    "service",
+    "api",
+]
+
+[tool.uv.workspace]
+members = [
+    "models",
+    "storage",
+    "service",
+    "api",
+]
+
+# Every member resolves to the local checkout, installed in editable mode: a
+# change under ``<member>/src`` is picked up without a re-install. Declared at
+# the workspace root so the members inherit it, and repeated in each member
+# that depends on another so a member is never resolved from PyPI by mistake
+# (``models``, ``storage``, ``service`` and ``api`` are all plausible public
+# distribution names).
+[tool.uv.sources]
+models = { workspace = true, editable = true }
+storage = { workspace = true, editable = true }
+service = { workspace = true, editable = true }
+api = { workspace = true, editable = true }
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+ignore = [
+    "E402",    # module-import-not-at-top-of-file
+    "F541",    # f-string-missing-placeholders
+    # The house typing convention is deliberately pre-PEP-585/604: capitalised
+    # `typing.Dict`/`List`/`Tuple`, `Optional[X]` and `Union[A, B]`. These four
+    # rules exist to rewrite exactly that style, so they are off by design and
+    # not by neglect.
+    "UP006",   # non-pep585-annotation      (Dict -> dict)
+    "UP007",   # non-pep604-annotation-union (Union[A, B] -> A | B)
+    "UP035",   # deprecated-import           (typing.Dict)
+    "UP045",   # non-pep604-annotation-optional (Optional[X] -> X | None)
+    "UP046",   # non-pep695-generic-class  (Generic[T] -> class C[T])
+    "UP047",   # non-pep695-generic-function
+    # `Union[int, float]` collapses to `float` under PEP 484 numeric coercion,
+    # but the validators branch on `isinstance(value, int)` to reject bools, so
+    # the two are genuinely distinct here.
+    "PYI041",  # redundant-numeric-union
+    # Money is always constructed from a string: `Decimal("0.55")` is exact,
+    # `Decimal(0.55)` picks up the binary approximation.
+    "FURB157", # verbose-decimal-constructor
+    # `# noqa: E501` comments are maintained by the editor's formatter at a
+    # narrower width than ruff's, so ruff sees some of them as redundant.
+    "RUF100",  # unused-noqa
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# `Depends(...)`, `Query(...)` and friends in argument defaults are how FastAPI
+# declares dependencies and parameter metadata — the framework evaluates them
+# per request, so B008's "mutable default" reasoning does not apply. This is
+# the exemption FastAPI's own documentation prescribes.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Form",
+    "fastapi.File",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["models", "storage", "service", "api"]
+force-sort-within-sections = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Run the suite across all CPU cores by default (pytest-xdist). Pass ``-n0``
+# to fall back to a single in-process run when debugging (live output, pdb).
+# ``--timeout`` is a safety net: no unit test should run this long, so a hang
+# (e.g. an unmocked database call) fails fast instead of blocking CI.
+addopts = "-n auto --timeout=60"
+testpaths = ["tests"]
+# ``geocoding`` opts a test out of the autouse fixture that neutralises the
+# Nominatim lookup, so it can drive the real code through a stubbed transport.
+markers = [
+    "geocoding: exercises the Nominatim lookup itself, with a stubbed transport",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.21.0",
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.0.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.6.0",
+    "ruff>=0.11.0",
+]

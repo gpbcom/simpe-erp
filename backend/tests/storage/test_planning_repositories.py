@@ -1,0 +1,407 @@
+from __future__ import annotations
+
+# Standard library imports
+from datetime import UTC, date, datetime, time
+from typing import Any, Dict, List
+
+# Third-party imports
+import pytest
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# First-party imports
+from models.enums import InterventionStatus, PlanningRunStatus
+from models.geo.postal_address import PostalAddress
+from models.people.hca import Hca
+from models.planning.intervention import Intervention
+from models.planning.planning_run import PlanningRun
+from storage.repositories.hca import HcaRepository
+from storage.repositories.intervention import InterventionRepository
+from storage.repositories.planning_run import PlanningRunRepository
+
+MONDAY = date(2026, 8, 3)
+TUESDAY = date(2026, 8, 4)
+NEXT_MONDAY = date(2026, 8, 10)
+
+
+async def _hca(session: AsyncSession, kwargs: Dict[str, Any], email: str) -> str:
+    """Store an assistant and return its identifier.
+
+    Args:
+        session (AsyncSession): The open session.
+        kwargs (Dict[str, Any]): Assistant constructor arguments.
+        email (str): The address to give this one, which must be unique.
+
+    Returns:
+        str: The stored assistant's identifier.
+    """
+    stored = await HcaRepository(session).create(Hca(**{**kwargs, "email": email}))
+    return stored.id
+
+
+def _visit(
+    hca_id: str,
+    run_id: str,
+    day: date = MONDAY,
+    start: time = time(9, 0),
+    name: str = "Toilette matin",
+) -> Intervention:
+    """Build a visit ready to store.
+
+    Args:
+        hca_id (str): The assistant performing it.
+        run_id (str): The run that produced it.
+        day (date): The day it happens.
+        start (time): When it begins.
+        name (str): What the service is.
+
+    Returns:
+        Intervention: The unsaved visit.
+    """
+    return Intervention(
+        planning_run_id=run_id,
+        name=name,
+        intervention_type_id="type-1",
+        quote_line_id="line-1",
+        hca_id=hca_id,
+        hca_full_name="Luc Martin",
+        customer_id="customer-1",
+        day=day,
+        start_time=start,
+        end_time=time(start.hour + 1, start.minute),
+        address=PostalAddress(
+            street="12 rue de Rivoli",
+            postal_code="75004",
+            city="Paris",
+            latitude=48.8566,
+            longitude=2.3522,
+        ),
+        status=InterventionStatus.PLANNED,
+    )
+
+
+async def _run(session: AsyncSession, status: PlanningRunStatus) -> PlanningRun:
+    """Store a planning run and return it.
+
+    Args:
+        session (AsyncSession): The open session.
+        status (PlanningRunStatus): The status to store it with.
+
+    Returns:
+        PlanningRun: The stored run, carrying its identifier.
+    """
+    return await PlanningRunRepository(session).create(
+        PlanningRun(
+            status=status,
+            requested_by="admin-1",
+            period_start=MONDAY,
+            period_end=date(2026, 8, 9),
+        )
+    )
+
+
+class TestPlanningRunRepository:
+    """Tests for the run record's persistence."""
+
+    # ------------------------------------------------------------------ #
+    #  Round trip
+    # ------------------------------------------------------------------ #
+
+    async def test_a_stored_run_comes_back_as_it_went_in(
+        self, session: AsyncSession
+    ) -> None:
+        """Every field survives the round trip."""
+        stored = await _run(session, PlanningRunStatus.PENDING)
+        loaded = await PlanningRunRepository(session).get(stored.id)
+
+        assert loaded is not None
+        assert loaded.status is PlanningRunStatus.PENDING
+        assert loaded.requested_by == "admin-1"
+        assert loaded.period_start == MONDAY
+        assert loaded.period_end == date(2026, 8, 9)
+
+    async def test_unassigned_identifiers_survive_the_round_trip(
+        self, session: AsyncSession
+    ) -> None:
+        """The list of what would not fit is stored, not dropped.
+
+        Notes:
+            This list is the whole point of a succeeded-with-gaps run. Losing
+            it would leave a planner told the run worked and no way to see
+            which work went unplaced.
+        """
+        stored = await _run(session, PlanningRunStatus.SUCCEEDED)
+        repository = PlanningRunRepository(session)
+        await repository.update(
+            stored.model_copy(
+                update={"unassigned_requirement_ids": ["line-7", "line-9"]}
+            )
+        )
+
+        loaded = await repository.get(stored.id)
+        assert loaded is not None
+        assert loaded.unassigned_requirement_ids == ["line-7", "line-9"]
+
+    async def test_an_empty_unassigned_list_stays_empty(
+        self, session: AsyncSession
+    ) -> None:
+        """A clean run comes back with an empty list, not ``None``."""
+        stored = await _run(session, PlanningRunStatus.SUCCEEDED)
+        loaded = await PlanningRunRepository(session).get(stored.id)
+
+        assert loaded is not None
+        assert loaded.unassigned_requirement_ids == []
+
+    async def test_timestamps_come_back_aware(self, session: AsyncSession) -> None:
+        """A stored moment is comparable to ``datetime.now(UTC)``.
+
+        Notes:
+            SQLite drops the offset where PostgreSQL keeps it, so without the
+            normaliser this returns a naive value and any comparison against an
+            aware one raises. The mapper is what stops that divergence.
+        """
+        stored = await _run(session, PlanningRunStatus.RUNNING)
+        repository = PlanningRunRepository(session)
+        await repository.update(
+            stored.model_copy(update={"started_at": datetime.now(UTC)})
+        )
+
+        loaded = await repository.get(stored.id)
+        assert loaded is not None
+        assert loaded.started_at is not None
+        assert loaded.started_at <= datetime.now(UTC)
+
+    # ------------------------------------------------------------------ #
+    #  Listing
+    # ------------------------------------------------------------------ #
+
+    async def test_an_absent_run_reads_as_none(self, session: AsyncSession) -> None:
+        """A run that does not exist is ``None``, not an error."""
+        assert await PlanningRunRepository(session).get("nope") is None
+
+    async def test_latest_succeeded_ignores_failed_runs(
+        self, session: AsyncSession
+    ) -> None:
+        """Only a succeeded run can be the latest one."""
+        repository = PlanningRunRepository(session)
+        await _run(session, PlanningRunStatus.SUCCEEDED)
+        await _run(session, PlanningRunStatus.FAILED)
+
+        latest = await repository.latest_succeeded()
+        assert latest is not None
+        assert latest.status is PlanningRunStatus.SUCCEEDED
+
+
+class TestInterventionRepository:
+    """Tests for the produced plan's persistence."""
+
+    # ------------------------------------------------------------------ #
+    #  Replacing a period
+    # ------------------------------------------------------------------ #
+
+    async def test_replacing_a_period_swaps_its_visits(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A second plan for the same week replaces the first."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="First")]
+        )
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Second")]
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in visits] == ["Second"]
+
+    async def test_replacing_a_period_leaves_the_next_week_alone(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Re-planning one week must not blank the week after it.
+
+        Notes:
+            The delete is scoped by day, not by run. A run-scoped delete would
+            wipe next week too, because that week was written by the same
+            earlier run.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY,
+            date(2026, 8, 16),
+            [
+                _visit(hca_id, run.id, day=MONDAY, name="This week"),
+                _visit(hca_id, run.id, day=NEXT_MONDAY, name="Next week"),
+            ],
+        )
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Replanned")]
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 16))
+        assert [visit.name for visit in visits] == ["Replanned", "Next week"]
+
+    async def test_an_empty_replacement_clears_the_period(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A run that placed nothing empties the period it covered."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+        written = await repository.replace_for_period(MONDAY, date(2026, 8, 9), [])
+
+        assert written == 0
+        assert await repository.count_for_period(MONDAY, date(2026, 8, 9)) == 0
+
+    # ------------------------------------------------------------------ #
+    #  Reading a diary
+    # ------------------------------------------------------------------ #
+
+    async def test_a_diary_is_ordered_by_day_then_start(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Visits come back in the order they will be worked.
+
+        Notes:
+            A calendar rendered from an unordered list would show the afternoon
+            above the morning; ordering in SQL rather than in the client keeps
+            every consumer consistent.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(hca_id, run.id, day=TUESDAY, start=time(9, 0), name="Tue 09h"),
+                _visit(hca_id, run.id, day=MONDAY, start=time(16, 0), name="Mon 16h"),
+                _visit(hca_id, run.id, day=MONDAY, start=time(9, 0), name="Mon 09h"),
+            ],
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in visits] == ["Mon 09h", "Mon 16h", "Tue 09h"]
+
+    async def test_a_diary_holds_only_that_assistants_visits(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """One assistant's read never returns another's work.
+
+        Notes:
+            This is the storage half of the confidentiality rule. The service
+            decides *whether* a caller may read a diary; the repository decides
+            *what is in it*, and a missing filter here would leak regardless of
+            how well the service guards the route.
+        """
+        first = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        second = await _hca(session, hca_kwargs, "ana.lopez@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(first, run.id, name="Luc's"),
+                _visit(second, run.id, start=time(11, 0), name="Ana's"),
+            ],
+        )
+
+        visits = await repository.list_for_hca(first, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in visits] == ["Luc's"]
+
+    async def test_a_diary_is_bounded_by_the_period(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Work outside the requested window is not returned."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY,
+            date(2026, 8, 16),
+            [
+                _visit(hca_id, run.id, day=MONDAY, name="In"),
+                _visit(hca_id, run.id, day=NEXT_MONDAY, name="Out"),
+            ],
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in visits] == ["In"]
+
+    async def test_the_address_survives_the_round_trip(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A visit remembers where it happened, coordinate included.
+
+        Notes:
+            The address is copied onto the visit rather than joined from the
+            customer, so a customer who later moves does not rewrite history.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert visits[0].address.city == "Paris"
+        assert visits[0].address.latitude == pytest.approx(48.8566)
+
+    # ------------------------------------------------------------------ #
+    #  Cross-cutting
+    # ------------------------------------------------------------------ #
+
+    async def test_the_assistants_with_work_are_listed_once_each(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """An assistant with three visits appears once."""
+        first = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        second = await _hca(session, hca_kwargs, "ana.lopez@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(first, run.id, start=time(9, 0)),
+                _visit(first, run.id, start=time(11, 0)),
+                _visit(second, run.id, start=time(14, 0)),
+            ],
+        )
+
+        hca_ids: List[str] = await repository.list_hca_ids_for_period(
+            MONDAY, date(2026, 8, 9)
+        )
+        assert sorted(hca_ids) == sorted([first, second])
+
+    async def test_a_visit_cannot_name_an_absent_assistant(
+        self, session: AsyncSession
+    ) -> None:
+        """The foreign key refuses a visit for nobody.
+
+        Notes:
+            Worth pinning: a plan referencing a deleted assistant would render
+            as a diary with no owner, and the failure would surface only in the
+            interface.
+        """
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        with pytest.raises(IntegrityError):
+            await InterventionRepository(session).replace_for_period(
+                MONDAY, date(2026, 8, 9), [_visit("ghost", run.id)]
+            )

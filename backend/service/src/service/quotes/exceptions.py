@@ -1,0 +1,28 @@
+class MTInvalidPricingException(Exception):
+    """Exception raised when a quote cannot be priced."""
+
+
+class MTPricingUnknownInterventionType(MTInvalidPricingException):
+    """Exception raised when a line names an intervention type that is gone."""
+
+
+class MTQuoteNotFound(MTInvalidPricingException):
+    """Exception raised when the named quote does not exist."""
+
+
+class MTQuoteNotPriced(MTInvalidPricingException):
+    """Exception raised when a quote must be priced before the next step."""
+
+
+class MTQuoteNotEditable(MTInvalidPricingException):
+    """Exception raised when a quote past draft is edited."""
+
+
+class MTQuoteForbidden(MTInvalidPricingException):
+    """Exception raised when a caller acts on a quote that is not theirs.
+
+    Notes:
+        Row-level, not route-level. A route guard proves the caller is an
+        assistant; only comparing the quote's stored author against the caller
+        stops one assistant submitting or reading another's work.
+    """

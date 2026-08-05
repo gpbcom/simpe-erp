@@ -1,0 +1,52 @@
+version: 1
+disable_existing_loggers: false
+formatters:
+  detailed:
+    format: "%(asctime)s - %(levelname)-8s - %(name)s - %(funcName)s - %(lineno)d - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  colored:
+    "()": "colorlog.ColoredFormatter"
+    format: "%(log_color)s%(asctime)s - %(levelname)-8s%(reset)s - %(name)s - %(funcName)s - %(lineno)d - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+    log_colors:
+      DEBUG: cyan
+      INFO: green
+      WARNING: yellow
+      ERROR: red
+      CRITICAL: red,bg_white
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: colored
+    stream: ext://sys.stdout
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: logs/backend.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 7
+    encoding: utf8
+loggers:
+  sqlalchemy.engine:
+    level: WARNING
+  asyncpg:
+    level: WARNING
+  alembic:
+    level: INFO
+  uvicorn.access:
+    level: WARNING
+  botocore:
+    level: ERROR
+  s3transfer:
+    level: ERROR
+  boto3:
+    level: ERROR
+  urllib3:
+    level: ERROR
+  asyncio:
+    level: ERROR
+root:
+  level: DEBUG
+  handlers: [console, file]
