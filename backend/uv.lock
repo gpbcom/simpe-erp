@@ -700,7 +700,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "phonenumbers", specifier = ">=9.0.0" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.12.5" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.13.4" },
     { name = "pydantic-extra-types", specifier = ">=2.11.1" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
