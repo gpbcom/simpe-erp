@@ -1,5 +1,5 @@
 {
-  "name": "rt-erp front-end — GUI campaign coverage",
+  "name": "simple-erp front-end — GUI campaign coverage",
   "outputDir": "qa/results/coverage",
   "reports": [["v8"], ["console-summary"], ["json"]],
   "entryFilter": {

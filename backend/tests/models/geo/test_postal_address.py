@@ -480,7 +480,7 @@ class TestPostalAddressGeocoding:
         PostalAddress(**valid_address_kwargs)
         user_agent = captured[0].get_header("User-agent")
         assert user_agent
-        assert "rt-erp" in user_agent
+        assert "simple-erp" in user_agent
 
     def test_the_query_carries_the_full_address(
         self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
@@ -713,7 +713,7 @@ class TestPostalAddressGeocoding:
         try:
             PostalAddress.apply_geocoding_settings(
                 base_url="https://nominatim.internal/search",
-                user_agent="rt-erp-test/1.0",
+                user_agent="simple-erp-test/1.0",
                 timeout_seconds=2.0,
                 country_codes=("be",),
             )

@@ -9,12 +9,14 @@ from typing import ClassVar, Optional, Tuple, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 # First-party imports
+from models.enums import ServiceCategory
 from models.quoting.exceptions import (
     MTQuoteLineInvalidAmount,
     MTQuoteLineInvalidDuration,
     MTQuoteLineInvalidId,
     MTQuoteLineInvalidInterventionTypeId,
     MTQuoteLineInvalidName,
+    MTQuoteLineInvalidServiceCategory,
     MTQuoteLineInvalidServiceDate,
     MTQuoteLineInvalidWindow,
     MTQuoteLineWindowTooShort,
@@ -31,8 +33,9 @@ class QuoteLine(BaseModel):
         id (Optional[str]): Identifier, populated on read from the store.
         name (str): What the service is, shown on the quote and carried onto
             the scheduled intervention.
-        intervention_type_id (str): The catalog entry that fixes the rate and
-            the VAT category.
+        intervention_type_id (str): The catalog entry that fixes the rate.
+        service_category (ServiceCategory): What kind of care this line is,
+            which decides the VAT rate it is billed at.
         service_date (date): The day the service is delivered.
         earliest_start (time): Earliest the service may begin.
         latest_end (time): Latest the service may finish.
@@ -49,6 +52,14 @@ class QuoteLine(BaseModel):
           which two hours is what the planner decides, along with who delivers
           them. Pinning an exact start here would leave the solver nothing to
           optimise and make most quotes unschedulable.
+        - **The VAT category belongs to the line, not to the catalog entry.**
+          The same service is necessity care for one customer and comfort care
+          for another — help with washing under a care plan is billed at the
+          reduced rate; the same hour arranged privately is not — so the rate
+          cannot be a property of the service being sold. It is decided when
+          the quote is written, by the person who knows which the customer is,
+          and it is stored on the line so the quote reprints identically
+          afterwards.
         - The four money fields are ``None`` until the quote is priced, and are
           **stored** once computed rather than recalculated on read. An issued
           quote must reprint identically even after the intervention type is
@@ -69,7 +80,10 @@ class QuoteLine(BaseModel):
     )
     name: str = Field(description="What the service is.")
     intervention_type_id: str = Field(
-        description="The catalog entry fixing the rate and the VAT category.",
+        description="The catalog entry fixing the rate.",
+    )
+    service_category: ServiceCategory = Field(
+        description="What kind of care this is; decides the VAT rate.",
     )
     service_date: date = Field(description="The day the service is delivered.")
     earliest_start: time = Field(description="Earliest the service may begin.")
@@ -197,6 +211,40 @@ class QuoteLine(BaseModel):
             f"Invalid window bound: {value!r}. Must be a time or an ISO string."
         )
 
+    @field_validator("service_category", mode="before")
+    def validate_service_category(
+        cls, value: Union[str, ServiceCategory, None]
+    ) -> ServiceCategory:
+        """Validates that ``service_category`` names a known kind of care.
+
+        Args:
+            value (Union[str, ServiceCategory, None]): Raw category.
+
+        Returns:
+            ServiceCategory: The coerced category.
+
+        Raises:
+            MTQuoteLineInvalidServiceCategory: If ``value`` is missing or is
+                not a known category.
+
+        Notes:
+            There is no default, deliberately. Defaulting to necessity would
+            bill comfort care at 5.5% and understate the tax on every line
+            somebody forgot to set — an error that surfaces at the tax return
+            rather than on the screen. Defaulting to comfort would overcharge
+            families entitled to the reduced rate. Neither is a mistake worth
+            making quietly, so the line refuses to exist without one.
+        """
+        if isinstance(value, ServiceCategory):
+            return value
+        try:
+            return ServiceCategory(value)
+        except ValueError:
+            raise MTQuoteLineInvalidServiceCategory(
+                f"Invalid service_category: {value!r}. Must be one of: "
+                f"{', '.join(ServiceCategory.values())}."
+            ) from None
+
     @field_validator("duration_minutes", mode="before")
     def validate_duration_minutes(cls, value: Union[int, str, None]) -> int:
         """Validates that ``duration_minutes`` is a positive whole duration.
@@ -257,7 +305,7 @@ class QuoteLine(BaseModel):
             )
         try:
             coerced = Decimal(str(value))
-        except InvalidOperation, ValueError:
+        except (InvalidOperation, ValueError):
             raise MTQuoteLineInvalidAmount(
                 f"Invalid amount: {value!r}. Must be a non-negative decimal or None."
             ) from None

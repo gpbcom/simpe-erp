@@ -50,3 +50,19 @@ class MTPlanningInvalidSpeed(MTInvalidPlanningException):
 
 class MTPlanningInconsistentSolution(MTInvalidPlanningException):
     """Exception raised when the solver's answer breaks its own constraints."""
+
+
+class MTInterventionNotFound(MTInvalidPlanningException):
+    """Exception raised when the named scheduled visit does not exist."""
+
+
+class MTInterventionNotQuoted(MTInvalidPlanningException):
+    """Exception raised when a visit's quote line can no longer be found.
+
+    Notes:
+        A visit exists because a quote line asked for it, and every edit made
+        through a visit is really an edit to that line. Without it there is
+        nothing to reprice and nothing to bill, so the edit is refused rather
+        than applied to the calendar alone — a calendar that disagrees with the
+        paperwork is worse than an edit that did not happen.
+    """

@@ -12,6 +12,7 @@ import aio_pika
 from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.enums import EventRoutingKey
 from models.messaging.event_envelope import EventEnvelope
+from service.messaging.exceptions import MTConsumerNotStarted
 
 EventHandler = Callable[[EventEnvelope], Awaitable[None]]
 
@@ -60,6 +61,9 @@ class EventConsumer:
         self.handlers: Dict[str, EventHandler] = {}
         self.logger = logger if logger else getLogger(__name__)
         self.connection: Optional[aio_pika.abc.AbstractRobustConnection] = None
+        self.channel: Optional[aio_pika.abc.AbstractChannel] = None
+        self.exchange: Optional[aio_pika.abc.AbstractExchange] = None
+        self.dead_letter: Optional[aio_pika.abc.AbstractExchange] = None
         self.logger.debug("EventConsumer created.")
 
     ############################
@@ -112,44 +116,110 @@ class EventConsumer:
         self.handlers[routing_key.value] = handler
         self.logger.debug("Registered a handler for %s.", routing_key.value)
 
-    async def run(self, queue_name: str, routing_keys: List[EventRoutingKey]) -> None:  # noqa: E501
-        """Consume a queue until the process is stopped.
-
-        Args:
-            queue_name (str): The durable queue to consume.
-            routing_keys (List[EventRoutingKey]): The topics to bind it to.
+    async def start(self) -> None:
+        """Open the connection and declare the exchanges.
 
         Raises:
             Exception: Whatever the broker raises when it cannot be reached.
                 A worker with no broker has nothing to do, so unlike the
                 publisher it fails loudly and lets the supervisor restart it.
+
+        Notes:
+            Separated from binding a queue because an agency can be founded
+            while this process is running. The connection, the channel and the
+            exchanges are per-process; the queues are per-agency and arrive one
+            at a time.
         """
         self.connection = await aio_pika.connect_robust(self.config.build_url())  # noqa: E501
-        channel = await self.connection.channel()
-        await channel.set_qos(prefetch_count=self.config.prefetch)
-        exchange = await channel.declare_exchange(
+        self.channel = await self.connection.channel()
+        await self.channel.set_qos(prefetch_count=self.config.prefetch)
+        self.exchange = await self.channel.declare_exchange(
             self.config.exchange, aio_pika.ExchangeType.TOPIC, durable=True
         )
-        dead_letter = await channel.declare_exchange(
+        self.dead_letter = await self.channel.declare_exchange(
             f"{self.config.exchange}{self.DEAD_LETTER_SUFFIX}",
             aio_pika.ExchangeType.TOPIC,
             durable=True,
         )
-        queue = await channel.declare_queue(
-            queue_name,
+        self.logger.info(
+            "Connected to %s; exchange %s is ready.",
+            self.config.url_without_password(),
+            self.config.exchange,
+        )
+
+    async def consume_for_company(
+        self,
+        queue_name: str,
+        routing_keys: List[EventRoutingKey],
+        company_id: str,
+    ) -> None:
+        """Consume one agency's queue.
+
+        Args:
+            queue_name (str): The queue's base name, without the agency.
+            routing_keys (List[EventRoutingKey]): The topics to bind it to.
+            company_id (str): The agency whose traffic this queue carries.
+
+        Notes:
+            - **A queue per agency, not a shared one.** A poison message or a
+              backlog belongs to the agency that produced it: one agency
+              submitting a thousand quotes, or one whose handler keeps failing,
+              must not delay another agency's notifications behind it. A single
+              queue makes every agency wait for the slowest.
+            - The dead-letter queue is per-agency for the same reason, and so
+              that reading one agency's failures does not mean reading
+              everybody's.
+            - Declaring is idempotent, so binding an agency twice — a restart
+              racing a ``company.created`` — is harmless rather than an error
+              to guard against.
+        """
+        if self.channel is None or self.exchange is None:
+            raise MTConsumerNotStarted("start() must be called before consuming.")
+        scoped_name = f"{queue_name}.{company_id}"
+        queue = await self.channel.declare_queue(
+            scoped_name,
             durable=True,
-            arguments={"x-dead-letter-exchange": dead_letter.name},
+            arguments={"x-dead-letter-exchange": self.dead_letter.name},
         )
         for routing_key in routing_keys:
-            await queue.bind(exchange, routing_key=routing_key.value)
-            self.logger.info("Queue %s is bound to %s.", queue_name, routing_key.value)
-        dead_queue = await channel.declare_queue(
-            f"{queue_name}{self.DEAD_LETTER_SUFFIX}", durable=True
+            binding = routing_key.scoped_to(company_id)
+            await queue.bind(self.exchange, routing_key=binding)
+            self.logger.info("Queue %s is bound to %s.", scoped_name, binding)
+        dead_queue = await self.channel.declare_queue(
+            f"{scoped_name}{self.DEAD_LETTER_SUFFIX}", durable=True
         )
-        await dead_queue.bind(dead_letter, routing_key="#")
+        await dead_queue.bind(self.dead_letter, routing_key=f"#.{company_id}")
+        await queue.consume(self._dispatch)
         self.logger.info(
-            "Consuming %s with prefetch %d.", queue_name, self.config.prefetch
+            "Consuming %s with prefetch %d.", scoped_name, self.config.prefetch
         )
+
+    async def consume_every_company(self, routing_keys: List[EventRoutingKey]) -> None:
+        """Consume one topic across every agency, on a queue of this worker's own.
+
+        Args:
+            routing_keys (List[EventRoutingKey]): The topics to bind, each
+                under the ``*`` wildcard.
+
+        Notes:
+            - For the control plane only: this is how a worker hears that an
+              agency has been founded and binds its queues without a restart.
+            - **Exclusive and server-named**, so every worker process gets its
+              own copy. A durable shared queue would hand each announcement to
+              exactly one worker, and the others would never learn the agency
+              exists — they would run on, quietly serving every agency but that
+              one.
+            - Nothing durable is wanted here either: an announcement missed
+              while a worker was down is recovered by the enumeration it does
+              at startup.
+        """
+        if self.channel is None or self.exchange is None:
+            raise MTConsumerNotStarted("start() must be called before consuming.")
+        queue = await self.channel.declare_queue(exclusive=True)
+        for routing_key in routing_keys:
+            binding = f"{routing_key.value}.*"
+            await queue.bind(self.exchange, routing_key=binding)
+            self.logger.info("Exclusive queue is bound to %s.", binding)
         await queue.consume(self._dispatch)
 
     async def close(self) -> None:

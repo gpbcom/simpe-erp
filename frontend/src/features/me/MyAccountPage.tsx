@@ -1,53 +1,116 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQueryClient } from '@tanstack/react-query';
 import Alert from '@mui/material/Alert';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid2';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import LockIcon from '@mui/icons-material/Lock';
-import { request } from '@/api/client';
-import { keys, useMyProfile } from '@/api/queries';
-import { AppIcon } from '@/components/icons/AppIcon';
-import { initialsOf } from '@/utils/format';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import {
+  useMyAccount,
+  useMyProfile,
+  useRemoveMyPhoto,
+  useUpdateMyProfile,
+  useUploadMyPhoto,
+} from '@/api/queries';
+import { AbsencesSection } from './AbsencesSection';
+import { AccountSection } from './AccountSection';
+import { EmploymentSection } from './EmploymentSection';
+import { PasswordSection } from './PasswordSection';
+import { formatDateTime, initialsOf } from '@/utils/format';
+import { hasAtLeast, useSession } from '@/store/session';
+
+/** The licence categories a French assistant might hold. */
+const LICENCE_CATEGORIES = ['A', 'A1', 'A2', 'B', 'B1', 'BE', 'C', 'D'];
+
+/** Everything the form edits, flattened for the inputs. */
+interface ProfileForm {
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+  email: string;
+  street: string;
+  postal_code: string;
+  city: string;
+  country: string;
+  licence_categories: string;
+  licence_number: string;
+  licence_obtained_on: string;
+  licence_expires_on: string;
+}
+
+const EMPTY: ProfileForm = {
+  first_name: '',
+  last_name: '',
+  phone_number: '',
+  email: '',
+  street: '',
+  postal_code: '',
+  city: '',
+  country: 'France',
+  licence_categories: '',
+  licence_number: '',
+  licence_obtained_on: '',
+  licence_expires_on: '',
+};
 
 /**
- * An assistant's own record: what they may change, and what they may not.
+ * The caller's own record: everything the system holds about them.
  *
  * @returns The rendered page.
  *
  * @remarks
- * The contract type and the qualifications render as **locked chips with an
- * explanation**, not as disabled inputs. A disabled input says "you cannot type
- * here"; a locked chip with "set by your manager" says who to ask. The
- * distinction matters because these are the two fields an assistant most often
- * wants to correct.
+ * **Every field is shown.** An account page that displays a subset leaves the
+ * holder unable to answer "what does this system say about me?" — which is the
+ * question it exists to answer, and one they have a right to.
+ *
+ * Everything is editable **except the ones an assistant does not own**:
+ *
+ * | Field | Who owns it |
+ * |---|---|
+ * | Contract type | A manager, via `PATCH /api/v1/hcas/{id}/employment` |
+ * | Qualifications | A manager, same route |
+ * | Role (position) | An administrator, via `POST /api/v1/users/{id}/promote` |
+ *
+ * A manager viewing their own record gets the first two as editable fields,
+ * because they are the person who would set them. The role stays read-only for
+ * everybody here: promoting is an administrator's act performed on the accounts
+ * screen, and a page where somebody could raise their own rank is a page with
+ * no rank at all.
+ *
+ * The screen decides what to *offer*; the server decides what it will *accept*.
+ * The self-service payload has no `contract_type`, `certifications` or `role`
+ * field at all, so a manager's edits go through the manager-gated route rather
+ * than widening it. Neither check depends on the other.
  */
 export function MyAccountPage() {
-  const { t } = useTranslation();
-  const client = useQueryClient();
-  const { data: profile, isLoading } = useMyProfile();
-  const [form, setForm] = useState({
-    first_name: '',
-    last_name: '',
-    phone_number: '',
-    email: '',
-    street: '',
-    postal_code: '',
-    city: '',
-  });
+  const { t, i18n } = useTranslation();
+  const user = useSession((state) => state.user);
+  const { data: account, isLoading, isError } = useMyAccount();
+  // Only fetched when there is one to fetch. A manager's account is bound to no
+  // assistant record, so this request answers 403 for them — and an
+  // unconditional one put this whole screen into its error state for every
+  // manager and administrator in the agency, which is the bug this fixes.
+  const { data: profile } = useMyProfile(account?.hca_id);
+  const update = useUpdateMyProfile();
+  const uploadPhoto = useUploadMyPhoto();
+  const removePhoto = useRemoveMyPhoto();
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const [form, setForm] = useState<ProfileForm>(EMPTY);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+
+  // A manager or an administrator may set contract type and qualifications —
+  // including on their own record, since they are the person who would.
+  const managesEmployment = hasAtLeast(user?.role, 'manager');
 
   useEffect(() => {
     if (!profile) return;
@@ -59,200 +122,283 @@ export function MyAccountPage() {
       street: profile.address.street,
       postal_code: profile.address.postal_code,
       city: profile.address.city,
+      country: profile.address.country,
+      licence_categories: (profile.driving_license?.categories ?? []).join(', '),
+      licence_number: profile.driving_license?.number ?? '',
+      licence_obtained_on: profile.driving_license?.obtained_on ?? '',
+      licence_expires_on: profile.driving_license?.expires_on ?? '',
     });
   }, [profile]);
 
-  const save = async () => {
-    setBusy(true);
+  const field = (key: keyof ProfileForm, label: string, extra = {}) => (
+    <TextField
+      label={label}
+      value={form[key]}
+      onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+      inputProps={{ 'data-testid': `profile-${key.replace(/_/g, '-')}` }}
+      {...extra}
+    />
+  );
+
+  const save = () => {
     setError(null);
-    try {
-      await request('/api/v1/me/hca', {
-        method: 'PATCH',
-        json: {
-          first_name: form.first_name,
-          last_name: form.last_name,
-          phone_number: form.phone_number,
-          email: form.email,
-          address: {
-            street: form.street,
-            postal_code: form.postal_code,
-            city: form.city,
-            country: 'France',
-          },
+    const categories = form.licence_categories
+      .split(',')
+      .map((entry) => entry.trim().toUpperCase())
+      .filter(Boolean);
+    update.mutate(
+      {
+        first_name: form.first_name,
+        last_name: form.last_name,
+        phone_number: form.phone_number,
+        email: form.email,
+        address: {
+          street: form.street,
+          postal_code: form.postal_code,
+          city: form.city,
+          country: form.country,
         },
-      });
-      await client.invalidateQueries({ queryKey: keys.myProfile });
-      setSaved(true);
-    } catch {
-      setError(t('common.error'));
-    } finally {
-      setBusy(false);
-    }
+        // Sent as null rather than as an empty object when there are no
+        // categories: a licence with no categories is not a licence, and the
+        // model would refuse it.
+        driving_license: categories.length
+          ? {
+              categories,
+              number: form.licence_number || null,
+              obtained_on: form.licence_obtained_on || null,
+              expires_on: form.licence_expires_on || null,
+            }
+          : null,
+      },
+      {
+        onSuccess: () => setSaved(true),
+        onError: (cause) =>
+          setError(cause instanceof Error ? cause.message : t('common.error')),
+      },
+    );
   };
 
-  if (isLoading || !profile) {
-    return <Typography>{t('common.loading')}</Typography>;
+  if (isLoading) return <Typography>{t('common.loading')}</Typography>;
+  if (isError || !account) {
+    return <Alert severity="error">{t('common.error')}</Alert>;
   }
 
-  const fullName = `${profile.first_name} ${profile.last_name}`;
+  const fullName = profile
+    ? `${profile.first_name} ${profile.last_name}`
+    : account.full_name;
+  // Only meaningful for an assistant: it is their home address the planner
+  // routes from. An account with no assistant record has no address to resolve.
+  const geocoded =
+    !profile ||
+    (profile.address.latitude !== null && profile.address.longitude !== null);
 
   return (
     <Stack spacing={3}>
       <Typography variant="h1">{t('nav.myAccount')}</Typography>
 
+      {error ? <Alert severity="error">{error}</Alert> : null}
+      {!geocoded ? (
+        // Worth an alert rather than a quiet field: an address that did not
+        // resolve means this person is not routed at all by the next planning
+        // run, and nothing else on the screen would say so.
+        <Alert severity="warning" data-testid="geocoding-warning">
+          {t('hca.addressNotResolved')}
+        </Alert>
+      ) : null}
+
+      {/* ── The account: every caller has one ────────────────────── */}
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Avatar
-                src={profile.photo_url ?? undefined}
-                sx={{ width: 96, height: 96, mx: 'auto', mb: 2, fontSize: 32 }}
-                data-testid="profile-avatar"
-              >
-                {initialsOf(fullName)}
-              </Avatar>
-              <Typography variant="h3">{fullName}</Typography>
-
-              <Stack spacing={2} sx={{ mt: 3, textAlign: 'left' }}>
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {t('hca.contractType')}
-                  </Typography>
-                  <Box sx={{ mt: 0.5 }}>
-                    <Tooltip title={t('hca.managedByManager')}>
-                      <Chip
-                        icon={<LockIcon />}
-                        label={t(`hca.contract_${profile.contract_type}`)}
-                        data-testid="contract-type"
-                      />
-                    </Tooltip>
-                  </Box>
-                </Box>
-
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {t('hca.certifications')}
-                  </Typography>
-                  <Box
-                    sx={{ mt: 0.5, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}
-                    data-testid="certifications"
-                  >
-                    {profile.certifications.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">
-                        —
-                      </Typography>
-                    ) : (
-                      profile.certifications.map((certification) => (
-                        <Tooltip
-                          key={certification.name}
-                          title={t('hca.managedByManager')}
-                        >
-                          <Chip
-                            icon={<AppIcon name="certification" />}
-                            label={certification.name}
-                          />
-                        </Tooltip>
-                      ))
-                    )}
-                  </Box>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, lg: 8 }}>
+          <AccountSection account={account} />
         </Grid>
-
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Card>
-            <CardContent>
-              <Stack spacing={2}>
-                {error ? <Alert severity="error">{error}</Alert> : null}
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      label={t('hca.firstName')}
-                      value={form.first_name}
-                      onChange={(event) =>
-                        setForm({ ...form, first_name: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-first-name' }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      label={t('hca.lastName')}
-                      value={form.last_name}
-                      onChange={(event) =>
-                        setForm({ ...form, last_name: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-last-name' }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      label={t('hca.phone')}
-                      value={form.phone_number}
-                      onChange={(event) =>
-                        setForm({ ...form, phone_number: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-phone' }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      label={t('hca.email')}
-                      value={form.email}
-                      onChange={(event) =>
-                        setForm({ ...form, email: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-email' }}
-                    />
-                  </Grid>
-                  <Grid size={12}>
-                    <TextField
-                      label={t('hca.address')}
-                      value={form.street}
-                      onChange={(event) =>
-                        setForm({ ...form, street: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-street' }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 4 }}>
-                    <TextField
-                      label="Code postal"
-                      value={form.postal_code}
-                      onChange={(event) =>
-                        setForm({ ...form, postal_code: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-postal-code' }}
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 8 }}>
-                    <TextField
-                      label="Ville"
-                      value={form.city}
-                      onChange={(event) =>
-                        setForm({ ...form, city: event.target.value })
-                      }
-                      inputProps={{ 'data-testid': 'profile-city' }}
-                    />
-                  </Grid>
-                </Grid>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="contained"
-                    onClick={save}
-                    disabled={busy}
-                    data-testid="profile-save"
-                  >
-                    {t('common.save')}
-                  </Button>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
+        <Grid size={{ xs: 12, lg: 4 }}>
+          <PasswordSection />
         </Grid>
       </Grid>
+
+      {/* ── The assistant record: only somebody scheduled has one ── */}
+      {!profile ? (
+        <Alert severity="info" data-testid="no-assistant-record">
+          {t('account.noAssistantRecordExplained')}
+        </Alert>
+      ) : (
+        <Grid container spacing={3}>
+          {/* ── Portrait and the assistant's own record ──────────────── */}
+          <Grid size={{ xs: 12, md: 4 }}>
+            <Stack spacing={3}>
+              <Card>
+                <CardContent sx={{ textAlign: 'center' }}>
+                  <Avatar
+                    src={profile.photo_url ?? undefined}
+                    sx={{ width: 112, height: 112, mx: 'auto', mb: 2, fontSize: 36 }}
+                    data-testid="profile-avatar"
+                  >
+                    {initialsOf(fullName)}
+                  </Avatar>
+                  <Typography variant="h3">{fullName}</Typography>
+
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    hidden
+                    data-testid="photo-input"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) uploadPhoto.mutate(file);
+                      event.target.value = '';
+                    }}
+                  />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ mt: 2 }}
+                    justifyContent="center"
+                  >
+                    <Button
+                      size="small"
+                      startIcon={<PhotoCameraIcon />}
+                      onClick={() => fileInput.current?.click()}
+                      disabled={uploadPhoto.isPending}
+                      data-testid="upload-photo"
+                    >
+                      {t('hca.changePhoto')}
+                    </Button>
+                    {profile.photo_url ? (
+                      <Button
+                        size="small"
+                        color="inherit"
+                        onClick={() => removePhoto.mutate()}
+                        data-testid="remove-photo"
+                      >
+                        {t('common.remove')}
+                      </Button>
+                    ) : null}
+                  </Stack>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mt: 1, display: 'block' }}
+                  >
+                    {t('hca.photoIsYourPin')}
+                  </Typography>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="record-section">
+                <CardContent>
+                  <Stack spacing={1.5}>
+                    <Typography variant="h3">{t('hca.record')}</Typography>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {t('hca.recordCreated')}
+                      </Typography>
+                      <Typography variant="body2" data-testid="record-created">
+                        {formatDateTime(profile.created_at, i18n.language)}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        {t('hca.recordUpdated')}
+                      </Typography>
+                      <Typography variant="body2" data-testid="record-updated">
+                        {formatDateTime(profile.updated_at, i18n.language)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Grid>
+
+          {/* ── Everything the assistant owns ───────────────────────── */}
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Stack spacing={3}>
+              <Card>
+                <CardContent>
+                  <Stack spacing={2}>
+                    <Typography variant="h3">{t('hca.identity')}</Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('first_name', t('hca.firstName'))}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('last_name', t('hca.lastName'))}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('phone_number', t('hca.phone'))}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('email', t('hca.email'))}
+                      </Grid>
+                    </Grid>
+
+                    <Divider />
+
+                    <Typography variant="h3">{t('hca.address')}</Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={12}>{field('street', t('hca.street'))}</Grid>
+                      <Grid size={{ xs: 12, sm: 4 }}>
+                        {field('postal_code', t('hca.postalCode'))}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 4 }}>
+                        {field('city', t('hca.city'))}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 4 }}>
+                        {field('country', t('hca.country'))}
+                      </Grid>
+                    </Grid>
+
+                    <Divider />
+
+                    <Typography variant="h3">{t('hca.drivingLicense')}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {t('hca.licenceAffectsRouting')}
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('licence_categories', t('hca.licenceCategories'), {
+                          helperText: LICENCE_CATEGORIES.join(' · '),
+                        })}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('licence_number', t('hca.licenceNumber'))}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('licence_obtained_on', t('hca.licenceObtained'), {
+                          type: 'date',
+                          InputLabelProps: { shrink: true },
+                        })}
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        {field('licence_expires_on', t('hca.licenceExpires'), {
+                          type: 'date',
+                          InputLabelProps: { shrink: true },
+                        })}
+                      </Grid>
+                    </Grid>
+
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        variant="contained"
+                        onClick={save}
+                        disabled={update.isPending}
+                        data-testid="profile-save"
+                      >
+                        {t('common.save')}
+                      </Button>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+
+              <EmploymentSection profile={profile} editable={managesEmployment} />
+
+              <AbsencesSection profile={profile} />
+            </Stack>
+          </Grid>
+        </Grid>
+      )}
 
       <Snackbar
         open={saved}

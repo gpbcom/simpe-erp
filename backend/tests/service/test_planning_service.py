@@ -40,6 +40,7 @@ def _hca(hca_id: str = "hca-1", first_name: str = "Luc") -> Hca:
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id=hca_id,
         first_name=first_name,
         last_name="Martin",
@@ -67,6 +68,7 @@ def _user(role: UserRole, hca_id: Optional[str] = None) -> User:
         User: The account.
     """
     return User(
+        company_id="company-1",
         id=f"user-{role.value}",
         email=f"{role.value}@example.com",
         full_name=f"Test {role.value.title()}",

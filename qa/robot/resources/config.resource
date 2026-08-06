@@ -13,11 +13,14 @@ ${MAILPIT_URL}          http://localhost:8025
 
 # The seeded credentials. Printed by the seeder on every run; see
 # backend/seed/src/seed/dataset.py.
-${SEED_PASSWORD}        rt-erp-demo-2026
-${ADMIN_EMAIL}          admin@rt-erp.fr
-${MANAGER_EMAIL}        manager@rt-erp.fr
-${ASSISTANT_EMAIL}      luc.martin@rt-erp.fr
-${OTHER_ASSISTANT}      amina.benali@rt-erp.fr
+${SEED_PASSWORD}        simple-erp-demo-2026
+# The seeded agency's trading name. Used to exercise the name clash when
+# founding an agency, because it is always there and never edited.
+${SEEDED_COMPANY_NAME}  Aide et Presence Paris
+${ADMIN_EMAIL}          admin@simple-erp.fr
+${MANAGER_EMAIL}        manager@simple-erp.fr
+${ASSISTANT_EMAIL}      luc.martin@simple-erp.fr
+${OTHER_ASSISTANT}      amina.benali@simple-erp.fr
 
 # Headless by default. A developer watching a failure runs with
 # ``--variable HEADLESS:False`` and sees the browser.

@@ -124,4 +124,4 @@ def hca(hca_kwargs: Dict[str, Any]) -> Hca:
     Returns:
         Hca: An assistant with no identifier yet.
     """
-    return Hca(**hca_kwargs)
+    return Hca(company_id="company-1", **hca_kwargs)

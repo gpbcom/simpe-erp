@@ -19,6 +19,7 @@ from models.configuration.auth_config import AuthConfig
 from models.configuration.exceptions import MTAuthConfigMissingSecret
 from models.enums import AccountOrigin, UserRole
 from service.auth.exceptions import (
+    MTAuthCompanyRequired,
     MTAuthEmailAlreadyRegistered,
     MTAuthHcaLinkRequired,
     MTAuthInvalidCredentials,
@@ -27,6 +28,7 @@ from service.auth.exceptions import (
     MTAuthMissingSecret,
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
+    MTAuthUnknownAccount,
     MTAuthUnknownHca,
     MTAuthUserInactive,
 )
@@ -104,6 +106,7 @@ class AuthService:
         password: str,
         role: UserRole = UserRole.HCA,
         hca_id: Optional[str] = None,
+        company_id: Optional[str] = None,
     ) -> User:
         """Create an account.
 
@@ -114,11 +117,13 @@ class AuthService:
             role (UserRole): The role to grant.
             hca_id (Optional[str]): The assistant record to link, required for
                 an assistant account.
+            company_id (Optional[str]): The agency the account belongs to.
 
         Returns:
             User: The stored account.
 
         Raises:
+            MTAuthCompanyRequired: If no agency was resolved for the account.
             MTAuthHcaLinkRequired: If an assistant account names no record.
             MTAuthUnknownHca: If the named assistant record does not exist.
             MTAuthEmailAlreadyRegistered: If the address is already in use.
@@ -139,17 +144,32 @@ class AuthService:
                     "An account with the 'hca' role must name the assistant "
                     "record it belongs to."
                 )
-            if await self.hcas.get(hca_id) is None:
+            assistant = await self.hcas.get(hca_id)
+            if assistant is None:
                 self.logger.warning(
                     "Refused to register %s: unknown assistant %s.", email, hca_id
                 )
                 raise MTAuthUnknownHca(f"No assistant record {hca_id!r} exists.")
+            # Taken from the assistant record, never from the caller. This is
+            # the unauthenticated route, so a company named in its payload
+            # would be a company anybody could put themselves in — and the
+            # record already knows which agency employs them.
+            company_id = assistant.company_id
+        if not company_id:
+            self.logger.warning(
+                "Refused to register %s: no agency was resolved for the account.",
+                email,
+            )
+            raise MTAuthCompanyRequired(
+                f"An account must belong to an agency; none was resolved for {email!r}."
+            )
         user = User(
             email=email,
             full_name=full_name,
             hashed_password=self.hash(password),
             role=role,
             hca_id=hca_id,
+            company_id=company_id,
         )
         try:
             stored = await self.users.create(user)
@@ -181,6 +201,7 @@ class AuthService:
             plain text — returned **once**, for the administrator to hand over.
 
         Raises:
+            MTAuthCompanyRequired: If no agency was resolved for the account.
             MTAuthUnknownHca: If the named assistant record does not exist.
             MTAuthEmailAlreadyRegistered: If the address is already in use.
 
@@ -202,13 +223,27 @@ class AuthService:
         self.logger.info(
             "Creating a staff-issued account for %s (assistant %s).", email, hca_id
         )
-        if await self.hcas.get(hca_id) is None:
+        assistant = await self.hcas.get(hca_id)
+        if assistant is None:
             self.logger.warning(
                 "Refused to create an account for %s: unknown assistant %s.",
                 email,
                 hca_id,
             )
             raise MTAuthUnknownHca(f"No assistant record {hca_id!r} exists.")
+        # The assistant record wins over the caller's agency. A manager creating
+        # an account for somebody employed by another agency would otherwise
+        # file that account under their own, and the account and the person it
+        # belongs to would disagree about who they work for.
+        company_id = assistant.company_id or company_id
+        if not company_id:
+            self.logger.warning(
+                "Refused to create an account for %s: no agency was resolved.",
+                email,
+            )
+            raise MTAuthCompanyRequired(
+                f"An account must belong to an agency; none was resolved for {email!r}."
+            )
 
         temporary_password = self.generate_temporary_password()
         user = User(
@@ -301,6 +336,69 @@ class AuthService:
         self.logger.info(
             "Account %s changed its password; it is now fully usable.", updated.id
         )
+        return updated
+
+    async def update_account(self, user: User, full_name: str, email: str) -> User:
+        """Change the display name and sign-in address of an account.
+
+        Args:
+            user (User): The account being changed, taken from the credential.
+            full_name (str): The display name to store.
+            email (str): The address to sign in with from now on.
+
+        Returns:
+            User: The updated account.
+
+        Raises:
+            MTAuthEmailAlreadyRegistered: If another account already signs in
+                with that address.
+            MTAuthUnknownAccount: If the account disappeared mid-write.
+
+        Notes:
+            **The account being changed comes from the credential, never from a
+            parameter.** There is no ``user_id`` to pass, so the only account a
+            caller can reach through this method is their own — the same shape
+            the self-service quote and profile routes use.
+
+            The address is checked for a clash before the write rather than
+            after. The column is unique, so a duplicate would otherwise surface
+            as a database integrity error and be answered as a 500: a spelling
+            mistake reported as a server fault, with nothing telling the holder
+            what to correct.
+
+            An address that resolves to the *same* account is not a clash. The
+            screen sends both fields on every save, so somebody changing only
+            their display name sends their own address back unchanged, and
+            refusing that would make the name uneditable.
+        """
+        self.logger.info("Updating the account details of %s.", user.id)
+        self.logger.debug(
+            "Requested display name %r and address %r for account %s.",
+            full_name,
+            email,
+            user.id,
+        )
+        existing = await self.users.get_by_email(email)
+        if existing is not None and existing.id != user.id:
+            self.logger.warning(
+                "Refused to move account %s to %s: it is already registered.",
+                user.id,
+                email,
+            )
+            raise MTAuthEmailAlreadyRegistered(
+                "That address is already used by another account."
+            )
+
+        updated = await self.users.update(
+            user.model_copy(update={"full_name": full_name, "email": email})
+        )
+        if updated is None:
+            self.logger.error(
+                "Account %s vanished between the check and the account write.",
+                user.id,
+            )
+            raise MTAuthUnknownAccount("The account no longer exists.")
+        self.logger.info("Account %s updated its own details.", updated.id)
         return updated
 
     def require_password_change_done(self, user: User) -> None:
@@ -413,6 +511,50 @@ class AuthService:
             raise MTAuthUserInactive("This account is deactivated.")
         self.logger.debug("Resolved token to %s (%s).", subject, user.role.value)
         return user
+
+    async def delete_account(self, user_id: str, requested_by: User) -> None:
+        """Remove an account outright.
+
+        Args:
+            user_id (str): The account to remove.
+            requested_by (User): The administrator asking.
+
+        Raises:
+            MTAuthLastAdmin: If this is the last administrator, or the caller's
+                own account.
+
+        Notes:
+            - **Deactivating is the ordinary way to stop somebody signing in**;
+              this is for accounts that should never have existed — one raised
+              in error, and the fixtures a test campaign is obliged to remove
+              after itself. Removing a person who worked here erases who
+              validated what.
+            - Refuses the caller's own account and refuses the last
+              administrator, for the same reason
+              :meth:`promote` and :meth:`set_active` do: an agency with no
+              administrator cannot appoint one, and the mistake is unrecoverable
+              through the product.
+        """
+        if user_id == requested_by.id:
+            self.logger.warning(
+                "Account %s attempted to delete itself.", requested_by.email
+            )
+            raise MTAuthLastAdmin("An administrator may not delete their own account.")
+        existing = await self.users.get(user_id)
+        if existing is None:
+            self.logger.warning("Account %s does not exist; nothing deleted.", user_id)
+            raise MTAuthUnknownAccount(f"No account {user_id!r} exists.")
+        if existing.role is UserRole.ADMIN and await self.users.count_admins() <= 1:
+            self.logger.warning(
+                "Refused to delete %s: it is the last administrator.",
+                existing.email,
+            )
+            raise MTAuthLastAdmin(
+                "The last administrator cannot be deleted; there would be "
+                "nobody able to appoint another."
+            )
+        await self.users.delete(user_id)
+        self.logger.info("Deleted account %s.", user_id)
 
     async def promote(self, user_id: str, role: UserRole) -> Optional[User]:
         """Change an account's role.

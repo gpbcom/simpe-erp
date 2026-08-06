@@ -2,24 +2,24 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: rt_erp
-      POSTGRES_USER: rt_erp
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rt_erp_dev}
+      POSTGRES_DB: simple_erp
+      POSTGRES_USER: simple_erp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rt_erp -d rt_erp"]
+      test: ["CMD-SHELL", "pg_isready -U simple_erp -d simple_erp"]
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-rt_erp_dev}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-rt_erp_dev_secret}
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-simple_erp_dev}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-simple_erp_dev_secret}
     volumes:
       - minio-data:/data
     healthcheck:
@@ -27,7 +27,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   minio-init:
     image: minio/mc:latest
@@ -35,22 +35,22 @@ services:
       minio:
         condition: service_healthy
     environment:
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-rt_erp_dev}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-rt_erp_dev_secret}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
     entrypoint: >
       sh -c "
         mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
-        mc mb --ignore-existing local/rt-erp &&
-        mc anonymous set download local/rt-erp &&
-        echo 'Bucket rt-erp is ready.'
+        mc mb --ignore-existing local/simple-erp &&
+        mc anonymous set download local/simple-erp &&
+        echo 'Bucket simple-erp is ready.'
       "
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   rabbitmq:
     image: rabbitmq:4-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: rt_erp
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rt_erp_dev}
+      RABBITMQ_DEFAULT_USER: simple_erp
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-simple_erp_dev}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
@@ -59,19 +59,19 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   backend:
     build:
       context: ./backend
-    image: rt-erp-backend:local
+    image: simple-erp-backend:local
     environment:
-      RT_ERP_CONFIG: conf/app.docker.yaml
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rt_erp_dev}
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-any-real-deployment}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-rt_erp_dev}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-rt_erp_dev_secret}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rt_erp_dev}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-}
@@ -85,18 +85,18 @@ services:
     command: >
       sh -c "alembic -c conf/alembic.ini upgrade head &&
              uvicorn api.main:app --host 0.0.0.0 --port 8000"
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   worker:
     build:
       context: ./backend
-    image: rt-erp-backend:local
+    image: simple-erp-backend:local
     environment:
-      RT_ERP_CONFIG: conf/app.docker.yaml
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rt_erp_dev}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-rt_erp_dev}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-rt_erp_dev_secret}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rt_erp_dev}
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     depends_on:
@@ -107,7 +107,7 @@ services:
       backend:
         condition: service_started
     command: ["worker"]
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   frontend:
     build:
@@ -115,7 +115,7 @@ services:
     depends_on:
       backend:
         condition: service_started
-    networks: [rt-erp]
+    networks: [simple-erp]
 
 volumes:
   postgres-data:
@@ -123,5 +123,5 @@ volumes:
   rabbitmq-data:
 
 networks:
-  rt-erp:
+  simple-erp:
     driver: bridge

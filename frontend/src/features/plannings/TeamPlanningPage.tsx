@@ -1,0 +1,506 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import FullCalendar from '@fullcalendar/react';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
+import frLocale from '@fullcalendar/core/locales/fr';
+import GroupsIcon from '@mui/icons-material/Groups';
+import Alert from '@mui/material/Alert';
+import Avatar from '@mui/material/Avatar';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogContentText from '@mui/material/DialogContentText';
+import DialogTitle from '@mui/material/DialogTitle';
+import Divider from '@mui/material/Divider';
+import Drawer from '@mui/material/Drawer';
+import List from '@mui/material/List';
+import ListItemAvatar from '@mui/material/ListItemAvatar';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
+import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import { ApiError } from '@/api/client';
+import {
+  useAllPlannings,
+  useChangeInterventionType,
+  useCustomers,
+  useDeleteIntervention,
+  useInterventionTypes,
+  usePlanningRuns,
+  useStartPlanningRun,
+} from '@/api/queries';
+import { INTERVENTION_STATUS_COLOUR, PLANNING_HCA_COLOURS } from '@/theme/palette';
+import { useSession } from '@/store/session';
+import { formatTime, initialsOf } from '@/utils/format';
+import { planningWindow } from '@/utils/planningWindow';
+import type { HcaPlanning, Intervention } from '@/api/types';
+
+/**
+ * The rail entry that shows the whole workforce at once.
+ *
+ * @remarks
+ * A sentinel rather than a separate piece of state: "which planning am I
+ * looking at" is one question, and answering it with a string plus a boolean
+ * makes the two disagree the first time somebody forgets to clear one.
+ */
+const EVERYBODY = 'all';
+
+/**
+ * Every assistant's planning, as a calendar.
+ *
+ * @returns The rendered page.
+ *
+ * @remarks
+ * A calendar rather than a list of cards. The question a manager asks is "who
+ * is where at three o'clock on Thursday?", and a list sorted by date answers it
+ * only after they have counted rows. This is the same `FullCalendar` the
+ * assistant's own planning uses, so the two screens read alike and a fix to one
+ * is a fix to both.
+ *
+ * **Everybody, or one assistant, chosen on the left.** The screen opens on the
+ * whole workforce — that is the view a manager comes here for, and an empty
+ * grid beside a full rail reads as "nobody is planned" rather than as "pick
+ * someone". Choosing a name narrows the grid to that assistant alone, which is
+ * how a week gets read in detail once the overview has raised a question.
+ *
+ * The rail carries each assistant's visit count, so whose week is full is
+ * legible before opening it, and their colour swatch, so the shared grid has a
+ * legend.
+ */
+export function TeamPlanningPage() {
+  const { t, i18n } = useTranslation();
+  const client = useQueryClient();
+  const isAdmin = useSession((state) => state.user?.role === 'admin');
+
+  // Computed once and held: recomputing on every render would produce a new
+  // query key the moment the clock crossed midnight mid-session, and the whole
+  // screen would refetch under the manager.
+  const [{ from, to }] = useState(planningWindow);
+
+  const { data: plannings, isLoading } = useAllPlannings(from, to);
+  const { data: customers } = useCustomers();
+  const startRun = useStartPlanningRun();
+  const latest = usePlanningRuns(isAdmin, isAdmin).data?.[0];
+  const running = latest?.status === 'pending' || latest?.status === 'running';
+
+  const [selectedHcaId, setSelectedHcaId] = useState<string>(EVERYBODY);
+  const [openVisit, setOpenVisit] = useState<Intervention | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const { data: types } = useInterventionTypes();
+  const deleting = useDeleteIntervention();
+  const retyping = useChangeInterventionType();
+
+  const retype = async (typeId: string) => {
+    if (!openVisit?.id || typeId === openVisit.intervention_type_id) return;
+    setEditError(null);
+    try {
+      await retyping.mutateAsync({ id: openVisit.id, typeId });
+      // Closed rather than left showing the visit it has just re-labelled. The
+      // row it was rendered from is stale the moment the request lands, and a
+      // drawer that keeps insisting on the old service is worse than none.
+      setOpenVisit(null);
+    } catch (cause) {
+      setEditError(cause instanceof ApiError ? cause.message : t('common.error'));
+    }
+  };
+
+  const remove = async () => {
+    if (!openVisit?.id) return;
+    setEditError(null);
+    try {
+      await deleting.mutateAsync({ id: openVisit.id, from, to });
+      setConfirmingDelete(false);
+      setOpenVisit(null);
+    } catch (cause) {
+      setConfirmingDelete(false);
+      setEditError(cause instanceof ApiError ? cause.message : t('common.error'));
+    }
+  };
+
+  // The visits are written by a worker, behind the screen's back, so nothing
+  // invalidates them when a run finishes. Without this the manager is told
+  // "75 visits planned" above an empty calendar and has to reload.
+  const finished = latest?.status === 'succeeded' ? latest.finished_at : null;
+  useEffect(() => {
+    if (!finished) return;
+    void client.invalidateQueries({ queryKey: ['planning', 'all'] });
+  }, [client, finished]);
+
+  const roster: HcaPlanning[] = useMemo(
+    () =>
+      [...(plannings ?? [])].sort((left, right) =>
+        left.hca_full_name.localeCompare(right.hca_full_name),
+      ),
+    [plannings],
+  );
+
+  // An assistant who was being read and has since left the roster — it is
+  // rebuilt by every planning run — would leave the grid pointing at nobody.
+  // Falling back to the overview says "here is the workforce" instead of
+  // showing an empty week that reads as a failed solve.
+  useEffect(() => {
+    if (selectedHcaId === EVERYBODY || roster.length === 0) return;
+    if (roster.some((entry) => entry.hca_id === selectedHcaId)) return;
+    setSelectedHcaId(EVERYBODY);
+  }, [roster, selectedHcaId]);
+
+  const showsEverybody = selectedHcaId === EVERYBODY;
+  const selected = roster.find((entry) => entry.hca_id === selectedHcaId) ?? null;
+  const shown = showsEverybody ? roster : selected ? [selected] : [];
+  const totalVisits = roster.reduce(
+    (count, entry) => count + entry.interventions.length,
+    0,
+  );
+
+  // Position in the rail, not a hash of the identifier: a hash gives two
+  // adjacent assistants the same hue often enough to be noticed, and the rail
+  // is what the manager reads the legend off.
+  const colourOf = (hcaId: string): string => {
+    const index = roster.findIndex((entry) => entry.hca_id === hcaId);
+    const colour =
+      PLANNING_HCA_COLOURS[(index < 0 ? 0 : index) % PLANNING_HCA_COLOURS.length];
+    return colour ?? PLANNING_HCA_COLOURS[0];
+  };
+
+  const customerName = (customerId: string): string => {
+    const found = (customers ?? []).find((entry) => entry.id === customerId);
+    return found ? `${found.first_name} ${found.last_name}` : customerId;
+  };
+
+  const events = useMemo(
+    () =>
+      shown.flatMap((entry) =>
+        entry.interventions.map((visit) => {
+          // Whoever is not already answered by the rail goes first in the
+          // title: on the shared grid that is the assistant, on one person's
+          // week it is the customer.
+          const colour = showsEverybody
+            ? colourOf(entry.hca_id)
+            : INTERVENTION_STATUS_COLOUR[visit.status];
+          return {
+            id: visit.id ?? '',
+            title: showsEverybody
+              ? `${visit.hca_full_name} · ${visit.name}`
+              : `${visit.name} · ${customerName(visit.customer_id)}`,
+            start: `${visit.day}T${visit.start_time}`,
+            end: `${visit.day}T${visit.end_time}`,
+            backgroundColor: colour,
+            borderColor: colour,
+            extendedProps: { visit },
+          };
+        }),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [roster, selected, showsEverybody, customers],
+  );
+
+  return (
+    <Stack spacing={2}>
+      <Stack direction="row" alignItems="center" spacing={2}>
+        <Typography variant="h1" sx={{ flexGrow: 1 }}>
+          {t('nav.teamPlanning')}
+        </Typography>
+        {isAdmin ? (
+          <Button
+            variant="contained"
+            onClick={() => startRun.mutate({ from, to })}
+            disabled={running || startRun.isPending}
+            data-testid="compute-planning"
+          >
+            {running ? t('planning.computing') : t('planning.compute')}
+          </Button>
+        ) : null}
+      </Stack>
+
+      {latest ? (
+        <Alert
+          severity={
+            latest.status === 'failed'
+              ? 'error'
+              : latest.status === 'succeeded'
+                ? 'success'
+                : 'info'
+          }
+          data-testid="planning-run-status"
+        >
+          {/* The failure message names every visit the solver could not place
+              and why. It is long, and it is the whole value of a failed run. */}
+          {latest.status === 'failed'
+            ? (latest.error_message ?? t('planning.runFailed'))
+            : latest.status === 'succeeded'
+              ? t('planning.runSucceeded', {
+                  count: latest.scheduled_count ?? 0,
+                  travel: latest.total_travel_minutes ?? 0,
+                })
+              : t('planning.runPending')}
+        </Alert>
+      ) : null}
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
+        <Card sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
+          <Typography variant="h3" sx={{ p: 2, pb: 1 }}>
+            {t('nav.hcas')}
+          </Typography>
+          <Divider />
+          {isLoading ? (
+            <Typography sx={{ p: 2 }}>{t('common.loading')}</Typography>
+          ) : roster.length === 0 ? (
+            // A sentence rather than a blank rail: an empty roster and a failed
+            // request look identical without one.
+            <Box sx={{ p: 3, textAlign: 'center' }} data-testid="planning-roster-empty">
+              <Typography variant="body2" color="text.secondary">
+                {t('planning.nobodyPlanned')}
+              </Typography>
+            </Box>
+          ) : (
+            <List
+              dense
+              // Named "roster" and not "hca-list": a container whose test id
+              // begins with the same prefix as the entries it holds is counted
+              // as one of them by any `^=` selector.
+              data-testid="planning-roster"
+            >
+              {/* The whole workforce, first and always present: the overview is
+                  what the screen is for, and burying it under twelve names
+                  would make it the one entry a manager has to hunt for. */}
+              <ListItemButton
+                selected={showsEverybody}
+                onClick={() => setSelectedHcaId(EVERYBODY)}
+                data-testid="planning-all"
+              >
+                <ListItemAvatar>
+                  <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                    <GroupsIcon fontSize="small" />
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={t('planning.everybody')}
+                  secondary={t('planning.visitCount', { count: totalVisits })}
+                />
+              </ListItemButton>
+              <Divider component="li" />
+              {roster.map((entry) => (
+                <ListItemButton
+                  key={entry.hca_id}
+                  selected={entry.hca_id === selectedHcaId}
+                  onClick={() => setSelectedHcaId(entry.hca_id)}
+                  data-testid={`planning-hca-${entry.hca_id}`}
+                >
+                  <ListItemAvatar>
+                    {/* Also the legend for the shared grid, which is why the
+                        swatch is worn even when one assistant is being read. */}
+                    <Avatar
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        bgcolor: colourOf(entry.hca_id),
+                        color: '#fff',
+                        fontSize: 13,
+                      }}
+                    >
+                      {initialsOf(entry.hca_full_name)}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={entry.hca_full_name}
+                    secondary={t('planning.visitCount', {
+                      count: entry.interventions.length,
+                    })}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          )}
+        </Card>
+
+        <Card
+          sx={{ p: 2, flexGrow: 1, minWidth: 0 }}
+          data-testid="team-planning-calendar"
+        >
+          {roster.length > 0 ? (
+            <FullCalendar
+              // Keyed on the selection so switching rebuilds the grid rather
+              // than animating one person's week into another's, which reads as
+              // visits moving.
+              key={selectedHcaId}
+              plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
+              initialView="timeGridWeek"
+              locale={i18n.language.startsWith('fr') ? frLocale : undefined}
+              headerToolbar={{
+                left: 'prev,next today',
+                center: 'title',
+                right: 'timeGridDay,timeGridWeek,dayGridMonth',
+              }}
+              slotMinTime="07:00:00"
+              slotMaxTime="21:00:00"
+              firstDay={1}
+              weekends={false}
+              allDaySlot={false}
+              height="auto"
+              nowIndicator
+              events={events}
+              eventClick={(info) => {
+                setOpenVisit(info.event.extendedProps.visit as Intervention);
+              }}
+            />
+          ) : (
+            <Box sx={{ p: 6, textAlign: 'center' }} data-testid="team-planning-empty">
+              <Typography color="text.secondary">
+                {t('planning.nobodyPlanned')}
+              </Typography>
+            </Box>
+          )}
+        </Card>
+      </Stack>
+
+      <Drawer
+        anchor="right"
+        open={Boolean(openVisit)}
+        onClose={() => setOpenVisit(null)}
+        slotProps={{ paper: { sx: { width: 380, p: 3 } } }}
+      >
+        {openVisit ? (
+          <Stack spacing={2} data-testid="team-intervention-detail">
+            <Typography variant="h2">{openVisit.name}</Typography>
+            <Chip
+              label={t(`planning.status_${openVisit.status}`)}
+              sx={{
+                alignSelf: 'flex-start',
+                bgcolor: INTERVENTION_STATUS_COLOUR[openVisit.status],
+                color: '#fff',
+              }}
+            />
+            <Divider />
+            <Box>
+              {/* Named in full, and first. On the shared grid the block was
+                  read by its colour, and a colour is not something a manager
+                  can act on — "call Karim Haddad" needs the name. */}
+              <Typography variant="caption" color="text.secondary">
+                {t('planning.assistant')}
+              </Typography>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Avatar
+                  sx={{
+                    width: 28,
+                    height: 28,
+                    bgcolor: colourOf(openVisit.hca_id),
+                    color: '#fff',
+                    fontSize: 12,
+                  }}
+                >
+                  {initialsOf(openVisit.hca_full_name)}
+                </Avatar>
+                <Typography data-testid="team-intervention-hca">
+                  {openVisit.hca_full_name}
+                </Typography>
+              </Stack>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                {t('quote.customer')}
+              </Typography>
+              <Typography>{customerName(openVisit.customer_id)}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                {t('planning.day')}
+              </Typography>
+              <Typography>
+                {openVisit.day} · {formatTime(openVisit.start_time)} –{' '}
+                {formatTime(openVisit.end_time)}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                {t('hca.address')}
+              </Typography>
+              <Typography>
+                {openVisit.address.street}
+                <br />
+                {openVisit.address.postal_code} {openVisit.address.city}
+              </Typography>
+            </Box>
+
+            <Divider />
+
+            {/* A native select, like the quote dialogs use. MUI's default
+                renders a hidden input beside a div that neither a keyboard nor
+                a test can operate as a dropdown. */}
+            <TextField
+              select
+              size="small"
+              label={t('quote.service')}
+              value={openVisit.intervention_type_id}
+              onChange={(event) => retype(event.target.value)}
+              disabled={retyping.isPending}
+              helperText={t('planning.retypeReprices')}
+              slotProps={{ select: { native: true } }}
+              data-testid="intervention-type-select"
+            >
+              {(types ?? []).map((entry) => (
+                <option key={entry.id ?? entry.code} value={entry.id ?? ''}>
+                  {entry.name}
+                </option>
+              ))}
+            </TextField>
+
+            <Button
+              color="error"
+              variant="outlined"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={deleting.isPending}
+              data-testid="delete-intervention"
+            >
+              {t('planning.deleteVisit')}
+            </Button>
+
+            {editError ? (
+              <Alert severity="error" data-testid="intervention-edit-error">
+                {editError}
+              </Alert>
+            ) : null}
+          </Stack>
+        ) : null}
+      </Drawer>
+
+      {/* Asked for, never assumed. Cancelling takes the visit off the quote as
+          well as off the calendar, and a customer's bill is not something to
+          change on a mis-click. */}
+      <Dialog open={confirmingDelete} onClose={() => setConfirmingDelete(false)}>
+        <DialogTitle>{t('planning.deleteVisitTitle')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText data-testid="delete-intervention-explain">
+            {t('planning.deleteVisitExplain', {
+              name: openVisit?.name ?? '',
+              day: openVisit?.day ?? '',
+            })}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmingDelete(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={remove}
+            disabled={deleting.isPending}
+            data-testid="confirm-delete-intervention"
+          >
+            {t('planning.deleteVisit')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}

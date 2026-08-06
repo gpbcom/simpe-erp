@@ -1,4 +1,4 @@
-# rt-erp — documentation
+# SimpleERP — documentation
 
 Twelve chapters. Each answers a different question, and the table says which.
 
@@ -26,7 +26,7 @@ enough to find your way around. Come back for the rest when you need them.
 
 **A French home-care agency** sells hours of care at home — help washing,
 preparing meals, cleaning, overnight sitting — and employs assistants who
-deliver it. `rt-erp` runs three things for that agency:
+deliver it. `SimpleERP` runs three things for that agency:
 
 1. **Quoting.** A customer's needs become a quote of dated, timed, priced
    service lines. Prices come from a catalog, with surcharges for Sundays and

@@ -179,6 +179,7 @@ class TestHcaResponse:
     ) -> None:
         """The whole assistant crosses the boundary, children included."""
         hca = Hca(
+            company_id="company-1",
             id="hca-1",
             first_name="Marie",
             last_name="Durand",
@@ -217,6 +218,7 @@ class TestHcaResponse:
     def test_from_hca_serializes_to_json(self, address: PostalAddress) -> None:
         """The published shape is JSON, not Python objects."""
         hca = Hca(
+            company_id="company-1",
             id="hca-1",
             first_name="Marie",
             last_name="Durand",

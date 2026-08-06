@@ -21,6 +21,7 @@ Resource         ../resources/app_keywords.resource
 
 Suite Setup      Prepare The Journey
 Suite Teardown   Finish The Journey
+Test Setup       Start From The Sign-In Card
 Test Teardown    Take A Screenshot On Failure
 
 
@@ -121,12 +122,19 @@ The Interface Switches Language Without Losing The Page
     [Documentation]    Both bundles are complete, and switching is not a reload.
     [Tags]    journey    i18n
 
+    ...
+    ...    Asserted on the navigation entry by its test id. A bare ``text=``
+    ...    selector for a word as common as "Quotes" resolves to the entry, the
+    ...    section heading above it, the page's own title and the "My quotes"
+    ...    entry beside it — four elements, which Playwright refuses under
+    ...    strict mode. The test then fails because the translation is present
+    ...    in four places rather than because it is missing.
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /quotes
     Switch Language To    en
-    Wait For Elements State    text=Quotes    visible
+    Get Text    [data-testid="nav--quotes"]    ==    Quotes
     Switch Language To    fr
-    Wait For Elements State    text=Devis    visible
+    Get Text    [data-testid="nav--quotes"]    ==    Devis
     Sign Out
 
 
@@ -135,6 +143,34 @@ Prepare The Journey
     [Documentation]    Open the browser and start from a clean inbox.
     Clear The Mail Catcher
     Open The Application
+
+Start From The Sign-In Card
+    [Documentation]    Begin every test signed out, whatever the last one left.
+    ...
+    ...    Each test here signs in as one role and often as a second, so it can
+    ...    only start from the sign-out state. Relying on the previous test to
+    ...    have got there turns one genuine failure into a run of them: the test
+    ...    that broke leaves a session open, and every test after it fails on a
+    ...    sign-in form that is not on screen — which hides the one real cause
+    ...    behind three false ones.
+    ...    Reloading the application first rather than inspecting whatever page
+    ...    the last test stopped on: a test that failed on a drawer, a dialog or
+    ...    an error screen has no sign-out button to find, and the reset would
+    ...    fail for the same reason the test did. The token lives in
+    ...    ``localStorage``, so a reload restores the session when there is one
+    ...    and lands on the sign-in card when there is not.
+    Go To    ${BASE_URL}
+    # One wait, for whichever of the two the boot lands on. Waiting for the
+    # signed-in case alone and swallowing the timeout gets the same answer, but
+    # spends five seconds and writes a TimeoutError into the log of a run in
+    # which nothing failed.
+    Wait For Elements State
+    ...    css=[data-testid="sign-out"], [data-testid="login-submit"]    visible
+    ${signed_in}=    Get Element Count    [data-testid="sign-out"]
+    IF    ${signed_in} > 0
+        Sign Out
+    END
+    Wait For Elements State    [data-testid="login-submit"]    visible
 
 Finish The Journey
     [Documentation]    Remove every quote this run created, then close up.

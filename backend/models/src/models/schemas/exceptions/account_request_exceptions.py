@@ -46,3 +46,15 @@ class MTApplicationDecisionRequestInvalidContractType(
     MTInvalidApplicationDecisionRequestException
 ):
     """Exception raised when the contract type is not a known one."""
+
+
+class MTInvalidAccountUpdateRequestException(Exception):
+    """Exception raised when a self-service account payload is invalid."""
+
+
+class MTAccountUpdateRequestInvalidFullName(MTInvalidAccountUpdateRequestException):
+    """Exception raised when the display name is empty."""
+
+
+class MTAccountUpdateRequestInvalidEmail(MTInvalidAccountUpdateRequestException):
+    """Exception raised when the sign-in address is empty."""

@@ -240,6 +240,7 @@ class TestStaffCreatedAccount:
         """
         with pytest.raises(MTUserStaffAccountNeedsChange):
             User(
+                company_id="company-1",
                 email="new@example.com",
                 full_name="New Starter",
                 hashed_password=HASH,
@@ -252,6 +253,7 @@ class TestStaffCreatedAccount:
     def test_a_staff_account_that_must_change_is_accepted(self) -> None:
         """The correct combination builds."""
         user = User(
+            company_id="company-1",
             email="new@example.com",
             full_name="New Starter",
             hashed_password=HASH,
@@ -271,6 +273,7 @@ class TestStaffCreatedAccount:
             credential. On this path nobody else ever did.
         """
         user = User(
+            company_id="company-1",
             email="ana@example.com",
             full_name="Ana Lopez",
             hashed_password=HASH,
@@ -294,6 +297,7 @@ class TestStaffCreatedAccount:
                 "full_name": "New Starter",
                 "role": UserRole.HCA,
                 "hca_id": "hca-1",
+                "company_id": "company-1",
                 "account_origin": AccountOrigin.CREATED_BY_STAFF,
             }
         )
@@ -319,6 +323,7 @@ class TestStaffCreatedAccount:
         """
         with pytest.raises(MTInvalidHcaApplicationException.__base__):
             User(
+                company_id="company-1",
                 email="a@example.com",
                 full_name="A",
                 role=UserRole.MANAGER,

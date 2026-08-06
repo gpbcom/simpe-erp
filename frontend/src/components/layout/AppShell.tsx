@@ -55,7 +55,11 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
   {
     headingKey: 'nav.myAccount',
     entries: [
-      { to: '/me', labelKey: 'nav.myAccount', icon: 'hca', assistantOnly: true },
+      // Not `assistantOnly`. Every account has details, a sign-in address and a
+      // password, and a manager who cannot reach their own account page cannot
+      // change any of them. This entry was the door to a screen that already
+      // rendered for them — hiding it made the fix on the page invisible.
+      { to: '/me', labelKey: 'nav.myAccount', icon: 'hca' },
       {
         to: '/me/planning',
         labelKey: 'nav.myPlanning',
@@ -72,14 +76,18 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
     ],
   },
   {
-    headingKey: 'nav.quotes',
+    // Not `nav.quotes`. This group holds the workforce, the plannings, the map
+    // and the notifications as well, and heading it "Devis" named one entry
+    // after another — the reader sees "Devis › Devis, Intervenants, Carte" and
+    // cannot tell what the group is for.
+    headingKey: 'nav.operations',
     entries: [
       { to: '/quotes', labelKey: 'nav.quotes', icon: 'quote', minimum: 'manager' },
       { to: '/hcas', labelKey: 'nav.hcas', icon: 'hca', minimum: 'manager' },
       {
-        to: '/customers',
-        labelKey: 'nav.customers',
-        icon: 'customer',
+        to: '/plannings',
+        labelKey: 'nav.teamPlanning',
+        icon: 'planning',
         minimum: 'manager',
       },
       { to: '/map', labelKey: 'nav.map', icon: 'mapPin', minimum: 'manager' },
@@ -87,6 +95,23 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
         to: '/notifications',
         labelKey: 'nav.notifications',
         icon: 'notification',
+      },
+    ],
+  },
+  {
+    headingKey: 'nav.administration',
+    entries: [
+      {
+        to: '/intervention-types',
+        labelKey: 'nav.interventionTypes',
+        icon: 'interventionType',
+        minimum: 'manager',
+      },
+      {
+        to: '/company',
+        labelKey: 'nav.company',
+        icon: 'company',
+        minimum: 'admin',
       },
     ],
   },
@@ -104,12 +129,12 @@ export function AppShell() {
   const signOut = useSession((state) => state.signOut);
   const [languageAnchor, setLanguageAnchor] = useState<null | HTMLElement>(null);
   const [mode, setMode] = useState(
-    () => window.localStorage.getItem('rt-erp.theme') ?? 'light',
+    () => window.localStorage.getItem('simple-erp.theme') ?? 'light',
   );
 
   const toggleMode = () => {
     const next = mode === 'light' ? 'dark' : 'light';
-    window.localStorage.setItem('rt-erp.theme', next);
+    window.localStorage.setItem('simple-erp.theme', next);
     setMode(next);
     // A full reload rather than lifting the mode into context: the theme is
     // read once at start-up, and this screen is not one a user toggles often.

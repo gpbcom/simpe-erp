@@ -162,7 +162,7 @@ class TestDatabaseConfig:
         config = DatabaseConfig(password_env="TEST_PG_PASSWORD")
         assert "s3cret" not in config.dsn_without_password
         assert config.dsn_without_password == (
-            "postgresql+asyncpg://rt_erp@localhost:5432/rt_erp"
+            "postgresql+asyncpg://simple_erp@localhost:5432/simple_erp"
         )
 
     def test_build_dsn_includes_the_password(
@@ -172,7 +172,7 @@ class TestDatabaseConfig:
         monkeypatch.setenv("TEST_PG_PASSWORD", "s3cret")
         config = DatabaseConfig(password_env="TEST_PG_PASSWORD")
         assert config.build_dsn() == (
-            "postgresql+asyncpg://rt_erp:s3cret@localhost:5432/rt_erp"
+            "postgresql+asyncpg://simple_erp:s3cret@localhost:5432/simple_erp"
         )
 
     def test_build_dsn_raises_without_a_secret(

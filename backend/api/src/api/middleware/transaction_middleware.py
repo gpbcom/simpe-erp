@@ -50,8 +50,10 @@ class TransactionMiddleware(BaseHTTPMiddleware):
         self.logger.debug("TransactionMiddleware created.")
 
     async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]  # noqa: E501
-    ) -> Response: 
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],  # noqa: E501
+    ) -> Response:
         """Run the request, then commit its transaction if it succeeded.
 
         Args:
@@ -70,7 +72,7 @@ class TransactionMiddleware(BaseHTTPMiddleware):
         """
         response = await call_next(request)
 
-        session: Optional[AsyncSession] = getattr(request.state, "session", None)   # noqa: E501
+        session: Optional[AsyncSession] = getattr(request.state, "session", None)  # noqa: E501
         if session is None:
             return response
         if response.status_code >= 400:

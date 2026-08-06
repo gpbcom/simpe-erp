@@ -1,1 +1,1 @@
-"""Shared data models and schemas for the rt-erp backend."""
+"""Shared data models and schemas for the simple-erp backend."""

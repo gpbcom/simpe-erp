@@ -130,6 +130,7 @@ The Assistant Grid Shows Every Status They Authored
     [Teardown]    Return To The Manager
 
 
+
 *** Keywords ***
 Open The Quote Screen
     Open The Application

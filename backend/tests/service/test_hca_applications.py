@@ -447,19 +447,33 @@ class TestDecisionAuthority:
         hcas.create.assert_not_called()
         users.create.assert_not_called()
 
-    async def test_an_unbound_administrator_may_decide_anything(
+    async def test_an_administrator_of_another_company_may_not_decide(
         self, service: HcaService
     ) -> None:
-        """First-run setup happens before any company exists.
+        """Being an administrator is not the same as being *this* one.
 
         Notes:
-            An administrator belonging to no company is treated as system-wide.
-            Without that, the first company could never have its first
-            application approved.
+            There used to be an exemption for an administrator belonging to no
+            company, so the first agency could approve its first application
+            before any company existed. Nothing needs it now — an agency and
+            its first administrator are created by the same call — and while it
+            stood, any administrator without an agency could decide every
+            agency's applications. The role no longer widens the scope.
         """
+        with pytest.raises(MTApplicationForbidden):
+            await service.approve(
+                "application-1",
+                _user(role=UserRole.ADMIN, company_id="company-2"),
+                ContractType.CDI,
+            )
+
+    async def test_an_administrator_of_the_owning_company_may_decide(
+        self, service: HcaService
+    ) -> None:
+        """The agency's own administrator still decides its queue."""
         assert await service.approve(
             "application-1",
-            _user(role=UserRole.ADMIN, company_id=None),
+            _user(role=UserRole.ADMIN, company_id="company-1"),
             ContractType.CDI,
         )
 

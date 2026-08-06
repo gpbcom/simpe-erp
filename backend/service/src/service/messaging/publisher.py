@@ -112,33 +112,48 @@ class EventPublisher:
     async def publish(
         self,
         routing_key: EventRoutingKey,
+        company_id: str,
         payload: Optional[Dict[str, JsonValue]] = None,
     ) -> bool:
-        """Publish one event.
+        """Publish one event, addressed to one agency.
 
         Args:
             routing_key (EventRoutingKey): The topic to publish under.
+            company_id (str): The agency the event belongs to.
             payload (Optional[Dict[str, JsonValue]]): The event's fields.
 
         Returns:
             bool: ``True`` when the broker confirmed the message, ``False``
             when it was disabled or unreachable.
 
+        Raises:
+            ValueError: If ``company_id`` is empty.
+
         Notes:
-            The return value exists so a caller *may* react — the seeder logs a
-            warning, a test asserts on it — but no caller in the application
-            treats ``False`` as an error. That is deliberate: see the class
-            note.
+            - **``company_id`` is required and has no default.** It decides
+              which agency's queue the message lands in, so a default would
+              mean a forgotten argument still publishes — to the wrong agency,
+              or to a key nothing is bound to. A missing one is a ``TypeError``
+              at the call site instead, which is the failure you want.
+            - The identifier is not put in the payload in place of the routing
+              key. A payload field is read after delivery, and by then the
+              message has already been handed to whichever queue the key chose.
+              Isolation has to be in the key.
+            - The return value exists so a caller *may* react — the seeder logs
+              a warning, a test asserts on it — but no caller in the
+              application treats ``False`` as an error. That is deliberate: see
+              the class note.
         """
+        scoped = routing_key.scoped_to(company_id)
         if not self.config.enabled:
-            self.logger.debug("Broker disabled; dropping %s.", routing_key.value)
+            self.logger.debug("Broker disabled; dropping %s.", scoped)
             return False
         exchange = await self._exchange_or_none()
         if exchange is None:
             self.logger.error(
                 "Dropped %s: the broker is unreachable. The database still "
                 "holds the fact; only the push was lost.",
-                routing_key.value,
+                scoped,
             )
             return False
         envelope = EventEnvelope(
@@ -154,15 +169,15 @@ class EventPublisher:
                     content_type="application/json",
                     delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                 ),
-                routing_key=routing_key.value,
+                routing_key=scoped,
             )
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
-            self.logger.error("Could not publish %s: %s.", routing_key.value, exc)
+            self.logger.error("Could not publish %s: %s.", scoped, exc)
             # Forget the channel so the next publish reconnects rather than
             # failing again against a socket that has already gone.
             self.exchange = None
             return False
-        self.logger.info("Published %s.", routing_key.value)
+        self.logger.info("Published %s.", scoped)
         return True
 
     async def close(self) -> None:

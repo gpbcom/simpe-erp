@@ -22,6 +22,7 @@ def manager() -> User:
         User: A manager with a password hash.
     """
     return User(
+        company_id="company-1",
         email="claire.bernard@example.com",
         full_name="Claire Bernard",
         role=UserRole.MANAGER,
@@ -114,6 +115,7 @@ class TestUserRepository:
         with pytest.raises(IntegrityError):
             await repository.create(
                 User(
+                    company_id="company-1",
                     email="claire.bernard@example.com",
                     full_name="Impostor",
                     role=UserRole.MANAGER,
@@ -129,6 +131,7 @@ class TestUserRepository:
         with pytest.raises(IntegrityError):
             await repository.create(
                 User(
+                    company_id="company-1",
                     email="Claire.Bernard@Example.COM",
                     full_name="Impostor",
                     role=UserRole.MANAGER,
@@ -146,6 +149,7 @@ class TestUserRepository:
         stored_hca = await HcaRepository(session).create(hca)
         stored_user = await UserRepository(session).create(
             User(
+                company_id="company-1",
                 email="luc.martin@example.com",
                 full_name="Luc Martin",
                 role=UserRole.HCA,
@@ -169,6 +173,7 @@ class TestUserRepository:
         stored_hca = await hca_repository.create(hca)
         await UserRepository(session).create(
             User(
+                company_id="company-1",
                 email="luc.martin@example.com",
                 full_name="Luc Martin",
                 role=UserRole.HCA,
@@ -190,6 +195,7 @@ class TestUserRepository:
         repository = UserRepository(session)
         stored = await repository.create(
             User(
+                company_id="company-1",
                 email="luc.martin@example.com",
                 full_name="Luc Martin",
                 role=UserRole.HCA,
@@ -249,7 +255,11 @@ class TestUserRepository:
         repository = UserRepository(session)
         stored = await repository.create(manager)
         edited = stored.model_copy(
-            update={"full_name": "Claire B.", "hashed_password": None}
+            update={
+                "full_name": "Claire B.",
+                "company_id": "company-1",
+                "hashed_password": None,
+            }
         )
         updated = await repository.update(edited)
         assert updated is not None
@@ -280,6 +290,7 @@ class TestUserRepository:
         await repository.create(manager)
         await repository.create(
             User(
+                company_id="company-1",
                 email="root@example.com",
                 full_name="Root",
                 role=UserRole.ADMIN,
@@ -299,7 +310,12 @@ class TestUserRepository:
         await repository.create(manager)
         assert await repository.count_admins() == 0
         await repository.create(
-            User(email="root@example.com", full_name="Root", role=UserRole.ADMIN)
+            User(
+                company_id="company-1",
+                email="root@example.com",
+                full_name="Root",
+                role=UserRole.ADMIN,
+            )
         )
         assert await repository.count_admins() == 1
 

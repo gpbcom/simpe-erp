@@ -1,4 +1,4 @@
-# rt-erp — backend
+# SimpleERP — backend
 
 A `uv` workspace of six members, with a strict one-directional dependency graph.
 
@@ -28,7 +28,7 @@ uv run worker                             # in another shell
 uv run seed                               # once, to fill the database
 ```
 
-Configuration is selected with `RT_ERP_CONFIG`, defaulting to `conf/app.yaml`.
+Configuration is selected with `SIMPLE_ERP_CONFIG`, defaulting to `conf/app.yaml`.
 → [docs/08](../docs/08-configuration.md)
 
 ## Checks

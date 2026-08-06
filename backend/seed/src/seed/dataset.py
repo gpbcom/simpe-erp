@@ -41,9 +41,9 @@ class Dataset:
           nothing about whether the screens work.
     """
 
-    NAMESPACE: ClassVar[str] = "https://rt-erp.fr/seed"
+    NAMESPACE: ClassVar[str] = "https://simple-erp.fr/seed"
     COMPANY_NAME: ClassVar[str] = "Aide et Presence Paris"
-    PASSWORD: ClassVar[str] = "rt-erp-demo-2026"
+    PASSWORD: ClassVar[str] = "simple-erp-demo-2026"
 
     # (code, name, category, hourly rate excluding tax)
     INTERVENTION_TYPES: ClassVar[Tuple[Tuple[str, str, ServiceCategory, str], ...]] = (
@@ -311,8 +311,16 @@ class Dataset:
     )
 
     # (earliest start, latest end, minutes) — the windows a quote line offers.
+    #
+    # **Every window sits inside the configured working day**, 09:00–20:00 by
+    # `planning.day_start_minute` and `day_end_minute`. It did not: the first
+    # window opened at 08:00, an hour before the day starts, so sixteen of
+    # seventy-seven seeded visits were unschedulable and the planning run failed
+    # as a whole rather than partially — which is why a freshly seeded stack had
+    # no planning at all. A seeded window outside the seeded working day is a
+    # fixture that cannot be satisfied by construction.
     SERVICE_WINDOWS: ClassVar[Tuple[Tuple[time, time, int], ...]] = (
-        (time(8, 0), time(10, 0), 60),
+        (time(9, 0), time(11, 0), 60),
         (time(9, 0), time(12, 0), 90),
         (time(11, 30), time(14, 0), 60),
         (time(14, 0), time(17, 0), 60),

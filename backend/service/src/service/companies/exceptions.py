@@ -18,3 +18,24 @@ class MTCompanyNotAcceptingApplications(MTInvalidCompanyServiceException):
         the agency does not exist will go looking for a typo; one told it is
         not currently hiring will try another.
     """
+
+
+class MTCompanyRegistrationDisabled(MTInvalidCompanyServiceException):
+    """Exception raised when founding an agency is not enabled.
+
+    Notes:
+        Answered as a 404 rather than a 403. A deployment that has not opted in
+        should look like one that has no such route at all: a 403 confirms the
+        feature exists and is merely switched off, which is an invitation to
+        keep checking whether it has been switched on.
+    """
+
+
+class MTCompanyNotEmpty(MTInvalidCompanyServiceException):
+    """Exception raised when an agency still has people attached to it.
+
+    Notes:
+        Every account and every assistant names the agency they belong to, and
+        that link is required. Removing the agency underneath them would leave
+        rows nothing can rebuild, so the refusal names what is still attached.
+    """

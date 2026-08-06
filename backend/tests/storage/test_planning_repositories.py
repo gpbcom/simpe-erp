@@ -35,7 +35,9 @@ async def _hca(session: AsyncSession, kwargs: Dict[str, Any], email: str) -> str
     Returns:
         str: The stored assistant's identifier.
     """
-    stored = await HcaRepository(session).create(Hca(**{**kwargs, "email": email}))
+    stored = await HcaRepository(session).create(
+        Hca(company_id="company-1", **{**kwargs, "email": email})
+    )
     return stored.id
 
 
@@ -405,3 +407,102 @@ class TestInterventionRepository:
             await InterventionRepository(session).replace_for_period(
                 MONDAY, date(2026, 8, 9), [_visit("ghost", run.id)]
             )
+
+    # ------------------------------------------------------------------ #
+    #  Editing one visit
+    # ------------------------------------------------------------------ #
+
+    async def test_a_visit_is_readable_by_identifier(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """The one read a caller holding a visit can make.
+
+        Notes:
+            Everything else on this repository is scoped by assistant or by
+            period on purpose. This is not the "all interventions" query that
+            refuses to exist: a caller who already holds an identifier was
+            given it by a diary they were allowed to read.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Toilette")]
+        )
+        stored = (await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9)))[0]
+
+        found = await repository.get(stored.id or "")
+
+        assert found is not None
+        assert found.name == "Toilette"
+
+    async def test_an_absent_visit_reads_as_none(self, session: AsyncSession) -> None:
+        """Absence is a value, not an exception, at this layer."""
+        assert await InterventionRepository(session).get("visit-404") is None
+
+    async def test_a_visit_can_be_relabelled(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Re-classifying a visit corrects the calendar in the same breath."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Toilette")]
+        )
+        stored = (await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9)))[0]
+
+        updated = await repository.update(
+            stored.model_copy(update={"name": "Compagnie"})
+        )
+
+        assert updated is not None
+        assert updated.name == "Compagnie"
+
+    async def test_updating_a_visit_with_no_identifier_reads_as_none(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Nothing to update, and nothing written."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        without_id = _visit(hca_id, run.id).model_copy(update={"id": None})
+
+        assert await InterventionRepository(session).update(without_id) is None
+
+    async def test_updating_an_absent_visit_reads_as_none(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A visit deleted under the caller is not silently recreated."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        absent = _visit(hca_id, run.id).model_copy(update={"id": "visit-404"})
+
+        assert await InterventionRepository(session).update(absent) is None
+
+    async def test_a_visit_can_be_deleted(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Cancelling one visit leaves the rest of the week standing."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(hca_id, run.id, name="Cancelled"),
+                _visit(hca_id, run.id, start=time(14, 0), name="Kept"),
+            ],
+        )
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+
+        assert await repository.delete(visits[0].id or "") is True
+
+        left = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in left] == ["Kept"]
+
+    async def test_deleting_an_absent_visit_reports_false(
+        self, session: AsyncSession
+    ) -> None:
+        """The caller learns there was nothing there, rather than nothing."""
+        assert await InterventionRepository(session).delete("visit-404") is False

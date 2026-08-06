@@ -198,3 +198,76 @@ class InterventionRepository(BaseRepository[InterventionRow]):
                 InterventionRow.day <= period_end,
             )
         )
+
+    async def get(self, intervention_id: str) -> Optional[Intervention]:
+        """Return one visit by identifier.
+
+        Args:
+            intervention_id (str): The visit wanted.
+
+        Returns:
+            Optional[Intervention]: The visit, or ``None`` when absent.
+
+        Notes:
+            By identifier and nothing else, which is why this is not the "all
+            interventions" query the class documentation refuses: a caller who
+            already holds a visit's identifier was given it by a diary they
+            were allowed to read.
+        """
+        self.logger.debug("Loading intervention %s.", intervention_id)
+        row = await self._get_row(intervention_id)
+        if row is None:
+            self.logger.warning("No intervention %s exists.", intervention_id)
+            return None
+        return self.mapper.to_model(row)
+
+    async def update(self, intervention: Intervention) -> Optional[Intervention]:
+        """Replace a stored visit with a new version of it.
+
+        Args:
+            intervention (Intervention): The visit to store, carrying its
+                identifier.
+
+        Returns:
+            Optional[Intervention]: The updated visit, or ``None`` when absent.
+
+        Raises:
+            SQLAlchemyError: If the update fails.
+        """
+        if intervention.id is None:
+            self.logger.warning("Update requested for an intervention with no id.")
+            return None
+        row = await self._get_row(intervention.id)
+        if row is None:
+            self.logger.warning(
+                "Update requested for absent intervention %s.", intervention.id
+            )
+            return None
+        self.mapper.apply_to_row(row, intervention)
+        await self.session.flush()
+        await self.session.refresh(row)
+        self.logger.info("Updated intervention %s.", intervention.id)
+        return self.mapper.to_model(row)
+
+    async def delete(self, intervention_id: str) -> bool:
+        """Remove one visit.
+
+        Args:
+            intervention_id (str): The visit to remove.
+
+        Returns:
+            bool: ``True`` when a row was removed, ``False`` when none existed.
+
+        Notes:
+            Removing the visit alone would not keep it removed. The next
+            planning run rebuilds the period from the quote lines, so a visit
+            whose line still stands comes straight back — which is why the
+            caller above this one deletes the line in the same breath.
+        """
+        self.logger.info("Deleting intervention %s.", intervention_id)
+        removed = await self._delete_row(intervention_id)
+        if not removed:
+            self.logger.warning(
+                "Nothing to delete: no intervention %s exists.", intervention_id
+            )
+        return removed

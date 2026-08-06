@@ -108,11 +108,30 @@ async def planning_completed(
         run.period_start,
         run.period_end,
     )
+    # The caller is synthesised because a webhook has no signed-in user, but it
+    # is no longer synthesised out of nothing: every account belongs to an
+    # agency, so this one takes the agency of whoever asked for the run. It used
+    # to carry no company at all, which was the one state that let an account
+    # act across every agency at once — exactly what the mandatory company
+    # exists to remove.
+    requester = await users.get(run.requested_by)
+    if requester is None:
+        logger.error(
+            "Planning run %s names requester %s, who no longer exists; the "
+            "documents cannot be attributed to an agency.",
+            run.id,
+            run.requested_by,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The account that requested this run no longer exists.",
+        )
     system_caller = User(
         id=run.id,
-        email="planning-webhook@rt-erp.system",
+        email="planning-webhook@simple-erp.system",
         full_name="Planning webhook",
         role=UserRole.ADMIN,
+        company_id=requester.company_id,
     )
     diaries = await plannings.all_plannings(
         system_caller, run.period_start, run.period_end

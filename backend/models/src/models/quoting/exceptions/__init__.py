@@ -16,6 +16,7 @@ from .quote_line_exceptions import (
     MTQuoteLineInvalidId,
     MTQuoteLineInvalidInterventionTypeId,
     MTQuoteLineInvalidName,
+    MTQuoteLineInvalidServiceCategory,
     MTQuoteLineInvalidServiceDate,
     MTQuoteLineInvalidWindow,
     MTQuoteLineWindowTooShort,
@@ -32,6 +33,7 @@ from .quote_type_week_aggregate_exceptions import (
 )
 
 __all__ = [
+    "MTQuoteLineInvalidServiceCategory",
     "MTAggregateInvalidAmount",
     "MTAggregateInvalidCount",
     "MTAggregateInvalidInterventionTypeId",

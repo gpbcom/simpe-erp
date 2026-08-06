@@ -222,7 +222,7 @@ class QuoteTypeWeekAggregate(BaseModel):
             )
         try:
             coerced = Decimal(str(value))
-        except InvalidOperation, ValueError:
+        except (InvalidOperation, ValueError):
             raise MTAggregateInvalidAmount(
                 f"Invalid amount: {value!r}. Must be a non-negative decimal."
             ) from None

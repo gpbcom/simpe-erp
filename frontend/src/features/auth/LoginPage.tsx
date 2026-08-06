@@ -4,6 +4,7 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
+import Link from '@mui/material/Link';
 import CardContent from '@mui/material/CardContent';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -12,12 +13,25 @@ import { ApiError } from '@/api/client';
 import { useSession } from '@/store/session';
 import logo from '@/assets/brand/logo-full.svg';
 
+interface LoginPageProps {
+  /**
+   * Open the screen that founds an agency, when the deployment offers one.
+   *
+   * @remarks
+   * Optional, and absent is what a deployment that has not opted in looks
+   * like. The link is the only place the route is advertised, so leaving it
+   * out is how the closed posture reaches the screen.
+   */
+  onRegisterCompany?: () => void;
+}
+
 /**
  * The sign-in screen.
  *
+ * @param props - Optionally, how to reach the agency sign-up.
  * @returns The rendered page.
  */
-export function LoginPage() {
+export function LoginPage({ onRegisterCompany }: LoginPageProps) {
   const { t } = useTranslation();
   const signIn = useSession((state) => state.signIn);
   const [email, setEmail] = useState('');
@@ -102,6 +116,19 @@ export function LoginPage() {
             >
               {busy ? t('common.loading') : t('auth.signIn')}
             </Button>
+
+            {onRegisterCompany ? (
+              <Typography variant="body2" sx={{ textAlign: 'center' }}>
+                <Link
+                  component="button"
+                  type="button"
+                  onClick={onRegisterCompany}
+                  data-testid="login-register-company"
+                >
+                  {t('company.registerPrompt')}
+                </Link>
+              </Typography>
+            ) : null}
           </Stack>
         </CardContent>
       </Card>

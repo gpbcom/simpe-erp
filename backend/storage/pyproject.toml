@@ -1,7 +1,7 @@
 [project]
 name = "storage"
 version = "0.1.0"
-description = "Persistence layer (repositories and database access) for the rt-erp backend"
+description = "Persistence layer (repositories and database access) for the simple-erp backend"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

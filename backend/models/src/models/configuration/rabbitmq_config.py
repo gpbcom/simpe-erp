@@ -53,13 +53,13 @@ class RabbitMqConfig(BaseModel):
     host: str = Field(default="localhost", description="The broker's hostname.")
     port: int = Field(default=5672, description="The broker's AMQP port.")
     virtual_host: str = Field(default="/", description="The virtual host.")
-    username: str = Field(default="rt_erp", description="The account to use.")
+    username: str = Field(default="simple_erp", description="The account to use.")
     password_env: str = Field(
         default="RABBITMQ_PASSWORD",
         description="Name of the env var holding the password.",
     )
     exchange: str = Field(
-        default="rt-erp",
+        default="simple-erp",
         description="The topic exchange every event is published to.",
     )
     publish_timeout_seconds: float = Field(

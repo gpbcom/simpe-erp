@@ -11,7 +11,7 @@ services:
   rabbitmq:
     ports:
       - "5672:5672"
-      - "15672:15672"   # management UI: rt_erp / rt_erp_dev
+      - "15672:15672"   # management UI: simple_erp / simple_erp_dev
   mailpit:
     image: axllent/mailpit:latest
     environment:
@@ -20,13 +20,13 @@ services:
     ports:
       - "1025:1025"   # SMTP
       - "8025:8025"   # web UI and REST API the tests assert against
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   backend:
     build:
       context: ./backend
     environment:
-      RT_ERP_CONFIG: conf/app.dev.yaml
+      SIMPLE_ERP_CONFIG: conf/app.dev.yaml
     volumes:
       - ./backend/api/src:/app/api/src
       - ./backend/models/src:/app/models/src
@@ -42,7 +42,7 @@ services:
 
   worker:
     environment:
-      RT_ERP_CONFIG: conf/app.dev.yaml
+      SIMPLE_ERP_CONFIG: conf/app.dev.yaml
     volumes:
       - ./backend/api/src:/app/api/src
       - ./backend/models/src:/app/models/src
@@ -53,12 +53,12 @@ services:
   seed:
     build:
       context: ./backend
-    image: rt-erp-backend:local
+    image: simple-erp-backend:local
     environment:
-      RT_ERP_CONFIG: conf/app.dev.yaml
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rt_erp_dev}
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-rt_erp_dev}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:-rt_erp_dev_secret}
+      SIMPLE_ERP_CONFIG: conf/app.dev.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
     depends_on:
       backend:
         condition: service_started
@@ -69,7 +69,7 @@ services:
       - ./backend/conf:/app/conf
     command: ["seed"]
     restart: "no"
-    networks: [rt-erp]
+    networks: [simple-erp]
 
   frontend:
     build:

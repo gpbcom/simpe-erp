@@ -49,8 +49,8 @@ class DatabaseConfig(BaseModel):
 
     host: str = Field(default="localhost", description="Database host name.")
     port: int = Field(default=5432, description="Database port.")
-    database: str = Field(default="rt_erp", description="Database name.")
-    username: str = Field(default="rt_erp", description="Role to connect as.")
+    database: str = Field(default="simple_erp", description="Database name.")
+    username: str = Field(default="simple_erp", description="Role to connect as.")
     password_env: str = Field(
         default="POSTGRES_PASSWORD",
         description="Name of the environment variable holding the password.",

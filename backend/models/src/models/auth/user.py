@@ -44,7 +44,8 @@ class User(BaseModel):
         role (UserRole): What the account may do.
         is_active (bool): Whether sign-in is permitted.
         hca_id (Optional[str]): The assistant record this account belongs to.
-        company_id (Optional[str]): The company this account belongs to.
+        company_id (str): The company this account belongs to. Required for
+            every role — see :meth:`validate_company_id`.
         account_origin (AccountOrigin): Whether the account was
             self-registered or created by staff.
         must_change_password (bool): Whether the holder must set a new
@@ -91,8 +92,7 @@ class User(BaseModel):
         default=None,
         description="The assistant record this account belongs to.",
     )
-    company_id: Optional[str] = Field(
-        default=None,
+    company_id: str = Field(
         description="The company this account belongs to.",
     )
     account_origin: AccountOrigin = Field(
@@ -259,24 +259,30 @@ class User(BaseModel):
         return value.strip()
 
     @field_validator("company_id", mode="before")
-    def validate_company_id(cls, value: Optional[str]) -> Optional[str]:
-        """Validates that ``company_id``, when given, is a non-empty string.
+    def validate_company_id(cls, value: Optional[str]) -> str:
+        """Validates that ``company_id`` names the agency this account is in.
 
         Args:
             value (Optional[str]): Raw ``company_id`` value.
 
         Returns:
-            Optional[str]: The identifier, or ``None``.
+            str: The identifier.
 
         Raises:
-            MTUserInvalidCompanyId: If ``value`` is neither ``None`` nor a
-                non-empty string.
+            MTUserInvalidCompanyId: If ``value`` is not a non-empty string.
+
+        Notes:
+            **Required, for every role.** An administrator, a manager and an
+            assistant all belong to exactly one agency, and an account without
+            one cannot be placed: it is not covered by any per-company scoping,
+            and nothing it publishes can be routed to the right agency's queue.
+            Allowing ``None`` here is what made that possible, so the field no
+            longer accepts it.
         """
-        if value is None:
-            return None
         if not isinstance(value, str) or not value.strip():
             raise MTUserInvalidCompanyId(
-                f"Invalid company_id: {value!r}. Must be a non-empty string."
+                f"Invalid company_id: {value!r}. Must be a non-empty string "
+                f"naming the agency this account belongs to."
             )
         return value.strip()
 

@@ -60,7 +60,10 @@ async def _intervention_type(session: AsyncSession, code: str = "TOILETTE") -> s
 
 
 def _line(
-    type_id: str, service_date: date = TUESDAY, name: str = "Toilette matin"
+    type_id: str,
+    service_date: date = TUESDAY,
+    name: str = "Toilette matin",
+    category: str = "necessity",
 ) -> QuoteLine:
     """Build a priced two-hour quote line.
 
@@ -68,6 +71,7 @@ def _line(
         type_id (str): The intervention type it sells.
         service_date (date): The day it is delivered.
         name (str): What the service is.
+        category (str): Which VAT rate the line is billed at.
 
     Returns:
         QuoteLine: The priced line.
@@ -75,6 +79,7 @@ def _line(
     return QuoteLine(
         name=name,
         intervention_type_id=type_id,
+        service_category=category,
         service_date=service_date,
         earliest_start=time(9, 0),
         latest_end=time(13, 0),
@@ -98,6 +103,7 @@ def _aggregate(type_id: str, iso_week: int = 32) -> QuoteTypeWeekAggregate:
     """
     return QuoteTypeWeekAggregate(
         intervention_type_id=type_id,
+        service_category="necessity",
         intervention_type_name="Service TOILETTE",
         iso_year=2026,
         iso_week=iso_week,
@@ -163,6 +169,65 @@ class TestQuoteRepository:
         assert len(loaded.lines) == 1
         assert len(loaded.aggregates) == 1
         assert loaded.lines[0].name == "Toilette matin"
+
+    async def test_the_vat_category_survives_the_round_trip(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """**A line comes back taxed the way it was written.**
+
+        Notes:
+            The category lives on the line, not on the catalog entry it sells,
+            so the row and the mapper both have to carry it. A mapper that
+            dropped it would rebuild every line as ``necessity`` — and because
+            the amounts are *stored*, the mismatch would not show as a wrong
+            total until something repriced the quote.
+
+            Asserted with ``comfort``, which is not the value a dropped field
+            would default to. Asserting ``necessity`` would pass either way.
+        """
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+
+        stored = await repository.create(
+            _quote(customer_id, [_line(type_id, category="comfort")], [])
+        )
+        loaded = await repository.get(stored.id)
+
+        assert loaded is not None
+        assert loaded.lines[0].service_category is ServiceCategory.COMFORT
+
+    async def test_two_lines_on_one_quote_can_be_taxed_differently(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """The same catalog entry, two customers' arrangements, two rates.
+
+        Notes:
+            This is the shape the field was moved for, and it is only storable
+            because the category sits on the line. Both lines sell the same
+            service.
+        """
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+
+        stored = await repository.create(
+            _quote(
+                customer_id,
+                [
+                    _line(type_id, category="necessity", name="Sous plan d'aide"),
+                    _line(type_id, category="comfort", name="A titre prive"),
+                ],
+                [],
+            )
+        )
+        loaded = await repository.get(stored.id)
+
+        assert loaded is not None
+        assert [line.service_category for line in loaded.lines] == [
+            ServiceCategory.NECESSITY,
+            ServiceCategory.COMFORT,
+        ]
 
     async def test_the_stored_amounts_survive_exactly(
         self, session: AsyncSession, customer_kwargs: Dict[str, Any]
@@ -501,3 +566,54 @@ class TestQuoteRepository:
                 delete(InterventionTypeRow).where(InterventionTypeRow.id == type_id)
             )
             await session.flush()
+
+    # ------------------------------------------------------------------ #
+    #  Finding a quote from one of its lines
+    # ------------------------------------------------------------------ #
+
+    async def test_a_quote_is_findable_by_one_of_its_lines(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """The lookup a scheduled visit needs.
+
+        Notes:
+            A visit knows which line produced it and nothing else about the
+            paperwork. Without this, editing a visit could change the calendar
+            and never touch the bill.
+        """
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+        stored = await repository.create(
+            _quote(customer_id, [_line(type_id)], [_aggregate(type_id)])
+        )
+
+        found = await repository.get_by_line(stored.lines[0].id or "")
+
+        assert found is not None
+        assert found.id == stored.id
+
+    async def test_the_whole_quote_comes_back_not_the_line(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """A quote always travels whole, however it was looked up."""
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+        stored = await repository.create(
+            _quote(
+                customer_id,
+                [_line(type_id), _line(type_id, name="Repas")],
+                [_aggregate(type_id)],
+            )
+        )
+
+        found = await repository.get_by_line(stored.lines[0].id or "")
+
+        assert found is not None
+        assert len(found.lines) == 2
+        assert len(found.aggregates) == 1
+
+    async def test_an_unknown_line_reads_as_none(self, session: AsyncSession) -> None:
+        """Absence is a value, not an exception, at this layer."""
+        assert await QuoteRepository(session).get_by_line("line-404") is None

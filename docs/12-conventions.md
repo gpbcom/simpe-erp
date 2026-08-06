@@ -123,3 +123,30 @@ would find surprising — a broad `except`, a status that is not the obvious one
 a check placed in an unexpected layer — write down what the alternative was and
 why it was worse. That is what the `Notes` sections are for, and it is the one
 convention worth keeping if every other were dropped.
+
+
+## A formatter that corrupts source
+
+`ruff` is capped **below 0.15** in `backend/pyproject.toml`, and the cap is not
+housekeeping. From 0.15 onwards `ruff format` rewrites
+
+```python
+        except (InvalidOperation, ValueError):
+```
+
+into `except InvalidOperation, ValueError:` — Python 2 syntax, and a
+`SyntaxError` on 3.14 — for handlers at method depth. It corrupted nine files
+here in a single run.
+
+**The dangerous part is not the corruption; it is that the test suite stayed
+green.** CPython kept importing those modules from the `.pyc` files compiled
+from the previous, correct source, so every test passed against bytecode whose
+source no longer parsed. The damage would have surfaced on the next clean
+checkout — in CI, or on somebody else's machine — with nothing pointing back at
+the formatter run that caused it.
+
+`tests/test_sources_are_parseable.py` is the backstop: it parses every file in
+the workspace from its own bytes, and `ast.parse` never consults the bytecode
+cache. If the cap is ever lifted, that test is what will say so.
+
+Bisected: 0.14.0 clean, 0.15.4 and 0.16.1 corrupt.

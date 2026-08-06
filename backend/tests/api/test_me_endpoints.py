@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import UTC, datetime
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,6 +12,9 @@ import pytest
 
 # First-party imports
 from api.dependencies import (
+    get_admin_user,
+    get_auth_service,
+    get_company_service,
     get_current_user,
     get_customer_service,
     get_hca_service,
@@ -19,10 +23,12 @@ from api.dependencies import (
 from api.exception_handlers import ExceptionHandlers
 from api.v1.me.me import router as me_router
 from models.auth.user import User
+from models.companies.company import Company
 from models.enums import ContractType, QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.quoting.quote import Quote
+from service.auth.exceptions import MTAuthEmailAlreadyRegistered
 from service.customers.exceptions import MTCustomerNotFound
 from service.quotes.exceptions import MTQuoteForbidden
 
@@ -51,12 +57,28 @@ def _user(
         User: The account.
     """
     return User(
+        company_id="company-1",
         id=user_id,
         email=f"{user_id}@example.com",
         full_name="Luc Martin",
         hashed_password="$2b$12$abcdefghijklmnopqrstuv",
         role=role,
         hca_id=hca_id,
+    )
+
+
+def _company() -> Company:
+    """Build an agency.
+
+    Returns:
+        Company: The agency.
+    """
+    return Company(
+        id="company-1",
+        name="Aide Domicile Paris",
+        registration_number="12345678900011",
+        contact_email="contact@simple-erp.fr",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
@@ -67,6 +89,7 @@ def _hca() -> Hca:
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id="hca-1",
         first_name="Luc",
         last_name="Martin",
@@ -116,6 +139,8 @@ def _client(
     hcas: Optional[MagicMock] = None,
     customers: Optional[MagicMock] = None,
     quotes: Optional[MagicMock] = None,
+    auth: Optional[MagicMock] = None,
+    companies: Optional[MagicMock] = None,
 ) -> TestClient:
     """Build a client over the self-service router.
 
@@ -124,6 +149,8 @@ def _client(
         hcas (Optional[MagicMock]): The assistant service double.
         customers (Optional[MagicMock]): The customer service double.
         quotes (Optional[MagicMock]): The quote service double.
+        auth (Optional[MagicMock]): The authentication service double.
+        companies (Optional[MagicMock]): The company service double.
 
     Returns:
         TestClient: A client with the guards and services overridden.
@@ -135,7 +162,394 @@ def _client(
     app.dependency_overrides[get_hca_service] = lambda: hcas or MagicMock()
     app.dependency_overrides[get_customer_service] = lambda: customers or MagicMock()
     app.dependency_overrides[get_quote_service] = lambda: quotes or MagicMock()
+    app.dependency_overrides[get_auth_service] = lambda: auth or MagicMock()
+    app.dependency_overrides[get_company_service] = lambda: companies or MagicMock()
+    # The admin guard is a separate dependency from `get_current_user`, so the
+    # company routes need it overridden too — otherwise they resolve the real
+    # one, which reads a request state this client never sets.
+    app.dependency_overrides[get_admin_user] = lambda: caller
     return TestClient(app)
+
+
+class TestQuoteLineCategoryIsRequired:
+    """Tests that a quote line cannot be written without a VAT category."""
+
+    def _payload(self, **overrides: object) -> dict:
+        """Return a quote payload with one line.
+
+        Args:
+            **overrides: Fields to change on the line.
+
+        Returns:
+            dict: The request body.
+        """
+        line = {
+            "name": "Aide a la toilette",
+            "intervention_type_id": "type-1",
+            "service_category": "necessity",
+            "service_date": "2026-09-01",
+            "earliest_start": "09:00:00",
+            "latest_end": "12:00:00",
+            "duration_minutes": 60,
+        }
+        line.update(overrides)
+        return {"reference": "QA-1", "customer_id": "cu-1", "lines": [line]}
+
+    def test_a_line_with_a_category_is_accepted(self) -> None:
+        """The ordinary case."""
+        quotes = MagicMock()
+        quotes.create = AsyncMock(side_effect=lambda quote, author_id: quote)
+
+        response = _client(_user(), quotes=quotes).post(
+            "/api/v1/me/quotes", json=self._payload()
+        )
+
+        assert response.status_code == 201
+
+    def test_a_line_without_a_category_is_refused(self) -> None:
+        """**No default, because both defaults are wrong.**
+
+        Notes:
+            Necessity would understate the tax on every line somebody forgot
+            to set — an error that surfaces at the tax return rather than on
+            the screen. Comfort would overcharge families entitled to the
+            reduced rate. So the request is refused rather than guessed at.
+        """
+        quotes = MagicMock()
+        quotes.create = AsyncMock()
+        body = self._payload()
+        del body["lines"][0]["service_category"]
+
+        response = _client(_user(), quotes=quotes).post("/api/v1/me/quotes", json=body)
+
+        assert response.status_code == 422
+        quotes.create.assert_not_awaited()
+
+    @pytest.mark.parametrize("value", ["", "luxury", None, 5])
+    def test_an_unknown_category_is_refused(self, value: object) -> None:
+        """A category the tax code does not have a rate for.
+
+        Args:
+            value (object): The rejected category.
+        """
+        quotes = MagicMock()
+        quotes.create = AsyncMock()
+
+        response = _client(_user(), quotes=quotes).post(
+            "/api/v1/me/quotes", json=self._payload(service_category=value)
+        )
+
+        assert response.status_code == 422
+        quotes.create.assert_not_awaited()
+
+    def test_the_category_reaches_the_service_unchanged(self) -> None:
+        """What the screen chose is what gets priced."""
+        quotes = MagicMock()
+        quotes.create = AsyncMock(side_effect=lambda quote, author_id: quote)
+
+        _client(_user(), quotes=quotes).post(
+            "/api/v1/me/quotes", json=self._payload(service_category="comfort")
+        )
+
+        written = quotes.create.await_args.args[0]
+        assert written.lines[0].service_category.value == "comfort"
+
+
+class TestMyCompany:
+    """Tests for an administrator reading and editing their own agency."""
+
+    def test_the_agency_read_is_the_one_on_the_credential(self) -> None:
+        """**There is no identifier to pass, and that is the point.**
+
+        Notes:
+            An administrator signing in has no way to know their agency's
+            identifier, and a browser holding one it read from somewhere else
+            is how a screen ends up editing the wrong tenant. The route takes
+            the value from the credential instead.
+        """
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=_company())
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).get(
+            "/api/v1/me/company"
+        )
+
+        assert response.status_code == 200
+        companies.get.assert_awaited_once_with("company-1")
+
+    def test_the_details_can_be_changed(self) -> None:
+        """The ordinary case."""
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=_company())
+        companies.update = AsyncMock(
+            return_value=_company().model_copy(update={"name": "Aide Domicile Nord"})
+        )
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company",
+            json={"name": "Aide Domicile Nord", "is_accepting_applications": False},
+        )
+
+        assert response.status_code == 200
+        assert companies.update.await_args.args[0] == "company-1"
+
+    def test_the_stored_identifier_and_timestamps_survive_a_write(self) -> None:
+        """**The failure the read-before-write exists to prevent.**
+
+        Notes:
+            The payload carries no identifier and no timestamps. Building a
+            fresh ``Company`` from it would blank whatever it does not mention,
+            so the existing agency is read first and copied over.
+        """
+        existing = _company()
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=existing)
+        companies.update = AsyncMock(side_effect=lambda _id, company: company)
+
+        _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company", json={"name": "Renamed"}
+        )
+
+        written = companies.update.await_args.args[1]
+        assert written.id == existing.id
+        assert written.created_at == existing.created_at
+
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    def test_both_company_routes_are_administrator_gated(self, method: str) -> None:
+        """**A manager runs the agency's work, not its legal identity.**
+
+        Args:
+            method (str): The verb under test.
+
+        Notes:
+            Asserted against the route's declared dependencies rather than by
+            calling it as a manager. ``get_admin_user`` reads the account from
+            request state, which the middleware sets and a bare test client
+            does not — so calling it would answer 500 and the test would pass
+            for a reason that has nothing to do with the role.
+
+            Reading the dependency graph is also the stronger assertion: it
+            fails if somebody swaps the guard for the manager one, which a
+            status-code check on an unauthenticated client would not.
+        """
+        matching = [
+            route
+            for route in me_router.routes
+            if getattr(route, "path", None) == "/api/v1/me/company"
+            and method in getattr(route, "methods", set())
+        ]
+        assert matching, f"No {method} /api/v1/me/company route is registered."
+
+        guards = {
+            dependency.call
+            for dependency in matching[0].dependant.dependencies
+            if dependency.call is not None
+        }
+        assert get_admin_user in guards
+        assert get_current_user not in guards
+
+    @pytest.mark.parametrize(
+        "field,value", [("id", "company-9"), ("created_at", "2020-01-01T00:00:00Z")]
+    )
+    def test_a_field_the_payload_does_not_own_is_ignored(
+        self, field: str, value: str
+    ) -> None:
+        """A payload naming another agency does not reach the service.
+
+        Args:
+            field (str): The smuggled field.
+            value (str): What it would be set to.
+        """
+        existing = _company()
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=existing)
+        companies.update = AsyncMock(side_effect=lambda _id, company: company)
+
+        _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company", json={"name": "Renamed", field: value}
+        )
+
+        assert companies.update.await_args.args[0] == "company-1"
+        assert companies.update.await_args.args[1].id == existing.id
+
+    def test_a_blank_name_is_refused(self) -> None:
+        """The one field nothing else can work around."""
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=_company())
+        companies.update = AsyncMock()
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company", json={"name": "   "}
+        )
+
+        assert response.status_code == 422
+        companies.update.assert_not_awaited()
+
+
+class TestMyAccount:
+    """Tests for the routes every signed-in account can reach."""
+
+    @pytest.mark.parametrize(
+        "role,hca_id",
+        [
+            (UserRole.HCA, "hca-1"),
+            (UserRole.MANAGER, None),
+            (UserRole.ADMIN, None),
+        ],
+    )
+    def test_every_role_can_read_its_own_account(
+        self, role: UserRole, hca_id: Optional[str]
+    ) -> None:
+        """**The regression this route exists for.**
+
+        Args:
+            role (UserRole): The role signing in.
+            hca_id (Optional[str]): The assistant record it is bound to.
+
+        Notes:
+            The account screen was built on ``GET /me/hca``, which refuses any
+            account with no assistant record — every manager and every
+            administrator. They were shown an error page in place of their own
+            details, and nothing on it said why. This asserts all three roles
+            get an answer, so the screen has something to render for each.
+        """
+        response = _client(_user(role, hca_id=hca_id)).get("/api/v1/me/account")
+
+        assert response.status_code == 200
+        assert response.json()["role"] == role.value
+
+    def test_the_account_read_is_the_credentials_own(self) -> None:
+        """There is no identifier to point at somebody else's account."""
+        response = _client(_user(user_id="user-9")).get("/api/v1/me/account")
+
+        assert response.json()["email"] == "user-9@example.com"
+
+    def test_the_password_hash_is_never_returned(self) -> None:
+        """The account carries one; the response must not.
+
+        Notes:
+            Worth asserting rather than assuming. ``UserResponse`` drops it,
+            but this route is the one a browser calls on every visit to the
+            account screen, so a hash leaking here would leak on every page
+            load of every account.
+        """
+        body = _client(_user()).get("/api/v1/me/account").json()
+
+        assert "hashed_password" not in body
+
+    def test_the_details_can_be_changed(self) -> None:
+        """The ordinary case: a new display name and address are stored."""
+        auth = MagicMock()
+        auth.update_account = AsyncMock(
+            return_value=_user().model_copy(
+                update={"full_name": "Luc Martin-Durand", "email": "luc@simple-erp.fr"}
+            )
+        )
+
+        response = _client(_user(), auth=auth).patch(
+            "/api/v1/me/account",
+            json={"full_name": "Luc Martin-Durand", "email": "luc@simple-erp.fr"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["full_name"] == "Luc Martin-Durand"
+        assert auth.update_account.await_args.kwargs == {
+            "full_name": "Luc Martin-Durand",
+            "email": "luc@simple-erp.fr",
+        }
+
+    def test_the_account_changed_is_the_callers_own(self) -> None:
+        """The account comes from the credential, not from the payload.
+
+        Notes:
+            The service takes the ``User`` itself rather than an identifier, so
+            there is nothing in the request that could name a different one.
+            This asserts the route passes the caller through unchanged.
+        """
+        caller = _user(user_id="user-7")
+        auth = MagicMock()
+        auth.update_account = AsyncMock(return_value=caller)
+
+        _client(caller, auth=auth).patch(
+            "/api/v1/me/account",
+            json={"full_name": "Luc", "email": "luc@simple-erp.fr"},
+        )
+
+        assert auth.update_account.await_args.args[0] is caller
+
+    @pytest.mark.parametrize("field", ["role", "is_active", "hca_id", "company_id"])
+    def test_a_privileged_field_in_the_payload_is_ignored(self, field: str) -> None:
+        """**The check the whole shape of the payload rests on.**
+
+        Args:
+            field (str): The field somebody might smuggle in.
+
+        Notes:
+            ``AccountUpdateRequest`` has no such field, so a payload carrying
+            one is parsed without it rather than refused — and the service is
+            called with the display name and address alone. An account screen
+            is exactly where somebody would try to grant themselves a role, and
+            this asserts the attempt reaches nothing.
+        """
+        auth = MagicMock()
+        auth.update_account = AsyncMock(return_value=_user())
+
+        response = _client(_user(), auth=auth).patch(
+            "/api/v1/me/account",
+            json={
+                "full_name": "Luc",
+                "email": "luc@simple-erp.fr",
+                field: "admin" if field == "role" else "smuggled",
+            },
+        )
+
+        assert response.status_code == 200
+        assert set(auth.update_account.await_args.kwargs) == {"full_name", "email"}
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"full_name": "   ", "email": "luc@simple-erp.fr"},
+            {"full_name": "Luc", "email": "  "},
+            {"full_name": "Luc"},
+            {"email": "luc@simple-erp.fr"},
+            {"full_name": "Luc", "email": "not-an-address"},
+        ],
+    )
+    def test_an_invalid_payload_is_refused(self, payload: dict) -> None:
+        """A blank name or a malformed address never reaches the service.
+
+        Args:
+            payload (dict): The body under test.
+        """
+        auth = MagicMock()
+        auth.update_account = AsyncMock()
+
+        response = _client(_user(), auth=auth).patch("/api/v1/me/account", json=payload)
+
+        assert response.status_code == 422
+        auth.update_account.assert_not_awaited()
+
+    def test_an_address_another_account_uses_is_a_conflict(self) -> None:
+        """Reported as a 409 rather than as a server fault.
+
+        Notes:
+            The column is unique, so without the service's own check this
+            would surface as a database integrity error and be answered 500 —
+            a spelling mistake reported as a crash, with nothing telling the
+            holder what to correct.
+        """
+        auth = MagicMock()
+        auth.update_account = AsyncMock(
+            side_effect=MTAuthEmailAlreadyRegistered("Already registered.")
+        )
+
+        response = _client(_user(), auth=auth).patch(
+            "/api/v1/me/account",
+            json={"full_name": "Luc", "email": "taken@simple-erp.fr"},
+        )
+
+        assert response.status_code == 409
 
 
 class TestSelfServiceRequiresAnAssistantRecord:

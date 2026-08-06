@@ -57,6 +57,7 @@ def _hca(
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id=hca_id,
         first_name="Luc",
         last_name=hca_id.upper(),
@@ -393,6 +394,7 @@ class TestPlanningService:
     ) -> None:
         """An unroutable assistant is left free rather than planned blindly."""
         unroutable = Hca(
+            company_id="company-1",
             id="hca-lost",
             first_name="Sans",
             last_name="Adresse",

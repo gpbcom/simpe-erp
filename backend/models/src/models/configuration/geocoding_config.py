@@ -42,7 +42,7 @@ class GeocodingConfig(BaseModel):
         description="The Nominatim search endpoint.",
     )
     user_agent: str = Field(
-        default="rt-erp/0.1 (home-care planning; contact: ops@rt-erp.local)",
+        default="simple-erp/0.1 (home-care planning; contact: ops@simple-erp.local)",
         description="Identifying User-Agent sent with every request.",
     )
     timeout_seconds: float = Field(

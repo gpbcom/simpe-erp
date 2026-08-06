@@ -5,6 +5,7 @@ from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
 # Third-party imports
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -151,3 +152,27 @@ class CompanyRepository(BaseRepository[CompanyRow]):
         """
         self.logger.debug("Counting companies: accepting_only=%s.", accepting_only)
         return await self._count(self._build_query(accepting_only))
+
+    async def delete(self, company_id: str) -> bool:
+        """Delete an agency.
+
+        Args:
+            company_id (str): The agency to delete.
+
+        Returns:
+            bool: ``True`` when a row was deleted.
+
+        Raises:
+            SQLAlchemyError: If the delete fails.
+
+        Notes:
+            Whether the agency is empty is not decided here. The rows that
+            point at it live in other tables, and a repository that reached
+            into them would be answering a question that belongs to the
+            service — see :meth:`CompanyService.delete`.
+        """
+        try:
+            return await self._delete_row(company_id)
+        except SQLAlchemyError as exc:
+            self.logger.error("Error deleting company %s: %s.", company_id, exc)
+            raise

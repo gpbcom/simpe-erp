@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
@@ -7,8 +7,11 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { RegisterCompanyPage } from '@/features/auth/RegisterCompanyPage';
 import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage';
 import { MyAccountPage } from '@/features/me/MyAccountPage';
+import { CompanyPage } from '@/features/company/CompanyPage';
+import { InterventionTypesPage } from '@/features/catalog/InterventionTypesPage';
 import { MyCustomersPage } from '@/features/me/MyCustomersPage';
 import { MyPlanningPage } from '@/features/me/MyPlanningPage';
 import { MyQuotesPage } from '@/features/me/MyQuotesPage';
@@ -16,6 +19,7 @@ import { QuotesPage } from '@/features/quotes/QuotesPage';
 import { HcasPage } from '@/features/hcas/HcasPage';
 import { InterventionMapPage } from '@/features/map/InterventionMapPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
+import { TeamPlanningPage } from '@/features/plannings/TeamPlanningPage';
 import { buildTheme } from '@/theme/theme';
 import { hasAtLeast, useSession } from '@/store/session';
 import type { UserRole } from '@/api/types';
@@ -57,13 +61,14 @@ export function App() {
   const user = useSession((state) => state.user);
   const loading = useSession((state) => state.loading);
   const restore = useSession((state) => state.restore);
+  const [founding, setFounding] = useState(false);
 
   useEffect(() => {
     void restore();
   }, [restore]);
 
   const theme = useMemo(() => {
-    const mode = (window.localStorage.getItem('rt-erp.theme') ?? 'light') as
+    const mode = (window.localStorage.getItem('simple-erp.theme') ?? 'light') as
       'light' | 'dark';
     return buildTheme(mode, i18n.language);
   }, [i18n.language]);
@@ -78,7 +83,13 @@ export function App() {
           <CircularProgress />
         </Box>
       ) : !user ? (
-        <LoginPage />
+        // Two screens rather than a route, because neither is reachable
+        // once signed in and the router below only exists for a session.
+        founding ? (
+          <RegisterCompanyPage onCancel={() => setFounding(false)} />
+        ) : (
+          <LoginPage onRegisterCompany={() => setFounding(true)} />
+        )
       ) : user.must_change_password ? (
         // Nothing else is reachable while the flag is set: the server answers
         // 403 on every other route, so routing anywhere else would show a
@@ -114,6 +125,30 @@ export function App() {
               element={
                 <RoleRoute minimum="manager">
                   <InterventionMapPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/plannings"
+              element={
+                <RoleRoute minimum="manager">
+                  <TeamPlanningPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/intervention-types"
+              element={
+                <RoleRoute minimum="manager">
+                  <InterventionTypesPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/company"
+              element={
+                <RoleRoute minimum="admin">
+                  <CompanyPage />
                 </RoleRoute>
               }
             />

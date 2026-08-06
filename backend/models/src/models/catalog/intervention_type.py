@@ -252,7 +252,7 @@ class InterventionType(BaseModel):
             )
         try:
             coerced = Decimal(str(value))
-        except InvalidOperation, ValueError:
+        except (InvalidOperation, ValueError):
             raise MTInterventionTypeInvalidHourlyRate(
                 f"Invalid base_hourly_rate_ht: {value!r}. "
                 f"Must be a positive decimal amount or None."

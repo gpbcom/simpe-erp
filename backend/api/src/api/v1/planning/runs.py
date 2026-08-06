@@ -89,7 +89,12 @@ async def start_planning_run(
         period_end,
     )
     queued = await publisher.publish(
-        EventRoutingKey.PLANNING_RUN_REQUESTED, {"run_id": run.id}
+        EventRoutingKey.PLANNING_RUN_REQUESTED,
+        caller.company_id,
+        # Carried in the payload as well as the routing key: the worker
+        # echoes it back when announcing the run finished, rather than
+        # deriving the agency a second time and risking a different answer.
+        {"run_id": run.id, "company_id": caller.company_id},
     )
     if not queued:
         logger.error(

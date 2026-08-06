@@ -90,7 +90,7 @@ class PricingConfig(BaseModel):
             )
         try:
             coerced = Decimal(str(value))
-        except InvalidOperation, ValueError:
+        except (InvalidOperation, ValueError):
             raise MTPricingConfigInvalidBaseHourlyRate(
                 f"Invalid base_hourly_rate_ht: {value!r}. "
                 f"Must be a positive decimal amount."
@@ -142,7 +142,7 @@ class PricingConfig(BaseModel):
                 )
             try:
                 surcharge = Decimal(str(raw_surcharge))
-            except InvalidOperation, ValueError:
+            except (InvalidOperation, ValueError):
                 raise MTPricingConfigInvalidWeekdaySurcharges(
                     f"Invalid weekday_surcharges value for {weekday.value}: "
                     f"{raw_surcharge!r}. Must be a non-negative decimal ratio."

@@ -18,6 +18,7 @@ from models.quoting.quote_line import QuoteLine
 from service.quotes.exceptions import (
     MTQuoteForbidden,
     MTQuoteNotEditable,
+    MTQuoteNotFound,
     MTQuoteNotPriced,
 )
 from service.quotes.quotes import QuoteService
@@ -50,6 +51,7 @@ def _line(priced: bool = True) -> QuoteLine:
     return QuoteLine(
         name="Aide a la toilette",
         intervention_type_id="type-1",
+        service_category="necessity",
         service_date=TUESDAY,
         earliest_start=time(9, 0),
         latest_end=time(11, 0),
@@ -302,3 +304,127 @@ class TestQuoteAuthorship:
 
         stored = quotes.create.await_args.args[0]
         assert stored.authored_by == AUTHOR
+
+
+class TestQuoteDeletion:
+    """Tests for removing a quote outright.
+
+    Notes:
+        Deletion sits outside the lifecycle every other test here exercises. A
+        refused quote is rejected, not erased — the agency has to be able to
+        say what it offered. This is for records that were never part of that
+        history: one raised in error, and the fixtures the QA campaign creates
+        and is obliged to remove again.
+    """
+
+    async def test_a_quote_is_removed(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """The ordinary case deletes the row and its lines."""
+        quotes.delete.return_value = True
+
+        await service.delete("quote-1")
+
+        quotes.delete.assert_awaited_once_with("quote-1")
+
+    async def test_deleting_a_quote_that_is_not_there_is_reported(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """Absence is an error, not a silent success.
+
+        Notes:
+            A caller removing a fixture it believes it created wants to know
+            when there was nothing to remove. Passing over it hides both a
+            fixture that was never made and one something else already took.
+        """
+        quotes.delete.return_value = False
+
+        with pytest.raises(MTQuoteNotFound):
+            await service.delete("quote-9")
+
+
+class TestQuoteEditability:
+    """Tests for when a quote's lines may change.
+
+    Notes:
+        **Every status.** The rule used to be drafts only, and what that
+        protected is worth stating: an issued quote is what the customer is
+        looking at, so changing it underneath them is how somebody accepts one
+        thing and is billed for another. Nothing records the figures an edit
+        replaced, so that history is not recoverable from the quote itself.
+
+        What did *not* widen is who may edit. The authorship check is unchanged.
+    """
+
+    @pytest.mark.parametrize(
+        "status",
+        list(QuoteStatus),
+        ids=lambda status: status.value,
+    )
+    def test_every_status_is_editable(self, status: QuoteStatus) -> None:
+        """A quote is modifiable wherever it has got to.
+
+        Args:
+            status (QuoteStatus): The status to check.
+        """
+        assert status in QuoteService.EDITABLE_STATUSES
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param(QuoteStatus.SENT, id="Refused - already sent"),
+            pytest.param(QuoteStatus.ACCEPTED, id="Refused - accepted"),
+        ],
+    )
+    def test_sending_is_still_restricted_to_a_draft(self, status: QuoteStatus) -> None:
+        """Editing widened; sending did not.
+
+        Args:
+            status (QuoteStatus): The status to check.
+
+        Notes:
+            Re-sending a quote the customer has already answered would overwrite
+            their answer with the offer. Editing and sending are separate rules,
+            and only one of them was asked to change.
+        """
+        assert status not in QuoteService.SENDABLE_STATUSES
+
+    async def test_an_accepted_quote_can_have_its_lines_replaced(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """The case the old rule refused."""
+        quotes.get.return_value = _quote(status=QuoteStatus.ACCEPTED)
+        service.types.get_many = AsyncMock(
+            return_value={
+                "type-1": InterventionType(
+                    id="type-1",
+                    name="Aide a la toilette",
+                    code="TOI",
+                    service_category=ServiceCategory.NECESSITY,
+                )
+            }
+        )
+
+        await service.replace_lines("quote-1", _quote(status=QuoteStatus.ACCEPTED))
+
+        # `update` rather than a dedicated replace: the service prices the new
+        # lines onto a copy of the stored quote and writes the whole thing.
+        quotes.update.assert_awaited_once()
+
+    async def test_editing_still_refuses_somebody_elses_quote(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """Who may edit did not widen with when.
+
+        Notes:
+            The two guards are independent, and only the status one was asked to
+            change. A quote landing in somebody else's list is still theirs.
+        """
+        quotes.get.return_value = _quote(status=QuoteStatus.ACCEPTED)
+
+        with pytest.raises(MTQuoteForbidden):
+            await service.replace_lines(
+                "quote-1",
+                _quote(status=QuoteStatus.ACCEPTED),
+                author_id=OTHER_AUTHOR,
+            )

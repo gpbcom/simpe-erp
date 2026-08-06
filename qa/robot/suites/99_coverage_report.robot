@@ -32,7 +32,7 @@ Merge The Coverage Recorded By Every Suite
     ...    ${COVERAGE_RAW_DIR}
     ...    ${OUTPUT DIR}/coverage
     ...    config_file=${COVERAGE_CONFIG}
-    ...    name=rt-erp front-end — GUI campaign
+    ...    name=simple-erp front-end — GUI campaign
 
     Run Keyword If    '${status}' == 'FAIL'
     ...    Log    Coverage could not be merged: ${result}    level=WARN

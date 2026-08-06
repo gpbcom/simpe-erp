@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 from uuid import uuid4
 
 # Third-party imports
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -460,3 +460,21 @@ class HcaRepository(BaseRepository[HcaRow]):
         except SQLAlchemyError as exc:
             self.logger.error("Error deleting hca %s: %s.", hca_id, exc)
             raise
+
+    async def count_for_company(self, company_id: str) -> int:
+        """Return how many assistants belong to one agency.
+
+        Args:
+            company_id (str): The agency to count for.
+
+        Returns:
+            int: The number of assistants.
+
+        Notes:
+            A count rather than a list: the caller only needs to know whether
+            the agency is empty, and reading every assistant to find that out
+            would be a page of records fetched to be thrown away.
+        """
+        found = await self._count(select(HcaRow).where(HcaRow.company_id == company_id))
+        self.logger.debug("Agency %s has %d assistant(s).", company_id, found)
+        return found

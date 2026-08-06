@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import Box from '@mui/material/Box';
@@ -6,8 +7,10 @@ import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useMyQuotes, useSubmitQuote } from '@/api/queries';
+import { QuoteEditorDialog } from '@/features/quotes/QuoteEditorDialog';
 import { QuoteStatusChip } from '@/features/quotes/QuoteStatusChip';
 import { AppIcon } from '@/components/icons/AppIcon';
+import EditIcon from '@mui/icons-material/Edit';
 import { formatDate, formatMoney } from '@/utils/format';
 import type { Quote } from '@/api/types';
 
@@ -26,6 +29,7 @@ export function MyQuotesPage() {
   const { t, i18n } = useTranslation();
   const { data, isLoading } = useMyQuotes();
   const submit = useSubmitQuote();
+  const [editing, setEditing] = useState<Quote | null>(null);
 
   const total = (quote: Quote): string => {
     const sum = quote.lines.reduce(
@@ -64,19 +68,33 @@ export function MyQuotesPage() {
     {
       field: 'actions',
       headerName: t('common.actions'),
-      width: 220,
+      width: 340,
       sortable: false,
+      // Both actions appear only on a draft, and for the same reason: it is
+      // the one state an assistant still owns. Once submitted, the quote is a
+      // manager's to rule on; once sent, it is what the customer was shown.
       renderCell: (params) =>
         params.row.status === 'draft' ? (
-          <Button
-            size="small"
-            variant="contained"
-            startIcon={<AppIcon name="quoteValidate" />}
-            onClick={() => submit.mutate(params.row.id ?? '')}
-            data-testid={`submit-quote-${params.row.reference}`}
-          >
-            {t('quote.submit')}
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<EditIcon />}
+              onClick={() => setEditing(params.row)}
+              data-testid={`edit-quote-${params.row.reference}`}
+            >
+              {t('quote.edit')}
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<AppIcon name="quoteValidate" />}
+              onClick={() => submit.mutate(params.row.id ?? '')}
+              data-testid={`submit-quote-${params.row.reference}`}
+            >
+              {t('quote.submit')}
+            </Button>
+          </Stack>
         ) : null,
     },
   ];
@@ -102,6 +120,8 @@ export function MyQuotesPage() {
           data-testid="my-quotes-grid"
         />
       </Card>
+
+      <QuoteEditorDialog quote={editing} scope="own" onClose={() => setEditing(null)} />
     </Stack>
   );
 }

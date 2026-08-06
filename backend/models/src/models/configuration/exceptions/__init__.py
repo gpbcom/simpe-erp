@@ -12,6 +12,7 @@ from .app_config_exceptions import (
     MTInvalidAppConfigException,
 )
 from .auth_config_exceptions import (
+    MTAuthConfigInvalidCompanyRegistration,
     MTAuthConfigInvalidJwtAlgorithm,
     MTAuthConfigInvalidJwtSecretEnv,
     MTAuthConfigInvalidTokenExpiry,
@@ -107,6 +108,7 @@ __all__ = [
     "MTAppConfigInvalidServer",
     "MTAppConfigNotFound",
     "MTAppConfigUnreadable",
+    "MTAuthConfigInvalidCompanyRegistration",
     "MTAuthConfigInvalidJwtAlgorithm",
     "MTAuthConfigInvalidJwtSecretEnv",
     "MTAuthConfigInvalidTokenExpiry",

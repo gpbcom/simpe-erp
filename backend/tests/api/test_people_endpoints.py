@@ -48,6 +48,7 @@ CUSTOMER_PAYLOAD = {
 }
 
 HCA_PAYLOAD = {
+    "company_id": "company-1",
     "first_name": "Luc",
     "last_name": "Martin",
     "phone_number": "+33698765432",
@@ -72,6 +73,7 @@ def _user(role: UserRole = UserRole.MANAGER, hca_id: Optional[str] = None) -> Us
         User: The account.
     """
     return User(
+        company_id="company-1",
         id=f"user-{role.value}",
         email=f"{role.value}@example.com",
         full_name="Test Account",

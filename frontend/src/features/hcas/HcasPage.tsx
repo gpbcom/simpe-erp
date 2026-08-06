@@ -19,10 +19,11 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import { useQueryClient } from '@tanstack/react-query';
 import { request } from '@/api/client';
-import { keys, useHcas } from '@/api/queries';
+import { keys, useHcas, usePromoteUser, useUsers } from '@/api/queries';
+import { useSession } from '@/store/session';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { initialsOf } from '@/utils/format';
-import type { Certification, Hca } from '@/api/types';
+import type { Certification, Hca, User } from '@/api/types';
 
 /**
  * The workforce, and the one thing a manager may change about them.
@@ -34,10 +35,34 @@ import type { Certification, Hca } from '@/api/types';
  * page renders them as locked chips, because somebody who could grant
  * themselves a qualification could be routed to work they are not trained for.
  * This dialog is the other half of that rule.
+ *
+ * Promotion sits here too, on the same row as the person it concerns, rather
+ * than on an accounts screen of its own. What a manager wants is "make Luc a
+ * manager", and the workforce grid is where they are already looking at Luc —
+ * an accounts list would ask them to find the same person twice, by email.
  */
 export function HcasPage() {
   const { t } = useTranslation();
   const client = useQueryClient();
+  // Promotion and the accounts list are both administrator-only. A manager
+  // sees the workforce without the role column rather than a column that
+  // says 'no account' about every one of them.
+  const isAdmin = useSession((state) => state.user?.role === 'admin');
+  const { data: accounts } = useUsers(isAdmin);
+  const promote = usePromoteUser();
+  const [promoting, setPromoting] = useState<Hca | null>(null);
+
+  const accountOf = (hcaId: string | null): User | undefined =>
+    // A record that has never been stored has no identifier and therefore
+    // no account; matching on null would match every account without one.
+    hcaId ? (accounts ?? []).find((entry) => entry.hca_id === hcaId) : undefined;
+
+  const confirmPromotion = async () => {
+    const account = promoting ? accountOf(promoting.id) : undefined;
+    if (!account?.id) return;
+    await promote.mutateAsync({ userId: account.id, role: 'manager' });
+    setPromoting(null);
+  };
   const [search, setSearch] = useState('');
   const { data, isLoading } = useHcas(search || undefined);
   const [editing, setEditing] = useState<Hca | null>(null);
@@ -112,20 +137,69 @@ export function HcasPage() {
         </Stack>
       ),
     },
+    ...(isAdmin
+      ? ([
+          {
+            field: 'role',
+            headerName: t('hca.role'),
+            width: 130,
+            sortable: false,
+            renderCell: (params) => {
+              const account = accountOf(params.row.id);
+              return account ? (
+                <Chip
+                  size="small"
+                  label={t(`role.${account.role}`)}
+                  color={account.role === 'hca' ? 'default' : 'primary'}
+                  data-testid={`role-${params.row.id}`}
+                />
+              ) : (
+                // An assistant with no account cannot sign in yet, and cannot be
+                // promoted either — there is nothing to promote.
+                <Typography variant="body2" color="text.secondary">
+                  {t('hca.noAccount')}
+                </Typography>
+              );
+            },
+          },
+        ] as GridColDef<Hca>[])
+      : []),
     {
       field: 'actions',
       headerName: t('common.actions'),
-      width: 200,
+      width: 400,
       sortable: false,
+      // Outlined, not MUI's default text variant. Two text buttons side by side
+      // in a dense grid read as a run-on sentence — "Modifier les
+      // qualificationsPromouvoir manager" — and neither looks like something
+      // that can be pressed. A border is what makes a button a button.
       renderCell: (params) => (
-        <Button
-          size="small"
-          startIcon={<AppIcon name="certification" />}
-          onClick={() => openEditor(params.row)}
-          data-testid={`edit-certifications-${params.row.id}`}
+        <Stack
+          direction="row"
+          spacing={1}
+          alignItems="center"
+          sx={{ height: '100%' }}
         >
-          {t('hca.editCertifications')}
-        </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AppIcon name="certification" />}
+            onClick={() => openEditor(params.row)}
+            data-testid={`edit-certifications-${params.row.id}`}
+          >
+            {t('hca.editCertifications')}
+          </Button>
+          {accountOf(params.row.id)?.role === 'hca' ? (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setPromoting(params.row)}
+              data-testid={`promote-${params.row.id}`}
+            >
+              {t('hca.promote')}
+            </Button>
+          ) : null}
+        </Stack>
       ),
     },
   ];
@@ -162,6 +236,34 @@ export function HcasPage() {
           data-testid="hcas-grid"
         />
       </Card>
+
+      <Dialog
+        open={Boolean(promoting)}
+        onClose={() => setPromoting(null)}
+        data-testid="promote-dialog"
+      >
+        <DialogTitle>{t('hca.promoteTitle')}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {t('hca.promoteExplain', {
+              name: promoting ? `${promoting.first_name} ${promoting.last_name}` : '',
+            })}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPromoting(null)} data-testid="promote-cancel">
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={confirmPromotion}
+            disabled={promote.isPending}
+            data-testid="promote-confirm"
+          >
+            {t('hca.promote')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} fullWidth>
         <DialogTitle>{t('hca.editCertifications')}</DialogTitle>

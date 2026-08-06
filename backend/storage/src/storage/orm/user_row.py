@@ -24,7 +24,7 @@ class UserRow(Base):
         is_active (bool): Whether sign-in is permitted.
         hca_id (Optional[str]): The assistant record an assistant account
             belongs to.
-        company_id (Optional[str]): The company this account belongs to.
+        company_id (str): The company this account belongs to.
         account_origin (str): ``self-registered`` or ``created-by-staff``.
         must_change_password (bool): Whether the temporary password must
             still be replaced before the account can be used.
@@ -61,9 +61,11 @@ class UserRow(Base):
         ForeignKey("hcas.id", ondelete="RESTRICT"),
         nullable=True,
     )
-    company_id: Mapped[Optional[str]] = mapped_column(
-        String(Base.ID_LENGTH), nullable=True
-    )
+    # NOT NULL: every account belongs to exactly one agency. The column
+    # was nullable while companies were newer than the rows that point at
+    # them; migration 0008 backfilled the stragglers and closed it, so no
+    # row can go back to belonging to nobody.
+    company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     account_origin: Mapped[str] = mapped_column(
         String(24), nullable=False, default="self-registered"
     )

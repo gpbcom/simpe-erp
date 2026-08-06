@@ -16,7 +16,7 @@ Resource         ../resources/app_keywords.resource
 
 Suite Setup      Prepare The Notification Suite
 Suite Teardown   Finish The Notification Suite
-Test Teardown    Take A Screenshot On Failure
+Test Teardown    Leave The Bell Closed, Capturing Any Failure
 
 
 *** Variables ***
@@ -40,7 +40,6 @@ The Popover Lists The Notification
     Reload
     Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    2s
     ...    Notification List Should Mention    QA-${suffix}
-    Click    [data-testid="app-logo"]
 
 An Unread Notification Is Emphasised
     [Documentation]    Unread and read must be tellable apart at a glance.
@@ -50,13 +49,11 @@ An Unread Notification Is Emphasised
     [Tags]    notifications
     Raise A Notification For The Manager
     Reload
-    Click    [data-testid="notification-bell"]
-    Wait For Elements State    [data-testid="notification-list"]    visible
+    Open The Notification Popover
     ${weight}=    Get Style
     ...    [data-testid="notification-list"] .MuiListItemText-primary >> nth=0
     ...    font-weight
     Should Be Equal    ${weight}    600
-    Click    [data-testid="app-logo"]
 
 The Notification Centre Lists Everything
     [Documentation]    The full page, not the fifteen rows the popover shows.
@@ -85,11 +82,21 @@ Marking Everything Read Clears The Badge And The Chip
     [Tags]    smoke    notifications
     Raise A Notification For The Manager
     Navigate To    /notifications
-    Wait For Elements State    [data-testid="page-mark-all-read"]    visible
-    Click    [data-testid="page-mark-all-read"]
+    # Enabled, not merely visible. The button is disabled while the page
+    # believes there is nothing unread, and the page believes that until its
+    # own query has caught up with the notification that just arrived. Waiting
+    # on visibility alone clicks a disabled button and times out complaining
+    # about the button rather than about the list behind it.
+    Wait For Elements State    [data-testid="page-mark-all-read"]    enabled
 
-    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    1s    Unread Chip Should Be Gone
-    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    1s    Badge Should Be Empty
+    # Clicked and asserted as one retried step, rather than clicked once and
+    # then waited on. Each of the tests before this one raises a notification of
+    # its own, and those travel through a broker and a worker before they reach
+    # the screen — one landing between the click and the read is a *new* unread
+    # notification, not a button that failed to work. Asserting on the click
+    # alone made this test fail on the pipeline being slow, which is the one
+    # thing it is not about.
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    1s    Clearing Empties The Queue
 
 Marking Everything Read Is Disabled With Nothing To Read
     [Documentation]    The button says whether there is anything to do.
@@ -107,9 +114,7 @@ An Account With No Notifications Sees The Empty State
     ...    "the screen is broken" is the support ticket that follows.
     [Tags]    notifications    empty-state
     Mark Everything Read Through The API    ${MANAGER_EMAIL}
-    Click    [data-testid="notification-bell"]
-    Wait For Elements State    [data-testid="notification-list"]    visible
-    Click    [data-testid="app-logo"]
+    Open The Notification Popover
 
 Opening A Notification Marks It Read And Navigates
     [Documentation]    Clicking a row does both halves of what it promises.
@@ -154,6 +159,15 @@ Raise A Notification For The Manager
     ...    ${ASSISTANT_EMAIL}    ${customer_id}    ${type_id}    ${suffix}
     Append To List    ${FIXTURE_QUOTE_IDS}    ${quote}[id]
     Submit Quote Through The API    ${ASSISTANT_EMAIL}    ${quote}[id]
+    # Waited for here, once, rather than in each test that happens to remember.
+    # Submitting only publishes: the notification is written after a broker
+    # round trip, so this keyword otherwise returns with a message still in
+    # flight. The test that marks everything read then clears a queue that
+    # three earlier tests are still filling, and the badge climbs back a moment
+    # after being emptied — which reads as "mark all read does not work" rather
+    # than as this keyword returning too early.
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    1s
+    ...    Notification Should Have Reached    ${MANAGER_EMAIL}    QA-${suffix}
     RETURN    ${suffix}
 
 Mark Everything Read Through The API
@@ -174,6 +188,21 @@ Badge Should Be At Least
     Should Not Be Empty    ${text}
     Should Be True    int("${text}".replace("+", "") or 0) >= ${minimum}
 
+Clearing Empties The Queue
+    [Documentation]    Mark everything read, and assert both counters are empty.
+    ...
+    ...    Reads the button's ``disabled`` attribute rather than clicking and
+    ...    hoping: Playwright waits for a disabled button to become actionable
+    ...    and then reports a timeout, so a retry that found nothing left to
+    ...    mark would fail on the queue being already empty — the very state it
+    ...    is trying to reach.
+    ${disabled}=    Get Attribute    [data-testid="page-mark-all-read"]    disabled
+    IF    $disabled is None
+        Click    [data-testid="page-mark-all-read"]
+    END
+    Unread Chip Should Be Gone
+    Badge Should Be Empty
+
 Badge Should Be Empty
     [Documentation]    Assert the badge shows nothing.
     ${text}=    Get Text    [data-testid="notification-badge"]
@@ -183,6 +212,16 @@ Unread Chip Should Be Gone
     [Documentation]    Assert the page's unread counter has disappeared.
     ${count}=    Get Element Count    [data-testid="unread-chip"]
     Should Be Equal As Integers    ${count}    0
+
+Leave The Bell Closed, Capturing Any Failure
+    [Documentation]    Screenshot a failure, then dismiss the popover.
+    ...
+    ...    Every test here opens the bell, and an open popover covers the
+    ...    page for the next one. Closing it in the teardown means a test
+    ...    that fails half-way still hands the suite back in the state it
+    ...    was given, rather than failing the four tests behind it too.
+    Take A Screenshot On Failure
+    Close The Notification Popover
 
 Take A Screenshot On Failure
     Run Keyword If Test Failed    Take Screenshot    fullPage=True

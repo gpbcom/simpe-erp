@@ -1,7 +1,7 @@
 [project]
 name = "seed"
 version = "0.1.0"
-description = "Idempotent development data for the rt-erp stack"
+description = "Idempotent development data for the simple-erp stack"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

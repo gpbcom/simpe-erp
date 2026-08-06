@@ -52,3 +52,18 @@ class MTAuthSamePassword(MTInvalidAuthException):
         seen. "Changing" it to itself would leave that credential live while
         clearing the flag that says so.
     """
+
+
+class MTAuthCompanyRequired(MTInvalidAuthException):
+    """Exception raised when an account would be created with no agency.
+
+    Notes:
+        Every account belongs to exactly one agency, whatever its role. One
+        without is invisible to per-company scoping and produces events that
+        cannot be routed, so it is refused at creation rather than stored and
+        puzzled over later.
+    """
+
+
+class MTAuthUnknownAccount(MTInvalidAuthException):
+    """Exception raised when the named account does not exist."""

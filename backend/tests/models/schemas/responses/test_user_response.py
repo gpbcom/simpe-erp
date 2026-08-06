@@ -100,6 +100,7 @@ class TestUserResponse:
     def test_from_user_never_carries_the_hash(self) -> None:
         """Building from a stored account leaves the credential behind."""
         user = User(
+            company_id="company-1",
             id="user-1",
             email="manager@example.com",
             full_name="Manager Account",
@@ -258,6 +259,7 @@ class TestUserResponse:
     def test_from_user_publishes_every_public_field(self) -> None:
         """The published shape carries the whole account bar its credential."""
         user = User(
+            company_id="company-1",
             id="user-1",
             email="hca@example.com",
             full_name="Assistant Account",
@@ -275,7 +277,7 @@ class TestUserResponse:
             "role": "hca",
             "is_active": True,
             "hca_id": "hca-1",
-            "company_id": None,
+            "company_id": "company-1",
             "must_change_password": False,
             "created_at": "2026-08-05T12:00:00+00:00",
             "updated_at": "2026-08-05T13:00:00+00:00",

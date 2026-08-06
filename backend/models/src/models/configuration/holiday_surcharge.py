@@ -132,7 +132,7 @@ class HolidaySurcharge(BaseModel):
             )
         try:
             coerced = Decimal(str(value))
-        except InvalidOperation, ValueError:
+        except (InvalidOperation, ValueError):
             raise MTHolidaySurchargeInvalidSurcharge(
                 f"Invalid surcharge: {value!r}. Must be a non-negative decimal ratio."
             ) from None

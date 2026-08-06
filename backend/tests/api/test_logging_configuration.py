@@ -131,7 +131,7 @@ class TestAppliedLoggingConfiguration:
         original_stream = console.stream
         console.stream = captured
         try:
-            logging.getLogger("rt_erp.test").log(level, "a line")
+            logging.getLogger("simple_erp.test").log(level, "a line")
         finally:
             console.stream = original_stream
         rendered = captured.getvalue()

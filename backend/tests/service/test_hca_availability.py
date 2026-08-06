@@ -30,6 +30,7 @@ def _user(role: UserRole, hca_id: Optional[str] = None) -> User:
         User: The account.
     """
     return User(
+        company_id="company-1",
         id=f"user-{role.value}",
         email=f"{role.value}@example.com",
         full_name=f"Test {role.value.title()}",

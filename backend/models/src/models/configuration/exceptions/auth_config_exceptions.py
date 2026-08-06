@@ -16,3 +16,7 @@ class MTAuthConfigInvalidTokenExpiry(MTInvalidAuthConfigException):
 
 class MTAuthConfigMissingSecret(MTInvalidAuthConfigException):
     """Exception raised when the configured JWT secret env var is not set."""
+
+
+class MTAuthConfigInvalidCompanyRegistration(MTInvalidAuthConfigException):
+    """Exception raised when ``allow_company_registration`` is not a boolean."""

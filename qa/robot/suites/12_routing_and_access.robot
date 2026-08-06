@@ -139,10 +139,10 @@ A Rejected Token Returns To The Sign-In Card
     ...    revoked one amounts to from the client's side.
     [Tags]    routing    auth
     Sign In As    ${MANAGER_EMAIL}
-    LocalStorage Set Item    rt-erp.token    not-a-real-token
+    LocalStorage Set Item    simple-erp.token    not-a-real-token
     Reload
     Wait For Elements State    [data-testid="login-card"]    visible
-    ${token}=    LocalStorage Get Item    rt-erp.token
+    ${token}=    LocalStorage Get Item    simple-erp.token
     Should Be Equal    ${token}    ${None}
 
 

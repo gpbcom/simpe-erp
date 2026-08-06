@@ -70,11 +70,34 @@ The Working Day Is Bounded
     ...    An unbounded calendar opens scrolled to midnight and an assistant
     ...    sees eight empty hours before their first visit. The bounds are what
     ...    make an empty morning visibly empty.
+    ...
+    ...    **Asserted by counting the hour labels, not by reading one.** The
+    ...    axis is rendered by FullCalendar in the interface's own locale, so in
+    ...    French it says ``07 h`` and never the ``07:00`` this test used to
+    ...    look for — it failed against a calendar that was bounded exactly as
+    ...    intended. A count is what "bounded" actually means, and it depends on
+    ...    no locale at all: 07:00 to 21:00 is fourteen labelled hours, 07 to
+    ...    20, because the axis labels the start of each hour and 21:00 is the
+    ...    end of the day rather than the start of an hour in it. Widen or
+    ...    narrow the day and this number moves with it.
     [Tags]    calendar
     Wait For Elements State    .fc-timegrid-slots    visible
     ${slots}=    Get Element Count    .fc-timegrid-slot-label
-    Should Be True    ${slots} > 0
-    Get Text    .fc-timegrid-slots    *=    07:00
+    Should Be Equal As Integers    ${slots}    14
+    ...    msg=The day should span 07:00-21:00, which is 14 labelled hours.
+
+    # Anchored on the *first* label, not on the axis as a whole. Fourteen
+    # labels starting at six o'clock is also fourteen labels containing a seven,
+    # so a search of the whole axis would accept a day shifted an hour early —
+    # which is the mistake a wrong `slotMinTime` actually makes.
+    #
+    # Tolerant of the formats FullCalendar renders across the locales this
+    # application ships: `07 h` in French, `07:00` or `7am` in English. The
+    # language is a stored preference, so a suite that failed mid-switch would
+    # otherwise leave this one failing with a message about the working day.
+    ${first}=    Get Text    .fc-timegrid-slot-label >> nth=0
+    Should Match Regexp    ${first}    (?i)^\\s*0?7(\\D|$)
+    ...    msg=The calendar starts at ${first} rather than at seven o'clock.
 
 Weekends Are Not Drawn
     [Documentation]    Five columns, not seven.

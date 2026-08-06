@@ -7,83 +7,29 @@ from logging import Logger, getLogger
 from logging.config import dictConfig
 import os
 from pathlib import Path
-import signal
 from typing import Optional
 
-from worker.handlers import EventHandlers
+from worker.runner import WorkerRunner
 
 # Third-party imports
 import yaml
 
 # First-party imports
 from models.configuration.app_config import AppConfig
-from models.enums import EventRoutingKey
-from service.messaging.consumer import EventConsumer
 
 logger: Logger = getLogger(__name__)
 
-# One queue per kind of work, rather than one queue for everything. The planning
-# solve pins a core for thirty seconds; sharing a queue with the notification
-# fan-out would leave a manager waiting half a minute to be told a quote needs
-# looking at, behind work that has nothing to do with them.
-PLANNING_QUEUE: str = "planning-runs"
-NOTIFICATION_QUEUE: str = "quote-notifications"
 
 
 async def run() -> None:
-    """Consume both queues until the process is asked to stop.
+    """Run the worker until it is asked to stop.
 
     Notes:
-        The two consumers share a process but not a queue, so the broker can
-        deliver a notification while a solve is in flight. Running them as two
-        processes would be tidier still, and is what the compose file does in
-        production by scaling this one — the queues are already separate, so
-        that needs no code change.
+        The work lives in :class:`~worker.runner.WorkerRunner`. This module
+        stays an entry point: read the configuration, configure logging, hand
+        over.
     """
-    config = AppConfig.load()
-    handlers = EventHandlers(config=config, logger=logger)
-    # Before either consumer is started, so no message can be delivered to a
-    # handler that has no database behind it. `connect()` also retries, which
-    # this process needs: compose starts it as soon as PostgreSQL reports
-    # healthy, and healthy precedes accepting connections by a moment.
-    await handlers.open()
-
-    planning = EventConsumer(config=config.rabbitmq, logger=logger)
-    planning.on(EventRoutingKey.PLANNING_RUN_REQUESTED, handlers.run_planning)
-
-    notifications = EventConsumer(config=config.rabbitmq, logger=logger)
-    notifications.on(EventRoutingKey.QUOTE_SUBMITTED, handlers.quote_submitted)
-    notifications.on(EventRoutingKey.QUOTE_VALIDATED, handlers.quote_validated)
-    notifications.on(EventRoutingKey.QUOTE_REFUSED, handlers.quote_refused)
-    notifications.on(
-        EventRoutingKey.PLANNING_RUN_COMPLETED, handlers.planning_completed
-    )
-
-    await planning.run(PLANNING_QUEUE, [EventRoutingKey.PLANNING_RUN_REQUESTED])
-    await notifications.run(
-        NOTIFICATION_QUEUE,
-        [
-            EventRoutingKey.QUOTE_SUBMITTED,
-            EventRoutingKey.QUOTE_VALIDATED,
-            EventRoutingKey.QUOTE_REFUSED,
-            EventRoutingKey.PLANNING_RUN_COMPLETED,
-        ],
-    )
-    logger.info("Worker is consuming; waiting for messages.")
-
-    stopping = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for received in (signal.SIGINT, signal.SIGTERM):
-        # Handled rather than left to the default, so an in-flight solve is
-        # allowed to finish and acknowledge instead of being killed mid-message
-        # and redelivered from the start.
-        loop.add_signal_handler(received, stopping.set)
-    await stopping.wait()
-
-    logger.info("Worker is shutting down.")
-    await planning.close()
-    await notifications.close()
-    await handlers.close()
+    await WorkerRunner(config=AppConfig.load(), logger=logger).run()
 
 
 def setup_logging(config_path: str = "conf/logger.yaml") -> None:
@@ -123,7 +69,7 @@ def main(argv: Optional[list] = None) -> None:
             the shape of the API's entry point.
     """
     setup_logging()
-    getLogger(__name__).info("Starting the rt-erp worker.")
+    getLogger(__name__).info("Starting the simple-erp worker.")
     asyncio.run(run())
 
 

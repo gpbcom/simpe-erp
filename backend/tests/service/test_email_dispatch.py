@@ -69,6 +69,7 @@ def _hca(hca_id: str = "hca-1") -> Hca:
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id=hca_id,
         first_name="Alice",
         last_name="Martin",
@@ -97,6 +98,7 @@ def _planning(interventions: int = 2) -> HcaPlanning:
             Intervention(
                 name=f"Toilette {index}",
                 intervention_type_id="type-1",
+                service_category="necessity",
                 quote_line_id=f"line-{index}",
                 hca_id="hca-1",
                 hca_full_name="Alice Martin",
@@ -122,6 +124,7 @@ def _manager(user_id: str = "user-1") -> User:
         User: The account.
     """
     return User(
+        company_id="company-1",
         id=user_id,
         email=f"{user_id}@example.com",
         full_name="Manager Account",
@@ -145,6 +148,7 @@ def _quote() -> Quote:
                 id="line-1",
                 name="Toilette matin",
                 intervention_type_id="type-1",
+                service_category="necessity",
                 service_date=date(2026, 8, 3),
                 earliest_start=time(9, 0),
                 latest_end=time(13, 0),
@@ -158,6 +162,7 @@ def _quote() -> Quote:
         aggregates=[
             QuoteTypeWeekAggregate(
                 intervention_type_id="type-1",
+                service_category="necessity",
                 intervention_type_name="Toilette",
                 iso_year=2026,
                 iso_week=32,

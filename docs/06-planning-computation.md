@@ -129,3 +129,38 @@ forever.
 `tests/service/test_planning_solver.py` and `test_planning_constraints.py` drive
 real solves over built scenarios and assert the placements and the diagnoses.
 `test_requirement_builder.py` covers the translation from quote lines.
+
+
+## Asking for one
+
+`POST /api/v1/planning/runs?period_start=&period_end=` — **administrator-only**,
+like listing and reading runs. It answers **202** with a `pending` run to poll:
+the solve is CPU-bound, runs on a worker with a 30-second budget, and reaches
+the worker over the broker.
+
+Nothing in the application ever called it. The endpoints existed, the worker
+consumed them, and there was no control anywhere — so a freshly seeded stack had
+no planning, no way to ask for one, and nothing on any screen to say why. The
+team-planning screen now has the button, gated on the administrator role so a
+manager is not offered something that would only answer 403.
+
+The screen polls while a run is in flight and stops when it finishes. When a run
+succeeds it invalidates the *visits* as well as the run: they are written by the
+worker, behind the screen's back, so nothing else would refresh them — and being
+told "75 visits planned" above an empty list is worse than being told nothing.
+
+## A run fails as a whole
+
+One unplaceable visit means **no planning at all**, not a partial one. That is
+deliberate — a half-placed week is not a schedule anybody can work from — but it
+makes the seeded data's shape load-bearing.
+
+It was wrong. The seeder's first service window opened at **08:00** while
+`planning.day_start_minute` puts the day at **09:00**, so sixteen of
+seventy-seven seeded visits were outside the working day and every run failed
+with `outside-working-day`. A fixture that cannot be satisfied by construction
+looks exactly like a broken solver.
+
+`tests/seed/test_seeded_windows.py` now asserts every seeded window against the
+configuration's own bounds — not against 09:00 and 20:00 written down a second
+time, because two copies of a number drift and that drift is what caused this.

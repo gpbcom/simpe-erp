@@ -6,6 +6,10 @@ class MTQuoteLineInvalidId(MTInvalidQuoteLineException):
     """Exception raised when an invalid ``id`` value is provided."""
 
 
+class MTQuoteLineInvalidServiceCategory(MTInvalidQuoteLineException):
+    """Exception raised when the VAT category is missing or unknown."""
+
+
 class MTQuoteLineInvalidName(MTInvalidQuoteLineException):
     """Exception raised when an invalid ``name`` value is provided."""
 

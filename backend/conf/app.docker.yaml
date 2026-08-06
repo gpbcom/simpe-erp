@@ -1,8 +1,8 @@
-# rt-erp backend configuration, for the docker-compose stack.
+# simple-erp backend configuration, for the docker-compose stack.
 #
 # Identical to app.yaml except for the three addresses a container cannot
 # reach on localhost: PostgreSQL, MinIO, and the browser-facing URL the
-# photograph links are built from. Selected with RT_ERP_CONFIG.
+# photograph links are built from. Selected with SIMPLE_ERP_CONFIG.
 #
 # Secrets are never stored here: a ``*_env`` key names the environment variable
 # that carries the value, and the secret is resolved at connection time.
@@ -10,7 +10,7 @@
 server:
   host: 0.0.0.0
   port: 8000
-  title: rt-erp API
+  title: SimpleERP API
   version: 1.0.0
   # Named explicitly rather than "*": the API answers credentialed requests, so
   # a wildcard origin would let any site drive it with a logged-in user's token.
@@ -21,8 +21,8 @@ server:
 database:
   host: postgres
   port: 5432
-  database: rt_erp
-  username: rt_erp
+  database: simple_erp
+  username: simple_erp
   password_env: POSTGRES_PASSWORD
   pool_size: 10
   max_overflow: 5
@@ -33,6 +33,11 @@ auth:
   jwt_secret_env: JWT_SECRET_KEY
   jwt_algorithm: HS256
   access_token_expire_minutes: 720
+  # On for the development and demonstration stack, which holds seeded
+  # records rather than real ones. Deliberately absent from app.yaml's
+  # posture: a company is not yet a tenancy boundary, so an administrator
+  # founded here can read every agency's data.
+  allow_company_registration: true
 
 pricing:
   # Contractual base rate, excluding tax, in EUR per hour.
@@ -81,14 +86,14 @@ geocoding:
   # addresses in bulk should point base_url at its own Nominatim instance or
   # risk having its address blocked.
   base_url: https://nominatim.openstreetmap.org/search
-  user_agent: "rt-erp/0.1 (home-care planning; contact: ops@rt-erp.local)"
+  user_agent: "simple-erp/0.1 (home-care planning; contact: ops@simple-erp.local)"
   timeout_seconds: 10.0
   country_codes:
     - fr
 
 s3:
   # Assistant photographs are stored here; the HCA record holds the object URL.
-  bucket: rt-erp
+  bucket: simple-erp
   region: fr-par
   # MinIO stands in for S3 in the stack; the bucket is created on boot.
   endpoint_url: http://minio:9000
@@ -110,9 +115,9 @@ rabbitmq:
   host: rabbitmq
   port: 5672
   virtual_host: /
-  username: rt_erp
+  username: simple_erp
   password_env: RABBITMQ_PASSWORD
-  exchange: rt-erp
+  exchange: simple-erp
   publish_timeout_seconds: 5.0
   # One at a time: the heaviest consumer runs an OR-Tools solve, which pins a
   # core for its whole budget. Taking a second message while the first solves

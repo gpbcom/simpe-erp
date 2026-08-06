@@ -8,9 +8,18 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, status
 
 # First-party imports
-from api.dependencies import get_intervention_type_service, get_manager_user
+from api.dependencies import (
+    get_app_config,
+    get_intervention_type_service,
+    get_manager_user,
+)
 from models.auth.user import User
 from models.catalog.intervention_type import InterventionType
+from models.configuration.app_config import AppConfig
+from models.schemas.requests.intervention_type_update_request import (
+    InterventionTypeUpdateRequest,
+)
+from models.schemas.responses.pricing_rules_response import PricingRulesResponse
 from service.intervention_types.intervention_types import (
     InterventionTypeService,  # noqa: E501
 )
@@ -70,6 +79,36 @@ async def list_intervention_types(
     return await service.list(page=page, size=size, include_inactive=include_inactive)
 
 
+@router.get("/pricing-rules", response_model=PricingRulesResponse)
+async def read_pricing_rules(
+    config: AppConfig = Depends(get_app_config),
+    _: User = Depends(get_manager_user),
+) -> PricingRulesResponse:
+    """Return the agency-wide rules a catalogue entry is priced against.
+
+    Args:
+        config (AppConfig): The running configuration.
+        _ (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        PricingRulesResponse: The default rate, the surcharges and the VAT
+        rates each service category carries.
+
+    Notes:
+        **Declared before ``/{type_id}``.** Routes are matched in the order they
+        are registered, so with the parameterised route first this path would
+        be read as a request for the intervention type whose identifier is
+        ``"pricing-rules"`` — a 404 that names a type nobody asked for.
+
+        Read-only. These rules live in configuration rather than the database:
+        a rate change is a commercial decision with a deployment behind it, not
+        a form. What a *type* charges is editable, and that is the next route
+        down.
+    """
+    logger.debug("Publishing the agency-wide pricing rules.")
+    return PricingRulesResponse.from_config(config.pricing)
+
+
 @router.get("/{type_id}", response_model=InterventionType)
 async def get_intervention_type(
     type_id: str,
@@ -95,15 +134,15 @@ async def get_intervention_type(
 @router.patch("/{type_id}", response_model=InterventionType)
 async def update_intervention_type(
     type_id: str,
-    intervention_type: InterventionType,
+    request: InterventionTypeUpdateRequest,
     service: InterventionTypeService = Depends(get_intervention_type_service),
     _: User = Depends(get_manager_user),
 ) -> InterventionType:
-    """Update a service in the catalog.
+    """Change part of a service in the catalog.
 
     Args:
         type_id (str): The type to update.
-        intervention_type (InterventionType): The new values.
+        request (InterventionTypeUpdateRequest): The fields to change.
         service (InterventionTypeService): The catalog service.
         _ (User): The authenticated caller; enforces manager access.
 
@@ -112,15 +151,30 @@ async def update_intervention_type(
 
     Raises:
         MTInterventionTypeNotFound: If no such type exists; answered as a 404.
-        MTInterventionTypeAlreadyExists: If the new name or code is taken;
-            answered as a 409.
+        MTInterventionTypeAlreadyExists: If the new name is taken; answered as
+            a 409.
 
     Notes:
-        The identifier comes from the path, never from the body. Taking it from
-        the payload would let a caller update a different type than the one
-        their URL names.
+        **A partial payload, as the verb has always claimed.** This route was
+        declared ``PATCH`` but took a whole ``InterventionType``, so changing a
+        rate meant resending the name, the code, the category and the active
+        flag — and a client that sent only what it had changed was answered
+        ``422: code Field required``.
+
+        ``exclude_unset=True`` is what separates "leave the rate alone" from
+        "clear the rate so this entry bills at the agency rate". Both arrive as
+        an absent value on an optional field; only the set of keys the caller
+        actually sent tells them apart, and a merge that ignored it would reset
+        an entry's rate every time somebody corrected its spelling.
+
+        The identifier comes from the path, never the body, and ``code`` is not
+        on the payload at all — see
+        :class:`~models.schemas.requests.intervention_type_update_request.InterventionTypeUpdateRequest`.
     """
-    return await service.update(intervention_type.model_copy(update={"id": type_id}))
+    existing = await service.get(type_id)
+    changes = request.model_dump(exclude_unset=True)
+    logger.info("Updating catalogue entry %s: %s.", type_id, sorted(changes))
+    return await service.update(existing.model_copy(update={**changes, "id": type_id}))
 
 
 @router.delete("/{type_id}", response_model=InterventionType)

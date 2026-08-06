@@ -193,6 +193,7 @@ def auth() -> AsyncMock:
     stub = AsyncMock()
     stub.create_staff_account.return_value = (
         User(
+            company_id="company-1",
             id="user-new",
             email="new@example.com",
             full_name="New Starter",

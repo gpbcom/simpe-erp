@@ -80,7 +80,7 @@ def config() -> S3Config:
         S3Config: The configuration.
     """
     return S3Config(
-        bucket="rt-erp",
+        bucket="simple-erp",
         region="fr-par",
         endpoint_url="https://minio.internal",
         max_upload_bytes=1024,
@@ -172,7 +172,7 @@ class TestUpload:
     async def test_upload_returns_the_public_url(self, storage: S3Storage) -> None:
         """The stored object's URL is what the record will hold."""
         url = await storage.upload_photo("hca-1", JPEG)
-        assert url.startswith("https://minio.internal/rt-erp/hca-photos/hca-1/")
+        assert url.startswith("https://minio.internal/simple-erp/hca-photos/hca-1/")
         assert url.endswith(".jpg")
 
     async def test_the_key_lives_under_the_photo_prefix(
@@ -223,16 +223,18 @@ class TestDelete:
         """A stored photograph is deleted by its URL."""
         url = await storage.upload_photo("hca-1", JPEG)
         assert await storage.delete_photo(url) is True
-        assert storage.client.deletes[0]["Bucket"] == "rt-erp"
+        assert storage.client.deletes[0]["Bucket"] == "simple-erp"
 
     @pytest.mark.parametrize(
         "url",
         [
             pytest.param(
-                "https://minio.internal/rt-erp/secrets/database-dump.sql",
+                "https://minio.internal/simple-erp/secrets/database-dump.sql",
                 id="Invalid - outside the photo prefix",
             ),
-            pytest.param("https://minio.internal/rt-erp/", id="Invalid - bucket root"),
+            pytest.param(
+                "https://minio.internal/simple-erp/", id="Invalid - bucket root"
+            ),
             pytest.param("", id="Invalid - empty"),
             pytest.param("not-a-url", id="Invalid - not a url"),
         ],
@@ -257,7 +259,7 @@ class TestDelete:
         )
         with pytest.raises(MTS3DeleteFailed):
             await store.delete_photo(
-                "https://minio.internal/rt-erp/hca-photos/hca-1/abc.jpg"
+                "https://minio.internal/simple-erp/hca-photos/hca-1/abc.jpg"
             )
 
 
@@ -267,14 +269,14 @@ class TestKeyResolution:
     def test_a_path_style_url_resolves(self, storage: S3Storage) -> None:
         """The bucket segment is stripped from a path-style URL."""
         key = storage.key_for_url(
-            "https://minio.internal/rt-erp/hca-photos/hca-1/abc.jpg"
+            "https://minio.internal/simple-erp/hca-photos/hca-1/abc.jpg"
         )
         assert key == "hca-photos/hca-1/abc.jpg"
 
     def test_a_virtual_host_url_resolves(self, storage: S3Storage) -> None:
         """A virtual-host URL carries no bucket segment in its path."""
         key = storage.key_for_url(
-            "https://rt-erp.s3.fr-par.amazonaws.com/hca-photos/hca-1/abc.jpg"
+            "https://simple-erp.s3.fr-par.amazonaws.com/hca-photos/hca-1/abc.jpg"
         )
         assert key == "hca-photos/hca-1/abc.jpg"
 
@@ -294,7 +296,7 @@ class TestPublicUrlConstruction:
             links that only work from inside the cluster.
         """
         config = S3Config(
-            bucket="rt-erp",
+            bucket="simple-erp",
             endpoint_url="https://minio.internal",
             public_base_url="https://cdn.example.com",
         )
@@ -304,14 +306,14 @@ class TestPublicUrlConstruction:
 
     def test_a_custom_endpoint_uses_path_style(self) -> None:
         """MinIO and most compatible services serve path style."""
-        config = S3Config(bucket="rt-erp", endpoint_url="https://minio.internal")
+        config = S3Config(bucket="simple-erp", endpoint_url="https://minio.internal")
         assert config.build_public_url("hca-photos/x.jpg") == (
-            "https://minio.internal/rt-erp/hca-photos/x.jpg"
+            "https://minio.internal/simple-erp/hca-photos/x.jpg"
         )
 
     def test_aws_uses_the_virtual_host_form(self) -> None:
         """With no endpoint configured the AWS default applies."""
-        config = S3Config(bucket="rt-erp", region="eu-west-3")
+        config = S3Config(bucket="simple-erp", region="eu-west-3")
         assert config.build_public_url("hca-photos/x.jpg") == (
-            "https://rt-erp.s3.eu-west-3.amazonaws.com/hca-photos/x.jpg"
+            "https://simple-erp.s3.eu-west-3.amazonaws.com/hca-photos/x.jpg"
         )

@@ -42,7 +42,7 @@ A Wrong Password Is Refused Without Saying Which Half Was Wrong
 
 An Unknown Address Is Refused The Same Way
     [Documentation]    Same message, so the two cases stay indistinguishable.
-    Fill Text    [data-testid="login-email"]    nobody@rt-erp.fr
+    Fill Text    [data-testid="login-email"]    nobody@simple-erp.fr
     Fill Text    [data-testid="login-password"]    ${SEED_PASSWORD}
     Click    [data-testid="login-submit"]
     Wait For Elements State    [data-testid="login-error"]    visible

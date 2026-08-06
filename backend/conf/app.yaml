@@ -1,4 +1,4 @@
-# rt-erp backend configuration.
+# simple-erp backend configuration.
 #
 # Secrets are never stored here: a ``*_env`` key names the environment variable
 # that carries the value, and the secret is resolved at connection time.
@@ -6,7 +6,7 @@
 server:
   host: 0.0.0.0
   port: 8000
-  title: rt-erp API
+  title: SimpleERP API
   version: 1.0.0
   # Named explicitly rather than "*": the API answers credentialed requests, so
   # a wildcard origin would let any site drive it with a logged-in user's token.
@@ -17,8 +17,8 @@ server:
 database:
   host: localhost
   port: 5432
-  database: rt_erp
-  username: rt_erp
+  database: simple_erp
+  username: simple_erp
   password_env: POSTGRES_PASSWORD
   pool_size: 10
   max_overflow: 5
@@ -29,6 +29,10 @@ auth:
   jwt_secret_env: JWT_SECRET_KEY
   jwt_algorithm: HS256
   access_token_expire_minutes: 720
+  # Closed. A company is not yet a tenancy boundary, so an administrator
+  # created by public sign-up would see every agency's records. Turn this
+  # on only where that is acceptable.
+  allow_company_registration: false
 
 pricing:
   # Contractual base rate, excluding tax, in EUR per hour.
@@ -77,14 +81,14 @@ geocoding:
   # addresses in bulk should point base_url at its own Nominatim instance or
   # risk having its address blocked.
   base_url: https://nominatim.openstreetmap.org/search
-  user_agent: "rt-erp/0.1 (home-care planning; contact: ops@rt-erp.local)"
+  user_agent: "simple-erp/0.1 (home-care planning; contact: ops@simple-erp.local)"
   timeout_seconds: 10.0
   country_codes:
     - fr
 
 s3:
   # Assistant photographs are stored here; the HCA record holds the object URL.
-  bucket: rt-erp
+  bucket: simple-erp
   region: fr-par
   # Set endpoint_url for MinIO or Scaleway; leave null for AWS.
   endpoint_url: null
@@ -104,7 +108,7 @@ email:
   host: smtp.gmail.com
   port: 587
   use_tls: true
-  sender: planning@rt-erp.local
+  sender: planning@simple-erp.local
   username_env: SMTP_USERNAME
   password_env: SMTP_PASSWORD
   timeout_seconds: 30.0
@@ -128,9 +132,9 @@ rabbitmq:
   host: localhost
   port: 5672
   virtual_host: /
-  username: rt_erp
+  username: simple_erp
   password_env: RABBITMQ_PASSWORD
-  exchange: rt-erp
+  exchange: simple-erp
   publish_timeout_seconds: 5.0
   # One at a time: the heaviest consumer runs an OR-Tools solve, which pins a
   # core for its whole budget. Taking a second message while the first solves

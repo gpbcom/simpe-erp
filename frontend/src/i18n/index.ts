@@ -10,7 +10,7 @@ export const LANGUAGES = [
 ] as const;
 
 /** Where the chosen language is remembered between visits. */
-const STORAGE_KEY = 'rt-erp.language';
+const STORAGE_KEY = 'simple-erp.language';
 
 /**
  * Read the language to start in.

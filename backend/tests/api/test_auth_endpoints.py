@@ -46,6 +46,7 @@ def _user(role: UserRole = UserRole.MANAGER, user_id: str = "user-1") -> User:
         User: The account.
     """
     return User(
+        company_id="company-1",
         id=user_id,
         email=f"{user_id}@example.com",
         full_name="Test Account",

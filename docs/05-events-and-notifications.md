@@ -10,7 +10,7 @@
         publish quote.submitted                    ← best effort
         │
         ▼
-  RabbitMQ  exchange rt-erp (topic, durable)
+  RabbitMQ  exchange simple-erp (topic, durable)
         │
         ├──▶ queue quote-notifications ──▶ worker  writes one Notification per supervisor
         │                                          publishes notification.created
@@ -23,20 +23,59 @@
 
 ## Topology
 
-One durable topic exchange, `rt-erp`. Durable queues, publisher confirms, manual
-acknowledgement, `prefetch=1`, and a `rt-erp.dlx` dead-letter exchange.
+One durable topic exchange, `simple-erp`. Durable queues, publisher confirms, manual
+acknowledgement, `prefetch=1`, and a `simple-erp.dlx` dead-letter exchange.
+
+**Every routing key ends in an agency**, and every queue is that agency's own.
+`EventRoutingKey` holds the *event* half; the whole key is
+`<event>.<company_id>`, built by `scoped_to()`.
 
 | Routing key | Queue | Consumer | Effect |
 |---|---|---|---|
-| `quote.submitted` | `quote-notifications` | worker | A notification per manager and admin of the company |
-| `quote.validated` | `quote-notifications` | worker | A notification for the author |
-| `quote.refused` | `quote-notifications` | worker | A notification for the author |
-| `planning.run.requested` | `planning-runs` | worker | Runs the solve |
-| `planning.run.completed` | `quote-notifications` | worker | Notifies supervisors — **only on failure** |
+| `quote.submitted.<company>` | `quote-notifications.<company>` | worker | A notification per manager and admin of the agency |
+| `quote.validated.<company>` | `quote-notifications.<company>` | worker | A notification for the author |
+| `quote.refused.<company>` | `quote-notifications.<company>` | worker | A notification for the author |
+| `planning.run.requested.<company>` | `planning-runs.<company>` | worker | Runs the solve |
+| `planning.run.completed.<company>` | `quote-notifications.<company>` | worker | Notifies supervisors — **only on failure** |
+| `company.created.<company>` | exclusive, per worker | worker | Binds the new agency's queues |
 
-**Two queues, not one.** A solve pins a core for thirty seconds; sharing a queue
-with the notification fan-out would leave a manager waiting half a minute to be
-told a quote needs looking at, behind work that has nothing to do with them.
+**Two queues, not one, and then one set per agency.** A solve pins a core for
+thirty seconds; sharing a queue with the notification fan-out would leave a
+manager waiting half a minute to be told a quote needs looking at. Splitting
+again by agency means one agency's backlog or poison message is its own, rather
+than something every other agency waits behind. The dead-letter queues are
+per-agency too, so reading one agency's failures is not reading everybody's.
+
+**`company_id` is a required parameter of `publish()`, with no default.** It
+decides which agency's queue a message lands in, so a default would mean a
+forgotten argument still publishes — to the wrong agency, or to a key nothing is
+bound to. A missing one is a `TypeError` at the call site instead. Scoping to an
+empty identifier raises `MTRoutingKeyMissingCompany` rather than producing
+`quote.submitted.`, which is a valid topic key that binds to nothing.
+
+**The agency goes last in the key.** A binding can then select one agency by
+suffix, or every agency with `*`. Putting it first would make "every event for
+this agency" easy and "this event for every agency" impossible — and the worker
+needs the second one.
+
+### A newly founded agency
+
+Self-registration creates agencies while the workers are running, so the workers
+have to notice. Founding one publishes `company.created.<id>`; every worker
+binds `company.created.*` on an **exclusive, server-named** queue and declares
+the new agency's queues on receipt. Exclusive matters: a durable shared queue
+would hand each announcement to exactly one worker, and the others would run on
+serving every agency but that one.
+
+Each worker also enumerates the agencies at startup, which is what makes the
+announcement queue safe to be non-durable — anything missed while a worker was
+down is picked up next time it starts. The announcement is bound *before* the
+enumeration runs, so an agency founded in between cannot fall through the gap;
+declaring a queue twice is harmless, leaving a gap is not.
+
+If the broker is unreachable when an agency is founded, the agency is still
+created and the publish is logged as a warning. The workers pick it up by
+enumeration, which is exactly the case enumeration covers.
 
 **`prefetch=1`** because the heaviest consumer is that solve. Taking a second
 message while the first is solving would not make it finish sooner.

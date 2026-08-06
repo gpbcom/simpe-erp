@@ -44,7 +44,12 @@ async def run() -> None:
                 config=config.auth,
                 logger=logger,
             )
-            seeder = Seeder(session=session, hasher=auth, logger=logger)
+            seeder = Seeder(
+                session=session,
+                hasher=auth,
+                pricing=config.pricing,
+                logger=logger,
+            )
 
             company_id = await seeder.seed_company()
             catalog = await seeder.seed_catalog()
@@ -71,7 +76,7 @@ def main(argv: Optional[list] = None) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)-8s %(name)s: %(message)s"
     )
-    logger.info("Seeding the rt-erp database.")
+    logger.info("Seeding the SimpleERP database.")
     asyncio.run(run())
 
 

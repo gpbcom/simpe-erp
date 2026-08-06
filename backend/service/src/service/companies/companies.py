@@ -7,8 +7,14 @@ from typing import List, Optional
 # First-party imports
 from models.companies.company import Company
 from models.companies.company_choice import CompanyChoice
-from service.companies.exceptions import MTCompanyNameTaken, MTCompanyNotFound
+from service.companies.exceptions import (
+    MTCompanyNameTaken,
+    MTCompanyNotEmpty,
+    MTCompanyNotFound,
+)
 from storage.repositories.company import CompanyRepository
+from storage.repositories.hca import HcaRepository
+from storage.repositories.user import UserRepository
 
 
 class CompanyService:
@@ -25,22 +31,36 @@ class CompanyService:
           scoping every query in the application, which is a different piece of
           work and not what "the assistant chooses which company to register
           with" asks for.
-        - There is no delete. A company named on an application, an assistant or
-          an account cannot be removed without orphaning them, so
-          :meth:`close_applications` is the way one stops appearing.
+        - **Deleting an agency is possible only while it is empty.** Every
+          account and every assistant names the agency they belong to, and that
+          link is now required rather than optional — so removing an agency
+          somebody still points at would leave rows that cannot be rebuilt. An
+          agency that has people is closed to applications rather than deleted;
+          see :meth:`set_accepting_applications`. What deletion is for is the
+          agency that should never have existed: one founded in error, and the
+          fixtures a test campaign is obliged to remove after itself.
     """
 
     def __init__(
-        self, companies: CompanyRepository, logger: Optional[Logger] = None
+        self,
+        companies: CompanyRepository,
+        users: UserRepository,
+        hcas: HcaRepository,
+        logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the service.
 
         Args:
             companies (CompanyRepository): The company store.
+            users (UserRepository): The account store, to check an agency is
+                empty before removing it.
+            hcas (HcaRepository): The assistant store, for the same check.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
         self.companies = companies
+        self.users = users
+        self.hcas = hcas
         self.logger = logger if logger else getLogger(__name__)
         self.logger.debug("CompanyService created.")
 
@@ -209,3 +229,37 @@ class CompanyService:
                 company_id,
             )
         return updated
+
+    async def delete(self, company_id: str) -> None:
+        """Remove an agency that nobody belongs to.
+
+        Args:
+            company_id (str): The agency to remove.
+
+        Raises:
+            MTCompanyNotFound: If no such agency exists.
+            MTCompanyNotEmpty: If an account or an assistant still names it.
+
+        Notes:
+            The emptiness check names *what* is still attached rather than
+            refusing flatly. "Two accounts and one assistant still belong to
+            this agency" tells the caller what to do next; "cannot delete"
+            leaves them guessing which of three tables to look in.
+        """
+        await self.get(company_id)
+        accounts = await self.users.count_for_company(company_id)
+        assistants = await self.hcas.count_for_company(company_id)
+        if accounts or assistants:
+            self.logger.warning(
+                "Refused to delete agency %s: %d account(s) and %d assistant(s) "
+                "still belong to it.",
+                company_id,
+                accounts,
+                assistants,
+            )
+            raise MTCompanyNotEmpty(
+                f"Agency {company_id!r} still has {accounts} account(s) and "
+                f"{assistants} assistant(s); move or remove them first."
+            )
+        await self.companies.delete(company_id)
+        self.logger.info("Deleted agency %s.", company_id)

@@ -22,7 +22,8 @@ from api.dependencies import (
 from api.exception_handlers import ExceptionHandlers
 from api.middleware.auth_middleware import AuthMiddleware
 from api.v1.webhooks.webhooks import router as webhooks_router
-from models.enums import PlanningRunStatus
+from models.auth.user import User
+from models.enums import PlanningRunStatus, UserRole
 from models.planning.planning_run import PlanningRun
 from service.planning.exceptions import MTPlanningRunNotFound
 
@@ -93,6 +94,18 @@ def client(emails: MagicMock) -> TestClient:
     # repository would try to open a real connection.
     users = MagicMock()
     users.list = AsyncMock(return_value=[])
+    # The webhook resolves the run's requester so the documents it sends
+    # are attributed to that account's agency, rather than to a synthetic
+    # caller belonging to none.
+    users.get = AsyncMock(
+        return_value=User(
+            id="user-admin",
+            email="admin@example.com",
+            full_name="Camille Fournier",
+            role=UserRole.ADMIN,
+            company_id="company-1",
+        )
+    )
 
     app = FastAPI()
     app.include_router(webhooks_router)

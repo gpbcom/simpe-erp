@@ -80,18 +80,18 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_DB: rt_erp
-          POSTGRES_USER: rt_erp
-          POSTGRES_PASSWORD: rt_erp_ci
+          POSTGRES_DB: simple_erp
+          POSTGRES_USER: simple_erp
+          POSTGRES_PASSWORD: simple_erp_ci
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U rt_erp -d rt_erp"
+          --health-cmd "pg_isready -U simple_erp -d simple_erp"
           --health-interval 5s --health-timeout 3s --health-retries 10
       rabbitmq:
         image: rabbitmq:4-alpine
         env:
-          RABBITMQ_DEFAULT_USER: rt_erp
-          RABBITMQ_DEFAULT_PASS: rt_erp_ci
+          RABBITMQ_DEFAULT_USER: simple_erp
+          RABBITMQ_DEFAULT_PASS: simple_erp_ci
         ports: ['5672:5672']
         options: >-
           --health-cmd "rabbitmq-diagnostics -q ping"
@@ -116,15 +116,15 @@ jobs:
       - name: Run the integration suite
         working-directory: backend
         env:
-          POSTGRES_PASSWORD: rt_erp_ci
-          RABBITMQ_PASSWORD: rt_erp_ci
+          POSTGRES_PASSWORD: simple_erp_ci
+          RABBITMQ_PASSWORD: simple_erp_ci
           JWT_SECRET_KEY: ci-only-secret
         run: uv run pytest -q -m integration -p no:randomly
       - name: Run it a second time
         working-directory: backend
         env:
-          POSTGRES_PASSWORD: rt_erp_ci
-          RABBITMQ_PASSWORD: rt_erp_ci
+          POSTGRES_PASSWORD: simple_erp_ci
+          RABBITMQ_PASSWORD: simple_erp_ci
           JWT_SECRET_KEY: ci-only-secret
         # The only honest proof that the fixtures clean up after themselves. A
         # suite that passes once and fails twice is a suite that was asserting

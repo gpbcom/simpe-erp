@@ -7,7 +7,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
-    <img src="docs/assets/logo-light.svg" alt="rt-erp" width="300">
+    <img src="docs/assets/logo-light.svg" alt="SimpleERP" width="300">
   </picture>
 </p>
 
@@ -30,7 +30,7 @@
 
 An agency quotes a family for care at home, a manager approves the price, and
 the accepted work becomes a week of visits — who goes where, in what order, with
-travel time and a lunch break accounted for. `rt-erp` runs all three of those,
+travel time and a lunch break accounted for. `SimpleERP` runs all three of those,
 and the workforce and customer records behind them.
 
 **For a home-care assistant**
@@ -157,7 +157,7 @@ That brings up PostgreSQL, MinIO, RabbitMQ, the API, the worker, Mailpit and the
 Vite dev server, runs the migrations, and seeds a working agency — 12 assistants,
 40 customers, a service catalog and 54 quotes spread across every status.
 
-Wait for `Bucket rt-erp is ready.` and the seeder's credential block; the first
+Wait for `Bucket SimpleERP is ready.` and the seeder's credential block; the first
 build takes a few minutes, and afterwards a start is seconds.
 
 | | |
@@ -165,19 +165,19 @@ build takes a few minutes, and afterwards a start is seconds.
 | Application | <http://localhost:5173> |
 | API and its docs | <http://localhost:8000> · <http://localhost:8000/docs> |
 | Caught email | <http://localhost:8025> |
-| Broker management | <http://localhost:15672> — `rt_erp` / `rt_erp_dev` |
+| Broker management | <http://localhost:15672> — `simple_erp` / `simple_erp_dev` |
 | Object store console | <http://localhost:9001> |
 
 Sign in with any of the seeded accounts, all sharing the password
-`rt-erp-demo-2026`:
+`simple-erp-demo-2026`:
 
 | Role | Address | Lands on |
 |---|---|---|
-| Administrator | `admin@rt-erp.fr` | The quote screen |
-| Manager | `manager@rt-erp.fr` | The quote screen |
-| Assistant | `luc.martin@rt-erp.fr` | Their own planning |
+| Administrator | `admin@simple-erp.fr` | The quote screen |
+| Manager | `manager@simple-erp.fr` | The quote screen |
+| Assistant | `luc.martin@simple-erp.fr` | Their own planning |
 
-Every seeded assistant signs in as `firstname.lastname@rt-erp.fr`.
+Every seeded assistant signs in as `firstname.lastname@simple-erp.fr`.
 
 ## Docker
 
@@ -232,7 +232,7 @@ docker compose exec backend uv run pytest          # the test suite
 docker compose exec backend alembic -c conf/alembic.ini current
 docker compose exec backend alembic -c conf/alembic.ini upgrade head
 docker compose exec backend bash                   # a shell in the API container
-docker compose exec postgres psql -U rt_erp rt_erp # a database prompt
+docker compose exec postgres psql -U simple_erp simple_erp # a database prompt
 
 docker compose run --rm seed                       # re-run the seeder (idempotent)
 ```
@@ -243,12 +243,19 @@ natural key, so it upserts. Running it again is always safe.
 ### Starting over
 
 ```sh
-docker compose down -v                # containers AND volumes: a clean database
-docker compose up --build             # rebuild and reseed from nothing
+DEV="-f docker-compose.yaml -f docker-compose.dev.yaml"
+docker compose $DEV down -v --remove-orphans   # containers AND volumes: a clean database
+docker compose $DEV up --build                 # rebuild and reseed from nothing
 ```
 
 `-v` destroys `postgres-data`, `minio-data` and `rabbitmq-data`. In development
 that is the fastest way back to a known state; anywhere else it is data loss.
+
+**Use the same `-f` files to go down as you did to come up.** `mailpit` and
+`seed` are defined only in the dev overlay, so a bare `docker compose down`
+leaves them behind attached to the network it has just deleted — and the next
+`up` fails with `network <id> not found`, naming the network rather than the two
+containers that are really the problem.
 
 ### Rebuilding one image
 
@@ -278,6 +285,74 @@ docker compose logs seed              # the credential block prints here
 | No notifications arrive | `worker` is down, or RabbitMQ never went healthy — it takes ~20 s on a cold start |
 | Login rejects the seeded accounts | The seeder did not run: `docker compose run --rm seed` |
 | A port is already in use | Something else holds 5432, 8000 or 5173; stop it, or drop that port from the dev overlay |
+| `network <id> not found` on `up` | A previous `down` used a different `-f` set — see **Starting over** |
+| `password authentication failed for user "simple_erp"` | A volume from before the rename — see below |
+
+### Upgrading a stack created before the SimpleERP rename
+
+The application was called `rt-erp`, and its database user, broker user and
+bucket were named after it. If your volumes were created before the rename, the
+first thing you will see is:
+
+```
+asyncpg.exceptions.InvalidPasswordError: password authentication failed for user "simple_erp"
+```
+
+**`POSTGRES_USER`, `RABBITMQ_DEFAULT_USER` and `MINIO_ROOT_USER` are read only
+when the store initialises itself.** Changing them in compose does nothing to a
+volume that already exists — the database still holds `rt_erp` while the
+application now connects as `simple_erp`. Postgres fails first because the
+backend reaches it first; the broker and the object store would fail next.
+
+For a development stack, throw the volumes away — the data is seeded, and
+reseeding takes seconds:
+
+```sh
+docker compose -f docker-compose.yaml -f docker-compose.dev.yaml down -v --remove-orphans
+docker network rm rt-erp_rt-erp                       # the network named after the old product
+docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
+```
+
+**Tear down with the same `-f` files you brought it up with.** `mailpit` and
+`seed` exist only in the dev overlay, so a plain `docker compose down -v` does
+not know about them: it deletes the network while those two are still attached,
+and the next `up` creates a network with a new identifier that they no longer
+point at. The result is `Error response from daemon: network <id> not found`,
+which names the network rather than the containers actually at fault.
+`--remove-orphans` covers the case where the overlay has already been forgotten.
+
+To keep the data instead, rename inside each store before bringing the rest up.
+Note the order for Postgres: renaming a role **clears its password**, so it has
+to be set again afterwards, and a database cannot be renamed while you are
+connected to it — hence `-d postgres`.
+
+```sh
+docker compose up -d postgres
+docker compose exec postgres psql -U rt_erp -d postgres \
+  -c "ALTER ROLE rt_erp RENAME TO simple_erp;" \
+  -c "ALTER ROLE simple_erp WITH PASSWORD 'simple_erp_dev';" \
+  -c "ALTER DATABASE rt_erp RENAME TO simple_erp;"
+
+docker compose up -d rabbitmq
+docker compose exec rabbitmq rabbitmqctl add_user simple_erp simple_erp_dev
+docker compose exec rabbitmq rabbitmqctl set_permissions -p / simple_erp ".*" ".*" ".*"
+docker compose exec rabbitmq rabbitmqctl set_user_tags simple_erp administrator
+
+# Photographs live in the bucket, and stored URLs name it. Copy, do not just
+# create: minio-init makes an empty `simple-erp` bucket quite happily, and the
+# map pins would then resolve to nothing.
+docker compose up -d minio
+docker compose exec minio sh -c "\
+  mc alias set local http://localhost:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD && \
+  mc mb --ignore-existing local/simple-erp && \
+  mc mirror local/rt-erp local/simple-erp"
+```
+
+The seeder's identifiers are derived from a namespace that also carried the old
+name, so a database seeded before the rename will gain a **second** set of
+seeded rows rather than having the first updated in place. Run
+`docker compose run --rm seed --reset` after migrating, or accept the duplicates
+and clear them by hand.
 
 ### Production
 
@@ -310,8 +385,8 @@ docker compose -f docker-compose.yaml -f docker-compose.prod.yaml config --quiet
 ### Building the images on their own
 
 ```sh
-docker build -t rt-erp-backend ./backend
-docker build -t rt-erp-frontend --target production \
+docker build -t simple-erp-backend ./backend
+docker build -t simple-erp-frontend --target production \
   --build-arg VITE_API_BASE_URL=/api ./frontend
 ```
 

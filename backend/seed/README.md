@@ -25,6 +25,6 @@ Produces one Paris agency: 3 staff accounts, 12 assistants (and their accounts),
 40 customers, 8 catalog entries, 54 quotes across every status, and next week's
 service dates so a planning run has something to place.
 
-Credentials are printed at the end of every run — `admin@rt-erp.fr`,
-`manager@rt-erp.fr`, `firstname.lastname@rt-erp.fr`, all with
-`rt-erp-demo-2026`.
+Credentials are printed at the end of every run — `admin@simple-erp.fr`,
+`manager@simple-erp.fr`, `firstname.lastname@simple-erp.fr`, all with
+`simple-erp-demo-2026`.

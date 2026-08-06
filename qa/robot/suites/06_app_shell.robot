@@ -74,7 +74,12 @@ Switching To English Translates Both The Frame And The Screen
     Switch Language To    en
     Wait For Elements State    text=Assistants           visible
     Wait For Elements State    text=Intervention map     visible
-    Wait For Elements State    text=Awaiting validation  visible
+    # Asserted on the tab rather than on the text anywhere on the page. Every
+    # pending quote in the grid carries a status chip reading the same words, so
+    # a bare `text=` selector resolves to a dozen elements and Playwright
+    # refuses it under strict mode — the assertion fails on the page being
+    # correct rather than on it being wrong.
+    Get Text    [data-testid="quote-tab-pending"]    ==    Awaiting validation
     [Teardown]    Switch Language To    fr
 
 The Chosen Language Survives A Reload
@@ -82,7 +87,7 @@ The Chosen Language Survives A Reload
     ...
     ...    An operator who works in English must not have to reselect it every
     ...    morning. The choice is stored in ``localStorage`` under
-    ...    ``rt-erp.language``.
+    ...    ``simple-erp.language``.
     [Tags]    shell    i18n
     Switch Language To    en
     Wait For Elements State    text=Assistants    visible
@@ -99,14 +104,14 @@ The Theme Toggle Switches To Dark And Back
     [Tags]    shell    theme
     Click    [data-testid="theme-toggle"]
     Wait For Elements State    [data-testid="app-shell"]    visible
-    ${stored}=    LocalStorage Get Item    rt-erp.theme
+    ${stored}=    LocalStorage Get Item    simple-erp.theme
     Should Be Equal    ${stored}    dark
     ${background}=    Get Style    body    background-color
     Should Not Be Equal    ${background}    rgb(255, 255, 255)
 
     Click    [data-testid="theme-toggle"]
     Wait For Elements State    [data-testid="app-shell"]    visible
-    ${restored}=    LocalStorage Get Item    rt-erp.theme
+    ${restored}=    LocalStorage Get Item    simple-erp.theme
     Should Be Equal    ${restored}    light
 
 Signing Out Returns To The Sign-In Card And Forgets The Token
@@ -119,7 +124,7 @@ Signing Out Returns To The Sign-In Card And Forgets The Token
     [Tags]    smoke    shell    auth
     Sign Out
     Wait For Elements State    [data-testid="login-card"]    visible
-    ${token}=    LocalStorage Get Item    rt-erp.token
+    ${token}=    LocalStorage Get Item    simple-erp.token
     Should Be Equal    ${token}    ${None}
     [Teardown]    Sign In As    ${MANAGER_EMAIL}
 

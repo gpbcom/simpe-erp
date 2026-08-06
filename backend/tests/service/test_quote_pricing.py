@@ -95,6 +95,7 @@ def _line(
     service_date: date,
     type_id: str = "type-necessity",
     minutes: int = 120,
+    category: ServiceCategory = ServiceCategory.NECESSITY,
     name: str = "Service",
 ) -> QuoteLine:
     """Build a two-hour morning quote line.
@@ -104,6 +105,7 @@ def _line(
         type_id (str): The intervention type it sells.
         minutes (int): How long it takes.
         name (str): What the service is.
+        category (ServiceCategory): Which VAT rate the line is billed at.
 
     Returns:
         QuoteLine: The unpriced line.
@@ -111,6 +113,7 @@ def _line(
     return QuoteLine(
         name=name,
         intervention_type_id=type_id,
+        service_category=category,
         service_date=service_date,
         earliest_start=time(9, 0),
         latest_end=time(13, 0),
@@ -135,7 +138,7 @@ class TestLinePricing:
     def test_two_hours_comfort_on_a_sunday(self, service: QuoteService) -> None:
         """31.905 x 1.25 x 2h = 79.76 HT, 20% VAT."""
         priced = service.price_line(
-            _line(SUNDAY, type_id="type-comfort"),
+            _line(SUNDAY, type_id="type-comfort", category=ServiceCategory.COMFORT),
             _type("type-comfort", ServiceCategory.COMFORT),
         )
         assert priced.total_ht == Decimal("79.76")
@@ -210,7 +213,7 @@ class TestLinePricing:
         assert priced.total_ht == Decimal("100.00")
 
     # ------------------------------------------------------------------ #
-    #  VAT follows the type's category
+    #  VAT follows the line's category
     # ------------------------------------------------------------------ #
 
     @pytest.mark.parametrize(
@@ -220,16 +223,44 @@ class TestLinePricing:
             pytest.param(ServiceCategory.COMFORT, Decimal("12.76"), id="comfort"),
         ],
     )
-    def test_vat_follows_the_category(
+    def test_vat_follows_the_line(
         self,
         service: QuoteService,
         category: ServiceCategory,
         expected_vat: Decimal,
     ) -> None:
-        """The same service is taxed at 5.5% or 20% by its type's category."""
-        priced = service.price_line(_line(TUESDAY), _type(category=category))
+        """The same service is taxed at 5.5% or 20% by the line's category.
+
+        Notes:
+            The intervention type is held constant across both cases, so this
+            fails if pricing ever reads the category off the catalog entry
+            again.
+        """
+        priced = service.price_line(
+            _line(TUESDAY, category=category), _type(category=ServiceCategory.NECESSITY)
+        )
         assert priced.total_ht == Decimal("63.81")
         assert priced.vat_amount == expected_vat
+
+    def test_the_catalog_entry_no_longer_decides_the_tax(
+        self, service: QuoteService
+    ) -> None:
+        """**The change this test exists to lock in.**
+
+        Notes:
+            The catalog entry says comfort; the line says necessity. The line
+            wins, because which it is depends on the customer rather than on
+            the service: help with washing under a care plan is billed at the
+            reduced rate, and the same hour arranged privately is not.
+
+            The catalog still fixes the *rate*. It no longer fixes the tax.
+        """
+        priced = service.price_line(
+            _line(TUESDAY, category=ServiceCategory.NECESSITY),
+            _type(category=ServiceCategory.COMFORT),
+        )
+
+        assert priced.vat_amount == Decimal("3.51")
 
     # ------------------------------------------------------------------ #
     #  Durations
@@ -384,7 +415,9 @@ class TestQuotePricing:
             self._quote(
                 [
                     _line(TUESDAY),
-                    _line(SUNDAY, type_id="type-comfort"),
+                    _line(
+                        SUNDAY, type_id="type-comfort", category=ServiceCategory.COMFORT
+                    ),
                     _line(NEW_YEAR),
                     _line(date(2026, 8, 5), minutes=50),
                 ]
@@ -401,7 +434,9 @@ class TestQuotePricing:
             self._quote(
                 [
                     _line(TUESDAY),
-                    _line(SUNDAY, type_id="type-comfort"),
+                    _line(
+                        SUNDAY, type_id="type-comfort", category=ServiceCategory.COMFORT
+                    ),
                     _line(NEW_YEAR),
                 ]
             ),

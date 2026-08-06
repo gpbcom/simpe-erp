@@ -34,6 +34,27 @@ an optional driving licence, an optional photograph, and declared absences.
 assistant record, `company_id`, and `must_change_password`. `owns_hca(id)` is
 the row-level check the planning and self-service routes rest on.
 
+**Everybody belongs to exactly one agency.** `company_id` is required on `User`
+and on `Hca` alike — administrator, manager and assistant — and `NOT NULL` in
+both tables since migration `0008`. It was optional while companies were newer
+than the rows pointing at them; nothing keeps that true now. An account without
+an agency is covered by no per-company scoping and produces events that cannot
+be routed to a queue, so the state is refused rather than stored and puzzled
+over later.
+
+Where the agency comes from is never the caller's choice:
+
+| Account created by | Agency taken from |
+|---|---|
+| Self-registration (`POST /auth/register`) | The assistant record it names |
+| A manager (`POST /auth/accounts`) | The assistant record, over the caller's own |
+| Founding an agency (`POST /companies/registration`) | The agency created by the same call |
+
+Removing the last exemption mattered on its own: an administrator belonging to
+no agency used to be treated as system-wide when deciding applications, which
+meant **any** administrator without an agency could decide every agency's
+queue.
+
 **`HcaApplication`** — somebody asking to be hired, before they are an `Hca`.
 
 ## Quoting
@@ -140,3 +161,32 @@ with the real database.
 `tests/storage/test_migrations.py` walks every revision against a temporary
 database and diffs the result against `Base.metadata`, so ORM/migration drift
 fails a test rather than a deployment.
+
+
+## The VAT category belongs to the quote line
+
+`QuoteLine.service_category` decides the rate a line is taxed at — 5.5% for
+necessity care, 20% for comfort care. It used to live on the catalogue entry,
+and it was moved because **the same service is necessity care for one customer
+and comfort care for another**: help with washing under a care plan is billed at
+the reduced rate, and the same hour arranged privately is not. Which it is
+depends on who is being quoted, not on what is being sold.
+
+While it lived on the catalogue, an agency serving both had to keep two entries
+for one service and remember which was which — and every quote written against
+the wrong one was mis-taxed with nothing on screen to show it.
+
+What the catalogue still decides is the **hourly rate**. It no longer decides
+the tax.
+
+The field has **no default**. Defaulting to necessity would understate the tax
+on every line somebody forgot to set, an error that surfaces at the tax return
+rather than on the screen; defaulting to comfort would overcharge families
+entitled to the reduced rate. A line without a category is not a line. The two
+quote dialogs *suggest* the catalogue entry's own category when a service is
+picked, and leave the field editable.
+
+Migration **0009** adds the column, backfills it from each line's catalogue
+entry — reproducing exactly the VAT every existing quote was priced at — and
+only then makes it `NOT NULL`. No issued quote changes its total: a customer is
+never re-billed for work already quoted.

@@ -41,7 +41,7 @@ class ServerConfig(BaseModel):
         description="Origins allowed by the CORS middleware.",
     )
     title: str = Field(
-        default="rt-erp API",
+        default="SimpleERP API",
         description="Title shown in the generated OpenAPI document.",
     )
     version: str = Field(

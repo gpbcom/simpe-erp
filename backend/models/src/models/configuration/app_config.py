@@ -59,7 +59,7 @@ class AppConfig(BaseModel):
         configuration file small: it needs to state only what deviates.
     """
 
-    CONFIG_PATH_ENV: ClassVar[str] = "RT_ERP_CONFIG"
+    CONFIG_PATH_ENV: ClassVar[str] = "SIMPLE_ERP_CONFIG"
     DEFAULT_CONFIG_PATH: ClassVar[str] = "conf/app.yaml"
 
     server: ServerConfig = Field(
@@ -287,7 +287,7 @@ class AppConfig(BaseModel):
 
         Args:
             config_path (Union[str, Path, None]): Path to the YAML file.
-                ``None`` uses ``$RT_ERP_CONFIG``, then
+                ``None`` uses ``$SIMPLE_ERP_CONFIG``, then
                 :attr:`DEFAULT_CONFIG_PATH`.
 
         Returns:
@@ -305,7 +305,7 @@ class AppConfig(BaseModel):
               test suite and the container run from different directories, and
               without the fallback the configuration would load in one and not
               the other.
-            - ``$RT_ERP_CONFIG`` selects the file when no path is passed. A
+            - ``$SIMPLE_ERP_CONFIG`` selects the file when no path is passed. A
               container reaches PostgreSQL and MinIO by service name where a
               developer's machine reaches them on localhost, and the difference
               spans several keys rather than one — pointing at a whole file keeps

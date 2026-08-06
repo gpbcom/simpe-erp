@@ -1,1 +1,1 @@
-"""HTTP entry point for the rt-erp backend."""
+"""HTTP entry point for the simple-erp backend."""

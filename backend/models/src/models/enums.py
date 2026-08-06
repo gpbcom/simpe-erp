@@ -6,7 +6,10 @@ from enum import StrEnum, unique
 from typing import Tuple
 
 # First-party imports
-from models.exceptions.enum_exceptions import MTInvalidWeekday
+from models.exceptions.enum_exceptions import (
+    MTInvalidWeekday,
+    MTRoutingKeyMissingCompany,
+)
 
 
 @unique
@@ -608,12 +611,21 @@ class EventRoutingKey(StrEnum):
         QUOTE_REFUSED (str): A manager sent a submitted quote back.
         PLANNING_RUN_REQUESTED (str): A planning computation was asked for.
         PLANNING_RUN_COMPLETED (str): A planning computation finished.
+        COMPANY_CREATED (str): An agency was founded.
 
     Notes:
-        An enumeration rather than string literals scattered across the
-        publisher and the consumers, because a routing key typed differently in
-        two places does not fail — it binds a queue that never receives
-        anything, which looks exactly like a quiet system.
+        - An enumeration rather than string literals scattered across the
+          publisher and the consumers, because a routing key typed differently
+          in two places does not fail — it binds a queue that never receives
+          anything, which looks exactly like a quiet system.
+        - **These are the event half of a routing key, never a whole one.**
+          Every message is published under ``<value>.<company_id>``; see
+          :meth:`scoped_to`. Nothing binds a bare value, so an agency's traffic
+          cannot reach another agency's queue.
+        - ``COMPANY_CREATED`` is scoped the same way, under the identifier of
+          the agency it announces. That keeps the rule uniform — there is no
+          "global" event to remember to treat differently — and a worker that
+          wants every one of them binds ``company.created.*`` explicitly.
     """
 
     QUOTE_SUBMITTED = "quote.submitted"
@@ -621,6 +633,36 @@ class EventRoutingKey(StrEnum):
     QUOTE_REFUSED = "quote.refused"
     PLANNING_RUN_REQUESTED = "planning.run.requested"
     PLANNING_RUN_COMPLETED = "planning.run.completed"
+    COMPANY_CREATED = "company.created"
+
+    def scoped_to(self, company_id: str) -> str:
+        """Return the routing key this event takes for one agency.
+
+        Args:
+            company_id (str): The agency the event belongs to.
+
+        Returns:
+            str: ``"<event>.<company_id>"``.
+
+        Raises:
+            MTRoutingKeyMissingCompany: If ``company_id`` is empty.
+
+        Notes:
+            The identifier goes last so a binding can select an agency with a
+            suffix — ``quote.submitted.<id>`` for one, ``quote.submitted.*``
+            for all. Putting it first would make "every event for this agency"
+            easy and "this event for every agency" impossible, and the worker
+            needs the second one to notice a newly founded agency.
+
+            An empty identifier raises rather than producing ``"quote.submitted."``,
+            which is a valid topic key that binds to nothing — the silent
+            failure this enumeration exists to prevent, one level down.
+        """
+        if not company_id:
+            raise MTRoutingKeyMissingCompany(
+                f"Cannot scope {self.value!r} to an empty company identifier."
+            )
+        return f"{self.value}.{company_id}"
 
     @classmethod
     def values(cls) -> Tuple[str, ...]:

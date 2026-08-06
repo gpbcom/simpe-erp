@@ -1,1 +1,1 @@
-"""Persistence layer (repositories and database access) for the rt-erp backend."""
+"""Persistence layer (repositories and database access) for the simple-erp backend."""

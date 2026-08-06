@@ -14,6 +14,7 @@ from models.enums import AccountOrigin, ContractType, HcaApplicationStatus, User
 from models.geo.postal_address import PostalAddress
 from models.people.availability_slot import AvailabilitySlot
 from models.people.certification import Certification
+from models.people.driving_license import DrivingLicense
 from models.people.hca import Hca
 from models.people.hca_application import HcaApplication
 from service.auth.auth import AuthService
@@ -378,8 +379,9 @@ class HcaService:
         phone_number: str,
         email: str,
         address: PostalAddress,
+        driving_license: Optional[DrivingLicense] = None,
     ) -> Hca:
-        """Change an assistant's own contact details and address.
+        """Change an assistant's own contact details, address and licence.
 
         Args:
             hca_id (str): The assistant being updated.
@@ -388,6 +390,8 @@ class HcaService:
             phone_number (str): Contact telephone number.
             email (str): Contact email address.
             address (PostalAddress): Home address.
+            driving_license (Optional[DrivingLicense]): Driving licence, or
+                ``None`` when the assistant holds none.
 
         Returns:
             Hca: The updated assistant.
@@ -413,6 +417,7 @@ class HcaService:
                     "phone_number": phone_number,
                     "email": email,
                     "address": address,
+                    "driving_license": driving_license,
                 }
             )
         )
@@ -561,15 +566,21 @@ class HcaService:
                 company.
 
         Notes:
-            **Row-level, like every other rule of this shape here.** A route
-            guard proves the caller is a manager; it cannot tell whether the
-            application identifier in the path belongs to their agency. An
-            administrator bound to no company is treated as system-wide, which
-            is what makes first-run setup possible before any company exists.
+            - **Row-level, like every other rule of this shape here.** A route
+              guard proves the caller is a manager; it cannot tell whether the
+              application identifier in the path belongs to their agency.
+            - There used to be an exemption here: an administrator belonging to
+              no company was treated as system-wide, so that the first agency
+              could have its first application approved before any company
+              existed. Nothing needs it now — an agency and its first
+              administrator are created by the same call, and ``company_id`` is
+              required on every account — and while it stood it meant any
+              administrator without an agency could decide every agency's
+              applications. Removed rather than kept as dead code, because an
+              exemption that cannot currently be reached is one a later change
+              can quietly make reachable again.
         """
-        if decider.role is UserRole.ADMIN and not decider.company_id:
-            return
-        if decider.company_id and decider.company_id == application.company_id:
+        if decider.company_id == application.company_id:
             return
         self.logger.warning(
             "Account %s (company %s) attempted to decide an application "

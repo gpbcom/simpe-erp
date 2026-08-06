@@ -143,6 +143,33 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             return None
         return self.mapper.to_model(row)
 
+    async def get_by_line(self, line_id: str) -> Optional[Quote]:
+        """Return the quote one line belongs to.
+
+        Args:
+            line_id (str): The line to look the quote up by.
+
+        Returns:
+            Optional[Quote]: The whole quote, or ``None`` when no such line
+            exists.
+
+        Notes:
+            A scheduled visit knows which line it came from and nothing else
+            about the paperwork. This is what turns that back into a quote, so
+            editing a visit can reprice the thing the customer is billed on
+            rather than leaving the two to disagree.
+        """
+        self.logger.debug("Looking up the quote carrying line %s.", line_id)
+        row = await self._fetch_one(
+            select(QuoteRow)
+            .join(QuoteLineRow, QuoteLineRow.quote_id == QuoteRow.id)
+            .where(QuoteLineRow.id == line_id)
+        )
+        if row is None:
+            self.logger.warning("No quote carries a line %s.", line_id)
+            return None
+        return self.mapper.to_model(row)
+
     async def get_by_reference(self, reference: str) -> Optional[Quote]:
         """Return a quote by its human-facing number.
 
@@ -378,6 +405,8 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         status: QuoteStatus,
         validated_by: str,
         validated_at: datetime,
+        issued_on: Optional[date] = None,
+        valid_until: Optional[date] = None,
     ) -> Optional[Quote]:
         """Record a manager's ruling on a submitted quote.
 
@@ -386,6 +415,9 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             status (QuoteStatus): Where the ruling puts it.
             validated_by (str): The account that ruled.
             validated_at (datetime): When they ruled.
+            issued_on (Optional[date]): The day the offer was issued, set when
+                the ruling issues it.
+            valid_until (Optional[date]): The day the offer lapses.
 
         Returns:
             Optional[Quote]: The updated quote, or ``None`` when absent.
@@ -410,6 +442,14 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         row.status = status.value
         row.validated_by = validated_by
         row.validated_at = validated_at
+        # Only when the ruling issues the quote. A refusal sends it back to its
+        # author, and stamping an issue date on a quote nobody ever received
+        # would put a date on the customer's copy of an offer that was never
+        # made.
+        if issued_on is not None:
+            row.issued_on = issued_on
+        if valid_until is not None:
+            row.valid_until = valid_until
         await self.session.flush()
         await self.session.refresh(row)
         return self.mapper.to_model(row)

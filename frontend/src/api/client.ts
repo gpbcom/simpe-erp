@@ -1,11 +1,16 @@
-import type { AccessToken, User } from './types';
+import type {
+  AccessToken,
+  CompanyRegistrationRequest,
+  CompanyRegistrationResponse,
+  User,
+} from './types';
 
 /** Where the API lives. Inlined by Vite at build time. */
 const BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string) ?? 'http://localhost:8000';
 
 /** Where the session token is kept between page loads. */
-const TOKEN_KEY = 'rt-erp.token';
+const TOKEN_KEY = 'simple-erp.token';
 
 /** An error carrying the status and message the API answered with. */
 export class ApiError extends Error {
@@ -126,6 +131,26 @@ export async function signIn(email: string, password: string): Promise<AccessTok
   });
   writeToken(token.access_token);
   return token;
+}
+
+/**
+ * Found an agency and its first administrator.
+ *
+ * @param payload - The agency and its founder.
+ * @returns The created agency and administrator.
+ *
+ * @remarks
+ * Unauthenticated, and answered with 404 rather than 403 when the deployment
+ * has not opted in — a 403 would confirm the feature exists and is merely
+ * switched off. The caller signs in afterwards with the password it just sent.
+ */
+export function registerCompany(
+  payload: CompanyRegistrationRequest,
+): Promise<CompanyRegistrationResponse> {
+  return request<CompanyRegistrationResponse>('/api/v1/companies/registration', {
+    method: 'POST',
+    json: payload,
+  });
 }
 
 /** Report who the stored credential belongs to. */

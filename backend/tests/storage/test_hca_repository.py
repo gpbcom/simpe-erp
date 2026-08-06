@@ -102,13 +102,14 @@ class TestHcaRepository:
         repository = HcaRepository(session)
         stored = await repository.create(
             Hca(
+                company_id="company-1",
                 **{
                     **hca_kwargs,
                     "driving_license": {
                         "categories": ["B", "A2"],
                         "number": "12AB34567",
                     },
-                }
+                },
             )
         )
         loaded = await repository.get(stored.id)
@@ -130,10 +131,11 @@ class TestHcaRepository:
         repository = HcaRepository(session)
         stored = await repository.create(
             Hca(
+                company_id="company-1",
                 **{
                     **hca_kwargs,
                     "driving_license": {"categories": ["B"], "number": "12AB"},
-                }
+                },
             )
         )
         cleared = await repository.update(
@@ -156,13 +158,14 @@ class TestHcaRepository:
         repository = HcaRepository(session)
         stored = await repository.create(
             Hca(
+                company_id="company-1",
                 **{
                     **hca_kwargs,
                     "certifications": [
                         {"name": "DEAVS", "issuer": "État"},
                         {"name": "Premiers secours"},
                     ],
-                }
+                },
             )
         )
         loaded = await repository.get(stored.id)
@@ -203,7 +206,10 @@ class TestHcaRepository:
         """
         repository = HcaRepository(session)
         stored = await repository.create(
-            Hca(**{**hca_kwargs, "driving_license": {"categories": ["B"]}})
+            Hca(
+                company_id="company-1",
+                **{**hca_kwargs, "driving_license": {"categories": ["B"]}},
+            )
         )
         await repository.set_employment(stored.id, ContractType.INTERIM, [])
         reloaded = await repository.get(stored.id)
@@ -219,7 +225,10 @@ class TestHcaRepository:
         """What is sent is what the assistant now holds."""
         repository = HcaRepository(session)
         stored = await repository.create(
-            Hca(**{**hca_kwargs, "certifications": [{"name": "Old"}]})
+            Hca(
+                company_id="company-1",
+                **{**hca_kwargs, "certifications": [{"name": "Old"}]},
+            )
         )
         updated = await repository.set_employment(
             stored.id, ContractType.CDI, [Certification(name="New")]
@@ -263,14 +272,15 @@ class TestHcaRepository:
             them in the request body.
         """
         repository = HcaRepository(session)
-        luc = await repository.create(Hca(**hca_kwargs))
+        luc = await repository.create(Hca(company_id="company-1", **hca_kwargs))
         claire = await repository.create(
             Hca(
+                company_id="company-1",
                 **{
                     **hca_kwargs,
                     "last_name": "Bernard",
                     "email": "claire.bernard@example.com",
-                }
+                },
             )
         )
         forged = _slot(claire.id, date(2026, 8, 10), date(2026, 8, 14))
@@ -370,14 +380,15 @@ class TestHcaRepository:
     ) -> None:
         """Knowing a slot id is not enough to delete a colleague's absence."""
         repository = HcaRepository(session)
-        luc = await repository.create(Hca(**hca_kwargs))
+        luc = await repository.create(Hca(company_id="company-1", **hca_kwargs))
         claire = await repository.create(
             Hca(
+                company_id="company-1",
                 **{
                     **hca_kwargs,
                     "last_name": "Bernard",
                     "email": "claire.bernard@example.com",
-                }
+                },
             )
         )
         slot = await repository.add_availability(
@@ -399,11 +410,12 @@ class TestHcaRepository:
         for index in range(3):
             await repository.create(
                 Hca(
+                    company_id="company-1",
                     **{
                         **hca_kwargs,
                         "last_name": f"Name{index}",
                         "email": f"hca{index}@example.com",
-                    }
+                    },
                 )
             )
         assert len(await repository.list_all()) == 3
@@ -417,15 +429,16 @@ class TestHcaRepository:
     ) -> None:
         """Filtering by contract returns only that contract."""
         repository = HcaRepository(session)
-        await repository.create(Hca(**hca_kwargs))
+        await repository.create(Hca(company_id="company-1", **hca_kwargs))
         await repository.create(
             Hca(
+                company_id="company-1",
                 **{
                     **hca_kwargs,
                     "last_name": "Bernard",
                     "email": "claire.bernard@example.com",
                     "contract_type": ContractType.CDD,
-                }
+                },
             )
         )
         listed = await repository.list(contract_type=ContractType.CDD)
@@ -437,7 +450,7 @@ class TestHcaRepository:
     ) -> None:
         """A page total is computed from the filters that built the page."""
         repository = HcaRepository(session)
-        await repository.create(Hca(**hca_kwargs))
+        await repository.create(Hca(company_id="company-1", **hca_kwargs))
         assert await repository.count() == 1
         assert await repository.count(contract_type=ContractType.CDD) == 0
 
@@ -456,7 +469,10 @@ class TestHcaRepository:
         """
         repository = HcaRepository(session)
         stored = await repository.create(
-            Hca(**{**hca_kwargs, "certifications": [{"name": "DEAVS"}]})
+            Hca(
+                company_id="company-1",
+                **{**hca_kwargs, "certifications": [{"name": "DEAVS"}]},
+            )
         )
         await repository.add_availability(
             stored.id, _slot(stored.id, date(2026, 8, 10), date(2026, 8, 14))

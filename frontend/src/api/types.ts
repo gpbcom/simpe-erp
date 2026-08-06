@@ -127,6 +127,14 @@ export interface QuoteLine {
   id: string | null;
   name: string;
   intervention_type_id: string;
+  /**
+   * Which VAT rate this line is billed at.
+   *
+   * On the line rather than on the catalogue entry: the same service is
+   * necessity care for one customer and comfort care for another, so it
+   * depends on who is being quoted rather than on what is being sold.
+   */
+  service_category: 'necessity' | 'comfort';
   service_date: string;
   earliest_start: string;
   latest_end: string;
@@ -230,4 +238,130 @@ export interface PlanningRun {
   scheduled_count: number | null;
   unassigned_requirement_ids: string[];
   error_message: string | null;
+}
+
+/** An agency. */
+export interface Company {
+  /** Identifier. */
+  id: string;
+  /** Trading name. */
+  name: string;
+  /** Registration number, when the agency has been issued one. */
+  registration_number: string | null;
+  /** Contact address. */
+  contact_email: string | null;
+  /** Registered address, when one has been recorded. */
+  address: PostalAddress | null;
+  /** Whether assistants may currently apply. */
+  is_accepting_applications: boolean;
+  /** When the agency was founded in this system. */
+  created_at?: string | null;
+  /** When its details were last changed. */
+  updated_at?: string | null;
+}
+
+/**
+ * What an administrator may change about their own agency.
+ *
+ * Deliberately narrower than `Company`: no identifier, no timestamps. The
+ * server's payload model carries the same fields and no others, so the two
+ * agree by construction rather than by anybody remembering to keep them so.
+ */
+export interface CompanyProfileUpdate {
+  name: string;
+  registration_number: string | null;
+  contact_email: string | null;
+  address: PostalAddress | null;
+  is_accepting_applications: boolean;
+}
+
+/**
+ * What a manager may change about a catalogue entry.
+ *
+ * `code` is absent: it is the stable key stored on every quote line ever
+ * written against the type, and changing it would orphan them.
+ */
+export interface InterventionTypeUpdate {
+  name?: string;
+  description?: string | null;
+  service_category?: 'necessity' | 'comfort';
+  base_hourly_rate_ht?: string | null;
+  is_active?: boolean;
+}
+
+/** The agency-wide rules a catalogue entry is priced against. */
+export interface PricingRules {
+  base_hourly_rate_ht: string;
+  weekday_surcharges: Record<string, string>;
+  holiday_surcharges: {
+    month: number;
+    day: number;
+    surcharge: string;
+    label: string;
+  }[];
+  vat_rates: Record<string, string>;
+}
+
+/** What founding an agency asks for. */
+export interface CompanyRegistrationRequest {
+  /** The agency's trading name. */
+  company_name: string;
+  /** The agency's registration number, if it has one yet. */
+  registration_number?: string | null;
+  /** The founder's display name. */
+  full_name: string;
+  /** The founder's sign-in address. */
+  email: string;
+  /** The founder's chosen password. */
+  password: string;
+}
+
+/**
+ * What founding an agency hands back.
+ *
+ * @remarks
+ * No token: the founder signs in through the ordinary route with the password
+ * they just chose, so there is one place that mints credentials rather than
+ * two.
+ */
+export interface CompanyRegistrationResponse {
+  /** The agency that was created. */
+  company: Company;
+  /** The founder's account, without its password hash. */
+  administrator: User;
+}
+
+/** A line on a quote being created, before the server prices it. */
+export interface NewQuoteLine {
+  /** What the line is called on the document. */
+  name: string;
+  /** The catalogue entry it bills against. */
+  intervention_type_id: string;
+  /** Which VAT rate it is billed at; decided per customer, not per service. */
+  service_category: 'necessity' | 'comfort';
+  /** The day the visit happens. */
+  service_date: string;
+  /** Earliest the visit may start. */
+  earliest_start: string;
+  /** Latest it may end. */
+  latest_end: string;
+  /** How long it takes. */
+  duration_minutes: number;
+}
+
+/**
+ * A quote being created.
+ *
+ * @remarks
+ * Carries no amounts. The server prices every line against the catalogue as it
+ * stands, so a total computed in the browser would be a second answer that can
+ * disagree with the stored one.
+ */
+export interface NewQuote {
+  /** The human-facing quote number. */
+  reference: string;
+  /** Who it is addressed to. */
+  customer_id: string;
+  /** The services offered. */
+  lines: NewQuoteLine[];
 }

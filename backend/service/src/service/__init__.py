@@ -1,1 +1,1 @@
-"""Business-logic layer for the rt-erp backend."""
+"""Business-logic layer for the simple-erp backend."""

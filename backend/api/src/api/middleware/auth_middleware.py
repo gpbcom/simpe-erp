@@ -68,7 +68,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
     # same prefix is a manager's job. A prefix exemption would have opened the
     # review and decision routes to anybody, which is precisely the mistake
     # this pair of class attributes exists to make impossible.
-    PUBLIC_POST_PATHS: ClassVar[Tuple[str, ...]] = ("/api/v1/hca-applications",)
+    #
+    # ``/api/v1/companies/registration`` is public for the same reason and with
+    # the same care: founding an agency is something a visitor with no account
+    # does, while every other route under ``/api/v1/companies`` — listing them,
+    # reading one, editing one, opening or closing its applications — stays
+    # behind a manager or administrator gate. Matching the exact path rather
+    # than the prefix is what keeps that true. The route itself is also inert
+    # unless the deployment sets ``auth.allow_company_registration``.
+    PUBLIC_POST_PATHS: ClassVar[Tuple[str, ...]] = (
+        "/api/v1/hca-applications",
+        "/api/v1/companies/registration",
+    )
     # The event stream carries its credential in the query string, because
     # EventSource cannot set a header. It verifies that token itself, with a
     # scope this middleware's bearer path deliberately refuses.

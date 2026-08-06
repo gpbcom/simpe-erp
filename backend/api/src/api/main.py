@@ -37,6 +37,7 @@ from api.v1.intervention_types.intervention_types import (
 )
 from api.v1.me.me import router as me_router
 from api.v1.notifications.notifications import router as notifications_router
+from api.v1.planning.interventions import router as interventions_router
 from api.v1.planning.plannings import router as plannings_router
 from api.v1.planning.runs import router as planning_runs_router
 from api.v1.planning.settings import router as planning_settings_router
@@ -184,6 +185,7 @@ app.include_router(me_router)
 app.include_router(planning_runs_router)
 app.include_router(planning_settings_router)
 app.include_router(plannings_router)
+app.include_router(interventions_router)
 app.include_router(webhooks_router)
 
 

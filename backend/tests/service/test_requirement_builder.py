@@ -81,6 +81,7 @@ def _quote(
                 id="line-1",
                 name=name,
                 intervention_type_id="type-1",
+                service_category="necessity",
                 service_date=service_date,
                 earliest_start=time(9, 0),
                 latest_end=time(13, 0),

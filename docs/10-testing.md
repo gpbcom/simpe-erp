@@ -7,7 +7,7 @@ Three campaigns, answering three different questions.
 | **pytest** — unit | Does each piece behave? | 938 test functions, hermetic |
 | **pytest** — integration | Do the real services actually work? | 3, needing the stack |
 | **Vitest** | Do the front-end's own units behave? | 8 |
-| **Robot Framework** | Does the product work, in a browser, end to end? | 99 across 15 suites |
+| **Robot Framework** | Does the product work, in a browser, end to end? | 193 across 24 suites |
 
 ## Backend — unit
 
@@ -85,7 +85,7 @@ pip install -r qa/requirements.txt && rfbrowser init
 robot --outputdir qa/results qa/robot/suites
 ```
 
-15 suites, 99 tests, driving Chromium through Playwright against the real API.
+24 suites, 193 tests, driving Chromium through Playwright against the real API.
 
 | Suite | Covers |
 |---|---|
@@ -103,6 +103,15 @@ robot --outputdir qa/results qa/robot/suites
 | 12 routing & access | Guards reached by **typed URL**, rejected token |
 | 13 portfolio | Cards, search, scoping asserted as a number |
 | 14 account form | Every field, save, re-geocoding, locked fields preserved |
+| 15 company registration | Signing an agency up from the public form |
+| 16 quote creation | Writing a quote; the server prices what the screen sent |
+| 17 team planning | The manager's who-and-when view: everybody, then one assistant, and that the narrowing really hides the others |
+| 18 promotion | Granting an assistant an account, and taking it back |
+| 19 planning computation | The solver run, end to end |
+| 23 account by role | Every role gets an account page; employment locked for an assistant, editable for a manager; privileged fields refused |
+| **20 quote editor** | Editing a quote, and who is allowed to — from both sides |
+| 21 account credentials | The forced first change, and changing a password afterwards |
+| **22 administration** | Navigation by role, the agency screen, and per-service pricing |
 | 99 coverage | Merges the raw V8 output into one report |
 
 Suite 05 is the one to read first: it is the only test that exercises the
@@ -176,3 +185,51 @@ built artefacts. Beyond the obvious, two are worth knowing:
 - **`e2e-robot`** brings up the real stack, seeds it, runs the campaign, then
   **runs it again without resetting** — the only honest proof of idempotency —
   and dumps the container logs on failure.
+
+
+## The manager-tooling suites
+
+`16_quote_creation`, `17_team_planning` and `18_promotion` cover the screens
+above. Two of them need care to stay idempotent, and say so in their own
+documentation:
+
+- **16** never validates a *seeded* quote. Validation is one-way, so consuming a
+  seeded pending quote would leave the second run one short. It writes its own,
+  validates that, and deletes what it wrote.
+- **18** edits a seeded *account*, which no other suite does. The teardown
+  demotes whoever was promoted rather than trusting the test to have got that
+  far — a run that fails mid-promotion still leaves an assistant holding a
+  manager's rights, and the next run would find the button gone.
+- **17** writes nothing at all, so it is idempotent for free.
+- **21** is the only suite that changes a *password*, which is the one edit
+  that could stop the campaign running ever again — a seeded credential altered
+  by a test that then failed before restoring it locks every later run out, and
+  no teardown can recover what it no longer knows. So it creates its own
+  assistant record and its own account, changes only that account's password,
+  and deletes both by identifier afterwards. It buys the forced-first-change
+  journey along the way: only a brand-new account can demonstrate it.
+- **20** rewrites quotes, so it creates **two of its own** — one authored by the
+  assistant, one by a manager. Two, not one, because the rule has two sides: the
+  assistant's proves a manager may edit what they did not write, and the
+  manager's proves an assistant may not. Editing a seeded quote instead would
+  leave a changed fixture behind for every run after.
+
+Two gotchas they encode, both worth not rediscovering:
+
+- The quote list is cached for 30 seconds (`staleTime`). A test that changes a
+  quote **over the API** and then reads the grid has to `Reload` first, or it
+  renders the list as it was before the change.
+- The role column comes from a *second* request, so the workforce grid is on
+  screen before the roles are. Counting them immediately reports zero on a fast
+  machine and one on a slow one; wait for the first chip.
+
+
+## `19_planning_computation`
+
+The one suite that is **not** idempotent in the ordinary sense, and says so. A
+planning run writes interventions and re-running replaces them — that is what a
+run *is*. What it guarantees instead is convergence: every run ends with one
+succeeded run over the seeded week and the visits it placed, so the next run
+starts where the last one finished. Its window is computed the way the seeder
+computes its own rather than written down, so it follows the seeded data instead
+of going stale the day after it was typed.

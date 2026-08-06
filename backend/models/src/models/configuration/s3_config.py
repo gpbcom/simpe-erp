@@ -61,7 +61,7 @@ class S3Config(BaseModel):
     )
     MAX_ALLOWED_UPLOAD_BYTES: ClassVar[int] = 25 * 1024 * 1024
 
-    bucket: str = Field(default="rt-erp", description="Bucket holding photographs.")
+    bucket: str = Field(default="simple-erp", description="Bucket holding photographs.")
     region: str = Field(default="fr-par", description="Region the bucket lives in.")
     endpoint_url: Optional[str] = Field(
         default=None,

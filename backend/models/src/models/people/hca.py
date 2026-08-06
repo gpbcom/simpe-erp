@@ -54,7 +54,7 @@ class Hca(BaseModel):
         email (EmailStr): Contact email address.
         address (PostalAddress): Home address, the start and end of each
             working day's route.
-        company_id (Optional[str]): The company this assistant works for.
+        company_id (str): The company this assistant works for. Required.
         contract_type (ContractType): Employment contract. Editable by a
             manager.
         certifications (List[Certification]): Qualifications held. Editable by
@@ -93,9 +93,7 @@ class Hca(BaseModel):
     address: PostalAddress = Field(
         description="Home address, the start and end of each day's route.",
     )
-    company_id: Optional[str] = Field(
-        default=None, description="The company this assistant works for."
-    )
+    company_id: str = Field(description="The company this assistant works for.")
     contract_type: ContractType = Field(description="Employment contract.")
     certifications: List[Certification] = Field(
         default_factory=list,
@@ -329,29 +327,30 @@ class Hca(BaseModel):
         return value
 
     @field_validator("company_id", mode="before")
-    def validate_company_id(cls, value: Union[str, None]) -> Optional[str]:
-        """Validates that ``company_id``, when given, is a non-empty string.
+    def validate_company_id(cls, value: Union[str, None]) -> str:
+        """Validates that ``company_id`` names the agency this assistant works for.
 
         Args:
             value (Union[str, None]): Raw ``company_id`` value.
 
         Returns:
-            Optional[str]: The identifier, or ``None``.
+            str: The identifier.
 
         Raises:
-            MTHcaInvalidId: If ``value`` is neither ``None`` nor a non-empty
-                string.
+            MTHcaInvalidId: If ``value`` is not a non-empty string.
 
         Notes:
-            Optional, because the assistants created before companies existed
-            have none. A new one gets it from the application they came in on,
-            or from the administrator who created them.
+            **Required.** It was optional while assistants predated companies,
+            and every one of them has been given an agency since. An assistant
+            without one cannot be planned against an agency's settings, cannot
+            be scoped by any per-company query, and produces events that cannot
+            be routed to an agency's queue — so the field no longer allows the
+            state that made those possible.
         """
-        if value is None:
-            return None
         if not isinstance(value, str) or not value.strip():
             raise MTHcaInvalidId(
-                f"Invalid company_id: {value!r}. Must be a non-empty string."
+                f"Invalid company_id: {value!r}. Must be a non-empty string "
+                f"naming the agency this assistant works for."
             )
         return value.strip()
 

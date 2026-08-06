@@ -52,6 +52,7 @@ def _hca(
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id=hca_id,
         first_name="Luc",
         last_name=hca_id.upper(),

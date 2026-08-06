@@ -59,7 +59,7 @@ class TestHca:
 
     def test_minimal_valid_construction(self, valid_hca_kwargs: Dict[str, Any]) -> None:
         """An assistant is a name, contact details, an address and a contract."""
-        hca = Hca(**valid_hca_kwargs)
+        hca = Hca(company_id="company-1", **valid_hca_kwargs)
         assert hca.full_name() == "Luc Martin"
         assert hca.contract_type is ContractType.CDI
 
@@ -67,7 +67,7 @@ class TestHca:
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A fresh assistant holds no certification and no absence."""
-        hca = Hca(**valid_hca_kwargs)
+        hca = Hca(company_id="company-1", **valid_hca_kwargs)
         assert hca.certifications == []
         assert hca.availability == []
         assert hca.driving_license is None
@@ -77,7 +77,9 @@ class TestHca:
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A string contract becomes a ContractType member."""
-        hca = Hca(**{**valid_hca_kwargs, "contract_type": "cdd"})
+        hca = Hca(
+            company_id="company-1", **{**valid_hca_kwargs, "contract_type": "cdd"}
+        )
         assert hca.contract_type is ContractType.CDD
 
     def test_nested_models_are_built_from_mappings(
@@ -85,6 +87,7 @@ class TestHca:
     ) -> None:
         """Certifications, licence and availability accept mappings."""
         hca = Hca(
+            company_id="company-1",
             **{
                 **valid_hca_kwargs,
                 "certifications": [{"name": "DEAVS"}],
@@ -97,7 +100,7 @@ class TestHca:
                         "kind": "holiday",
                     }
                 ],
-            }
+            },
         )
         assert isinstance(hca.certifications[0], Certification)
         assert isinstance(hca.driving_license, DrivingLicense)
@@ -168,21 +171,27 @@ class TestHca:
     ) -> None:
         """Each field rejects its own invalid values with its own exception."""
         with pytest.raises(expected_exception):
-            Hca(**{**valid_hca_kwargs, field: invalid_value})
+            Hca(company_id="company-1", **{**valid_hca_kwargs, field: invalid_value})
 
     def test_invalid_certification_entry_raises(
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A list entry that is neither a mapping nor a model is rejected."""
         with pytest.raises(MTHcaInvalidCertifications):
-            Hca(**{**valid_hca_kwargs, "certifications": ["DEAVS"]})
+            Hca(
+                company_id="company-1",
+                **{**valid_hca_kwargs, "certifications": ["DEAVS"]},
+            )
 
     def test_invalid_availability_entry_raises(
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A list entry that is neither a mapping nor a model is rejected."""
         with pytest.raises(MTHcaInvalidAvailability):
-            Hca(**{**valid_hca_kwargs, "availability": ["2026-08-10"]})
+            Hca(
+                company_id="company-1",
+                **{**valid_hca_kwargs, "availability": ["2026-08-10"]},
+            )
 
     def test_a_blank_photo_url_becomes_none(
         self, valid_hca_kwargs: Dict[str, Any]
@@ -193,7 +202,12 @@ class TestHca:
             The portrait is optional by requirement, so a blank value must not
             block saving an assistant.
         """
-        assert Hca(**{**valid_hca_kwargs, "photo_url": "   "}).photo_url is None
+        assert (
+            Hca(
+                company_id="company-1", **{**valid_hca_kwargs, "photo_url": "   "}
+            ).photo_url
+            is None
+        )
 
     # ------------------------------------------------------------------ #
     #  can_drive
@@ -203,20 +217,26 @@ class TestHca:
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """An assistant without a licence is routed at transit speed."""
-        assert Hca(**valid_hca_kwargs).can_drive() is False
+        assert Hca(company_id="company-1", **valid_hca_kwargs).can_drive() is False
 
     def test_a_car_licence_means_driving(
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A category B licence permits routing at driving speed."""
-        hca = Hca(**{**valid_hca_kwargs, "driving_license": {"categories": ["B"]}})
+        hca = Hca(
+            company_id="company-1",
+            **{**valid_hca_kwargs, "driving_license": {"categories": ["B"]}},
+        )
         assert hca.can_drive() is True
 
     def test_a_motorcycle_licence_does_not_mean_driving(
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A motorcycle-only licence is not a car licence."""
-        hca = Hca(**{**valid_hca_kwargs, "driving_license": {"categories": ["A2"]}})
+        hca = Hca(
+            company_id="company-1",
+            **{**valid_hca_kwargs, "driving_license": {"categories": ["A2"]}},
+        )
         assert hca.can_drive() is False
 
     # ------------------------------------------------------------------ #
@@ -227,13 +247,19 @@ class TestHca:
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """Assistants are full-time; only exceptions are recorded."""
-        assert Hca(**valid_hca_kwargs).is_available_on(date(2026, 8, 12)) is True
+        assert (
+            Hca(company_id="company-1", **valid_hca_kwargs).is_available_on(
+                date(2026, 8, 12)
+            )
+            is True
+        )
 
     def test_a_whole_day_absence_removes_the_day(
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A whole-day slot makes the assistant unavailable."""
         hca = Hca(
+            company_id="company-1",
             **{
                 **valid_hca_kwargs,
                 "availability": [
@@ -244,7 +270,7 @@ class TestHca:
                         "kind": "holiday",
                     }
                 ],
-            }
+            },
         )
         assert hca.is_available_on(date(2026, 8, 12)) is False
         assert hca.is_available_on(date(2026, 8, 17)) is True
@@ -259,6 +285,7 @@ class TestHca:
             an absence, so the afternoon is still schedulable.
         """
         hca = Hca(
+            company_id="company-1",
             **{
                 **valid_hca_kwargs,
                 "availability": [
@@ -271,7 +298,7 @@ class TestHca:
                         "end_time": time(12, 0),
                     }
                 ],
-            }
+            },
         )
         assert hca.is_available_on(date(2026, 8, 12)) is True
         blocking = hca.blocking_slots_on(date(2026, 8, 12))
@@ -283,6 +310,7 @@ class TestHca:
     ) -> None:
         """A whole-day slot is an absence, not a blocking interval."""
         hca = Hca(
+            company_id="company-1",
             **{
                 **valid_hca_kwargs,
                 "availability": [
@@ -293,7 +321,7 @@ class TestHca:
                         "kind": "holiday",
                     }
                 ],
-            }
+            },
         )
         assert hca.blocking_slots_on(date(2026, 8, 12)) == []
 
@@ -302,6 +330,7 @@ class TestHca:
     ) -> None:
         """Only slots covering the day in question are returned."""
         hca = Hca(
+            company_id="company-1",
             **{
                 **valid_hca_kwargs,
                 "availability": [
@@ -314,7 +343,7 @@ class TestHca:
                         "end_time": time(12, 0),
                     }
                 ],
-            }
+            },
         )
         assert hca.blocking_slots_on(date(2026, 8, 13)) == []
 
@@ -351,16 +380,21 @@ class TestHca:
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """The URL leaves the model as plain text, not as a URL object."""
-        stored = "https://rt-erp.s3.fr-par.amazonaws.com/hca-photos/h1/a.jpg"
-        hca = Hca(**{**valid_hca_kwargs, "photo_url": stored})
+        stored = "https://simple-erp.s3.fr-par.amazonaws.com/hca-photos/h1/a.jpg"
+        hca = Hca(company_id="company-1", **{**valid_hca_kwargs, "photo_url": stored})
         assert hca.model_dump()["photo_url"] == stored
 
     def test_a_stored_photo_url_is_accepted(
         self, valid_hca_kwargs: Dict[str, Any]
     ) -> None:
         """A URL the object store issued is what the field is for."""
-        stored = "https://minio.internal/rt-erp/hca-photos/h1/a.png"
-        assert Hca(**{**valid_hca_kwargs, "photo_url": stored}).photo_url is not None
+        stored = "https://minio.internal/simple-erp/hca-photos/h1/a.png"
+        assert (
+            Hca(
+                company_id="company-1", **{**valid_hca_kwargs, "photo_url": stored}
+            ).photo_url
+            is not None
+        )
 
     @pytest.mark.parametrize(
         "foreign_url",
@@ -369,7 +403,7 @@ class TestHca:
                 "https://evil.example.com/pic.jpg", id="Invalid - third party"
             ),
             pytest.param(
-                "https://rt-erp.s3.amazonaws.com/backups/dump.sql",
+                "https://simple-erp.s3.amazonaws.com/backups/dump.sql",
                 id="Invalid - wrong prefix",
             ),
             pytest.param("ftp://host/hca-photos/a.jpg", id="Invalid - wrong scheme"),
@@ -387,15 +421,18 @@ class TestHca:
             address to whoever hosts it.
         """
         with pytest.raises(MTHcaInvalidPhotoUrl):
-            Hca(**{**valid_hca_kwargs, "photo_url": foreign_url})
+            Hca(
+                company_id="company-1", **{**valid_hca_kwargs, "photo_url": foreign_url}
+            )
 
     def test_model_dump_round_trip(self, valid_hca_kwargs: Dict[str, Any]) -> None:
         """An assistant survives a dump-and-rebuild unchanged."""
         hca = Hca(
+            company_id="company-1",
             **{
                 **valid_hca_kwargs,
                 "certifications": [{"name": "DEAVS"}],
                 "driving_license": {"categories": ["B"]},
-            }
+            },
         )
         assert Hca(**hca.model_dump()) == hca

@@ -122,3 +122,32 @@ async def set_user_active(
         )
     logger.info("Account %s active is now %s.", user_id, user.is_active)
     return UserResponse.from_user(user)
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: str,
+    service: AuthService = Depends(get_auth_service),
+    caller: User = Depends(get_admin_user),
+) -> None:
+    """Remove an account outright.
+
+    Args:
+        user_id (str): The account to remove.
+        service (AuthService): The authentication service.
+        caller (User): The authenticated caller; enforces administrator access
+            and is refused their own account.
+
+    Raises:
+        MTAuthUnknownAccount: If no such account exists; answered as a 404.
+        MTAuthLastAdmin: If this is the last administrator, or the caller's own
+            account; answered as a 409.
+
+    Notes:
+        **Deactivating is the ordinary way to stop somebody signing in.**
+        Removing a person who worked here erases who validated what, so this is
+        for accounts that should never have existed: one raised in error, and
+        the fixtures a test campaign removes after itself.
+    """
+    logger.info("Deleting account %s at the request of %s.", user_id, caller.email)
+    await service.delete_account(user_id, requested_by=caller)

@@ -9,7 +9,7 @@ from typing import ClassVar, Dict, FrozenSet, List, Optional, Tuple
 # First-party imports
 from models.catalog.intervention_type import InterventionType
 from models.configuration.pricing_config import PricingConfig
-from models.enums import QuoteStatus, ServiceCategory
+from models.enums import QuoteStatus
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
@@ -37,21 +37,37 @@ class QuoteService:
         logger (Logger): Logger for quote operations.
 
     Notes:
-        - A quote's lines are editable only while it is a draft. Once it has been
-          sent, what the customer is looking at must be what the system holds —
-          editing underneath them is how a customer accepts one thing and gets
-          billed for another.
+        - **A quote's lines are editable in every status.** The rule used to be
+          drafts only; see :attr:`EDITABLE_STATUSES` for what that protected and
+          what allowing it costs. The authorship check is unchanged — an
+          assistant still edits only what they wrote — so what widened is *when*
+          a quote may change, not *who* may change it.
         - Pricing is re-run whenever the lines change, and never on read. The
           stored amounts are the offer; recomputing them at display time would
           silently reprice an issued quote after its type is repriced.
     """
 
-    EDITABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset({QuoteStatus.DRAFT})  # noqa: E501
+    # **Every status.** A quote is modifiable wherever it has got to.
+    #
+    # This was drafts only, and the reason it was is worth keeping in view:
+    # an issued quote is what the customer is looking at, so changing it
+    # underneath them is how somebody accepts one thing and is billed for
+    # another. Nothing here records what the figures were before an edit, so
+    # that history is not recoverable from the quote itself — only from the
+    # logs, which say a replacement happened but not what it replaced.
+    #
+    # An edit reprices against the catalogue as it stands *now*, so editing
+    # an old quote can move its amounts even where the lines are untouched.
+    EDITABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset(QuoteStatus)
     # A quote reaches the customer from a draft. It cannot be sent while a
     # manager still owes it a decision, and re-sending one already sent, or one
     # the customer has answered, would overwrite the answer with the offer.
     SENDABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset({QuoteStatus.DRAFT})
 
+    # How long an issued offer stands. A policy rather than a preference:
+    # a quote with no expiry is one a customer can accept at last year's
+    # prices.
+    VALIDITY_DAYS: ClassVar[int] = 30
     CENTS: ClassVar[Decimal] = Decimal("0.01")
 
     def __init__(
@@ -263,6 +279,57 @@ class QuoteService:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         return found
 
+    async def get_by_line(self, line_id: str) -> Quote:
+        """Return the quote one line belongs to.
+
+        Args:
+            line_id (str): The line to look the quote up by.
+
+        Returns:
+            Quote: The whole quote, with its lines and weekly totals.
+
+        Raises:
+            MTQuoteNotFound: If no quote carries that line.
+
+        Notes:
+            For the callers that hold a line and not a quote — a scheduled
+            visit knows which line produced it and nothing else about the
+            paperwork. Editing the visit has to reach the quote, or the
+            calendar and the bill drift apart.
+        """
+        found = await self.quotes.get_by_line(line_id)
+        if found is None:
+            self.logger.warning("No quote carries a line %s.", line_id)
+            raise MTQuoteNotFound(f"No quote carries a line {line_id!r}.")
+        return found
+
+    async def delete(self, quote_id: str) -> None:
+        """Remove a quote and its lines.
+
+        Args:
+            quote_id (str): The quote to remove.
+
+        Raises:
+            MTQuoteNotFound: If no such quote exists.
+
+        Notes:
+            - Deletion is **not** part of a quote's lifecycle: a quote that a
+              customer refused is rejected, not erased, because the agency has
+              to be able to say what it offered and when. This exists for the
+              records that were never part of that history — a quote raised in
+              error, and the fixtures a test campaign creates and is obliged to
+              remove again.
+            - Absence is reported rather than passed over. A caller deleting a
+              quote it believes it created wants to know when there was nothing
+              there; a silent success hides a fixture that was never made, or
+              one already removed by something else.
+        """
+        removed = await self.quotes.delete(quote_id)
+        if not removed:
+            self.logger.warning("Quote %s does not exist; nothing deleted.", quote_id)
+            raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
+        self.logger.info("Deleted quote %s.", quote_id)
+
     async def list(
         self,
         page: int = 1,
@@ -291,27 +358,50 @@ class QuoteService:
             authored_by=authored_by,
         )
 
-    async def replace_lines(self, quote_id: str, quote: Quote) -> Quote:
+    async def replace_lines(
+        self,
+        quote_id: str,
+        quote: Quote,
+        author_id: Optional[str] = None,
+    ) -> Quote:
         """Replace a draft quote's lines and reprice it.
 
         Args:
             quote_id (str): The quote to change.
             quote (Quote): A quote carrying the new lines.
+            author_id (Optional[str]): When given, the caller must be the
+                quote's author. ``None`` skips the check, for a manager who may
+                edit any quote in their agency.
 
         Returns:
             Quote: The stored, repriced quote.
 
         Raises:
             MTQuoteNotFound: If no such quote exists.
+            MTQuoteForbidden: If ``author_id`` is given and did not write it.
             MTQuoteNotEditable: If the quote is past draft.
             MTPricingUnknownInterventionType: If a line names a missing type.
 
         Notes:
-            Only the lines are taken from the payload. The reference, the
-            customer and the status stay as stored, so editing lines cannot
-            reassign a quote to another customer or quietly accept it.
+            - Only the lines are taken from the payload. The reference, the
+              customer and the status stay as stored, so editing lines cannot
+              reassign a quote to another customer or quietly accept it.
+            - **The authorship check is a parameter rather than a second
+              method.** A manager may edit any quote and an assistant only
+              their own, but everything after that decision — the draft check,
+              the repricing, the write — is identical, and two copies of it
+              would be two places for the pricing rules to drift apart. The
+              route decides who is asking; this decides what happens next.
         """
         existing = await self.get(quote_id)
+        if author_id is not None and existing.authored_by != author_id:
+            self.logger.warning(
+                "Account %s tried to edit quote %s, written by %s.",
+                author_id,
+                existing.reference,
+                existing.authored_by,
+            )
+            raise MTQuoteForbidden("You may only edit a quote you wrote.")
         if existing.status not in self.EDITABLE_STATUSES:
             self.logger.warning(
                 "Refused to edit quote %s: it is %s, not a draft.",
@@ -320,7 +410,7 @@ class QuoteService:
             )
             raise MTQuoteNotEditable(
                 f"Quote {existing.reference!r} is {existing.status.value} and "
-                f"can no longer be edited. Only a draft may change."
+                f"cannot be edited."
             )
         self.logger.info(
             "Replacing the %d line(s) of quote %s with %d new one(s).",
@@ -348,9 +438,9 @@ class QuoteService:
             MTQuoteNotEditable: If the quote is past draft.
 
         Notes:
-            Restricted to drafts for the same reason editing is: an issued
-            quote must keep the figures the customer was shown, even after the
-            catalog moves under it.
+            Allowed in every status, like editing. What that costs is that an
+            issued quote no longer necessarily carries the figures the customer
+            was shown: repricing runs against the catalogue as it stands now.
         """
         existing = await self.get(quote_id)
         if existing.status not in self.EDITABLE_STATUSES:
@@ -503,11 +593,19 @@ class QuoteService:
                 f"Quote {existing.reference!r} has no priced lines and cannot "
                 f"be validated."
             )
+        # Validating *is* issuing here — there is no second button — so the
+        # offer gets its dates now. Without them a quote reaches SENT with no
+        # issue date and no expiry, and the customer's copy carries neither. The
+        # seeded data has always set both, so the two disagreed about what a
+        # sent quote looks like.
+        issued_on = self._utc_now().date()
         validated = await self.quotes.record_validation(
             quote_id,
             status=QuoteStatus.SENT,
             validated_by=validator_id,
             validated_at=self._utc_now(),
+            issued_on=issued_on,
+            valid_until=issued_on + timedelta(days=self.VALIDITY_DAYS),
         )
         if validated is None:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
@@ -655,29 +753,33 @@ class QuoteService:
             self.logger.debug("%s carries no surcharge.", service_date)
         return multiplier
 
-    def vat_rate_for(self, intervention_type: InterventionType) -> Decimal:
-        """Return the VAT rate a type is taxed at.
+    def vat_rate_for(self, line: QuoteLine) -> Decimal:
+        """Return the VAT rate a quote line is taxed at.
 
         Args:
-            intervention_type (InterventionType): The type being billed.
+            line (QuoteLine): The line being billed.
 
         Returns:
-            Decimal: ``0.055`` for a necessity service, ``0.20`` for a comfort
-            one.
+            Decimal: ``0.055`` for necessity care, ``0.20`` for comfort care.
+
+        Notes:
+            **Read from the line, not from the catalog entry it sells.** The
+            same service is necessity care for one customer and comfort care
+            for another — help with washing under a care plan is billed at the
+            reduced rate, and the same hour arranged privately is not. Which it
+            is depends on the customer, so it cannot be a property of the
+            service; it is chosen when the quote is written, by the person who
+            knows.
+
+            The catalog still fixes the *rate*. It no longer fixes the tax.
         """
-        rate = intervention_type.vat_rate()
+        rate = line.service_category.vat_rate()
         self.logger.debug(
-            "Type %s is a %s service, taxed at %s.",
-            intervention_type.code,
-            intervention_type.service_category.value,
+            "Line %r is %s care, taxed at %s.",
+            line.name,
+            line.service_category.value,
             rate,
         )
-        if intervention_type.service_category is ServiceCategory.COMFORT:
-            self.logger.debug(
-                "Type %s bills the standard rate; a reduced rate needs the "
-                "type's category changed, not the line's.",
-                intervention_type.code,
-            )
         return rate
 
     def aggregate(
@@ -756,7 +858,7 @@ class QuoteService:
         """
         base_rate = self.base_rate_for(intervention_type)
         multiplier = self.multiplier_for(line.service_date)
-        vat_rate = self.vat_rate_for(intervention_type)
+        vat_rate = self.vat_rate_for(line)
 
         effective_rate = base_rate * multiplier
         total_ht = self._to_cents(effective_rate * line.duration_hours())

@@ -57,7 +57,7 @@ Runtime is `python:3.14-slim` with a non-root user, a `/ready` healthcheck, and
 `conf/` copied in.
 
 **Three services run this one image**: `backend`, `worker` and `seed`, each with
-a different command. They share an explicit `image: rt-erp-backend:local` rather
+a different command. They share an explicit `image: simple-erp-backend:local` rather
 than letting compose derive a name per service — without it, three services
 building the same context produce three images that are only identical by
 coincidence, which is the drift the arrangement exists to prevent. One name means
@@ -72,7 +72,7 @@ path** — buffering would hold every frame until the connection closed.
 ## Order of operations
 
 1. postgres, minio and rabbitmq come up and pass their healthchecks.
-2. `minio-init` creates the `rt-erp` bucket and sets a public read policy — the
+2. `minio-init` creates the `simple-erp` bucket and sets a public read policy — the
    map pins are `<img src>` loads straight from the bucket, so a private bucket
    leaves every pin broken. It runs to completion and exits.
 3. **backend** runs `alembic upgrade head`, then serves. It owns the schema;
@@ -109,6 +109,29 @@ when it cannot — that is the one the Dockerfile healthcheck uses.
 The connection manager connects **lazily on first use**, not in the lifespan, so
 the API boots alongside its database rather than strictly after it. It retries
 five times, two seconds apart.
+
+## Credentials are baked in at first init
+
+`POSTGRES_USER` / `POSTGRES_DB`, `RABBITMQ_DEFAULT_USER` and `MINIO_ROOT_USER`
+are honoured **only when the store initialises an empty volume**. Every run
+after that reads them from the volume, not from the environment — so changing
+one in compose has no effect until the volume is destroyed.
+
+This is worth knowing before it bites, because the symptom names the *new*
+credential and so reads like a typo in the configuration:
+
+```
+asyncpg.exceptions.InvalidPasswordError: password authentication failed for user "simple_erp"
+```
+
+The application is asking for the right thing; the volume has never heard of it.
+It surfaced when the product was renamed from `rt-erp` to SimpleERP, and it will
+surface again for any rotation of these three values. Rotating a *password* is
+different — the application-facing ones come from the environment on every
+connection, and only the store's own initial superuser is fixed at init.
+
+The README's **Upgrading a stack created before the SimpleERP rename** gives
+both paths: destroy the volumes, or rename inside each store.
 
 ## Backups
 

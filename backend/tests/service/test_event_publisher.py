@@ -71,7 +71,7 @@ class TestEventPublisher:
     ) -> None:
         """The envelope is what the consumer will read back."""
         sent = await publisher.publish(
-            EventRoutingKey.QUOTE_SUBMITTED, {"quote_id": "quote-1"}
+            EventRoutingKey.QUOTE_SUBMITTED, "company-1", {"quote_id": "quote-1"}
         )
 
         assert sent is True
@@ -89,7 +89,7 @@ class TestEventPublisher:
         """
         service = EventPublisher(config=RabbitMqConfig(enabled=False))
 
-        sent = await service.publish(EventRoutingKey.QUOTE_SUBMITTED, {})
+        sent = await service.publish(EventRoutingKey.QUOTE_SUBMITTED, "company-1", {})
 
         assert sent is False
         assert published == []
@@ -108,7 +108,9 @@ class TestEventPublisher:
         service = EventPublisher(config=RabbitMqConfig(enabled=True))
         monkeypatch.setattr(service, "_exchange_or_none", AsyncMock(return_value=None))
 
-        sent = await service.publish(EventRoutingKey.PLANNING_RUN_REQUESTED, {})
+        sent = await service.publish(
+            EventRoutingKey.PLANNING_RUN_REQUESTED, "company-1", {}
+        )
 
         assert sent is False
 
@@ -120,7 +122,7 @@ class TestEventPublisher:
         exchange.publish = AsyncMock(side_effect=OSError("connection reset"))
         publisher._exchange_or_none = AsyncMock(return_value=exchange)
 
-        sent = await publisher.publish(EventRoutingKey.QUOTE_VALIDATED, {})
+        sent = await publisher.publish(EventRoutingKey.QUOTE_VALIDATED, "company-1", {})
 
         assert sent is False
 
@@ -133,7 +135,7 @@ class TestEventPublisher:
         publisher._exchange_or_none = AsyncMock(return_value=exchange)
         publisher.exchange = exchange
 
-        await publisher.publish(EventRoutingKey.QUOTE_REFUSED, {})
+        await publisher.publish(EventRoutingKey.QUOTE_REFUSED, "company-1", {})
 
         assert publisher.exchange is None
 

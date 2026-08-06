@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 # First-party imports
 from api.dependencies import (
+    get_admin_user,
     get_event_publisher,
     get_manager_user,
     get_quote_service,
@@ -236,6 +237,7 @@ async def validate_quote(
     validated = await service.validate(quote_id, validator_id=caller.id or caller.email)
     await publisher.publish(
         EventRoutingKey.QUOTE_VALIDATED,
+        caller.company_id,
         {
             "quote_id": validated.id,
             "reference": validated.reference,
@@ -279,6 +281,7 @@ async def refuse_quote_validation(
     )
     await publisher.publish(
         EventRoutingKey.QUOTE_REFUSED,
+        caller.company_id,
         {
             "quote_id": refused.id,
             "reference": refused.reference,
@@ -358,3 +361,35 @@ async def reject_quote(
         MTQuoteNotFound: If no such quote exists; answered as a 404.
     """
     return await service.reject(quote_id)
+
+
+@router.delete("/{quote_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_quote(
+    quote_id: str,
+    service: QuoteService = Depends(get_quote_service),
+    caller: User = Depends(get_admin_user),
+) -> None:
+    """Remove a quote and its lines.
+
+    Args:
+        quote_id (str): The quote to remove.
+        service (QuoteService): The quote service.
+        caller (User): The authenticated caller; enforces administrator access.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists; answered as a 404.
+
+    Notes:
+        - **Administrator-gated, not manager-gated**, unlike every other route
+          here. A manager moves a quote through its lifecycle — validates it,
+          refuses it, records that the customer rejected it — and each of those
+          leaves a record of what was offered. This one destroys the record, so
+          it sits a rank higher.
+        - Rejecting a quote is not deleting it. This exists for the quotes that
+          were never part of the agency's history: one raised in error, and the
+          fixtures a test campaign is obliged to remove after itself. The QA
+          campaign's teardown calls exactly this, which is why its absence left
+          every run's fixtures behind for good.
+    """
+    logger.info("Deleting quote %s at the request of %s.", quote_id, caller.email)
+    await service.delete(quote_id)

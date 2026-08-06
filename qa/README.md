@@ -1,4 +1,4 @@
-# rt-erp — GUI campaign
+# SimpleERP — GUI campaign
 
 Drives the real application in a real browser, against the real API.
 

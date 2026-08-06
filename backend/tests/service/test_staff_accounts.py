@@ -14,9 +14,11 @@ from models.enums import AccountOrigin, ContractType, UserRole
 from models.people.hca import Hca
 from service.auth.auth import AuthService
 from service.auth.exceptions import (
+    MTAuthEmailAlreadyRegistered,
     MTAuthInvalidCredentials,
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
+    MTAuthUnknownAccount,
     MTAuthUnknownHca,
 )
 
@@ -28,6 +30,7 @@ def _hca() -> Hca:
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id="hca-1",
         first_name="Luc",
         last_name="Martin",
@@ -110,6 +113,7 @@ def _staff_account(
         cannot honestly exist.
     """
     return User(
+        company_id="company-1",
         id="user-1",
         email="new@example.com",
         full_name="New Starter",
@@ -254,6 +258,7 @@ class TestMandatoryPasswordChange:
     ) -> None:
         """Somebody who chose their own password has nothing to replace."""
         user = User(
+            company_id="company-1",
             id="user-2",
             email="ana@example.com",
             full_name="Ana Lopez",
@@ -263,6 +268,115 @@ class TestMandatoryPasswordChange:
         )
 
         service.require_password_change_done(user)
+
+
+class TestAccountSelfUpdate:
+    """Tests for an account holder changing their own details."""
+
+    async def test_the_details_are_stored(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """The ordinary case."""
+        users.get_by_email.return_value = None
+
+        updated = await service.update_account(
+            _staff_account(service),
+            full_name="Luc Martin-Durand",
+            email="luc.durand@simple-erp.fr",
+        )
+
+        assert updated.full_name == "Luc Martin-Durand"
+        assert updated.email == "luc.durand@simple-erp.fr"
+
+    async def test_an_address_another_account_holds_is_refused(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """**The check that keeps a unique column from becoming a 500.**
+
+        Notes:
+            Caught here rather than left to the database. An integrity error
+            surfaces as a server fault, so a holder mistyping a colleague's
+            address would be told the application had crashed rather than that
+            the address was taken.
+        """
+        account = _staff_account(service)
+        users.get_by_email.return_value = account.model_copy(
+            update={"id": "somebody-else"}
+        )
+
+        with pytest.raises(MTAuthEmailAlreadyRegistered):
+            await service.update_account(
+                account, full_name="Luc", email="taken@simple-erp.fr"
+            )
+
+    async def test_keeping_your_own_address_is_not_a_clash(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """**The case that would make the display name uneditable.**
+
+        Notes:
+            The screen sends both fields on every save, so somebody changing
+            only their name sends their own address back unchanged. Comparing
+            addresses alone would call that a conflict and refuse every save
+            anybody ever made.
+        """
+        account = _staff_account(service)
+        users.get_by_email.return_value = account
+
+        updated = await service.update_account(
+            account, full_name="Luc Martin-Durand", email=account.email
+        )
+
+        assert updated.full_name == "Luc Martin-Durand"
+
+    async def test_the_role_is_untouched(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """Nothing on this path can change what an account is allowed to do.
+
+        Notes:
+            The method takes a name and an address as parameters rather than a
+            payload, so there is no field to carry a role even if one arrived.
+            Asserted anyway: this is the method a self-service screen calls,
+            and it is where a privilege escalation would land.
+        """
+        users.get_by_email.return_value = None
+        account = _staff_account(service)
+
+        updated = await service.update_account(
+            account, full_name="Luc", email="luc@simple-erp.fr"
+        )
+
+        assert updated.role == account.role
+        assert updated.is_active == account.is_active
+        assert updated.hca_id == account.hca_id
+        assert updated.company_id == account.company_id
+
+    async def test_the_password_is_untouched(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """Changing an address must not invalidate the credential."""
+        users.get_by_email.return_value = None
+        account = _staff_account(service)
+
+        updated = await service.update_account(
+            account, full_name="Luc", email="luc@simple-erp.fr"
+        )
+
+        assert updated.hashed_password == account.hashed_password
+
+    async def test_an_account_that_vanished_is_reported(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """A write that matched no row is a 404, not a silent success."""
+        users.get_by_email.return_value = None
+        users.update.side_effect = None
+        users.update.return_value = None
+
+        with pytest.raises(MTAuthUnknownAccount):
+            await service.update_account(
+                _staff_account(service), full_name="Luc", email="luc@simple-erp.fr"
+            )
 
 
 class TestPasswordChange:
@@ -321,6 +435,7 @@ class TestPasswordChange:
     ) -> None:
         """A half-built account is refused rather than given a password."""
         user = User(
+            company_id="company-1",
             id="user-3",
             email="nobody@example.com",
             full_name="Nobody",

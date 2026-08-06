@@ -81,7 +81,7 @@ class PostalAddress(BaseModel):
 
     GEOCODE_URL: ClassVar[str] = "https://nominatim.openstreetmap.org/search"
     USER_AGENT: ClassVar[str] = (
-        "rt-erp/0.1 (home-care planning; contact: ops@rt-erp.local)"
+        "simple-erp/0.1 (home-care planning; contact: ops@simple-erp.local)"
     )
     TIMEOUT_SECONDS: ClassVar[float] = 10.0
     COUNTRY_CODES: ClassVar[Tuple[str, ...]] = ("fr",)

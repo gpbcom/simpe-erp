@@ -5,7 +5,7 @@ from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -302,3 +302,23 @@ class UserRepository(BaseRepository[UserRow]):
         except SQLAlchemyError as exc:
             self.logger.error("Error deleting user %s: %s.", user_id, exc)
             raise
+
+    async def count_for_company(self, company_id: str) -> int:
+        """Return how many accounts belong to one agency.
+
+        Args:
+            company_id (str): The agency to count for.
+
+        Returns:
+            int: The number of accounts.
+
+        Notes:
+            A count rather than a list: the caller only needs to know whether
+            the agency is empty, and reading every account to find that out
+            would be a page of records fetched to be thrown away.
+        """
+        found = await self._count(
+            select(UserRow).where(UserRow.company_id == company_id)
+        )
+        self.logger.debug("Agency %s has %d account(s).", company_id, found)
+        return found

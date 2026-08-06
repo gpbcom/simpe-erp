@@ -39,6 +39,37 @@ export const INTERVENTION_STATUS_COLOUR = {
   cancelled: '#C0392B',
 } as const;
 
+/**
+ * The colours that tell assistants apart on a shared calendar.
+ *
+ * @remarks
+ * Used only when *everybody* is shown at once, where the question the screen
+ * answers is "whose visit is that?" rather than "what state is it in" — a grid
+ * of forty blocks in the four status colours is unreadable. One assistant at a
+ * time keeps the status colours above, because then "who" is already answered
+ * by the rail.
+ *
+ * Twelve hues, walked round the wheel rather than listed by family, so two
+ * assistants next to each other in the rail never come out nearly the same. The
+ * list is indexed modulo its length: a thirteenth assistant repeats the first
+ * colour, which is a legible collision because the rail carries the same swatch
+ * as a legend.
+ */
+export const PLANNING_HCA_COLOURS = [
+  '#0F6E6E',
+  '#C8791A',
+  '#4A6FA5',
+  '#8E5AA8',
+  '#2E7D32',
+  '#B4436C',
+  '#12A19A',
+  '#9A5B10',
+  '#5B7B7A',
+  '#7A5C3E',
+  '#3F7CAC',
+  '#A03E3E',
+] as const;
+
 /** Colour for one notification kind. */
 export const NOTIFICATION_KIND_COLOUR = {
   'quote-submitted': BRAND.secondary,

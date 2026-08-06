@@ -14,8 +14,11 @@ import {
   useRefuseQuote,
   useValidateQuote,
 } from '@/api/queries';
+import { NewQuoteDialog } from './NewQuoteDialog';
+import { QuoteEditorDialog } from './QuoteEditorDialog';
 import { QuoteStatusChip } from './QuoteStatusChip';
 import { AppIcon } from '@/components/icons/AppIcon';
+import EditIcon from '@mui/icons-material/Edit';
 import { formatDate, formatMoney } from '@/utils/format';
 import type { Quote, QuoteStatus } from '@/api/types';
 
@@ -43,6 +46,8 @@ const TABS: { key: string; status?: QuoteStatus }[] = [
 export function QuotesPage() {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState(1);
+  const [editing, setEditing] = useState<Quote | null>(null);
+  const [writing, setWriting] = useState(false);
   const status = TABS[tab]?.status;
   const { data, isLoading } = useQuotes(status);
   const { data: customers } = useCustomers();
@@ -94,41 +99,75 @@ export function QuotesPage() {
     {
       field: 'actions',
       headerName: t('common.actions'),
-      width: 280,
+      width: 380,
       sortable: false,
       // Rendered only for a quote awaiting validation. A manager looking at an
       // accepted quote has no decision to make about it, and a row of greyed
       // buttons on every other line would bury the ones that matter.
-      renderCell: (params) =>
-        params.row.status === 'pending-validation' ? (
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="contained"
-              color="success"
-              startIcon={<AppIcon name="quoteValidate" />}
-              onClick={() => validate.mutate(params.row.id ?? '')}
-              data-testid={`validate-${params.row.reference}`}
-            >
-              {t('quote.validate')}
-            </Button>
+      renderCell: (params) => (
+        <Stack direction="row" spacing={1}>
+          {/* A manager may edit any quote in the agency — but only while it is
+              a draft. What a customer was sent has to stay what they were
+              sent, and a quote awaiting validation is frozen so the figures a
+              manager rules on are the ones they were shown. */}
+          {params.row.status === 'draft' ? (
             <Button
               size="small"
               variant="outlined"
-              color="warning"
-              startIcon={<AppIcon name="quoteRefuse" />}
-              onClick={() => refuse.mutate(params.row.id ?? '')}
-              data-testid={`refuse-${params.row.reference}`}
+              startIcon={<EditIcon />}
+              onClick={() => setEditing(params.row)}
+              data-testid={`edit-${params.row.reference}`}
             >
-              {t('quote.refuse')}
+              {t('quote.edit')}
             </Button>
-          </Stack>
-        ) : null,
+          ) : null}
+          {params.row.status === 'pending-validation' ? (
+            <>
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                startIcon={<AppIcon name="quoteValidate" />}
+                onClick={() => validate.mutate(params.row.id ?? '')}
+                data-testid={`validate-${params.row.reference}`}
+              >
+                {t('quote.validate')}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="warning"
+                startIcon={<AppIcon name="quoteRefuse" />}
+                onClick={() => refuse.mutate(params.row.id ?? '')}
+                data-testid={`refuse-${params.row.reference}`}
+              >
+                {t('quote.refuse')}
+              </Button>
+            </>
+          ) : null}
+        </Stack>
+      ),
     },
   ];
 
   return (
     <Stack spacing={2}>
+      <Stack direction="row" alignItems="center" spacing={2}>
+        <Typography variant="h1" sx={{ flexGrow: 1 }}>
+          {t('nav.quotes')}
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AppIcon name="quote" />}
+          onClick={() => setWriting(true)}
+          data-testid="new-quote"
+        >
+          {t('quote.new')}
+        </Button>
+      </Stack>
+
+      <NewQuoteDialog open={writing} onClose={() => setWriting(false)} />
+
       <Typography variant="h1">{t('nav.quotes')}</Typography>
 
       <Card>
@@ -167,6 +206,12 @@ export function QuotesPage() {
           />
         )}
       </Card>
+
+      <QuoteEditorDialog
+        quote={editing}
+        scope="manager"
+        onClose={() => setEditing(null)}
+      />
     </Stack>
   );
 }

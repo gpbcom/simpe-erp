@@ -32,6 +32,8 @@ So an assistant writes the quote, and it waits.
 | `accept` | manager | any → `accepted` | priced |
 | `reject` | manager | any → `rejected` | — |
 
+| `replace lines` | manager, or the author | `draft` → `draft` | drafts only; reprices |
+
 `EDITABLE_STATUSES` is `{DRAFT}` and `SENDABLE_STATUSES` is `{DRAFT}`.
 `SCHEDULABLE_STATUSES` is `{ACCEPTED}` — only an accepted quote reaches the
 planner.
@@ -45,6 +47,19 @@ would put work on assistants' calendars that no family had said yes to.
 **Validating does not move it to `DRAFT` either**, which was the other obvious
 option. An approved quote would then be indistinguishable from one nobody had
 looked at, and the assistant could edit figures a manager had just signed off.
+
+**The tax is decided when the quote is written, not when the service was
+catalogued.** Each line carries its own `service_category`, and pricing reads it
+from there. `QuoteService.vat_rate_for` takes the *line*; if it ever takes an
+`InterventionType` again, two customers buying the same service could no longer
+be taxed differently, which is the case the field exists for.
+
+**Who may rewrite a quote is a different question from when.** A manager or an
+administrator may edit any quote in the agency; an assistant may edit only the
+ones they authored. But *both* are held to `EDITABLE_STATUSES`, so neither can
+touch a quote past `draft`: what the customer was sent has to stay what they
+were sent, and one awaiting validation is frozen so a manager rules on the
+figures they were actually shown. Widening the role does not widen the status.
 
 **Refusal returns the quote to `DRAFT`, not to `REJECTED`.** `REJECTED` means
 *the customer declined*. A manager sending a quote back means the agency will
@@ -127,3 +142,50 @@ queue, because that queue is a database query on
 | A submitted quote cannot be sent | `QuoteService.send` | same |
 | The author comes from the credential | `QuoteService.create` | same, and `tests/api/test_me_endpoints.py` |
 | The whole journey, across two roles | — | `qa/robot/suites/05_quote_validation_journey.robot` |
+
+
+## Validating is issuing
+
+There is no second button. A manager's approval *is* the act of issuing the
+offer, so validation stamps `issued_on` and a `valid_until` 30 days out
+(`QuoteService.VALIDITY_DAYS`) alongside moving the quote to `sent`.
+
+It did not always. `record_validation` set the status, the approver and the
+timestamp and left both dates null, so a quote reached `sent` with no issue date
+and no expiry — the customer's copy carried neither. Only the seeder wrote them,
+which meant seeded and runtime quotes disagreed about what a sent quote looks
+like.
+
+**A refusal stamps nothing.** It sends the quote back to its author, and putting
+an issue date on an offer that was never made would date a document the customer
+never received.
+
+## Pricing and the seed
+
+A quote past `draft` **must have priced lines** — `validate` refuses one that
+does not, with "has no priced lines and cannot be validated".
+
+The seeder writes through the repositories rather than the service, so pricing
+did not run and every seeded quote past draft carried unpriced lines: the whole
+seeded validation queue failed on the first click. It now borrows `QuoteService`
+the same way it borrows the password hasher, so seeded amounts come from the
+application's own pricing rather than figures written into the dataset. Figures
+typed into a fixture drift from the catalogue the first time a rate changes, and
+the drift shows up as a screen that disagrees with itself.
+
+
+## Editing
+
+**A quote's lines are editable in every status.** They used to be editable only
+while it was a draft, and what that protected is worth stating plainly: an
+issued quote is what the customer is looking at, so changing it underneath them
+is how somebody accepts one thing and is billed for another. Nothing records the
+figures an edit replaced, so that history is not recoverable from the quote —
+only the logs say a replacement happened, and not what it replaced. An edit also
+reprices against the catalogue **as it stands now**, so editing an old quote can
+move its amounts even where the lines are untouched.
+
+What did not widen is *who* may edit. The authorship check is unchanged: an
+assistant edits only what they wrote. Nor did **sending** — still drafts only,
+because re-sending a quote the customer has answered would overwrite their
+answer with the offer.

@@ -26,6 +26,7 @@ class QuoteLineRow(Base):
         position (int): Order on the printed quote.
         name (str): What the service is.
         intervention_type_id (str): The catalog entry it sells.
+        service_category (str): What kind of care it is, deciding its VAT rate.
         service_date (date): The day the service is delivered.
         earliest_start (time): Earliest the service may begin.
         latest_end (time): Latest the service may finish.
@@ -70,6 +71,10 @@ class QuoteLineRow(Base):
         ForeignKey("intervention_types.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    # Stored on the line rather than read from the catalog entry: the same
+    # service is necessity care for one customer and comfort care for another,
+    # and an issued quote must reprint at the rate it was written at.
+    service_category: Mapped[str] = mapped_column(String(16), nullable=False)
     service_date: Mapped[date] = mapped_column(Date, nullable=False)
     earliest_start: Mapped[time] = mapped_column(Time, nullable=False)
     latest_end: Mapped[time] = mapped_column(Time, nullable=False)

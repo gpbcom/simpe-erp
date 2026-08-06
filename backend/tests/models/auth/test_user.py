@@ -35,6 +35,7 @@ def valid_manager_kwargs() -> Dict[str, Any]:
         "email": "manager@example.com",
         "full_name": "Claire Bernard",
         "role": UserRole.MANAGER,
+        "company_id": "company-1",
         "hashed_password": "$2b$12$abcdefghijklmnopqrstuv",
     }
 
@@ -58,6 +59,7 @@ class TestUser:
     def test_an_hca_account_needs_an_hca_id(self) -> None:
         """An assistant account is linked to its assistant record."""
         user = User(
+            company_id="company-1",
             email="luc@example.com",
             full_name="Luc Martin",
             role=UserRole.HCA,
@@ -67,7 +69,12 @@ class TestUser:
 
     def test_a_password_is_optional(self) -> None:
         """An account can exist before a password is set."""
-        user = User(email="a@b.com", full_name="A B", role=UserRole.MANAGER)
+        user = User(
+            company_id="company-1",
+            email="a@b.com",
+            full_name="A B",
+            role=UserRole.MANAGER,
+        )
         assert user.hashed_password is None
 
     # ------------------------------------------------------------------ #
@@ -82,6 +89,7 @@ class TestUser:
             by changing capitalisation.
         """
         user = User(
+            company_id="company-1",
             email="  Manager@Example.COM  ",
             full_name="Claire",
             role=UserRole.MANAGER,
@@ -166,12 +174,19 @@ class TestUser:
 
     def test_a_none_role_defaults_to_the_least_privileged(self) -> None:
         """A missing role never fails open into a manager or admin account."""
-        user = User(email="a@b.com", full_name="A B", role=None, hca_id="hca-1")
+        user = User(
+            company_id="company-1",
+            email="a@b.com",
+            full_name="A B",
+            role=None,
+            hca_id="hca-1",
+        )
         assert user.role is UserRole.HCA
 
     def test_the_password_hash_is_not_stripped(self) -> None:
         """A hash is opaque; trimming it would corrupt the credential."""
         user = User(
+            company_id="company-1",
             email="a@b.com",
             full_name="A B",
             role=UserRole.MANAGER,
@@ -193,12 +208,17 @@ class TestUser:
             the state entirely.
         """
         with pytest.raises(MTUserRoleHcaRequiresHcaId):
-            User(email="luc@example.com", full_name="Luc Martin", role=UserRole.HCA)
+            User(
+                company_id="company-1",
+                email="luc@example.com",
+                full_name="Luc Martin",
+                role=UserRole.HCA,
+            )
 
     @pytest.mark.parametrize("role", [UserRole.MANAGER, UserRole.ADMIN])
     def test_non_hca_accounts_need_no_link(self, role: UserRole) -> None:
         """Only assistant accounts require an assistant record."""
-        user = User(email="a@b.com", full_name="A B", role=role)
+        user = User(company_id="company-1", email="a@b.com", full_name="A B", role=role)
         assert user.hca_id is None
 
     # ------------------------------------------------------------------ #
@@ -216,6 +236,7 @@ class TestUser:
     def test_is_manager(self, role: UserRole, expected: bool) -> None:
         """Manager privileges are held by managers and admins."""
         user = User(
+            company_id="company-1",
             email="a@b.com",
             full_name="A B",
             role=role,
@@ -234,6 +255,7 @@ class TestUser:
     def test_is_admin(self, role: UserRole, expected: bool) -> None:
         """Only the admin role is an administrator."""
         user = User(
+            company_id="company-1",
             email="a@b.com",
             full_name="A B",
             role=role,
@@ -248,6 +270,7 @@ class TestUser:
     def test_an_assistant_owns_their_own_planning(self) -> None:
         """An assistant may read the planning of their own record."""
         user = User(
+            company_id="company-1",
             email="luc@example.com",
             full_name="Luc",
             role=UserRole.HCA,
@@ -263,6 +286,7 @@ class TestUser:
             proves the caller is *an* assistant, not the right one.
         """
         user = User(
+            company_id="company-1",
             email="luc@example.com",
             full_name="Luc",
             role=UserRole.HCA,
@@ -273,7 +297,7 @@ class TestUser:
     @pytest.mark.parametrize("role", [UserRole.MANAGER, UserRole.ADMIN])
     def test_managers_and_admins_see_every_planning(self, role: UserRole) -> None:
         """Managers and admins are not restricted to one assistant."""
-        user = User(email="a@b.com", full_name="A B", role=role)
+        user = User(company_id="company-1", email="a@b.com", full_name="A B", role=role)
         assert user.owns_hca("hca-1") is True
         assert user.owns_hca("hca-2") is True
 

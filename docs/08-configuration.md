@@ -10,7 +10,7 @@ YAML for settings, environment variables for secrets, and nothing in between.
 | `backend/conf/app.dev.yaml` | the development compose overlay | container addresses; email **on**, pointed at Mailpit |
 | `backend/conf/app.docker.yaml` | the base and production stacks | container addresses; broker **on**, email off |
 
-Selected with `RT_ERP_CONFIG`. `AppConfig.load()` resolves it relative to the
+Selected with `SIMPLE_ERP_CONFIG`. `AppConfig.load()` resolves it relative to the
 working directory, then relative to `backend/`, then falls back to
 `conf/app.yaml`.
 
@@ -23,7 +23,7 @@ can never disagree about which database they mean.
 |---|---|
 | `server` | Host, port, title, version, **`cors_origins`** |
 | `database` | Host, port, name, user, `password_env`, pool sizing |
-| `auth` | `jwt_secret_env`, algorithm, `access_token_expire_minutes` |
+| `auth` | `jwt_secret_env`, algorithm, `access_token_expire_minutes`, `allow_company_registration` |
 | `pricing` | Base hourly rate, weekday surcharges, holiday surcharges |
 | `planning` | Working-day bounds, lunch window, travel speeds, solver budget, penalties, **seed values** for the manager-owned settings |
 | `geocoding` | Nominatim base URL, user agent, timeout, country codes |
@@ -44,7 +44,7 @@ a restart, not a rebuild.
 
 | Variable | Named by | Read at |
 |---|---|---|
-| `RT_ERP_CONFIG` | — | start-up |
+| `SIMPLE_ERP_CONFIG` | — | start-up |
 | `POSTGRES_PASSWORD` | `database.password_env` | connect |
 | `JWT_SECRET_KEY` | `auth.jwt_secret_env` | sign / verify |
 | `S3_ACCESS_KEY` · `S3_SECRET_KEY` | `s3.access_key_env` · `secret_key_env` | upload |
@@ -73,7 +73,7 @@ setting a variable.
 consulted again. After that a manager owns them through the API, and editing the
 file will not move a running deployment. → [06](06-planning-computation.md)
 
-## Two defaults chosen deliberately
+## Three defaults chosen deliberately
 
 **`email.enabled: false`** outside the development overlay, so a developer's
 machine never opens an SMTP connection by accident. A disabled service raises
@@ -82,6 +82,15 @@ machine never opens an SMTP connection by accident. A disabled service raises
 **`rabbitmq.enabled: false`** in `app.yaml`, so somebody running the API alone is
 not blocked by the absence of a broker: a publish that cannot connect is logged
 and dropped, and the database still holds every fact the message carried.
+
+**`auth.allow_company_registration: false`** in `app.yaml`, and `true` only in
+the development and demonstration overlays. It opens
+`POST /api/v1/companies/registration`, which grants its unauthenticated caller
+the administrator role — and a company is not yet a tenancy boundary, so that
+administrator reads every agency's records rather than only the one they just
+founded. A deployment opts in knowingly or not at all. The value must be a
+**boolean**: a quoted `"false"` is refused rather than read as true.
+→ [11](11-security.md)
 
 ## Logging
 

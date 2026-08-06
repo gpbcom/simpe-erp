@@ -21,14 +21,23 @@ import { addDays, startOfWeek } from 'date-fns';
 import { useAllPlannings, useCustomers, useHcas } from '@/api/queries';
 import { INTERVENTION_STATUS_COLOUR } from '@/theme/palette';
 import { formatTime, initialsOf, toIsoDate } from '@/utils/format';
+import { planningWindow } from '@/utils/planningWindow';
 import type { Intervention } from '@/api/types';
 import 'leaflet/dist/leaflet.css';
 
 /** Where the map opens: central Paris, the agency's own patch. */
 const PARIS: [number, number] = [48.8566, 2.3522];
 
-/** The windows a manager can flip between. */
-type Window = 'today' | 'week' | 'next7';
+/**
+ * The windows a manager can flip between.
+ *
+ * @remarks
+ * `planning` is the span the team planning screen shows, and it is what the map
+ * opens on. The three narrower windows are a way of *reducing* what is drawn
+ * once forty pins overlap; opening on one of them was how the map came to look
+ * empty while the planning beside it was full.
+ */
+type Window = 'today' | 'week' | 'next7' | 'planning';
 
 /**
  * Turn a photograph into a circular map pin.
@@ -57,7 +66,7 @@ function photoPin(
     // Counted by the GUI campaign: 'how many pins are on the map' is the
     // question the screen exists to answer, and there is no other handle on a
     // Leaflet marker from outside the map.
-    className: 'rt-erp-pin',
+    className: 'simple-erp-pin',
     html: `<div style="
         width:38px;height:38px;border-radius:50%;
         border:3px solid ${colour};background:${colour};
@@ -76,13 +85,18 @@ function photoPin(
  */
 export function InterventionMapPage() {
   const { t } = useTranslation();
-  const [window, setWindow] = useState<Window>('week');
+  // Opens on the whole planning window. A map that draws a narrower span than
+  // the planning it is drawn from is a map that says "no visits" about work
+  // that exists, and there is nothing on screen to tell a manager which of the
+  // two they should believe.
+  const [window, setWindow] = useState<Window>('planning');
 
   const { from, to } = useMemo(() => {
     const today = new Date();
     if (window === 'today') return { from: toIsoDate(today), to: toIsoDate(today) };
     if (window === 'next7')
       return { from: toIsoDate(today), to: toIsoDate(addDays(today, 7)) };
+    if (window === 'planning') return planningWindow();
     const monday = startOfWeek(today, { weekStartsOn: 1 });
     return { from: toIsoDate(monday), to: toIsoDate(addDays(monday, 6)) };
   }, [window]);
@@ -130,6 +144,9 @@ export function InterventionMapPage() {
           </ToggleButton>
           <ToggleButton value="next7" data-testid="map-window-next7">
             {t('planning.nextSevenDays')}
+          </ToggleButton>
+          <ToggleButton value="planning" data-testid="map-window-planning">
+            {t('planning.wholePlanning')}
           </ToggleButton>
         </ToggleButtonGroup>
         <Chip label={`${mappable.length} / ${interventions.length}`} />

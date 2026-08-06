@@ -1,7 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "rt-erp backend — uv workspace aggregating the models, storage, service and api packages"
+description = "simple-erp backend — uv workspace aggregating the models, storage, service and api packages"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -112,7 +112,14 @@ dev = [
     "pytest-asyncio>=1.0.0",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.6.0",
-    "ruff>=0.11.0",
+    # Capped below 0.15 deliberately. From 0.15 onwards `ruff format` rewrites
+    # `except (A, B):` into `except A, B:` — Python 2 syntax, and a SyntaxError
+    # on 3.14 — for handlers at method depth. It corrupted nine files here, and
+    # the suite stayed green because CPython kept importing the `.pyc` compiled
+    # from the previous, correct source. Bisected: 0.14.0 clean, 0.15.4 and
+    # 0.16.1 corrupt. `tests/test_sources_are_parseable.py` is the backstop if
+    # this cap is ever lifted without checking.
+    "ruff>=0.11.0,<0.15",
 ]
 
 [tool.ty.environment]

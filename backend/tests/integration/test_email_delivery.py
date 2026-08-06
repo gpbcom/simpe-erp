@@ -51,7 +51,7 @@ def mailpit() -> httpx.Client:
     client = httpx.Client(base_url=MAILPIT_HTTP, timeout=5.0)
     try:
         client.get("/api/v1/messages").raise_for_status()
-    except httpx.HTTPError, OSError:
+    except (httpx.HTTPError, OSError):
         pytest.skip("Mailpit is not running; start the development stack first.")
     return client
 
@@ -93,15 +93,15 @@ def service(monkeypatch: pytest.MonkeyPatch) -> EmailService:
         unconditionally, so a stub refusing authentication would fail every
         send before a message was ever built.
     """
-    monkeypatch.setenv("SMTP_USERNAME", "rt-erp")
-    monkeypatch.setenv("SMTP_PASSWORD", "rt-erp")
+    monkeypatch.setenv("SMTP_USERNAME", "simple-erp")
+    monkeypatch.setenv("SMTP_PASSWORD", "simple-erp")
     return EmailService(
         config=EmailConfig(
             enabled=True,
             host=MAILPIT_SMTP_HOST,
             port=MAILPIT_SMTP_PORT,
             use_tls=False,
-            sender="planning@rt-erp.fr",
+            sender="planning@simple-erp.fr",
         )
     )
 
@@ -113,11 +113,12 @@ def _hca() -> Hca:
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id="hca-1",
         first_name="Luc",
         last_name="Martin",
         phone_number="+33698765432",
-        email="luc.martin@rt-erp.fr",
+        email="luc.martin@simple-erp.fr",
         address=ADDRESS,
         contract_type=ContractType.CDI,
     )
@@ -185,7 +186,7 @@ class TestPlanningEmailIsSentAndReceived:
 
         messages = _messages(mailpit)
         assert len(messages) == 1
-        assert messages[0]["To"][0]["Address"] == "luc.martin@rt-erp.fr"
+        assert messages[0]["To"][0]["Address"] == "luc.martin@simple-erp.fr"
         assert (
             "10/08/2026" in messages[0]["Subject"] or "2026" in messages[0]["Subject"]
         )

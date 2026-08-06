@@ -57,8 +57,14 @@ from models.quoting.exceptions import (
     MTInvalidQuoteTypeWeekAggregateException,
 )
 from models.schemas.exceptions import (
+    MTInvalidAccountUpdateRequestException,
+    MTInvalidCompanyProfileUpdateRequestException,
+    MTInvalidInterventionTypeChangeRequestException,
+    MTInvalidInterventionTypeUpdateRequestException,
     MTInvalidActiveUpdateRequestException,
     MTInvalidApplicationDecisionRequestException,
+    MTInvalidCompanyRegistrationRequestException,
+    MTInvalidPricingRulesResponseException,
     MTInvalidEmailDispatchResponseException,
     MTInvalidEmploymentUpdateRequestException,
     MTInvalidHcaApplicationRequestException,
@@ -88,6 +94,7 @@ from service.auth.exceptions import (
     MTAuthMissingSecret,
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
+    MTAuthUnknownAccount,
     MTAuthUnknownHca,
     MTAuthUserInactive,
     MTInvalidAuthException,
@@ -95,7 +102,9 @@ from service.auth.exceptions import (
 from service.companies.exceptions import (
     MTCompanyNameTaken,
     MTCompanyNotAcceptingApplications,
+    MTCompanyNotEmpty,
     MTCompanyNotFound,
+    MTCompanyRegistrationDisabled,
     MTInvalidCompanyServiceException,
 )
 from service.customers.exceptions import (
@@ -125,12 +134,15 @@ from service.intervention_types.exceptions import (
     MTInterventionTypeNotFound,
     MTInvalidInterventionTypeCatalogException,
 )
+from service.messaging.exceptions import MTInvalidMessagingException
 from service.notifications.exceptions import (
     MTInvalidNotificationServiceException,
     MTNotificationNotFound,
 )
 from service.planning.exceptions import (
     MTInvalidPlanningException,
+    MTInterventionNotFound,
+    MTInterventionNotQuoted,
     MTPlanningForbidden,
     MTPlanningInfeasible,
     MTPlanningPeriodTooLong,
@@ -200,6 +212,7 @@ class ExceptionHandlers:
         MTAuthUserInactive: status.HTTP_403_FORBIDDEN,
         MTAuthEmailAlreadyRegistered: status.HTTP_409_CONFLICT,
         MTAuthLastAdmin: status.HTTP_409_CONFLICT,
+        MTAuthUnknownAccount: status.HTTP_404_NOT_FOUND,
         MTAuthHcaLinkRequired: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTAuthUnknownHca: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTAuthMissingSecret: status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -207,6 +220,21 @@ class ExceptionHandlers:
         MTInvalidActiveUpdateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidLoginRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidRegisterRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidAccountUpdateRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidCompanyProfileUpdateRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidInterventionTypeUpdateRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        # A 500, not a 422. This family guards a *response* built from the
+        # running configuration, so a caller cannot cause one and has nothing
+        # to correct: it fires only when the deployment's own pricing rules
+        # are unusable, which is the server's fault to report as its own.
+        MTInvalidPricingRulesResponseException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
+        MTInvalidCompanyRegistrationRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
         MTInvalidRoleUpdateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidHcaApplicationRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidStaffAccountRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
@@ -215,6 +243,9 @@ class ExceptionHandlers:
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
         MTInvalidPlanningSettingsRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidInterventionTypeChangeRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
         MTInvalidPlanningCompletedRequestException: (
@@ -236,7 +267,11 @@ class ExceptionHandlers:
         # Companies and applications
         MTCompanyNotFound: status.HTTP_404_NOT_FOUND,
         MTCompanyNameTaken: status.HTTP_409_CONFLICT,
+        MTCompanyNotEmpty: status.HTTP_409_CONFLICT,
         MTCompanyNotAcceptingApplications: status.HTTP_409_CONFLICT,
+        # 404, not 403: a deployment that has not opted in should be
+        # indistinguishable from one without the route at all.
+        MTCompanyRegistrationDisabled: status.HTTP_404_NOT_FOUND,
         MTApplicationNotFound: status.HTTP_404_NOT_FOUND,
         MTApplicationForbidden: status.HTTP_403_FORBIDDEN,
         MTApplicationAlreadyDecided: status.HTTP_409_CONFLICT,
@@ -255,6 +290,8 @@ class ExceptionHandlers:
         MTPricingUnknownInterventionType: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # Planning
         MTPlanningRunNotFound: status.HTTP_404_NOT_FOUND,
+        MTInterventionNotFound: status.HTTP_404_NOT_FOUND,
+        MTInterventionNotQuoted: status.HTTP_409_CONFLICT,
         MTPlanningForbidden: status.HTTP_403_FORBIDDEN,
         MTPlanningPeriodTooLong: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTPlanningInfeasible: status.HTTP_409_CONFLICT,
@@ -272,6 +309,12 @@ class ExceptionHandlers:
         MTS3UnsupportedContentType: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         MTS3EmptyPayload: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTS3UploadFailed: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        # A broker misuse — binding a queue before connecting — is this
+        # process's fault, not the caller's. It is raised by the worker and
+        # should never reach an HTTP response at all; the row exists so that
+        # if it ever does, it is answered honestly rather than as a 422
+        # blaming the request.
+        MTInvalidMessagingException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTS3BucketUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
         # ------------------------------------------------------------------
         # Family defaults. Every MT* exception in the codebase descends from

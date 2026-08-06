@@ -30,6 +30,8 @@ from storage.repositories.hca import HcaRepository
 from storage.repositories.intervention_type import InterventionTypeRepository
 from storage.repositories.quote import QuoteRepository
 from storage.repositories.user import UserRepository
+from models.configuration.pricing_config import PricingConfig
+from service.quotes.quotes import QuoteService
 
 
 class Seeder:
@@ -56,12 +58,20 @@ class Seeder:
         - Nothing here geocodes. Every address carries its coordinates, because
           :class:`~models.geo.postal_address.PostalAddress` resolves during
           validation and fifty addresses would be fifty live Nominatim requests.
+        - **The seeded agency is written directly, not through
+          ``POST /api/v1/companies/registration``.** That route generates a
+          fresh identifier for the company it founds, and this seeder's whole
+          idempotency rests on identifiers derived from natural keys — going
+          through it would insert a second agency on every ``compose up``. The
+          two paths converge on the same shape: an agency, and one
+          administrator account bound to it.
     """
 
     def __init__(
         self,
         session: AsyncSession,
         hasher,
+        pricing: PricingConfig,
         logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the seeder.
@@ -69,6 +79,8 @@ class Seeder:
         Args:
             session (AsyncSession): The session to write on.
             hasher: An object exposing ``hash(password) -> str``.
+            pricing (PricingConfig): The agency's pricing rules, so seeded
+                quotes carry the amounts a real one would.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
@@ -82,6 +94,16 @@ class Seeder:
         self.customers = CustomerRepository(session=session)
         self.types = InterventionTypeRepository(session=session)
         self.quotes = QuoteRepository(session=session)
+        # Borrowed from the application, like the hasher above: seeded
+        # amounts are computed by the same code an operator's quote goes
+        # through, so a seeded quote and a real one cannot disagree about
+        # what an hour of care costs.
+        self.pricer = QuoteService(
+            quotes=self.quotes,
+            types=self.types,
+            config=pricing,
+            logger=self.logger,
+        )
         self.logger.debug("Seeder created.")
 
     ############################
@@ -197,6 +219,27 @@ class Seeder:
             must_change_password=False,
         )
 
+    async def _priced(self, quote: Quote) -> Quote:
+        """Return the quote with its lines and weekly totals computed.
+
+        Args:
+            quote (Quote): The quote to price.
+
+        Returns:
+            Quote: A priced copy.
+
+        Notes:
+            Priced through :class:`~service.quotes.quotes.QuoteService`, the
+            same code an operator's quote goes through, rather than by writing
+            amounts into the dataset. Figures typed into a fixture drift away
+            from the catalog the first time a rate changes, and the drift shows
+            up as a screen that disagrees with itself.
+        """
+        catalog = await self.types.get_many(
+            [line.intervention_type_id for line in quote.lines]
+        )
+        return self.pricer.price_quote(quote, catalog)
+
     def _quote(
         self,
         quote_id: str,
@@ -254,13 +297,15 @@ class Seeder:
             seed_index (int): Varies the shape from one quote to the next.
 
         Returns:
-            List[QuoteLine]: Between two and four lines, unpriced.
+            List[QuoteLine]: Between two and four lines, without amounts.
 
         Notes:
-            Left unpriced. The quote service prices on create, against the
-            catalog as it stands, which is what an operator's quote goes
-            through — writing amounts here would seed figures nothing had
-            computed.
+            The amounts are put on afterwards, by :meth:`_priced`, using the
+            application's own pricing rather than figures written here. Leaving
+            them off entirely — which this seeder used to do — produces quotes
+            that cannot be validated: a quote past ``draft`` with no priced
+            lines is refused, so the seeded validation queue looked full and
+            every quote in it failed with "has no priced lines".
         """
         line_count = 2 + (seed_index % 3)
         days = self.data.service_days(monday, line_count)
@@ -274,6 +319,12 @@ class Seeder:
                 QuoteLine(
                     name=entry.name,
                     intervention_type_id=entry.id,
+                    # Seeded from the catalog entry's own category, which is
+                    # what the operator writing the quote would most often
+                    # pick. It is a starting point on the line, not a rule:
+                    # the same service is necessity care for one customer and
+                    # comfort care for another.
+                    service_category=entry.service_category,
                     service_date=days[position],
                     earliest_start=start,
                     latest_end=end,
@@ -301,7 +352,7 @@ class Seeder:
                 id=company_id,
                 name=self.data.COMPANY_NAME,
                 registration_number="812 345 678 00019",
-                contact_email="contact@rt-erp.fr",
+                contact_email="contact@simple-erp.fr",
                 address=self._address(
                     "10 rue de la Roquette", "75011", "Paris", 48.8551, 2.3720
                 ),
@@ -365,7 +416,7 @@ class Seeder:
                         first_name=first,
                         last_name=last,
                         phone_number=f"+3360000{len(stored):04d}",
-                        email=f"{first.lower()}.{last.lower()}@rt-erp.fr",
+                        email=f"{first.lower()}.{last.lower()}@simple-erp.fr",
                         address=self._address(street, postcode, city, lat, lon),
                         company_id=company_id,
                         contract_type=contract,
@@ -427,9 +478,9 @@ class Seeder:
         """
         created: List[str] = []
         staff = (
-            ("admin@rt-erp.fr", "Camille Fournier", UserRole.ADMIN, None),
-            ("manager@rt-erp.fr", "Nathalie Blanchard", UserRole.MANAGER, None),
-            ("manager2@rt-erp.fr", "Olivier Lefevre", UserRole.MANAGER, None),
+            ("admin@simple-erp.fr", "Camille Fournier", UserRole.ADMIN, None),
+            ("manager@simple-erp.fr", "Nathalie Blanchard", UserRole.MANAGER, None),
+            ("manager2@simple-erp.fr", "Olivier Lefevre", UserRole.MANAGER, None),
         )
         for email, full_name, role, hca_id in staff:
             user_id = self.data.identifier("user", email)
@@ -499,7 +550,7 @@ class Seeder:
                 index += 1
                 if await self._exists(QuoteRow, quote_id):
                     continue
-                await self.quotes.create(
+                priced = await self._priced(
                     self._quote(
                         quote_id=quote_id,
                         reference=reference,
@@ -511,6 +562,7 @@ class Seeder:
                         lines=self._lines(catalog, monday, index),
                     )
                 )
+                await self.quotes.create(priced)
                 written += 1
         self.logger.info("Seeded %d new quote(s).", written)
         return written
@@ -547,11 +599,22 @@ class Seeder:
         """
         password = self.data.PASSWORD
         print()
-        print("  rt-erp is seeded. Sign in at http://localhost:5173 with:")
+        print("  SimpleERP is seeded. Sign in at http://localhost:5173 with:")
         print()
-        print(f"    Administrator   admin@rt-erp.fr      {password}")
-        print(f"    Manager         manager@rt-erp.fr    {password}")
-        print(f"    Assistant       luc.martin@rt-erp.fr {password}")
+        print(f"    Administrator   admin@simple-erp.fr      {password}")
+        print(f"    Manager         manager@simple-erp.fr    {password}")
+        print(f"    Assistant       luc.martin@simple-erp.fr {password}")
         print()
-        print("  Every seeded assistant signs in with firstname.lastname@rt-erp.fr.")
+        print(
+            "  Every seeded assistant signs in with firstname.lastname@simple-erp.fr."
+        )
+        print()
+        # Printed because the development stack turns it on and nothing else
+        # says so. A developer who does not know the route exists cannot find
+        # it: the sign-in card is the only screen that mentions it, and the
+        # configuration that opens it is a line in a file they have no reason
+        # to read.
+        print("  You can also found your own agency from the sign-in card, and")
+        print("  be its administrator. Enabled here by")
+        print("  auth.allow_company_registration; off in app.yaml.")
         print()

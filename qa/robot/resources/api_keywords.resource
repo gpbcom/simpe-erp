@@ -62,6 +62,7 @@ Create A Draft Quote As
     ...    "customer_id": "${customer_id}",
     ...    "lines": [{"name": "Aide a la toilette",
     ...    "intervention_type_id": "${type_id}",
+    ...    "service_category": "necessity",
     ...    "service_date": "${service_date}",
     ...    "earliest_start": "09:00:00",
     ...    "latest_end": "12:00:00",
@@ -71,6 +72,51 @@ Create A Draft Quote As
     ...    data=${body}
     ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
     ...    expected_status=201
+    RETURN    ${response.json()}
+
+Create A Draft Quote As A Manager
+    [Documentation]    Write a quote a manager owns, and return it.
+    ...
+    ...    The counterpart to ``Create A Draft Quote As``: this one is authored
+    ...    by a manager, so it is *not* the assistant's. It is what the scoping
+    ...    tests need — a quote that exists, is a draft, and belongs to
+    ...    somebody else. Without it, "the assistant cannot edit a foreign
+    ...    quote" could pass because the quote was missing rather than because
+    ...    the ownership check ran.
+    [Arguments]    ${customer_id}    ${type_id}    ${suffix}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${service_date}=    Get Current Date    increment=14 days    result_format=%Y-%m-%d
+    ${body}=    Catenate    SEPARATOR=
+    ...    {"reference": "QA-${suffix}",
+    ...    "customer_id": "${customer_id}",
+    ...    "lines": [{"name": "Aide a la toilette",
+    ...    "intervention_type_id": "${type_id}",
+    ...    "service_category": "necessity",
+    ...    "service_date": "${service_date}",
+    ...    "earliest_start": "09:00:00",
+    ...    "latest_end": "12:00:00",
+    ...    "duration_minutes": 60}]}
+    ${response}=    POST
+    ...    ${API_URL}/api/v1/quotes
+    ...    data=${body}
+    ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
+    ...    expected_status=201
+    RETURN    ${response.json()}
+
+Quote Read By A Manager
+    [Documentation]    Return a quote as the server currently holds it.
+    ...
+    ...    Read back through the API rather than trusted from the screen. What
+    ...    the editor shows after a save is what the client re-fetched; what
+    ...    the customer is billed from is this.
+    [Arguments]    ${quote_id}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/quotes/${quote_id}
+    ...    headers=${headers}
+    ...    expected_status=200
     RETURN    ${response.json()}
 
 Submit Quote Through The API
@@ -94,6 +140,23 @@ First Customer Of
     Should Not Be Empty    ${customers}
     ...    msg=The seeded assistant has no customers; was the seeder run?
     RETURN    ${customers}[0][id]
+
+Family Name Of The First Customer Of
+    [Documentation]    Return the surname of an assistant's first customer.
+
+    ...    Read rather than written down. Which customers an assistant holds
+    ...    follows from the quotes the seeder happened to attribute to them, so
+    ...    a name spelled out in a suite is a name that goes stale the first
+    ...    time the seeded spread changes.
+    [Arguments]    ${email}
+    ${token}=    Sign In Through The API    ${email}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/me/customers    headers=${headers}    expected_status=200
+    ${customers}=    Set Variable    ${response.json()}
+    Should Not Be Empty    ${customers}
+    ...    msg=The seeded assistant has no customers; was the seeder run?
+    RETURN    ${customers}[0][last_name]
 
 First Intervention Type
     [Documentation]    Return the identifier of the first catalog entry.
@@ -162,6 +225,17 @@ Clear The Mail Catcher
     [Documentation]    Empty Mailpit so a test asserts only on its own mail.
     Run Keyword And Ignore Error    DELETE    ${MAILPIT_URL}/api/v1/messages
 
+Notification Should Have Reached
+    [Documentation]    Assert an account's queue mentions a phrase.
+    ...
+    ...    Read over the API rather than off the screen, so it can be waited on
+    ...    without a browser and without a popover being open.
+    [Arguments]    ${email}    ${phrase}
+    ${notifications}=    Notifications Of    ${email}
+    ${titles}=    Evaluate    [n["title"] for n in $notifications]
+    ${joined}=    Catenate    @{titles}
+    Should Contain    ${joined}    ${phrase}
+
 Notifications Of
     [Documentation]    Return an account's notifications.
     [Arguments]    ${email}
@@ -170,3 +244,61 @@ Notifications Of
     ${response}=    GET
     ...    ${API_URL}/api/v1/notifications    headers=${headers}    expected_status=200
     RETURN    ${response.json()}
+
+Remove The Agency Founded By This Run
+    [Documentation]    Delete an agency and its founder, in that order.
+    ...
+    ...    The order is not a preference: an agency with anybody still attached
+    ...    answers 409, because every account names the agency it belongs to
+    ...    and removing one underneath the other would leave a row nothing can
+    ...    rebuild. The founder goes first, then the agency they founded.
+    ...
+    ...    Absence is tolerated — a test may have removed one half already —
+    ...    but anything else is reported. A cleanup that fails quietly leaves
+    ...    an agency behind and breaks the *next* run, which is the failure
+    ...    this campaign's idempotency rule exists to prevent.
+    [Arguments]    ${company_id}    ${administrator_id}
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    @{survivors}=    Create List
+    IF    '${administrator_id}' != '${EMPTY}'
+        ${account}=    DELETE
+        ...    ${API_URL}/api/v1/users/${administrator_id}
+        ...    headers=${headers}
+        ...    expected_status=any
+        IF    ${account.status_code} not in [204, 404]
+            Append To List    ${survivors}    account (HTTP ${account.status_code})
+        END
+    END
+    IF    '${company_id}' != '${EMPTY}'
+        ${agency}=    DELETE
+        ...    ${API_URL}/api/v1/companies/${company_id}
+        ...    headers=${headers}
+        ...    expected_status=any
+        IF    ${agency.status_code} not in [204, 404]
+            Append To List    ${survivors}    agency (HTTP ${agency.status_code})
+        END
+    END
+    Should Be Empty    ${survivors}
+    ...    msg=The agency this run founded could not be removed: @{survivors}
+
+Agency Named
+    [Documentation]    Return the stored agency with a name, or ``None``.
+    ...
+    ...    The page size goes in ``params`` rather than in the URL. Robot
+    ...    reads any ``name=value`` token as a *named argument*, so a query
+    ...    string written inline is swallowed as one and the keyword is
+    ...    called with no URL at all.
+    [Arguments]    ${name}
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${params}=    Create Dictionary    size=500
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/companies
+    ...    params=${params}
+    ...    headers=${headers}
+    ...    expected_status=200
+    ${matching}=    Evaluate
+    ...    [c for c in $response.json() if c["name"]=="""${name}"""]
+    ${found}=    Set Variable If    ${matching}    ${matching}[0]    ${None}
+    RETURN    ${found}

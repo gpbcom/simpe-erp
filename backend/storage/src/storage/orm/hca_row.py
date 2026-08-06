@@ -74,9 +74,11 @@ class HcaRow(Base):
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     geocoding_error: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    company_id: Mapped[Optional[str]] = mapped_column(
-        String(Base.ID_LENGTH), nullable=True
-    )
+    # NOT NULL: every assistant belongs to exactly one agency. The column
+    # was nullable while companies were newer than the rows that point at
+    # them; migration 0008 backfilled the stragglers and closed it, so no
+    # row can go back to belonging to nobody.
+    company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     contract_type: Mapped[str] = mapped_column(String(16), nullable=False)
     driving_license_categories: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True

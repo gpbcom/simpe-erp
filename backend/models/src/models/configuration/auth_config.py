@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # First-party imports
 from models.configuration.exceptions import (
+    MTAuthConfigInvalidCompanyRegistration,
     MTAuthConfigInvalidJwtAlgorithm,
     MTAuthConfigInvalidJwtSecretEnv,
     MTAuthConfigInvalidTokenExpiry,
@@ -28,11 +29,22 @@ class AuthConfig(BaseModel):
             signing secret.
         jwt_algorithm (str): Signing algorithm. Defaults to ``"HS256"``.
         access_token_expire_minutes (int): Access-token lifetime in minutes.
+        allow_company_registration (bool): Whether an unauthenticated visitor
+            may found an agency and become its administrator.
 
     Notes:
-        Only symmetric HMAC algorithms are accepted. Allowing an asymmetric
-        algorithm alongside a shared secret is how the ``alg`` confusion attack
-        gets in, and this service has no need for one.
+        - Only symmetric HMAC algorithms are accepted. Allowing an asymmetric
+          algorithm alongside a shared secret is how the ``alg`` confusion
+          attack gets in, and this service has no need for one.
+        - **``allow_company_registration`` defaults to false, and that default
+          is a security decision rather than a preference.** A company is not a
+          tenancy boundary here: customers, quotes, plannings and assistants are
+          global, and the administrator gate checks the role without looking at
+          the company. An administrator minted by public sign-up therefore sees
+          every agency's data, not only the one they just founded. Until the
+          company scoping exists, the route is something a deployment opts into
+          knowingly — a demonstration stack holding no real records — rather
+          than something every deployment gets by standing the service up.
     """
 
     SUPPORTED_JWT_ALGORITHMS: ClassVar[FrozenSet[str]] = frozenset(
@@ -52,6 +64,42 @@ class AuthConfig(BaseModel):
         default=60 * 12,
         description="Access-token lifetime, in minutes.",
     )
+    allow_company_registration: bool = Field(
+        default=False,
+        description=(
+            "Whether an unauthenticated visitor may found an agency and become "
+            "its administrator. Off unless a deployment opts in."
+        ),
+    )
+
+    @field_validator("allow_company_registration", mode="before")
+    def validate_allow_company_registration(cls, value: Optional[bool]) -> bool:
+        """Validates that ``allow_company_registration`` is a boolean.
+
+        Args:
+            value (Optional[bool]): Raw flag value.
+
+        Returns:
+            bool: The flag, defaulting to ``False`` when absent.
+
+        Raises:
+            MTAuthConfigInvalidCompanyRegistration: If ``value`` is neither
+                ``None`` nor a boolean.
+
+        Notes:
+            A string is refused rather than coerced. YAML turns ``no``, ``off``
+            and ``false`` into booleans already, but a quoted ``"false"`` is a
+            non-empty string and would otherwise be read as *true* — which
+            would silently open the route on a deployment whose configuration
+            says, in plain sight, that it is closed.
+        """
+        if value is None:
+            return False
+        if not isinstance(value, bool):
+            raise MTAuthConfigInvalidCompanyRegistration(
+                f"Invalid allow_company_registration: {value!r}. Must be a boolean."
+            )
+        return value
 
     @field_validator("jwt_secret_env", mode="before")
     def validate_jwt_secret_env(cls, value: Optional[str]) -> str:

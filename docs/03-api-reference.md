@@ -48,9 +48,51 @@ credential; no path parameter names it.
 | POST | `/quotes` | current | Writes one, as a draft they own |
 | POST | `/quotes/{id}/submit` | own | Sends it for validation |
 
+| GET | `/account` | The caller's own **account**. Needs no assistant record |
+| PATCH | `/account` | Display name and sign-in address. Nothing else exists on the payload |
+| GET | `/company` | The caller's own agency. **Administrator only** |
+| PUT | `/company` | Its name, SIRET, contact address, registered address and whether it accepts applications |
+
+`/account` is guarded by `get_current_user` and nothing else, so every signed-in
+caller can reach it — including a manager and an administrator. That is the
+point of it: the account screen used to be built on `GET /me/hca`, which refuses
+any account with no assistant record, so it rendered an error page to exactly
+the people who could not fix it.
+
+`AccountUpdateRequest` carries a display name and an address and **no other
+field**. Role, active flag, agency, assistant binding and password hash are all
+absent from the model rather than checked for, so a payload naming one is parsed
+without it. A self-service account screen is precisely where somebody would try
+to grant themselves a role, and there is no check to forget.
+
+`/company` exists for the same reason `/account` does: an administrator signing
+in has no way to know their agency's identifier, and a browser holding one it
+read from somewhere else is how a screen edits the wrong tenant. The
+agency-wide `PUT /api/v1/companies/{id}` still exists for the case where an
+administrator genuinely means to name one.
+
+Administrator, not manager. A manager runs the agency's work; its legal identity
+is not part of running the week, and the one field with an outward effect —
+`is_accepting_applications` — decides whether strangers can apply for a job.
+
 `/hca` and `/customers` need an account bound to an assistant record; `/quotes`
 does not, because authorship is an account property and a manager who writes a
 quote has as much claim to "my quotes".
+
+`PUT /me/quotes/{id}/lines` is the self-service half of the manager route of the
+same name. It is the **same service method**, called with the caller's identity:
+
+```
+QuoteService.replace_lines(quote_id, quote, author_id=None)   # manager: any quote
+QuoteService.replace_lines(quote_id, quote, author_id=caller) # assistant: must be theirs
+```
+
+One method rather than two, because the two would each carry the draft-only
+precondition and the repricing call, and that is two places for them to drift.
+The author is compared against what is **stored on the quote**, never against
+anything in the payload, so a hand-written request naming somebody else's quote
+is answered `403` — which is what suite 20 asserts, since a hidden button proves
+nothing.
 
 ## Quotes — `/api/v1/quotes` · all `manager`
 
@@ -59,7 +101,7 @@ quote has as much claim to "my quotes".
 | POST | `` | Creates and prices; the author is the caller |
 | GET | `` | `page`, `size`, `customer_id`, `status`, `authored_by`. **`status=pending-validation` is the validation queue** |
 | GET | `/{id}` · `/{id}/aggregates` | One quote; its weekly totals |
-| PUT | `/{id}/lines` | Replaces the lines and reprices. Drafts only |
+| PUT | `/{id}/lines` | Replaces the lines and reprices **any** quote in the agency. Drafts only |
 | POST | `/{id}/price` | Reprices against the current catalog. Drafts only |
 | POST | `/{id}/validate` | Approves a submitted quote → `sent`, recording who |
 | POST | `/{id}/refuse-validation` | Sends it back to its author → `draft` |
@@ -68,6 +110,28 @@ quote has as much claim to "my quotes".
 
 → [04 — Quote lifecycle](04-quote-lifecycle.md) for why `validate` and `accept`
 are different things.
+
+## Catalogue pricing — `/api/v1/intervention-types` · all `manager`
+
+| Method | Path | |
+|---|---|---|
+| GET | `/pricing-rules` | The agency-wide default rate, the weekday and holiday surcharges, and the VAT rate each service category carries |
+
+Read-only, and read from the running configuration rather than the database: a
+change to what *every* service costs is a commercial decision with a release
+behind it. What an individual entry charges is editable, through
+`PATCH /{id}`, and an entry that names no rate of its own bills at the agency
+default.
+
+**Declared before `/{type_id}`.** Routes match in registration order, so with
+the parameterised route first this path would be read as a request for the
+intervention type whose identifier is `"pricing-rules"` — a 404 naming a type
+nobody asked for.
+
+Every quote line must carry a `service_category` (`necessity` or `comfort`).
+It is what the line's VAT is computed from, and it has no default — a payload
+omitting it is answered 422 rather than quietly taxed at one of the two rates.
+The catalogue entry named by `intervention_type_id` still fixes the hourly rate.
 
 ## Notifications — `/api/v1/notifications`
 
@@ -122,7 +186,17 @@ identifier the caller polls is real either way.
 
 `GET /health`, `GET /ready` — unauthenticated probes.
 `GET /api/v1/companies/choices` — public, so an applicant can pick an agency.
-`/api/v1/users` — administrator only.
+`POST /api/v1/companies/registration` — public, and **off unless the
+deployment opts in**. Founds an agency and makes its author the
+administrator; see [Founding an agency](#founding-an-agency).
+`/api/v1/users` — administrator only. `DELETE /api/v1/users/{id}` removes an
+account outright and refuses the caller's own and the last administrator;
+**deactivating is the ordinary way** to stop somebody signing in, since
+removing a person who worked here erases who validated what.
+`DELETE /api/v1/companies/{id}` removes an agency, and answers 409 while any
+account or assistant still belongs to it — the refusal names how many of
+each. Both exist for records that should never have been: one raised in
+error, and the fixtures the QA campaign removes after itself.
 `POST /api/v1/webhooks/planning-completed` — shared secret in `X-Webhook-Token`.
 
 ## Two things a client author needs
@@ -135,3 +209,45 @@ produces no auth handling. The front-end attaches the bearer header itself.
 **Pydantic v2 splits models** into `X-Input` and `X-Output` variants for
 `Customer`, `Quote` and `InterventionType`. The front-end's hand-written types
 collapse that; the `openapi-drift` CI job is what stops them going stale.
+
+
+## Founding an agency
+
+`POST /api/v1/companies/registration` — unauthenticated. Creates a company and
+an administrator account for it in one request, and answers **201** with both.
+
+```json
+{
+  "company_name": "Aide et Presence Lyon",
+  "registration_number": "812 345 678 00019",
+  "full_name": "Camille Fournier",
+  "email": "camille@aide-lyon.fr",
+  "password": "a-founder-password-2026"
+}
+```
+
+The registration number is optional: an agency being founded may not have been
+issued one, and refusing to let it exist until it has would put the paperwork
+before the product. No address is taken —
+[`PostalAddress`](02-domain-model.md) geocodes during validation, and a required
+address would put a live Nominatim lookup on the sign-up path where a slow third
+party reads as a broken form. The founder fills it in afterwards.
+
+**No token comes back.** Founding an agency and holding a session are separate
+things; issuing one here would be a second place that mints credentials, and so
+a second place to get expiry, scope and revocation wrong. The founder signs in
+through `POST /api/v1/auth/login` with the password they just chose.
+
+| Answer | When |
+|---|---|
+| 201 | The agency and its administrator were created |
+| 404 | The deployment has not opted in — see below |
+| 409 | The company name or the email address is already taken |
+| 422 | A field is missing, blank, or the password is outside 12–72 bytes |
+
+**Off unless the deployment opts in.** `auth.allow_company_registration` is
+`false` in `app.yaml` and `true` in `app.dev.yaml` and `app.docker.yaml`. A
+deployment that has not opted in answers **404, not 403**: a 403 confirms the
+feature exists and is merely switched off, which invites somebody to keep
+checking whether it has been switched on. Why it is opt-in at all is a security
+question → [11](11-security.md).

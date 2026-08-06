@@ -60,7 +60,7 @@ class EmailConfig(BaseModel):
         description="Whether to issue STARTTLS before authenticating.",
     )
     sender: str = Field(
-        default="planning@rt-erp.local",
+        default="planning@simple-erp.local",
         description="The From address stamped on outgoing messages.",
     )
     username_env: str = Field(

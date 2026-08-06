@@ -30,6 +30,7 @@ def _hca(hca_id: str = "hca-1") -> Hca:
         Hca: The assistant.
     """
     return Hca(
+        company_id="company-1",
         id=hca_id,
         first_name="Marie",
         last_name="Durand",
@@ -73,6 +74,7 @@ def client(service: MagicMock) -> TestClient:
         that ships.
     """
     caller = User(
+        company_id="company-1",
         id="user-1",
         email="manager@example.com",
         full_name="Manager",

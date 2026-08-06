@@ -89,7 +89,73 @@ Unread Badge Should Become
 
 Notification List Should Mention
     [Documentation]    Open the bell and look for a phrase.
+    ...
+    ...    Called under ``Wait Until Keyword Succeeds`` while a notification
+    ...    crosses the broker, so it has to be safe to call twice. Clicking the
+    ...    bell unconditionally is not: the second click lands on the popover's
+    ...    own backdrop rather than on the bell, and waits out the full element
+    ...    timeout instead of retrying the assertion.
     [Arguments]    ${phrase}
-    Click    [data-testid="notification-bell"]
-    Wait For Elements State    [data-testid="notification-list"]    visible
+    Open The Notification Popover
     Get Text    [data-testid="notification-list"]    *=    ${phrase}
+
+Open The Notification Popover
+    [Documentation]    Show the bell's popover, unless it is showing already.
+    ${open}=    Popover Is Open
+    IF    not ${open}
+        Click    [data-testid="notification-bell"]
+        Wait For Elements State    [data-testid="notification-list"]    visible
+    END
+
+Close The Notification Popover
+    [Documentation]    Dismiss the popover through its own backdrop.
+    ...
+    ...    Through the backdrop, never by clicking something behind it. MUI lays
+    ...    an invisible backdrop over the whole page while a popover is open, so
+    ...    a click aimed at the logo is swallowed rather than dismissing
+    ...    anything — the popover stays, and every later click in the suite is
+    ...    swallowed the same way, each one reported against whatever element it
+    ...    was aimed at rather than against the popover that ate it.
+    ${open}=    Popover Is Open
+    IF    ${open}
+        Click    .MuiPopover-root >> .MuiBackdrop-root
+        Wait For Elements State    [data-testid="notification-list"]    detached
+    END
+
+Popover Is Open
+    [Documentation]    Return whether the bell's popover is on screen.
+
+    ...    Returns:
+    ...        bool: ``True`` when the notification list is on the page.
+    ...
+    ...    Counted, never waited for. Asking "is it open?" with a one-second
+    ...    ``Wait For Elements State`` wrapped in ``Run Keyword And Return
+    ...    Status`` gets the right answer and pays for it twice: a second of
+    ...    dead time on every call that says "no", and a ``TimeoutError`` in the
+    ...    log of a run where nothing went wrong. A campaign whose passing runs
+    ...    are full of red is a campaign nobody reads the log of.
+    ...
+    ...    MUI unmounts the popover's content when it closes, so presence and
+    ...    openness are the same question here.
+    ${count}=    Get Element Count    [data-testid="notification-list"]
+    RETURN    ${{ $count > 0 }}
+
+Show A Calendar Month That Has Visits
+    [Documentation]    Switch a FullCalendar to a month with something on it.
+    ...
+    ...    The week view draws seven days of a six-week window, so whether the
+    ...    planning is on screen at all depends on which weekday the campaign
+    ...    happens to be started on. A month holds it — except in the closing
+    ...    days of one, when the visits are all in the next, so an empty month
+    ...    steps forward once rather than reporting "nothing was planned" about
+    ...    a planning that exists.
+    ...
+    ...    Called *after* whatever changes the calendar's contents: the grids
+    ...    are keyed on their selection and remount on their initial view.
+    Click    .fc-dayGridMonth-button
+    Wait For Elements State    .fc-dayGridMonth-view    visible
+    ${drawn}=    Get Element Count    .fc-event
+    IF    ${drawn} == 0
+        Click    .fc-next-button
+        Wait For Elements State    .fc-dayGridMonth-view    visible
+    END

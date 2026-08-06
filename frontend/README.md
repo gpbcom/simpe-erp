@@ -1,4 +1,4 @@
-# rt-erp — front-end
+# SimpleERP — front-end
 
 React 19 + TypeScript (strict) + MUI v6, built by Vite.
 

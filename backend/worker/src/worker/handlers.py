@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from logging import Logger, getLogger
-from typing import Optional
+from typing import Awaitable, Callable, List, Optional
 
 # First-party imports
 from models.configuration.app_config import AppConfig
@@ -12,6 +12,7 @@ from service.messaging.publisher import EventPublisher
 from service.notifications.notifications import NotificationService
 from service.planning.plannings import PlanningService
 from storage.db.connection_manager import DatabaseConnectionManager
+from storage.repositories.company import CompanyRepository
 from storage.repositories.customer import CustomerRepository
 from storage.repositories.hca import HcaRepository
 from storage.repositories.intervention import InterventionRepository
@@ -20,6 +21,9 @@ from storage.repositories.planning_run import PlanningRunRepository
 from storage.repositories.planning_settings import PlanningSettingsRepository
 from storage.repositories.quote import QuoteRepository
 from storage.repositories.user import UserRepository
+
+
+CompanyCallback = Callable[[str], Awaitable[None]]
 
 
 class EventHandlers:
@@ -63,6 +67,7 @@ class EventHandlers:
         self._manager = DatabaseConnectionManager(
             config=config.database, logger=self.logger
         )
+        self._on_company_created: Optional[CompanyCallback] = None
         self.logger.debug("EventHandlers created.")
 
     ############################
@@ -108,8 +113,20 @@ class EventHandlers:
             )
             run = await service.execute_run(run_id)
         self.logger.info("Planning run %s finished as %s.", run_id, run.status.value)
+        # Echoed from the request rather than looked up again. The message that
+        # asked for this run already carried the agency, and re-deriving it here
+        # would be a second answer that can disagree with the first.
+        company_id = envelope.string_field("company_id")
+        if not company_id:
+            self.logger.error(
+                "Planning run %s carried no agency; its completion cannot be "
+                "announced to one and is dropped.",
+                run_id,
+            )
+            return
         await self.publisher.publish(
             EventRoutingKey.PLANNING_RUN_COMPLETED,
+            company_id,
             {"run_id": run_id, "status": run.status.value},
         )
 
@@ -197,6 +214,64 @@ class EventHandlers:
                     f"existants n'ont pas été modifiés."
                 ),
             )
+
+    def on_company_created(self, callback: CompanyCallback) -> None:
+        """Register what to do when an agency is founded.
+
+        Args:
+            callback (CompanyCallback): Coroutine taking the new agency's
+                identifier.
+
+        Notes:
+            A callback rather than the worker's binding code inlined here, so
+            these handlers stay about *what happened* and the process stays in
+            charge of *what it consumes*.
+        """
+        self._on_company_created = callback
+
+    async def company_created(self, envelope: EventEnvelope) -> None:
+        """Bind the queues of an agency that has just been founded.
+
+        Args:
+            envelope (EventEnvelope): The message, carrying ``company_id``.
+
+        Notes:
+            Without this a self-registered agency would have no queues until
+            the next restart: its quotes would be published under a routing key
+            nothing is bound to, and no notification would ever be written. The
+            symptom is an agency where the product silently does half its job,
+            which is why the announcement exists at all.
+        """
+        company_id = envelope.string_field("company_id")
+        if not company_id:
+            self.logger.error("A company.created message named no agency.")
+            return
+        if self._on_company_created is None:
+            self.logger.warning(
+                "Agency %s was founded, but nothing is listening for it.",
+                company_id,
+            )
+            return
+        self.logger.info("Agency %s was founded; binding its queues.", company_id)
+        await self._on_company_created(company_id)
+
+    async def companies(self) -> List[str]:
+        """Return every agency this worker should be serving.
+
+        Returns:
+            List[str]: The identifiers of every stored agency.
+
+        Notes:
+            Read at startup so a worker that was down while agencies were
+            founded catches up, which is what lets the ``company.created``
+            queue be exclusive and non-durable.
+        """
+        async with self._manager.session() as session:
+            repository = CompanyRepository(session=session, logger=self.logger)
+            stored = await repository.list(size=None)
+        identifiers = [company.id for company in stored if company.id]
+        self.logger.info("Worker will serve %d agency/agencies.", len(identifiers))
+        return identifiers
 
     async def open(self) -> None:
         """Open the database pool before the first message is handled.

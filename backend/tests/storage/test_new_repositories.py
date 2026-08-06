@@ -378,6 +378,7 @@ class TestAccountColumns:
         repository = UserRepository(session)
         stored = await repository.create(
             User(
+                company_id="company-1",
                 email="new@example.com",
                 full_name="New Starter",
                 hashed_password=HASH,
@@ -407,6 +408,7 @@ class TestAccountColumns:
         """Accounts made before the two paths existed are unaffected."""
         stored = await UserRepository(session).create(
             User(
+                company_id="company-1",
                 email="old@example.com",
                 full_name="Old Hand",
                 hashed_password=HASH,

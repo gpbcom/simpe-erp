@@ -18,12 +18,14 @@ from models.configuration.app_config import AppConfig
 from models.enums import PlanningRunStatus, UserRole
 from service.auth.auth import AuthService
 from service.companies.companies import CompanyService
+from service.companies.registration import CompanyRegistrationService
 from service.customers.customers import CustomerService
 from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
 from service.intervention_types.intervention_types import InterventionTypeService
 from service.messaging.publisher import EventPublisher
 from service.notifications.notifications import NotificationService
+from service.planning.interventions import InterventionService
 from service.planning.plannings import PlanningService
 from service.quotes.quotes import QuoteService
 from storage.db.connection_manager import DatabaseConnectionManager
@@ -67,7 +69,7 @@ def get_app_config() -> AppConfig:
         lifetime and re-reading the file on every request would be pure waste.
 
         Which file is loaded is :class:`AppConfig`'s decision, driven by
-        ``$RT_ERP_CONFIG``; the Alembic environment loads the same way, so the
+        ``$SIMPLE_ERP_CONFIG``; the Alembic environment loads the same way, so the
         schema and the running application can never come from different
         configurations.
     """
@@ -399,6 +401,29 @@ async def get_intervention_repository(
     return InterventionRepository(session=session, logger=logger)
 
 
+async def get_intervention_service(
+    interventions: InterventionRepository = Depends(get_intervention_repository),
+    quotes: QuoteService = Depends(get_quote_service),
+    types: InterventionTypeRepository = Depends(get_intervention_type_repository),
+) -> InterventionService:
+    """Return the service that edits one scheduled visit.
+
+    Args:
+        interventions (InterventionRepository): The scheduled visits.
+        quotes (QuoteService): Prices and stores the paperwork.
+        types (InterventionTypeRepository): The catalog the rates come from.
+
+    Returns:
+        InterventionService: The service.
+    """
+    return InterventionService(
+        interventions=interventions,
+        quotes=quotes,
+        types=types,
+        logger=logger,
+    )
+
+
 async def get_planning_settings_repository(
     session: AsyncSession = Depends(get_session),
 ) -> PlanningSettingsRepository:
@@ -550,16 +575,21 @@ async def get_company_repository(
 
 async def get_company_service(
     companies: CompanyRepository = Depends(get_company_repository),
+    users: UserRepository = Depends(get_user_repository),
+    hcas: HcaRepository = Depends(get_hca_repository),
 ) -> CompanyService:
     """Return the company service.
 
     Args:
         companies (CompanyRepository): The company store.
+        users (UserRepository): The account store, to check an agency is empty
+            before it is removed.
+        hcas (HcaRepository): The assistant store, for the same check.
 
     Returns:
         CompanyService: The service.
     """
-    return CompanyService(companies=companies, logger=logger)
+    return CompanyService(companies=companies, users=users, hcas=hcas, logger=logger)
 
 
 async def get_hca_application_repository(
@@ -628,6 +658,33 @@ async def get_auth_service(
         users=users,
         hcas=hcas,
         config=get_app_config().auth,
+        logger=logger,
+    )
+
+
+async def get_company_registration_service(
+    companies: CompanyService = Depends(get_company_service),
+    auth: AuthService = Depends(get_auth_service),
+    publisher: EventPublisher = Depends(get_event_publisher),
+    config: AppConfig = Depends(get_app_config),
+) -> CompanyRegistrationService:
+    """Return the company-registration service.
+
+    Args:
+        companies (CompanyService): The company service.
+        auth (AuthService): The authentication service.
+        publisher (EventPublisher): The broker publisher, to announce the
+            agency so the workers bind its queues.
+        config (AppConfig): The application configuration, for the flag.
+
+    Returns:
+        CompanyRegistrationService: The service.
+    """
+    return CompanyRegistrationService(
+        companies=companies,
+        auth=auth,
+        publisher=publisher,
+        config=config.auth,
         logger=logger,
     )
 

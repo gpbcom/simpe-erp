@@ -135,7 +135,7 @@ class PlanningSettings(BaseModel):
             )
         try:
             radius = float(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             raise MTPlanningSettingsInvalidRadius(
                 f"Invalid max_intervention_radius_km: {value!r}. Must be a number."
             ) from None
@@ -175,7 +175,7 @@ class PlanningSettings(BaseModel):
             )
         try:
             minutes = int(value)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             raise MTPlanningSettingsInvalidLunchBreak(
                 f"Invalid lunch_break_minutes: {value!r}. Must be a whole "
                 f"number of minutes."
