@@ -213,7 +213,9 @@ export function HcasPage() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditing(null)}>{t('common.cancel')}</Button>
+          <Button onClick={() => setEditing(null)} data-testid="cancel-certifications">
+            {t('common.cancel')}
+          </Button>
           <Button variant="contained" onClick={save} data-testid="save-certifications">
             {t('common.save')}
           </Button>

@@ -107,6 +107,7 @@ export function MyAccountPage() {
               <Avatar
                 src={profile.photo_url ?? undefined}
                 sx={{ width: 96, height: 96, mx: 'auto', mb: 2, fontSize: 32 }}
+                data-testid="profile-avatar"
               >
                 {initialsOf(fullName)}
               </Avatar>
@@ -258,6 +259,7 @@ export function MyAccountPage() {
         autoHideDuration={4000}
         onClose={() => setSaved(false)}
         message={t('common.saved')}
+        data-testid="profile-saved"
       />
     </Stack>
   );

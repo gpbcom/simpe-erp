@@ -161,7 +161,11 @@ async def list_my_customers(
         one of them.
     """
     return await service.list_for_hca(
-        hca_id=_own_hca_id(caller), page=page, size=size, search=search
+        hca_id=_own_hca_id(caller),
+        account_id=caller.id or caller.email,
+        page=page,
+        size=size,
+        search=search,
     )
 
 
@@ -192,7 +196,11 @@ async def read_my_customer(
         Distinguishing the two would let an assistant discover which identifiers
         are real by trying them.
     """
-    return await service.get_for_hca(customer_id, hca_id=_own_hca_id(caller))
+    return await service.get_for_hca(
+        customer_id,
+        hca_id=_own_hca_id(caller),
+        account_id=caller.id or caller.email,
+    )
 
 
 @router.get("/quotes", response_model=List[Quote])

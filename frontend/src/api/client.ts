@@ -1,7 +1,8 @@
 import type { AccessToken, User } from './types';
 
 /** Where the API lives. Inlined by Vite at build time. */
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) ?? 'http://localhost:8000';
+const BASE_URL =
+  (import.meta.env.VITE_API_BASE_URL as string) ?? 'http://localhost:8000';
 
 /** Where the session token is kept between page loads. */
 const TOKEN_KEY = 'rt-erp.token';

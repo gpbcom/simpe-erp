@@ -76,7 +76,12 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
     entries: [
       { to: '/quotes', labelKey: 'nav.quotes', icon: 'quote', minimum: 'manager' },
       { to: '/hcas', labelKey: 'nav.hcas', icon: 'hca', minimum: 'manager' },
-      { to: '/customers', labelKey: 'nav.customers', icon: 'customer', minimum: 'manager' },
+      {
+        to: '/customers',
+        labelKey: 'nav.customers',
+        icon: 'customer',
+        minimum: 'manager',
+      },
       { to: '/map', labelKey: 'nav.map', icon: 'mapPin', minimum: 'manager' },
       {
         to: '/notifications',
@@ -118,7 +123,7 @@ export function AppShell() {
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }} data-testid="app-shell">
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar variant="dense" sx={{ gap: 1 }}>
           <Box
@@ -224,7 +229,11 @@ export function AppShell() {
         </Box>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, width: 0 }}>
+      <Box
+        component="main"
+        sx={{ flexGrow: 1, p: 3, width: 0 }}
+        data-testid="main-content"
+      >
         <Toolbar variant="dense" />
         <Outlet />
       </Box>

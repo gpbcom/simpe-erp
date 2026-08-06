@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# Only what a release needs: the token is scoped to writing packages, and
+# nothing here can push a commit or open a pull request.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    name: Publish images to GHCR
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            target: ''
+          - name: worker
+            # Deliberately the same image as the backend, published under a
+            # second name. Building one image and running it two ways is what
+            # keeps the API and the worker from drifting apart, which is
+            # exactly what happens when a worker gets a Dockerfile of its own.
+            context: ./backend
+            target: ''
+          - name: frontend
+            context: ./frontend
+            target: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_API_BASE_URL=/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -251,6 +251,46 @@ class TestMyCustomers:
         assert response.status_code == 200
         assert customers.list_for_hca.await_args.kwargs["hca_id"] == "hca-1"
 
+    def test_the_portfolio_is_scoped_by_account_as_well_as_assistant(self) -> None:
+        """Both identifiers reach the service, and they are not the same one.
+
+        Notes:
+            The portfolio is a union of two differently-keyed sets: planned
+            interventions name the assistant, quotes record the account that
+            wrote them. Passing the assistant identifier for both matches no
+            quote at all, which silently reduces the portfolio to its
+            intervention half — an assistant who has written quotes but has no
+            visit yet then sees an empty list and can quote for nobody.
+        """
+        customers = MagicMock()
+        customers.list_for_hca = AsyncMock(return_value=[_customer()])
+
+        response = _client(_user(), customers=customers).get("/api/v1/me/customers")
+
+        assert response.status_code == 200
+        passed = customers.list_for_hca.await_args.kwargs
+        assert passed["hca_id"] == "hca-1"
+        assert passed["account_id"] == "user-1"
+
+    def test_reading_one_customer_is_scoped_by_both_identifiers(self) -> None:
+        """The detail view scopes exactly as the list does.
+
+        Notes:
+            The two have to agree. A portfolio that lists a customer whose own
+            page then answers 404 is worse than either behaviour alone.
+        """
+        customers = MagicMock()
+        customers.get_for_hca = AsyncMock(return_value=_customer())
+
+        response = _client(_user(), customers=customers).get(
+            "/api/v1/me/customers/customer-1"
+        )
+
+        assert response.status_code == 200
+        passed = customers.get_for_hca.await_args.kwargs
+        assert passed["hca_id"] == "hca-1"
+        assert passed["account_id"] == "user-1"
+
     def test_a_customer_outside_the_portfolio_is_a_404(self) -> None:
         """Guessing an identifier does not reach somebody else's file."""
         customers = MagicMock()

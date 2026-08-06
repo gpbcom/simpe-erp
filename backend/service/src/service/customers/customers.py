@@ -141,6 +141,7 @@ class CustomerService:
     async def list_for_hca(
         self,
         hca_id: str,
+        account_id: str,
         page: int = 1,
         size: Optional[int] = None,
         search: Optional[str] = None,
@@ -149,23 +150,36 @@ class CustomerService:
 
         Args:
             hca_id (str): The assistant whose portfolio is being read.
+            account_id (str): The sign-in account that assistant holds.
             page (int): One-based page number.
             size (Optional[int]): Page size.
             search (Optional[str]): Restrict by name or address.
 
         Returns:
             List[Customer]: The assistant's own portfolio.
+
+        Notes:
+            Both identifiers, because the portfolio is a union of a set keyed
+            by the assistant and a set keyed by their account. See
+            :meth:`CustomerRepository.list_for_hca`.
         """
         return await self.customers.list_for_hca(
-            hca_id=hca_id, page=page, size=size, search=search
+            hca_id=hca_id,
+            account_id=account_id,
+            page=page,
+            size=size,
+            search=search,
         )
 
-    async def get_for_hca(self, customer_id: str, hca_id: str) -> Customer:
+    async def get_for_hca(
+        self, customer_id: str, hca_id: str, account_id: str
+    ) -> Customer:
         """Return one customer, if the assistant is entitled to see them.
 
         Args:
             customer_id (str): The customer to read.
             hca_id (str): The assistant asking.
+            account_id (str): The sign-in account that assistant holds.
 
         Returns:
             Customer: The customer.
@@ -180,7 +194,7 @@ class CustomerService:
             an assistant walk the identifier space and learn which customers the
             agency has, which is most of what a customer list is worth.
         """
-        if not await self.customers.is_served_by(customer_id, hca_id):
+        if not await self.customers.is_served_by(customer_id, hca_id, account_id):
             raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
         return await self.get(customer_id)
 

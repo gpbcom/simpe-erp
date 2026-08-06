@@ -1,0 +1,14 @@
+{
+    "recommendations": [
+        // Python: the interpreter, the test explorer and the debugger.
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        // Linting and formatting, driven by backend/pyproject.toml's
+        // [tool.ruff] rather than by editor settings.
+        "charliermarsh.ruff",
+        // Robot Framework: syntax, keyword navigation and the Test Explorer
+        // entries for qa/robot/suites.
+        "d-biehl.robotcode"
+    ]
+}

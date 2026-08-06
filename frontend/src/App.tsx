@@ -40,7 +40,11 @@ interface GuardProps {
  */
 function RoleRoute({ minimum, children }: GuardProps) {
   const user = useSession((state) => state.user);
-  return hasAtLeast(user?.role, minimum) ? <>{children}</> : <Navigate to="/" replace />;
+  return hasAtLeast(user?.role, minimum) ? (
+    <>{children}</>
+  ) : (
+    <Navigate to="/" replace />
+  );
 }
 
 /**
@@ -60,8 +64,7 @@ export function App() {
 
   const theme = useMemo(() => {
     const mode = (window.localStorage.getItem('rt-erp.theme') ?? 'light') as
-      | 'light'
-      | 'dark';
+      'light' | 'dark';
     return buildTheme(mode, i18n.language);
   }, [i18n.language]);
 

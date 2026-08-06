@@ -5,13 +5,12 @@ from datetime import UTC, date, datetime, timedelta
 from logging import Logger, getLogger
 from typing import List, Optional
 
-from seed.dataset import Dataset
-
 # Third-party imports
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
+from models.auth.user import User
 from models.catalog.intervention_type import InterventionType
 from models.companies.company import Company
 from models.enums import AccountOrigin, QuoteStatus, UserRole
@@ -20,6 +19,7 @@ from models.people.customer import Customer
 from models.people.hca import Hca
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
+from seed.dataset import Dataset  # isort: skip
 from storage.orm.company_row import CompanyRow
 from storage.orm.intervention_type_row import InterventionTypeRow
 from storage.orm.quote_row import QuoteRow
@@ -76,12 +76,12 @@ class Seeder:
         self.data = Dataset()
         self.hasher = hasher
         self.logger = logger if logger else getLogger(__name__)
-        self.companies = CompanyRepository(session=session, logger=self.logger)
-        self.users = UserRepository(session=session, logger=self.logger)
-        self.hcas = HcaRepository(session=session, logger=self.logger)
-        self.customers = CustomerRepository(session=session, logger=self.logger)
-        self.types = InterventionTypeRepository(session=session, logger=self.logger)
-        self.quotes = QuoteRepository(session=session, logger=self.logger)
+        self.companies = CompanyRepository(session=session)
+        self.users = UserRepository(session=session)
+        self.hcas = HcaRepository(session=session)
+        self.customers = CustomerRepository(session=session)
+        self.types = InterventionTypeRepository(session=session)
+        self.quotes = QuoteRepository(session=session)
         self.logger.debug("Seeder created.")
 
     ############################
@@ -131,6 +131,156 @@ class Seeder:
             latitude=latitude,
             longitude=longitude,
         )
+
+    def _today(self) -> date:
+        """Return today's date in UTC.
+
+        Returns:
+            date: Today, read from a timezone-aware clock.
+
+        Notes:
+            Read through UTC rather than the machine's local calendar day, so a
+            seeder run late in the evening in Paris produces the same dates as
+            one run in CI, which lives in UTC. A quote issued "yesterday" on one
+            machine and "today" on another is the kind of difference that makes
+            a screenshot comparison fail for no real reason.
+        """
+        return datetime.now(UTC).date()
+
+    def _monday_of_next_week(self) -> date:
+        """Return the Monday of the week after this one.
+
+        Returns:
+            date: Next Monday.
+
+        Notes:
+            The seeded work is in the **future**, so a planning run over it has
+            something to place. Seeding last week's visits would produce a
+            calendar that is already history and a solver with nothing to do.
+        """
+        today = self._today()
+        return today + timedelta(days=7 - today.weekday())
+
+    def _account(
+        self,
+        user_id: str,
+        email: str,
+        full_name: str,
+        role: UserRole,
+        hca_id: Optional[str],
+        company_id: str,
+    ) -> User:
+        """Build a seeded account.
+
+        Args:
+            user_id (str): The derived identifier.
+            email (str): The sign-in address.
+            full_name (str): The display name.
+            role (UserRole): The role to grant.
+            hca_id (Optional[str]): The assistant record, for an assistant
+                account.
+            company_id (str): The agency.
+
+        Returns:
+            User: The account to store.
+        """
+        return User(
+            id=user_id,
+            email=email,
+            full_name=full_name,
+            hashed_password=self.hasher.hash(self.data.PASSWORD),
+            role=role,
+            is_active=True,
+            hca_id=hca_id,
+            company_id=company_id,
+            account_origin=AccountOrigin.SELF_REGISTERED,
+            must_change_password=False,
+        )
+
+    def _quote(
+        self,
+        quote_id: str,
+        reference: str,
+        customer: Customer,
+        status: QuoteStatus,
+        author_id: Optional[str],
+        lines: List[QuoteLine],
+    ) -> Quote:
+        """Build a seeded quote.
+
+        Args:
+            quote_id (str): The derived identifier.
+            reference (str): The human-facing quote number.
+            customer (Customer): Who it is addressed to.
+            status (QuoteStatus): Where it sits in its lifecycle.
+            author_id (Optional[str]): The account that wrote it.
+            lines (List[QuoteLine]): The services offered.
+
+        Returns:
+            Quote: The quote to store.
+        """
+        now = datetime.now(UTC)
+        submitted = now if status is QuoteStatus.PENDING_VALIDATION else None
+        validated = (
+            now
+            if status in (QuoteStatus.SENT, QuoteStatus.ACCEPTED, QuoteStatus.REJECTED)
+            else None
+        )
+        return Quote(
+            id=quote_id,
+            reference=reference,
+            customer_id=customer.id,
+            status=status,
+            lines=lines,
+            issued_on=self._today() if validated else None,
+            valid_until=self._today() + timedelta(days=30) if validated else None,
+            authored_by=author_id,
+            submitted_at=submitted,
+            validated_by=author_id if validated else None,
+            validated_at=validated,
+        )
+
+    def _lines(
+        self,
+        catalog: List[InterventionType],
+        monday: date,
+        seed_index: int,
+    ) -> List[QuoteLine]:
+        """Build the lines of one seeded quote.
+
+        Args:
+            catalog (List[InterventionType]): The services to draw from.
+            monday (date): The Monday the schedule starts on.
+            seed_index (int): Varies the shape from one quote to the next.
+
+        Returns:
+            List[QuoteLine]: Between two and four lines, unpriced.
+
+        Notes:
+            Left unpriced. The quote service prices on create, against the
+            catalog as it stands, which is what an operator's quote goes
+            through — writing amounts here would seed figures nothing had
+            computed.
+        """
+        line_count = 2 + (seed_index % 3)
+        days = self.data.service_days(monday, line_count)
+        lines: List[QuoteLine] = []
+        for position in range(line_count):
+            entry = catalog[(seed_index + position) % len(catalog)]
+            start, end, minutes = self.data.SERVICE_WINDOWS[
+                (seed_index + position) % len(self.data.SERVICE_WINDOWS)
+            ]
+            lines.append(
+                QuoteLine(
+                    name=entry.name,
+                    intervention_type_id=entry.id,
+                    service_date=days[position],
+                    earliest_start=start,
+                    latest_end=end,
+                    duration_minutes=minutes,
+                )
+            )
+        return lines
 
     ############################
     # Publicly Exposed Methods #
@@ -258,7 +408,7 @@ class Seeder:
         self.logger.info("Customer book holds %d people.", len(stored))
         return stored
 
-    async def seed_accounts(self, company_id: str, assistants: List[Hca]) -> List[str]:
+    async def seed_accounts(self, company_id: str, assistants: List[Hca]) -> List[str]:  # noqa: E501
         """Create the sign-in accounts.
 
         Args:
@@ -286,14 +436,13 @@ class Seeder:
             if await self._exists(UserRow, user_id):
                 continue
             await self.users.create(
-                _account(
+                self._account(
                     user_id=user_id,
                     email=email,
                     full_name=full_name,
                     role=role,
                     hca_id=hca_id,
                     company_id=company_id,
-                    hashed=self.hasher.hash(self.data.PASSWORD),
                 )
             )
             created.append(email)
@@ -304,14 +453,13 @@ class Seeder:
             if await self._exists(UserRow, user_id):
                 continue
             await self.users.create(
-                _account(
+                self._account(
                     user_id=user_id,
                     email=email,
                     full_name=assistant.full_name(),
                     role=UserRole.HCA,
                     hca_id=assistant.id,
                     company_id=company_id,
-                    hashed=self.hasher.hash(self.data.PASSWORD),
                 )
             )
             created.append(email)
@@ -340,7 +488,7 @@ class Seeder:
             job — and ``pending-validation`` above all, because that queue is
             the whole point of the validation workflow.
         """
-        monday = _monday_of_next_week()
+        monday = self._monday_of_next_week()
         written = 0
         index = 0
         for status, count in self.data.QUOTE_PLAN:
@@ -352,7 +500,7 @@ class Seeder:
                 if await self._exists(QuoteRow, quote_id):
                     continue
                 await self.quotes.create(
-                    _quote(
+                    self._quote(
                         quote_id=quote_id,
                         reference=reference,
                         customer=customer,
@@ -360,165 +508,50 @@ class Seeder:
                         author_id=author_ids[index % len(author_ids)]
                         if author_ids
                         else None,
-                        lines=_lines(self.data, catalog, monday, index),
+                        lines=self._lines(catalog, monday, index),
                     )
                 )
                 written += 1
         self.logger.info("Seeded %d new quote(s).", written)
         return written
 
+    def account_ids_for(self, assistants: List[Hca]) -> List[str]:
+        """Return the account identifiers behind the seeded assistants.
 
-def _account(
-    user_id: str,
-    email: str,
-    full_name: str,
-    role: UserRole,
-    hca_id: Optional[str],
-    company_id: str,
-    hashed: str,
-):
-    """Build a seeded account.
+        Args:
+            assistants (List[Hca]): The seeded assistants.
 
-    Args:
-        user_id (str): The derived identifier.
-        email (str): The sign-in address.
-        full_name (str): The display name.
-        role (UserRole): The role to grant.
-        hca_id (Optional[str]): The assistant record, for an assistant account.
-        company_id (str): The agency.
-        hashed (str): The already-hashed password.
+        Returns:
+            List[str]: The account identifiers, so quotes can be attributed to
+            real signed-in accounts rather than to nobody.
 
-    Returns:
-        User: The account to store.
-    """
-    from models.auth.user import User
-
-    return User(
-        id=user_id,
-        email=email,
-        full_name=full_name,
-        hashed_password=hashed,
-        role=role,
-        is_active=True,
-        hca_id=hca_id,
-        company_id=company_id,
-        account_origin=AccountOrigin.SELF_REGISTERED,
-        must_change_password=False,
-    )
-
-
-def _quote(
-    quote_id: str,
-    reference: str,
-    customer: Customer,
-    status: QuoteStatus,
-    author_id: Optional[str],
-    lines: List[QuoteLine],
-) -> Quote:
-    """Build a seeded quote.
-
-    Args:
-        quote_id (str): The derived identifier.
-        reference (str): The human-facing quote number.
-        customer (Customer): Who it is addressed to.
-        status (QuoteStatus): Where it sits in its lifecycle.
-        author_id (Optional[str]): The account that wrote it.
-        lines (List[QuoteLine]): The services offered.
-
-    Returns:
-        Quote: The quote to store.
-    """
-    now = datetime.now(UTC)
-    submitted = now if status is QuoteStatus.PENDING_VALIDATION else None
-    validated = (
-        now
-        if status in (QuoteStatus.SENT, QuoteStatus.ACCEPTED, QuoteStatus.REJECTED)
-        else None
-    )
-    return Quote(
-        id=quote_id,
-        reference=reference,
-        customer_id=customer.id,
-        status=status,
-        lines=lines,
-        issued_on=_today() if validated else None,
-        valid_until=_today() + timedelta(days=30) if validated else None,
-        authored_by=author_id,
-        submitted_at=submitted,
-        validated_by=author_id if validated else None,
-        validated_at=validated,
-    )
-
-
-def _lines(
-    data: Dataset,
-    catalog: List[InterventionType],
-    monday: date,
-    seed_index: int,
-) -> List[QuoteLine]:
-    """Build the lines of one seeded quote.
-
-    Args:
-        data (Dataset): The fixed contents, for the service windows.
-        catalog (List[InterventionType]): The services to draw from.
-        monday (date): The Monday the schedule starts on.
-        seed_index (int): Varies the shape from one quote to the next.
-
-    Returns:
-        List[QuoteLine]: Between two and four lines, unpriced.
-
-    Notes:
-        Left unpriced. The quote service prices on create, against the catalog
-        as it stands, which is what an operator's quote goes through — writing
-        amounts here would seed figures nothing had computed.
-    """
-    line_count = 2 + (seed_index % 3)
-    days = data.service_days(monday, line_count)
-    lines: List[QuoteLine] = []
-    for position in range(line_count):
-        entry = catalog[(seed_index + position) % len(catalog)]
-        start, end, minutes = data.SERVICE_WINDOWS[
-            (seed_index + position) % len(data.SERVICE_WINDOWS)
+        Notes:
+            A quote's ``authored_by`` is an **account**, not an assistant.
+            Seeding it with the assistant's identifier would put every quote
+            outside every assistant's own list, because that list filters on
+            the account.
+        """
+        return [
+            self.data.identifier("user", str(assistant.email))
+            for assistant in assistants
         ]
-        lines.append(
-            QuoteLine(
-                name=entry.name,
-                intervention_type_id=entry.id,
-                service_date=days[position],
-                earliest_start=start,
-                latest_end=end,
-                duration_minutes=minutes,
-            )
-        )
-    return lines
 
+    def print_credentials(self) -> None:
+        """Print the seeded sign-ins.
 
-def _today() -> date:
-    """Return today's date in UTC.
-
-    Returns:
-        date: Today, read from a timezone-aware clock.
-
-    Notes:
-        Read through UTC rather than the machine's local calendar day, so a
-        seeder run late in the evening in Paris produces the same dates as one
-        run in CI, which lives in UTC. A quote issued "yesterday" on one machine
-        and "today" on another is the kind of difference that makes a screenshot
-        comparison fail for no real reason.
-    """
-    return datetime.now(UTC).date()
-
-
-def _monday_of_next_week() -> date:
-    """Return the Monday of the week after this one.
-
-    Returns:
-        date: Next Monday.
-
-    Notes:
-        The seeded work is in the **future**, so a planning run over it has
-        something to place. Seeding last week's visits would produce a
-        calendar that is already history and a solver with nothing to do.
-    """
-    today = _today()
-    return today + timedelta(days=7 - today.weekday())
+        Notes:
+            Printed rather than logged at ``INFO``, and printed every run rather
+            than only when something was written. A developer who reruns the
+            stack a week later needs the password on screen, not in a log file
+            from the first run.
+        """
+        password = self.data.PASSWORD
+        print()
+        print("  rt-erp is seeded. Sign in at http://localhost:5173 with:")
+        print()
+        print(f"    Administrator   admin@rt-erp.fr      {password}")
+        print(f"    Manager         manager@rt-erp.fr    {password}")
+        print(f"    Assistant       luc.martin@rt-erp.fr {password}")
+        print()
+        print("  Every seeded assistant signs in with firstname.lastname@rt-erp.fr.")
+        print()

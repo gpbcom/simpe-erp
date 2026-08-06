@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapContainer, Marker, TileLayer, Tooltip as LeafletTooltip } from 'react-leaflet';
+import {
+  MapContainer,
+  Marker,
+  TileLayer,
+  Tooltip as LeafletTooltip,
+} from 'react-leaflet';
 import L from 'leaflet';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -40,12 +45,19 @@ type Window = 'today' | 'week' | 'next7';
  * distinguishable pin — the manager's question is "who is where", and a blank
  * circle does not answer it.
  */
-function photoPin(photoUrl: string | null, fallback: string, colour: string): L.DivIcon {
+function photoPin(
+  photoUrl: string | null,
+  fallback: string,
+  colour: string,
+): L.DivIcon {
   const inner = photoUrl
     ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%" />`
     : `<span style="font:600 12px Inter,sans-serif;color:#fff">${fallback}</span>`;
   return L.divIcon({
-    className: '',
+    // Counted by the GUI campaign: 'how many pins are on the map' is the
+    // question the screen exists to answer, and there is no other handle on a
+    // Leaflet marker from outside the map.
+    className: 'rt-erp-pin',
     html: `<div style="
         width:38px;height:38px;border-radius:50%;
         border:3px solid ${colour};background:${colour};

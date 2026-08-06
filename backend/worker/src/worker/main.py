@@ -42,6 +42,11 @@ async def run() -> None:
     """
     config = AppConfig.load()
     handlers = EventHandlers(config=config, logger=logger)
+    # Before either consumer is started, so no message can be delivered to a
+    # handler that has no database behind it. `connect()` also retries, which
+    # this process needs: compose starts it as soon as PostgreSQL reports
+    # healthy, and healthy precedes accepting connections by a moment.
+    await handlers.open()
 
     planning = EventConsumer(config=config.rabbitmq, logger=logger)
     planning.on(EventRoutingKey.PLANNING_RUN_REQUESTED, handlers.run_planning)

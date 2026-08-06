@@ -1,0 +1,54 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            // Run once on a fresh checkout, before the Robot suites appear in
+            // the Test Explorer. Creates the QA environment next to the QA
+            // code rather than at the repository root, so the Python
+            // extension does not offer it as an interpreter for the backend.
+            "label": "QA: install Robot Framework",
+            "type": "shell",
+            "command": "python3 -m venv qa/.venv && qa/.venv/bin/pip install -r qa/requirements.txt && qa/.venv/bin/rfbrowser init",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "QA: run the campaign",
+            "type": "shell",
+            "command": "qa/.venv/bin/robot --pythonpath qa/robot/resources --outputdir qa/results qa/robot/suites",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            // Same run with the browser on screen. The suites default to
+            // headless; this is the switch a developer reaches for when a
+            // failure only makes sense when watched.
+            "label": "QA: run the campaign (headed)",
+            "type": "shell",
+            "command": "qa/.venv/bin/robot --pythonpath qa/robot/resources --outputdir qa/results --variable HEADLESS:False qa/robot/suites",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            // The campaign drives the real application against the real API,
+            // so the stack has to be up and seeded before any of it runs.
+            "label": "Stack: up (dev)",
+            "type": "shell",
+            "command": "docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d --build",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        }
+    ]
+}

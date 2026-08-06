@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 64" role="img"
+     aria-label="rt-erp — aide à domicile">
+  <title>rt-erp</title>
+  <!--
+    For a light page.
+
+    A README variant of the application mark. It differs from
+    frontend/src/assets/brand/logo-full.svg in exactly one way: the wordmark
+    carries an explicit ink rather than `currentColor`. A README is rendered as
+    an <img>, where `currentColor` has nothing to inherit from and falls back to
+    black — which disappears entirely against a dark page.
+  -->
+  <defs>
+    <linearGradient id="rtErpLight" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F6E6E" />
+      <stop offset="100%" stop-color="#12A19A" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(6, 9)">
+    <path d="M6 22 L24 7 L42 22" fill="none" stroke="url(#rtErpLight)" stroke-width="3.5"
+          stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M24 40 C16 33 12 29.5 12 25.5 A5.5 5.5 0 0 1 24 22.5 A5.5 5.5 0 0 1 36 25.5 C36 29.5 32 33 24 40 Z"
+          fill="url(#rtErpLight)" />
+    <path d="M8.5 30 A9 9 0 0 0 13 38.5" fill="none" stroke="#C8791A" stroke-width="3" stroke-linecap="round" />
+    <path d="M39.5 30 A9 9 0 0 1 35 38.5" fill="none" stroke="#C8791A" stroke-width="3" stroke-linecap="round" />
+  </g>
+  <text x="62" y="38" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="26" font-weight="600" letter-spacing="-0.6" fill="#0F2D2D">rt-erp</text>
+  <text x="63" y="54" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="10.5" font-weight="400" letter-spacing="0.3" fill="#5B7B7A">aide à domicile</text>
+</svg>

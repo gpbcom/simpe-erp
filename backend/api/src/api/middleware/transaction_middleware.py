@@ -17,27 +17,24 @@ class TransactionMiddleware(BaseHTTPMiddleware):
         logger (Logger): Logger for transaction decisions.
 
     Notes:
-        **This exists because of when FastAPI runs dependency teardown.** A
-        dependency declared with ``yield`` has its exit code — here, the commit
-        in :meth:`DatabaseConnectionManager.session` — executed *after* the
-        response has been sent. A client that issues its next request straight
-        away can therefore arrive before its own write has landed, and read a
-        database that does not yet contain what it was just told was created.
-
-        That is not theoretical: creating an assistant and immediately
-        registering their account failed roughly one time in five, with the
-        registration reporting that the assistant did not exist.
-
-        Committing here closes the window. ``call_next`` returns once the
-        handler has produced its response but before the body is written
-        downstream, so a commit at this point is durable before the client can
-        act on the answer. The dependency's own commit still runs afterwards
-        and finds nothing outstanding.
-
-        Nothing is committed for a failed response. An error status means
-        either a domain exception the handler translated or a guard that
-        refused, and in both cases the partial work must go back — which the
-        dependency's rollback path already does.
+        - **This exists because of when FastAPI runs dependency teardown.** A
+          dependency declared with ``yield`` has its exit code — here, the commit
+          in :meth:`DatabaseConnectionManager.session` — executed *after* the
+          response has been sent. A client that issues its next request straight
+          away can therefore arrive before its own write has landed, and read a
+          database that does not yet contain what it was just told was created.
+        - That is not theoretical: creating an assistant and immediately
+          registering their account failed roughly one time in five, with the
+          registration reporting that the assistant did not exist.
+        - Committing here closes the window. ``call_next`` returns once the
+          handler has produced its response but before the body is written
+          downstream, so a commit at this point is durable before the client can
+          act on the answer. The dependency's own commit still runs afterwards
+          and finds nothing outstanding.
+        - Nothing is committed for a failed response. An error status means
+          either a domain exception the handler translated or a guard that
+          refused, and in both cases the partial work must go back — which the
+          dependency's rollback path already does.
     """
 
     def __init__(self, app: Callable, logger: Optional[Logger] = None) -> None:
@@ -53,8 +50,8 @@ class TransactionMiddleware(BaseHTTPMiddleware):
         self.logger.debug("TransactionMiddleware created.")
 
     async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]  # noqa: E501
+    ) -> Response: 
         """Run the request, then commit its transaction if it succeeded.
 
         Args:
@@ -73,7 +70,7 @@ class TransactionMiddleware(BaseHTTPMiddleware):
         """
         response = await call_next(request)
 
-        session: Optional[AsyncSession] = getattr(request.state, "session", None)
+        session: Optional[AsyncSession] = getattr(request.state, "session", None)   # noqa: E501
         if session is None:
             return response
         if response.status_code >= 400:

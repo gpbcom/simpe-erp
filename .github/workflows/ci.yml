@@ -1,0 +1,332 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A second push to the same branch cancels the first. A pipeline this wide
+# would otherwise queue several full runs deep on a busy afternoon, and only
+# the last one's answer matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION_FILE: backend/.python-version
+  NODE_VERSION: '20'
+
+jobs:
+  backend-lint:
+    name: Backend · ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version-file: ${{ env.PYTHON_VERSION_FILE }}
+      - run: uv sync --frozen
+        working-directory: backend
+      - run: uv run ruff check .
+        working-directory: backend
+      - run: uv run ruff format --check .
+        working-directory: backend
+
+  backend-types:
+    name: Backend · ty
+    runs-on: ubuntu-latest
+    # NOT blocking yet, and the reason is measured rather than assumed: `ty`
+    # reports 137 diagnostics on src/ today — 80 of them the documented generic
+    # mapper contract (downgraded to warnings in pyproject.toml), leaving ~57
+    # real findings, mostly the Optional[str] identifier pattern. Landing this
+    # blocking would make every pipeline red until that burn-down is finished,
+    # so it reports and does not gate. **Flip `continue-on-error` to false once
+    # `uv run ty check` is clean.**
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version-file: ${{ env.PYTHON_VERSION_FILE }}
+      - run: uv sync --frozen
+        working-directory: backend
+      # Pinned: ty is in preview, and its rule set moves between releases. An
+      # unpinned checker turns somebody else's release into our red build.
+      - run: uv run --with 'ty==0.0.1a21' ty check
+        working-directory: backend
+
+  backend-tests:
+    name: Backend · pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version-file: ${{ env.PYTHON_VERSION_FILE }}
+      - run: uv sync --frozen
+        working-directory: backend
+      # The unit suite is hermetic: in-memory SQLite, every outbound call
+      # stubbed. `-m 'not integration'` is already the default in pyproject.
+      - run: uv run pytest -q
+        working-directory: backend
+
+  backend-integration:
+    name: Backend · integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: rt_erp
+          POSTGRES_USER: rt_erp
+          POSTGRES_PASSWORD: rt_erp_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U rt_erp -d rt_erp"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:4-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: rt_erp
+          RABBITMQ_DEFAULT_PASS: rt_erp_ci
+        ports: ['5672:5672']
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+      mailpit:
+        image: axllent/mailpit:latest
+        # Load-bearing, not convenience: EmailService._deliver calls login()
+        # unconditionally, so a catcher that refuses authentication fails every
+        # send before a message is ever built.
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 1
+          MP_SMTP_AUTH_ALLOW_INSECURE: 1
+        ports: ['1025:1025', '8025:8025']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version-file: ${{ env.PYTHON_VERSION_FILE }}
+      - run: uv sync --frozen
+        working-directory: backend
+      - name: Run the integration suite
+        working-directory: backend
+        env:
+          POSTGRES_PASSWORD: rt_erp_ci
+          RABBITMQ_PASSWORD: rt_erp_ci
+          JWT_SECRET_KEY: ci-only-secret
+        run: uv run pytest -q -m integration -p no:randomly
+      - name: Run it a second time
+        working-directory: backend
+        env:
+          POSTGRES_PASSWORD: rt_erp_ci
+          RABBITMQ_PASSWORD: rt_erp_ci
+          JWT_SECRET_KEY: ci-only-secret
+        # The only honest proof that the fixtures clean up after themselves. A
+        # suite that passes once and fails twice is a suite that was asserting
+        # on its own leftovers.
+        run: uv run pytest -q -m integration -p no:randomly
+
+  frontend-lint:
+    name: Front-end · lint & types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx prettier --check "src/**/*.{ts,tsx}"
+      - run: npm run typecheck
+
+  frontend-tests:
+    name: Front-end · vitest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx vitest run
+
+  frontend-build:
+    name: Front-end · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  openapi-drift:
+    name: API · schema drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version-file: ${{ env.PYTHON_VERSION_FILE }}
+      - run: uv sync --frozen
+        working-directory: backend
+      # The front-end's types are hand-written, which is a deliberate trade —
+      # FastAPI publishes no securitySchemes and Pydantic splits every model
+      # into Input/Output variants, so a generated client is worse. This job is
+      # the other half of that trade: the schema is regenerated and compared,
+      # so "hand-written" cannot quietly become "out of date".
+      - name: Generate the schema
+        working-directory: backend
+        env:
+          JWT_SECRET_KEY: ci-only-secret
+        run: |
+          uv run python -c "
+          import json, pathlib
+          from api.main import app
+          pathlib.Path('../openapi.json').write_text(
+              json.dumps(app.openapi(), indent=2, sort_keys=True) + '\n'
+          )
+          "
+      - name: Fail if it moved
+        run: git diff --exit-code -- openapi.json
+
+  e2e-robot:
+    name: E2E · Robot Framework
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Bring the stack up
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yaml -f docker-compose.dev.yaml \
+            up -d --build
+
+      - name: Wait for the API and the front-end
+        run: |
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:8000/ready && break || sleep 5
+          done
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:5173 >/dev/null && break || sleep 5
+          done
+          curl -sf http://localhost:8000/ready
+
+      - name: Install the campaign
+        run: |
+          pip install -r qa/requirements.txt
+          rfbrowser init --skip-browsers chromium || rfbrowser init
+
+      - name: Run the campaign
+        # Collects V8 coverage while it drives the application; the final suite
+        # merges every suite's raw output into one report. That is what turns
+        # "the campaign covers the front-end" from a claim into a number.
+        run: robot --outputdir qa/results --xunit xunit.xml qa/robot/suites
+
+      - name: Report the measured coverage
+        if: always()
+        run: |
+          if [ -f qa/results/coverage/coverage-summary.json ]; then
+            python - <<'PY'
+          import json, pathlib
+          data = json.loads(
+              pathlib.Path("qa/results/coverage/coverage-summary.json").read_text()
+          )
+          summary = data.get("summary", data)
+          print("## Front-end coverage")
+          for metric, value in summary.items():
+              if isinstance(value, dict) and "pct" in value:
+                  print(f"- {metric}: {value['pct']}%")
+          PY
+          else
+            echo "No coverage summary was produced." >&2
+          fi
+
+      - name: Run it a second time
+        # Without resetting the stack. This is the only honest proof the
+        # campaign is idempotent: a suite that edits seeded data, or leaves its
+        # own fixtures behind, passes here once and fails here twice.
+        run: robot --outputdir qa/results-rerun --xunit xunit.xml qa/robot/suites
+
+      - name: Dump the container logs
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yaml -f docker-compose.dev.yaml \
+            logs --no-color --tail 400
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robot-results
+          path: |
+            qa/results
+            qa/results-rerun
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: qa/results/coverage
+          retention-days: 14
+
+      - uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Robot Framework
+          path: qa/results/xunit.xml
+          reporter: java-junit
+
+  docker-build:
+    name: Images · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Backend and worker
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Front-end
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          target: production
+          push: false
+          build-args: VITE_API_BASE_URL=/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -225,6 +225,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
     async def list_for_hca(
         self,
         hca_id: str,
+        account_id: str,
         page: int = 1,
         size: Optional[int] = None,
         search: Optional[str] = None,
@@ -233,6 +234,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
 
         Args:
             hca_id (str): The assistant whose portfolio is being read.
+            account_id (str): The sign-in account that assistant holds.
             page (int): One-based page number.
             size (Optional[int]): Page size.
             search (Optional[str]): Restrict by name or address.
@@ -247,6 +249,14 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               hired assistant has no interventions yet, and with only the first
               half their customer list would be empty, so they could quote for
               nobody and the feature would appear broken on their first day.
+            - **The two halves are keyed differently, and that is why both
+              identifiers are taken.** An intervention names the assistant, so
+              it joins on ``hca_id``; a quote records the *account* that wrote
+              it — see :attr:`QuoteRow.authored_by` — so it joins on
+              ``account_id``. Comparing ``authored_by`` to an assistant
+              identifier matches nothing, which quietly reduced the union to its
+              first half and produced exactly the empty first day described
+              above.
             - Scoped in the statement rather than by filtering rows afterwards.
               A page of fifty narrowed to three has already read forty-seven
               customers this assistant is not entitled to.
@@ -254,7 +264,9 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         by_intervention = select(InterventionRow.customer_id).where(
             InterventionRow.hca_id == hca_id
         )
-        by_quote = select(QuoteRow.customer_id).where(QuoteRow.authored_by == hca_id)
+        by_quote = select(QuoteRow.customer_id).where(
+            QuoteRow.authored_by == account_id
+        )
         statement = (
             self._build_query(search=search)
             .where(
@@ -277,28 +289,34 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             )
         return self.mapper.to_models(rows)
 
-    async def is_served_by(self, customer_id: str, hca_id: str) -> bool:
+    async def is_served_by(
+        self, customer_id: str, hca_id: str, account_id: str
+    ) -> bool:
         """Return whether a customer is in an assistant's portfolio.
 
         Args:
             customer_id (str): The customer being opened.
             hca_id (str): The assistant asking.
+            account_id (str): The sign-in account that assistant holds.
 
         Returns:
             bool: ``True`` when the assistant may see that customer.
 
         Notes:
-            Asked before serving a single customer, so guessing an identifier
-            does not reach somebody else's file. A care agency's customer record
-            carries an address, a telephone number and a care schedule; it is
-            not something to hand to whoever asks.
+            - Asked before serving a single customer, so guessing an identifier
+              does not reach somebody else's file. A care agency's customer
+              record carries an address, a telephone number and a care schedule;
+              it is not something to hand to whoever asks.
+            - The same two-keyed union as :meth:`list_for_hca`, and it has to
+              stay that way: a portfolio that lists a customer the detail view
+              then refuses is worse than either behaviour on its own.
         """
         by_intervention = select(InterventionRow.customer_id).where(
             InterventionRow.hca_id == hca_id,
             InterventionRow.customer_id == customer_id,
         )
         by_quote = select(QuoteRow.customer_id).where(
-            QuoteRow.authored_by == hca_id,
+            QuoteRow.authored_by == account_id,
             QuoteRow.customer_id == customer_id,
         )
         statement = select(CustomerRow.id).where(

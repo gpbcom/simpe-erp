@@ -2,11 +2,11 @@ from __future__ import annotations
 
 # Standard library imports
 from types import SimpleNamespace
-from typing import List
+from typing import Callable, List
 from unittest.mock import AsyncMock
 
 # Third-party imports
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
 import pytest
 
@@ -17,14 +17,95 @@ from api.middleware.transaction_middleware import TransactionMiddleware
 class TestTransactionMiddleware:
     """Tests for committing before the response leaves.
 
+    Attributes:
+        session (AsyncMock): The session a handler attaches to the request.
+        status_code (int): The status the refusing handler raises with.
+        seen (List[Request]): The requests the stand-in stack was handed.
+        answer (Response): The response the stand-in stack returns.
+
     Notes:
-        The bug this guards against was measurable rather than theoretical:
-        creating an assistant and immediately registering their account failed
-        roughly one time in five, because FastAPI runs a ``yield``
-        dependency's teardown — where the commit lived — *after* the response
-        has been sent. A client acting on its own 201 could arrive before its
-        write had landed.
+        - The bug this guards against was measurable rather than theoretical:
+          creating an assistant and immediately registering their account
+          failed roughly one time in five, because FastAPI runs a ``yield``
+          dependency's teardown — where the commit lived — *after* the response
+          has been sent. A client acting on its own 201 could arrive before its
+          write had landed.
+        - The handlers are **methods**, registered onto a throwaway app by
+          ``_app_serving``, rather than functions defined inside each test.
+          They read what they need off the instance, which pytest rebuilds per
+          test, so two tests never share a session.
     """
+
+    session: AsyncMock
+    status_code: int
+    seen: List[Request]
+    answer: Response
+
+    ############################
+    # Internal Helpers Methods #
+    ############################
+
+    def _app_serving(self, path: str, handler: Callable) -> FastAPI:
+        """Build an app that runs one handler behind the middleware.
+
+        Args:
+            path (str): The route to serve.
+            handler (Callable): The bound handler method to serve it with.
+
+        Returns:
+            FastAPI: The application, ready for a ``TestClient``.
+        """
+        app = FastAPI()
+        app.add_middleware(TransactionMiddleware)
+        app.get(path)(handler)
+        return app
+
+    async def _writes(self, request: Request) -> dict:
+        """Attach the test's session and succeed.
+
+        Args:
+            request (Request): The incoming request.
+
+        Returns:
+            dict: A trivial success body.
+        """
+        request.state.session = self.session
+        return {"ok": True}
+
+    async def _probes(self) -> dict:
+        """Answer without ever touching the database.
+
+        Returns:
+            dict: A trivial success body.
+        """
+        return {"status": "ok"}
+
+    async def _refuses(self, request: Request) -> dict:
+        """Attach the test's session, then refuse.
+
+        Args:
+            request (Request): The incoming request.
+
+        Returns:
+            dict: Never; the refusal is raised.
+
+        Raises:
+            HTTPException: Always, with the status under test.
+        """
+        request.state.session = self.session
+        raise HTTPException(status_code=self.status_code, detail="no")
+
+    async def _call_next(self, passed: Request) -> Response:
+        """Stand in for the rest of the stack.
+
+        Args:
+            passed (Request): The request handed on.
+
+        Returns:
+            Response: The prepared answer.
+        """
+        self.seen.append(passed)
+        return self.answer
 
     # ------------------------------------------------------------------ #
     #  The success path
@@ -39,30 +120,19 @@ class TestTransactionMiddleware:
             afterwards, so a client reading the response can already see the
             write.
         """
-        session = AsyncMock()
-        app = FastAPI()
-        app.add_middleware(TransactionMiddleware)
+        self.session = AsyncMock()
 
-        @app.get("/writes")
-        async def writes(request: Request) -> dict:
-            request.state.session = session
-            return {"ok": True}
-
-        response = TestClient(app).get("/writes")
+        client = TestClient(self._app_serving("/writes", self._writes))
+        response = client.get("/writes")
 
         assert response.status_code == 200
-        session.commit.assert_awaited_once()
+        self.session.commit.assert_awaited_once()
 
     def test_a_request_that_touched_no_database_is_passed_through(self) -> None:
         """A probe with no session is not treated as an error."""
-        app = FastAPI()
-        app.add_middleware(TransactionMiddleware)
+        client = TestClient(self._app_serving("/probe", self._probes))
 
-        @app.get("/probe")
-        async def probe() -> dict:
-            return {"status": "ok"}
-
-        assert TestClient(app).get("/probe").status_code == 200
+        assert client.get("/probe").status_code == 200
 
     # ------------------------------------------------------------------ #
     #  The failure path
@@ -89,19 +159,14 @@ class TestTransactionMiddleware:
             that inserted a row and then refused would leave the row behind.
             The dependency's own rollback path handles it.
         """
-        session = AsyncMock()
-        app = FastAPI()
-        app.add_middleware(TransactionMiddleware)
+        self.session = AsyncMock()
+        self.status_code = status_code
 
-        @app.get("/refuses")
-        async def refuses(request: Request) -> dict:
-            request.state.session = session
-            raise HTTPException(status_code=status_code, detail="no")
-
-        response = TestClient(app).get("/refuses")
+        client = TestClient(self._app_serving("/refuses", self._refuses))
+        response = client.get("/refuses")
 
         assert response.status_code == status_code
-        session.commit.assert_not_awaited()
+        self.session.commit.assert_not_awaited()
 
     def test_a_failing_commit_rolls_back_rather_than_reporting_success(
         self,
@@ -114,20 +179,15 @@ class TestTransactionMiddleware:
             is refuse to let the work be half-applied, and raise so the failure
             is visible rather than swallowed.
         """
-        session = AsyncMock()
-        session.commit.side_effect = RuntimeError("the connection went away")
-        app = FastAPI()
-        app.add_middleware(TransactionMiddleware)
+        self.session = AsyncMock()
+        self.session.commit.side_effect = RuntimeError("the connection went away")
 
-        @app.get("/writes")
-        async def writes(request: Request) -> dict:
-            request.state.session = session
-            return {"ok": True}
+        client = TestClient(self._app_serving("/writes", self._writes))
 
         with pytest.raises(RuntimeError):
-            TestClient(app).get("/writes")
+            client.get("/writes")
 
-        session.rollback.assert_awaited_once()
+        self.session.rollback.assert_awaited_once()
 
     # ------------------------------------------------------------------ #
     #  Direct dispatch
@@ -135,30 +195,18 @@ class TestTransactionMiddleware:
 
     async def test_the_response_is_returned_unchanged(self) -> None:
         """The middleware commits; it does not rewrite the answer."""
-        session = AsyncMock()
+        self.session = AsyncMock()
+        self.seen = []
+        self.answer = SimpleNamespace(status_code=201)
         request = SimpleNamespace(
-            state=SimpleNamespace(session=session),
+            state=SimpleNamespace(session=self.session),
             method="POST",
             url=SimpleNamespace(path="/api/v1/customers"),
         )
-        answer = SimpleNamespace(status_code=201)
-        seen: List[object] = []
-
-        async def call_next(passed: object) -> object:
-            """Stand in for the rest of the stack.
-
-            Args:
-                passed (object): The request handed on.
-
-            Returns:
-                object: The response.
-            """
-            seen.append(passed)
-            return answer
 
         middleware = TransactionMiddleware(app=None)
-        returned = await middleware.dispatch(request, call_next)
+        returned = await middleware.dispatch(request, self._call_next)
 
-        assert returned is answer
-        assert seen == [request]
-        session.commit.assert_awaited_once()
+        assert returned is self.answer
+        assert self.seen == [request]
+        self.session.commit.assert_awaited_once()

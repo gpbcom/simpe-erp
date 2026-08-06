@@ -92,12 +92,16 @@ asyncio_mode = "auto"
 # to fall back to a single in-process run when debugging (live output, pdb).
 # ``--timeout`` is a safety net: no unit test should run this long, so a hang
 # (e.g. an unmocked database call) fails fast instead of blocking CI.
-addopts = "-n auto --timeout=60"
+addopts = "-n auto --timeout=60 -m 'not integration'"
 testpaths = ["tests"]
 # ``geocoding`` opts a test out of the autouse fixture that neutralises the
 # Nominatim lookup, so it can drive the real code through a stubbed transport.
 markers = [
     "geocoding: exercises the Nominatim lookup itself, with a stubbed transport",
+    # Needs the development stack up: Mailpit, RabbitMQ, PostgreSQL. Excluded
+    # from the default run so `uv run pytest` stays hermetic on a laptop, and
+    # selected explicitly by the CI job that starts those services.
+    "integration: exercises a real external service rather than a stub",
 ]
 
 [dependency-groups]
@@ -110,3 +114,31 @@ dev = [
     "pytest-xdist>=3.6.0",
     "ruff>=0.11.0",
 ]
+
+[tool.ty.environment]
+# Resolve first-party imports against the workspace's own virtualenv rather
+# than whatever VIRTUAL_ENV happens to be set to. Without this, ty resolves
+# against the ambient environment and reports several hundred phantom
+# unresolved-import errors that say nothing about this code.
+python = ".venv"
+
+[tool.ty.src]
+# ``tests`` is excluded deliberately, and it is the larger half of the tree.
+# This suite's job is to feed wrong types to validators and assert they are
+# refused — ``Customer(first_name=123)`` is the *point* of that test, not a
+# defect in it. Type-checking it produces roughly nine hundred diagnostics that
+# all say "this test does what it was written to do", which would bury the
+# couple of hundred findings in ``src`` that are worth reading.
+exclude = [".venv", "conf/alembic/versions", "tests"]
+
+[tool.ty.rules]
+# The generic mapper contract, stated once here rather than silenced at each of
+# the ninety call sites. BaseMapper is generic over ModelType/RowType and reads
+# `model.id`, `row.created_at` and `row.updated_at` — attributes every persisted
+# model has, and that the `BaseModel`/`Base` bounds cannot express. The class
+# docstring says so explicitly; this is that decision, told to the checker.
+#
+# Scoped to a warning rather than ignored outright, so a *genuine* missing
+# attribute elsewhere still shows up in the output — it simply does not fail
+# the build while the burn-down described in the CI workflow is in progress.
+unresolved-attribute = "warn"

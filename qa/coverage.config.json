@@ -1,0 +1,18 @@
+{
+  "name": "rt-erp front-end — GUI campaign coverage",
+  "outputDir": "qa/results/coverage",
+  "reports": [["v8"], ["console-summary"], ["json"]],
+  "entryFilter": {
+    "**/node_modules/**": false,
+    "**/assets/*.js": true
+  },
+  "sourceFilter": {
+    "**/node_modules/**": false,
+    "**/src/**": true
+  },
+  "thresholds": {
+    "statements": 90,
+    "lines": 90
+  },
+  "lcov": true
+}

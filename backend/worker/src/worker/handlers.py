@@ -198,6 +198,21 @@ class EventHandlers:
                 ),
             )
 
+    async def open(self) -> None:
+        """Open the database pool before the first message is handled.
+
+        Notes:
+            The counterpart to :meth:`close`, and needed for the same reason
+            the API connects during start-up: ``session()`` asks the manager
+            for its factory and refuses when there is none. Without this every
+            handler raises ``MTDatabaseNotConnected`` and every message is
+            dead-lettered — the worker looks healthy, consumes steadily, and
+            writes nothing at all, which is a far quieter failure than not
+            starting would have been.
+        """
+        await self._manager.connect()
+        self.logger.info("The handlers are connected to the database.")
+
     async def close(self) -> None:
         """Release the broker connection and the database pool."""
         await self.publisher.close()

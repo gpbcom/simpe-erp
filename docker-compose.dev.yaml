@@ -1,12 +1,3 @@
-# rt-erp — development overlay.
-#
-#   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
-#
-# What development needs and production must not have: every port published so
-# a developer can reach the database and the broker directly, source bind-mounted
-# so a save reloads rather than rebuilds, a mail catcher instead of a real SMTP
-# relay, and a seeder that fills the database with something to look at.
-
 services:
   postgres:
     ports:
@@ -21,11 +12,6 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"   # management UI: rt_erp / rt_erp_dev
-
-  # Catches every outbound email instead of delivering it. MP_SMTP_AUTH_ACCEPT_ANY
-  # is load-bearing rather than convenience: EmailService._deliver calls login()
-  # unconditionally, so a stub that refuses authentication fails every send
-  # before a message is ever built.
   mailpit:
     image: axllent/mailpit:latest
     environment:
@@ -42,10 +28,6 @@ services:
     environment:
       RT_ERP_CONFIG: conf/app.dev.yaml
     volumes:
-      # Source is mounted over the image's copy, so editing a file reloads the
-      # process. The virtualenv is deliberately NOT mounted: it belongs to the
-      # image, and shadowing it with the host's would break the moment the two
-      # disagree about a platform wheel.
       - ./backend/api/src:/app/api/src
       - ./backend/models/src:/app/models/src
       - ./backend/service/src:/app/service/src
@@ -68,13 +50,10 @@ services:
       - ./backend/storage/src:/app/storage/src
       - ./backend/worker/src:/app/worker/src
       - ./backend/conf:/app/conf
-
-  # Fills the database with a working agency: accounts, assistants with
-  # photographs, customers, a catalog, quotes in every status and one completed
-  # planning run. Idempotent, so `up` a second time changes nothing.
   seed:
     build:
       context: ./backend
+    image: rt-erp-backend:local
     environment:
       RT_ERP_CONFIG: conf/app.dev.yaml
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rt_erp_dev}
@@ -102,9 +81,6 @@ services:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
       - ./frontend/index.html:/app/index.html
-      # An anonymous volume so the container keeps the node_modules it installed
-      # rather than having them hidden by the host's — which are built for a
-      # different platform and would fail on the first native dependency.
       - /app/node_modules
     ports:
       - "5173:5173"

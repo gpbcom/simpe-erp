@@ -67,7 +67,7 @@ class NotificationBroadcaster:
             phone and a desktop — so the subscribers are a set per account
             rather than a single queue. Every one of them gets every frame.
         """
-        queue: asyncio.Queue[Notification] = asyncio.Queue(maxsize=self.QUEUE_SIZE)
+        queue: asyncio.Queue[Notification] = asyncio.Queue(maxsize=self.QUEUE_SIZE)  # noqa: E501
         self.subscribers.setdefault(recipient_id, set()).add(queue)
         self.logger.info(
             "Account %s opened an event stream (%d open).",

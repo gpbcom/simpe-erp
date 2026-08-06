@@ -1,0 +1,10 @@
+# The GUI campaign's own dependencies, kept out of the backend's uv workspace:
+# Robot Framework is a QA tool, not an application dependency, and installing it
+# into the backend environment would ship it in the production image.
+robotframework==7.2.2
+# Pinned rather than floated. The coverage keywords (Start Coverage, Stop
+# Coverage, Merge Coverage Reports) arrived in 19.0 and their signatures have
+# moved since; an unpinned library turns somebody else's release into a red
+# pipeline.
+robotframework-browser==20.2.0
+robotframework-requests==0.9.7

@@ -17,12 +17,7 @@ export type UserRole = 'hca' | 'manager' | 'admin';
 
 /** Where a quote sits in its lifecycle. */
 export type QuoteStatus =
-  | 'draft'
-  | 'pending-validation'
-  | 'sent'
-  | 'accepted'
-  | 'rejected'
-  | 'expired';
+  'draft' | 'pending-validation' | 'sent' | 'accepted' | 'rejected' | 'expired';
 
 /** Where a scheduled visit sits in its lifecycle. */
 export type InterventionStatus = 'planned' | 'confirmed' | 'completed' | 'cancelled';
@@ -35,10 +30,7 @@ export type RegistrationStatus = 'active' | 'stopped';
 
 /** What a notification is about. */
 export type NotificationKind =
-  | 'quote-submitted'
-  | 'quote-validated'
-  | 'quote-refused'
-  | 'planning-completed';
+  'quote-submitted' | 'quote-validated' | 'quote-refused' | 'planning-completed';
 
 /** A signed-in account. */
 export interface User {

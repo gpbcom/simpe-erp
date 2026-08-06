@@ -31,7 +31,11 @@ export function NotificationsPage() {
           {t('notification.title')}
         </Typography>
         {unread > 0 ? (
-          <Chip label={t('notification.unread', { count: unread })} color="secondary" />
+          <Chip
+            label={t('notification.unread', { count: unread })}
+            color="secondary"
+            data-testid="unread-chip"
+          />
         ) : null}
         <Button
           variant="outlined"
@@ -49,7 +53,7 @@ export function NotificationsPage() {
             <Typography variant="body2">{t('common.loading')}</Typography>
           </Box>
         ) : notifications.length === 0 ? (
-          <Box sx={{ p: 6, textAlign: 'center' }}>
+          <Box sx={{ p: 6, textAlign: 'center' }} data-testid="notifications-empty">
             <Typography color="text.secondary">{t('notification.empty')}</Typography>
           </Box>
         ) : (

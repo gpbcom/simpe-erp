@@ -56,7 +56,7 @@ export function LoginPage() {
         p: 2,
       }}
     >
-      <Card sx={{ width: 400, maxWidth: '100%' }}>
+      <Card sx={{ width: 400, maxWidth: '100%' }} data-testid="login-card">
         <CardContent sx={{ p: 4 }}>
           <Stack spacing={3} component="form" onSubmit={submit}>
             <Box sx={{ textAlign: 'center' }}>

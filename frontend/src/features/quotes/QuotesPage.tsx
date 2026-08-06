@@ -8,7 +8,12 @@ import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import Typography from '@mui/material/Typography';
-import { useCustomers, useQuotes, useRefuseQuote, useValidateQuote } from '@/api/queries';
+import {
+  useCustomers,
+  useQuotes,
+  useRefuseQuote,
+  useValidateQuote,
+} from '@/api/queries';
 import { QuoteStatusChip } from './QuoteStatusChip';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { formatDate, formatMoney } from '@/utils/format';

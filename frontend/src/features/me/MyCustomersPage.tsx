@@ -57,10 +57,8 @@ export function MyCustomersPage() {
         <Typography>{t('common.loading')}</Typography>
       ) : customers.length === 0 ? (
         <Card>
-          <Box sx={{ p: 6, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              {t('customer.noneAssigned')}
-            </Typography>
+          <Box sx={{ p: 6, textAlign: 'center' }} data-testid="customers-empty">
+            <Typography color="text.secondary">{t('customer.noneAssigned')}</Typography>
           </Box>
         </Card>
       ) : (

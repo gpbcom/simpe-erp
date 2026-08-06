@@ -69,9 +69,7 @@ def downgrade() -> None:
         something no enum recognises, which reads back as a quote in no state
         at all — worse than losing the fact that it had been submitted.
     """
-    op.execute(
-        "UPDATE quotes SET status = 'draft' WHERE status = 'pending-validation'"
-    )
+    op.execute("UPDATE quotes SET status = 'draft' WHERE status = 'pending-validation'")
     op.drop_index("ix_quotes_authored_by", table_name="quotes")
     op.drop_column("quotes", "validated_at")
     op.drop_column("quotes", "validated_by")

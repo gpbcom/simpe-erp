@@ -1,0 +1,125 @@
+# 12 — Conventions
+
+The house style. A change is reviewed against this, and most of it is enforced
+by ruff.
+
+## Python
+
+**Every module** begins `from __future__ import annotations`, then imports under
+literal banner comments:
+
+```python
+from __future__ import annotations
+
+# Standard library imports
+from typing import List, Optional
+
+# Third-party imports
+from pydantic import BaseModel
+
+# First-party imports
+from models.enums import QuoteStatus
+```
+
+**Typing is deliberately pre-PEP-585/604.** `typing.Dict`, `List`, `Optional[X]`,
+`Union[A, B]` — never `dict[...]` or `X | None`. Four ruff rules that would
+rewrite it (`UP006`, `UP007`, `UP035`, `UP045`) are disabled *by design, not by
+neglect*, and the pyproject says so.
+
+**Google-style docstrings on every module, class, method and test**, with
+`Args` / `Returns` / `Raises` / `Notes`. Class docstrings carry an `Attributes`
+block.
+
+The `Notes` sections are the signature of this codebase. They explain **why**,
+and specifically why the obvious alternative is wrong. A comment restating what
+the line does is noise; a note saying "asserting immediately would fail on a slow
+machine and pass on a fast one" is the reason somebody does not undo the work
+next month.
+
+**Method-group banners** inside classes:
+
+```python
+    ############################
+    # Internal Helpers Methods #
+    ############################
+
+    ############################
+    # Publicly Exposed Methods #
+    ############################
+```
+
+**One class per file** — models, rows, mappers, repositories, services. Exception
+modules are the exception: a base `MTInvalid<Thing>Exception` and its subclasses
+live together.
+
+**One service per entity.** The planning service absorbed the settings service
+and the feasibility checker for this reason; the mapper package did the same.
+
+**Exceptions are `MT`-prefixed** and domain-scoped: `MTQuoteNotEditable`,
+`MTAuthInvalidCredentials`, `MTS3PayloadTooLarge`. A service raises its own; the
+endpoint raises nothing. Translation happens once, in
+`api/exception_handlers.py`, and `tests/api/test_exception_coverage.py` fails if
+a family has no row.
+
+**Logging** — every service and repository takes
+`logger: Optional[Logger] = None`. `%s` lazy formatting, messages end with a full
+stop, and a class covers DEBUG through ERROR. Secrets are never logged.
+
+**No `Any`, and no `Dict[str, Any]` out of a public method.** Use
+`pydantic.JsonValue` or return a model.
+
+Line length 88; `# noqa` carries a reason.
+
+## TypeScript
+
+`strict`, plus `noUnusedLocals`, `noUnusedParameters` and
+`noUncheckedIndexedAccess`. Absolute imports through `@/` — a relative chain like
+`../../../shared/api` is the first thing to rot when a file moves.
+
+TSDoc on every exported function and component, with the same `@remarks` habit
+of explaining why.
+
+Every element the GUI campaign touches carries a `data-testid`. A CSS class is
+Emotion's to rename and a visible string changes with the copy; neither is a
+contract.
+
+One feature per directory under `src/features/`. Server state belongs to
+TanStack Query and nowhere else — the Zustand store holds the session, and
+nothing else.
+
+## Robot Framework
+
+Suites numbered in the order they run. Every locator a `data-testid`. Fixtures
+created and torn down **through the API**, never by clicking. Anything created
+carries a unique suffix; teardown removes exactly what that run made, by
+identifier. Seeded data is read-only, or snapshotted and restored.
+
+Suite documentation says what the suite proves and why it is worth proving.
+
+## Migrations
+
+Numbered `NNNN_short_name.py`, linear, with a module docstring explaining what
+arrived together and why. A downgrade that would lose data says what it does
+about it — 0006 moves pending quotes back to draft before narrowing the column.
+
+## Commits and reviews
+
+Not a git repository yet, so there is no commit convention to state. When there
+is one, the reviewable unit is a vertical slice: model, row, mapper, repository,
+service, endpoint and tests together.
+
+Before proposing a change as finished:
+
+```sh
+cd backend  && uv run ruff check . && uv run ruff format --check . && uv run pytest
+cd frontend && npm run lint && npm run typecheck && npm run test && npm run build
+```
+
+## The rule behind the rules
+
+Most of the conventions here exist because somebody could not tell, six months
+later, whether a line was deliberate. When you make a decision the next reader
+would find surprising — a broad `except`, a status that is not the obvious one,
+a check placed in an unexpected layer — write down what the alternative was and
+why it was worse. That is what the `Notes` sections are for, and it is the one
+convention worth keeping if every other were dropped.

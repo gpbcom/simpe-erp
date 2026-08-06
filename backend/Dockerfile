@@ -17,10 +17,17 @@ WORKDIR /app
 # their content, so editing application code does not re-resolve the whole
 # dependency tree — which, with ortools in it, is not a fast operation.
 COPY pyproject.toml uv.lock ./
+# Every workspace member, not only the ones this image's default command uses.
+# `uv sync --frozen` installs the workspace as a whole and fails on the first
+# member it cannot find, so omitting one breaks the build rather than merely
+# leaving it out — and `worker` and `seed` are both run from this same image
+# by their own compose services, as `worker` and `seed`.
 COPY models/pyproject.toml ./models/
 COPY storage/pyproject.toml ./storage/
 COPY service/pyproject.toml ./service/
 COPY api/pyproject.toml ./api/
+COPY worker/pyproject.toml ./worker/
+COPY seed/pyproject.toml ./seed/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-workspace --no-dev
@@ -29,6 +36,8 @@ COPY models ./models
 COPY storage ./storage
 COPY service ./service
 COPY api ./api
+COPY worker ./worker
+COPY seed ./seed
 
 # Now the workspace members themselves, once their dependencies are in place.
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -50,10 +59,15 @@ ENV PATH="/app/.venv/bin:$PATH" \
 WORKDIR /app
 
 COPY --from=builder --chown=rterp:rterp /app/.venv /app/.venv
+# The members come across as well as the environment. uv installs a workspace
+# member as a link back to its source tree rather than as a copy inside
+# site-packages, so a .venv without them beside it imports nothing.
 COPY --from=builder --chown=rterp:rterp /app/models /app/models
 COPY --from=builder --chown=rterp:rterp /app/storage /app/storage
 COPY --from=builder --chown=rterp:rterp /app/service /app/service
 COPY --from=builder --chown=rterp:rterp /app/api /app/api
+COPY --from=builder --chown=rterp:rterp /app/worker /app/worker
+COPY --from=builder --chown=rterp:rterp /app/seed /app/seed
 COPY --chown=rterp:rterp conf ./conf
 
 # The log configuration writes a rotating file, so the directory has to exist
