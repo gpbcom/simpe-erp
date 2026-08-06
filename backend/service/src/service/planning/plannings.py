@@ -1865,6 +1865,7 @@ class PlanningService:
         requirements: List[InterventionRequirement] = []
         skipped_unroutable = 0
         skipped_out_of_period = 0
+        skipped_interrupted = 0
 
         for quote in quotes:
             if not quote.is_schedulable():
@@ -1879,6 +1880,14 @@ class PlanningService:
             for line in quote.lines:
                 if not period_start <= line.service_date <= period_end:
                     skipped_out_of_period += 1
+                    continue
+                # An interrupted arrangement stops producing work the day after
+                # its last one. Filtered here rather than at the repository,
+                # because the interruption cuts a quote in half: the days before
+                # it are still planned, and a query that dropped the whole quote
+                # would cancel visits the family is expecting this week.
+                if not quote.covers(line.service_date):
+                    skipped_interrupted += 1
                     continue
                 if location is None:
                     skipped_unroutable += 1
@@ -1907,9 +1916,11 @@ class PlanningService:
                 )
 
         self.logger.info(
-            "Built %d requirement(s); skipped %d outside the period and %d unroutable.",
+            "Built %d requirement(s); skipped %d outside the period, %d past an "
+            "interruption and %d unroutable.",
             len(requirements),
             skipped_out_of_period,
+            skipped_interrupted,
             skipped_unroutable,
         )
         if skipped_unroutable:

@@ -38,7 +38,7 @@ Every Editable Field Is Populated
     ...    starts typing into before it loads, and overwrites their own work.
     [Tags]    smoke    account
     FOR    ${field}    IN
-    ...    profile-first-name    profile-last-name      profile-phone
+    ...    profile-first-name    profile-last-name      profile-phone-number
     ...    profile-email         profile-street         profile-postal-code
     ...    profile-city          profile-country
         ${value}=    Get Attribute    [data-testid="${field}"]    value
@@ -55,7 +55,7 @@ The Whole Record Is On The Screen
     [Tags]    smoke    account
     FOR    ${surface}    IN
     ...    profile-avatar          profile-first-name      profile-last-name
-    ...    profile-phone           profile-email           profile-street
+    ...    profile-phone-number           profile-email           profile-street
     ...    profile-postal-code     profile-city            profile-country
     ...    profile-licence-categories                      profile-licence-number
     ...    profile-licence-obtained-on                     profile-licence-expires-on
@@ -99,20 +99,33 @@ The Photograph Can Be Changed By Its Owner
 Saving A Changed Field Stores It And Confirms
     [Documentation]    The round trip, and the snackbar that reports it.
     [Tags]    smoke    account
-    Fill Text    [data-testid="profile-phone"]    +33600000188
+    # Typed and confirmed as one retried step. The form is re-initialised from
+    # the profile every time a query lands, so a refetch in flight from the
+    # previous test can put the stored number back between the typing and the
+    # click — the save then writes what was already there and reports success,
+    # and the round trip this test is about never happened.
+    Wait Until Keyword Succeeds    5s    500ms
+    ...    Type And Confirm    profile-phone-number    +33600000188
     Click    [data-testid="profile-save"]
     Wait For Elements State    [data-testid="profile-saved"]    visible
 
+    # Compared as digits, not as text. The server stores a telephone number in
+    # its canonical form — `tel:+33-6-00-00-01-88` for what was typed as
+    # `+33600000188` — so asserting the literal would be asserting the
+    # formatting rather than that the edit was saved. The digits are the number;
+    # the punctuation is a rendering decision the API is entitled to make.
     ${stored}=    Stored Profile
-    Should Be Equal    ${stored}[phone_number]    +33600000188
+    ${digits}=    Digits Of    ${stored}[phone_number]
+    Should Be Equal    ${digits}    33600000188
 
 The Saved Value Survives A Reload
     [Documentation]    It was stored, not merely displayed.
     [Tags]    account
     Reload
-    Wait For Elements State    [data-testid="profile-phone"]    visible
-    ${value}=    Get Attribute    [data-testid="profile-phone"]    value
-    Should Be Equal    ${value}    +33600000188
+    Wait For Elements State    [data-testid="profile-phone-number"]    visible
+    ${value}=    Get Attribute    [data-testid="profile-phone-number"]    value
+    ${digits}=    Digits Of    ${value}
+    Should Be Equal    ${digits}    33600000188
 
 Changing The Address Keeps It Geocoded
     [Documentation]    An assistant who moves must still be routable.
@@ -225,6 +238,23 @@ The Locked Fields Are Explained Rather Than Merely Disabled
 
 
 *** Keywords ***
+Type And Confirm
+    [Documentation]    Fill a field and assert it really holds what was typed.
+    [Arguments]    ${testid}    ${value}
+    Fill Text    [data-testid="${testid}"]    ${value}
+    ${held}=    Get Attribute    [data-testid="${testid}"]    value
+    Should Be Equal    ${held}    ${value}
+    ...    msg=${testid} reverted to '${held}' after being typed into.
+
+Digits Of
+    [Documentation]    Return only the digits of a telephone number.
+    ...
+    ...    So a test can assert *which number* was stored without asserting how
+    ...    the server chooses to punctuate it.
+    [Arguments]    ${value}
+    ${digits}=    Evaluate    "".join(c for c in $value if c.isdigit())
+    RETURN    ${digits}
+
 Open The Account Form
     [Documentation]    Sign in, open the form, and remember the starting state.
     Open The Application

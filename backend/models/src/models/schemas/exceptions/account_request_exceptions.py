@@ -58,3 +58,11 @@ class MTAccountUpdateRequestInvalidFullName(MTInvalidAccountUpdateRequestExcepti
 
 class MTAccountUpdateRequestInvalidEmail(MTInvalidAccountUpdateRequestException):
     """Exception raised when the sign-in address is empty."""
+
+
+class MTInvalidQuoteInterruptionRequestException(Exception):
+    """Exception raised when an interruption payload is invalid."""
+
+
+class MTQuoteInterruptionRequestInvalidDay(MTInvalidQuoteInterruptionRequestException):
+    """Exception raised when the last day is missing or unreadable."""

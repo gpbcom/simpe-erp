@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -253,7 +253,7 @@ class TestQuoteSending:
         quotes.get.return_value = _quote(status=QuoteStatus.PENDING_VALIDATION)
 
         with pytest.raises(MTQuoteNotEditable):
-            await service.send("quote-1")
+            await service.send("quote-1", validator_id=MANAGER)
 
     async def test_an_accepted_quote_cannot_be_sent_again(
         self, service: QuoteService, quotes: AsyncMock
@@ -262,17 +262,68 @@ class TestQuoteSending:
         quotes.get.return_value = _quote(status=QuoteStatus.ACCEPTED)
 
         with pytest.raises(MTQuoteNotEditable):
-            await service.send("quote-1")
+            await service.send("quote-1", validator_id=MANAGER)
 
-    async def test_a_priced_draft_is_still_sendable(
+    async def test_sending_a_draft_accepts_it_so_the_planner_sees_it(
         self, service: QuoteService, quotes: AsyncMock
     ) -> None:
-        """The existing manager path keeps working."""
-        quotes.set_status.return_value = _quote(status=QuoteStatus.SENT)
+        """A hand-written quote becomes schedulable the moment it goes out.
 
-        sent = await service.send("quote-1")
+        Notes:
+            The assertion that matters is ``is_schedulable``, not the status
+            it happens to be spelled with: a manager writes a quote for an
+            arrangement they have already settled with the family, and nothing
+            else in the agency moves such a quote past ``SENT``. Left at
+            ``SENT`` it fell outside :attr:`Quote.SCHEDULABLE_STATUSES` and the
+            visits were promised but never planned.
+        """
+        quotes.record_validation.return_value = _quote(status=QuoteStatus.ACCEPTED)
 
-        assert sent.status is QuoteStatus.SENT
+        sent = await service.send("quote-1", validator_id=MANAGER)
+
+        assert sent.status is QuoteStatus.ACCEPTED
+        assert sent.is_schedulable()
+        assert quotes.record_validation.await_args.kwargs["status"] is (
+            QuoteStatus.ACCEPTED
+        )
+
+    async def test_sending_records_who_agreed_and_when_the_offer_lapses(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """Sending is the approval, so it is stamped like one.
+
+        Notes:
+            An issued quote carrying no issue date and no expiry is one a
+            customer can hold the agency to for ever, and one whose
+            ``validated_by`` cannot answer "who agreed to this price?".
+        """
+        quotes.record_validation.return_value = _quote(status=QuoteStatus.ACCEPTED)
+
+        await service.send("quote-1", validator_id=MANAGER)
+
+        recorded = quotes.record_validation.await_args.kwargs
+        assert recorded["validated_by"] == MANAGER
+        assert recorded["validated_at"] is not None
+        assert recorded["valid_until"] == recorded["issued_on"] + timedelta(
+            days=QuoteService.VALIDITY_DAYS
+        )
+
+    async def test_an_unpriced_draft_cannot_be_sent(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """Nothing reaches a customer, or the planner, without amounts.
+
+        Notes:
+            Sharper now than when sending only moved a status: an unpriced
+            quote that went out would be accepted by the same call, putting
+            unbilled hours on an assistant's calendar.
+        """
+        quotes.get.return_value = _quote(lines=[_line(priced=False)])
+
+        with pytest.raises(MTQuoteNotPriced):
+            await service.send("quote-1", validator_id=MANAGER)
+
+        quotes.record_validation.assert_not_awaited()
 
 
 class TestQuoteAuthorship:

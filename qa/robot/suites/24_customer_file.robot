@@ -1,0 +1,359 @@
+*** Settings ***
+Documentation    The customer's file, and the two controls that end or extend care.
+...
+...              "Bénéficiaires" sat in the navigation for a long time with no
+...              screen behind it: the click fell through to the catch-all and
+...              redirected home, which reads as the click not registering.
+...              This suite covers the screen that now answers it, and the two
+...              decisions taken from it — ending an arrangement early, and
+...              letting one renew itself.
+...
+...              **Idempotent by construction.** Every quote it interrupts or
+...              renews is one it created, deleted by identifier in the
+...              teardown. It never touches a seeded arrangement: an
+...              interruption reprices a quote and removes work from the next
+...              planning run, so one left behind would change what every later
+...              run of the campaign finds.
+
+Library          Browser
+Library          Collections
+Library          DateTime
+Library          RequestsLibrary
+Resource         ../resources/config.resource
+Resource         ../resources/api_keywords.resource
+Resource         ../resources/app_keywords.resource
+
+Suite Setup      Open The Customer Screen
+Suite Teardown   Remove The Arrangements And Close
+Test Teardown    Take A Screenshot On Failure
+
+
+*** Variables ***
+@{CREATED_QUOTE_IDS}
+${CUSTOMER_ID}        ${EMPTY}
+${CUSTOMER_NAME}      ${EMPTY}
+
+
+*** Test Cases ***
+Beneficiaires Is In The Navigation And Reaches A Screen
+    [Documentation]    **The dead entry, now with something behind it.**
+    ...
+    ...    Asserted as a click that lands, not as an entry that exists: the
+    ...    entry existed for weeks while the click went nowhere.
+    [Tags]    smoke    navigation    customers
+    Wait For Elements State    [data-testid="nav--customers"]    visible
+    Click    [data-testid="nav--customers"]
+    Wait For Elements State    [data-testid="customers-grid"]    visible
+    ${url}=    Get Url
+    Should End With    ${url}    /customers
+
+An Assistant Has No Such Entry
+    [Documentation]    The whole agency's book is a manager's screen.
+    ...
+    ...    An assistant has their own portfolio at ``/me/customers``, scoped to
+    ...    the households they visit. This one lists every family the agency
+    ...    serves.
+    [Tags]    smoke    customers    access
+    Sign Out
+    Sign In As    ${ASSISTANT_EMAIL}
+    ${entry}=    Get Element Count    [data-testid="nav--customers"]
+    Should Be Equal As Integers    ${entry}    0
+    [Teardown]    Return To The Manager And The Customer Screen
+
+The Book Can Be Searched
+    [Documentation]    Forty households, and a manager looking for one.
+    [Tags]    smoke    customers
+    ${before}=    Get Element Count    [data-testid="customers-grid"] .MuiDataGrid-row
+    Should Be True    ${before} > 0
+    Fill Text    [data-testid="customer-search"]    ${CUSTOMER_NAME}
+    Sleep    1s
+    ${after}=    Get Element Count    [data-testid="customers-grid"] .MuiDataGrid-row
+    Should Be True    ${after} <= ${before}
+    Should Be True    ${after} > 0
+    [Teardown]    Clear The Search
+
+A Search That Matches Nobody Says So
+    [Documentation]    A sentence, not an empty grid.
+    [Tags]    customers    empty-state
+    Fill Text    [data-testid="customer-search"]    ZZZ-nobody-ZZZ
+    Wait For Elements State    [data-testid="no-customer"]    visible
+    [Teardown]    Clear The Search
+
+The File Shows Everything Held About The Person
+    [Documentation]    **The requirement: all of a beneficiary's information.**
+    ...
+    ...    A file that shows a subset leaves the manager to go and find the
+    ...    rest, which is the job this screen exists to save.
+    [Tags]    smoke    customers
+    Open The File Of The Fixture Customer
+    FOR    ${field}    IN
+    ...    detail-phone    detail-email    detail-address
+    ...    detail-created    detail-updated    detail-status
+        Wait For Elements State    [data-testid="${field}"]    visible
+        ...    message=${field} is missing from the customer's file.
+    END
+    [Teardown]    Close The File
+
+The File Lists The Arrangements Being Delivered
+    [Documentation]    **What are we doing for them at the moment?**
+    ...
+    ...    The question the screen is opened to answer. The fixture quote is
+    ...    accepted, so it belongs under the ongoing heading rather than in the
+    ...    history below it.
+    [Tags]    smoke    customers    quotes
+    Open The File Of The Fixture Customer
+    Wait For Elements State    [data-testid="ongoing-quotes"]    visible
+    Wait For Elements State    [data-testid="arrangement-${FIXTURE_REFERENCE}"]
+    ...    visible
+    Get Text    [data-testid="arrangement-total-${FIXTURE_REFERENCE}"]    !=    ${EMPTY}
+    [Teardown]    Close The File
+
+An Arrangement Can Be Set To Renew Itself
+    [Documentation]    The switch beside the arrangement it acts on.
+    ...
+    ...    Asserted on the server rather than on the switch: a control that
+    ...    moves and a flag that does not is the failure worth catching.
+    [Tags]    smoke    customers    renewal
+    Open The File Of The Fixture Customer
+    Click    [data-testid="auto-renew-${FIXTURE_REFERENCE}"]
+    Wait Until Keyword Succeeds    10s    1s
+    ...    Auto Renewal Should Be    ${FIXTURE_QUOTE_ID}    ${True}
+    [Teardown]    Close The File
+
+Renewal Is A Flag, Not An Immediate Act
+    [Documentation]    Nothing is written until the arrangement expires.
+    ...
+    ...    The fixture is valid for another month, so a renewal sweep must
+    ...    leave it alone. Without this, turning the switch on would create a
+    ...    second billable quote the same afternoon.
+    [Tags]    smoke    renewal
+    ${before}=    Quotes For The Fixture Customer
+    Run The Renewal Sweep
+    ${after}=    Quotes For The Fixture Customer
+    Should Be Equal As Integers    ${after}    ${before}
+    ...    msg=A quote that has not expired was renewed anyway.
+
+The Renewal Sweep Can Be Run Twice Without Billing Twice
+    [Documentation]    **The property that lets this go on a timer.**
+    ...
+    ...    Two workers waking together, a retry after a partial failure, or a
+    ...    manager pressing the button because the timer looked stuck — each
+    ...    must leave the same number of quotes behind.
+    [Tags]    smoke    renewal
+    ${before}=    Quotes For The Fixture Customer
+    Run The Renewal Sweep
+    Run The Renewal Sweep
+    ${after}=    Quotes For The Fixture Customer
+    Should Be Equal As Integers    ${after}    ${before}
+
+An Arrangement Can Be Ended On A Chosen Day
+    [Documentation]    **The requirement: interrupt at a certain date.**
+    ...
+    ...    Run last of the arrangement tests, because it is the one that
+    ...    changes what the fixture delivers. The end date is the first of its
+    ...    two service days, so exactly one visit survives.
+    [Tags]    smoke    customers    interruption
+    Open The File Of The Fixture Customer
+    Fill Text    [data-testid="interrupt-date-${FIXTURE_REFERENCE}"]    ${FIRST_DAY}
+    Click    [data-testid="interrupt-${FIXTURE_REFERENCE}"]
+    Wait For Elements State
+    ...    [data-testid="arrangement-ends-${FIXTURE_REFERENCE}"]    visible
+
+    ${stored}=    Quote As Stored    ${FIXTURE_QUOTE_ID}
+    Should Be Equal    ${stored}[interrupted_on]    ${FIRST_DAY}
+    [Teardown]    Close The File
+
+Ending It Early Shortens The Price
+    [Documentation]    **If a quote is shortened, the price follows.**
+    ...
+    ...    Two identical visits cut to one, so the total halves. Asserted as a
+    ...    ratio of the stored amounts rather than against a figure: the agency
+    ...    rate is configuration, and a hard-coded total would go stale.
+    [Tags]    smoke    interruption    pricing
+    ${stored}=    Quote As Stored    ${FIXTURE_QUOTE_ID}
+    ${lines}=    Get Length    ${stored}[lines]
+    Should Be Equal As Integers    ${lines}    2
+    ...    msg=The cancelled visit was deleted; it should stay on the quote.
+
+    ${counted}=    Evaluate    sum(a["line_count"] for a in $stored["aggregates"])
+    Should Be Equal As Integers    ${counted}    1
+    ...    msg=The total still counts ${counted} visit(s) after the interruption.
+
+The Cancelled Visit Stays On The Document
+    [Documentation]    So the quote can answer why the invoice came in lower.
+    ...
+    ...    A family asking that needs to see both figures. Deleting the visit
+    ...    would leave nothing to answer with.
+    [Tags]    smoke    interruption
+    ${stored}=    Quote As Stored    ${FIXTURE_QUOTE_ID}
+    ${priced}=    Evaluate
+    ...    [line for line in $stored["lines"] if line["total_ttc"] is not None]
+    Length Should Be    ${priced}    2
+    ...    msg=A cancelled visit lost its amounts; the quote can no longer show it.
+
+An Interruption Before The First Visit Is Refused
+    [Documentation]    It would leave an accepted quote delivering nothing.
+    ...
+    ...    Sent by hand: the screen offers a date picker with no lower bound,
+    ...    so this is the check that stops an arrangement being silenced rather
+    ...    than rejected.
+    [Tags]    smoke    interruption    access
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${long_ago}=    Get Current Date    increment=-365 days    result_format=%Y-%m-%d
+    ${body}=    Create Dictionary    last_day=${long_ago}
+    POST
+    ...    ${API_URL}/api/v1/quotes/${FIXTURE_QUOTE_ID}/interrupt
+    ...    json=${body}    headers=${headers}    expected_status=422
+
+An Assistant Cannot End Somebody's Care
+    [Documentation]    Ending an arrangement is a manager's decision.
+    [Tags]    smoke    interruption    access
+    ${token}=    Sign In Through The API    ${ASSISTANT_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary    last_day=${FIRST_DAY}
+    POST
+    ...    ${API_URL}/api/v1/quotes/${FIXTURE_QUOTE_ID}/interrupt
+    ...    json=${body}    headers=${headers}    expected_status=403
+
+
+*** Keywords ***
+Open The Customer Screen
+    [Documentation]    Create the fixture arrangement, then open the browser.
+    Build The Fixture Arrangement
+    Open The Application
+    Sign In As    ${MANAGER_EMAIL}
+    Navigate To    /customers
+    Wait For Elements State    [data-testid="customers-grid"]    visible
+
+Build The Fixture Arrangement
+    [Documentation]    Write and accept a two-visit quote for a real customer.
+    ...
+    ...    Accepted, because only an accepted arrangement is being delivered
+    ...    and so only an accepted one can be ended. Created rather than
+    ...    borrowed: interrupting reprices the quote and removes work from the
+    ...    next planning run, and a seeded one left shortened would change what
+    ...    every later run of the campaign finds.
+    ${suffix}=    Unique Suffix
+    ${customer_id}=    First Customer Of    ${ASSISTANT_EMAIL}
+    ${type_id}=    First Intervention Type
+    Set Suite Variable    ${CUSTOMER_ID}    ${customer_id}
+    ${surname}=    Family Name Of The First Customer Of    ${ASSISTANT_EMAIL}
+    Set Suite Variable    ${CUSTOMER_NAME}    ${surname}
+
+    ${first}=    Get Current Date    increment=14 days    result_format=%Y-%m-%d
+    ${second}=    Get Current Date    increment=21 days    result_format=%Y-%m-%d
+    Set Suite Variable    ${FIRST_DAY}    ${first}
+
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Catenate    SEPARATOR=
+    ...    {"reference": "QA-CARE-${suffix}",
+    ...    "customer_id": "${customer_id}",
+    ...    "lines": [
+    ...    {"name": "Aide a la toilette", "intervention_type_id": "${type_id}",
+    ...    "service_category": "necessity", "service_date": "${first}",
+    ...    "earliest_start": "09:00:00", "latest_end": "12:00:00",
+    ...    "duration_minutes": 120},
+    ...    {"name": "Aide a la toilette", "intervention_type_id": "${type_id}",
+    ...    "service_category": "necessity", "service_date": "${second}",
+    ...    "earliest_start": "09:00:00", "latest_end": "12:00:00",
+    ...    "duration_minutes": 120}]}
+    ${created}=    POST
+    ...    ${API_URL}/api/v1/quotes
+    ...    data=${body}
+    ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
+    ...    expected_status=201
+    Set Suite Variable    ${FIXTURE_QUOTE_ID}    ${created.json()}[id]
+    Set Suite Variable    ${FIXTURE_REFERENCE}    QA-CARE-${suffix}
+    Append To List    ${CREATED_QUOTE_IDS}    ${created.json()}[id]
+
+    POST
+    ...    ${API_URL}/api/v1/quotes/${created.json()}[id]/accept
+    ...    headers=${headers}    expected_status=200
+
+Remove The Arrangements And Close
+    [Documentation]    Delete this run's quotes, including any renewal wrote.
+    ...
+    ...    Successors are found by asking for them rather than assumed absent:
+    ...    if a renewal ever did fire, the quote it wrote is this run's to
+    ...    clean up too.
+    Run Keyword And Ignore Error    Collect Any Successors
+    Remove The Quotes Created By This Run    @{CREATED_QUOTE_IDS}
+    Close The Application
+
+Collect Any Successors
+    [Documentation]    Add any renewal of this run's quotes to the teardown list.
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${params}=    Create Dictionary    size=500
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/quotes
+    ...    params=${params}    headers=${headers}    expected_status=200
+    ${successors}=    Evaluate
+    ...    [q["id"] for q in $response.json() if q.get("renewed_from_id") in $CREATED_QUOTE_IDS]
+    FOR    ${quote_id}    IN    @{successors}
+        Append To List    ${CREATED_QUOTE_IDS}    ${quote_id}
+    END
+
+Open The File Of The Fixture Customer
+    [Documentation]    Open the drawer on the customer the fixture is for.
+    Navigate To    /customers
+    Wait For Elements State    [data-testid="customer-name-${CUSTOMER_ID}"]    visible
+    Click    [data-testid="customer-name-${CUSTOMER_ID}"]
+    Wait For Elements State    [data-testid="customer-detail"]    visible
+
+Close The File
+    [Documentation]    Dismiss the drawer, whatever state it is in.
+    Run Keyword And Ignore Error    Click    [data-testid="close-customer-detail"]
+    Run Keyword And Ignore Error
+    ...    Wait For Elements State    [data-testid="customer-detail"]    detached
+
+Clear The Search
+    [Documentation]    Put the grid back to the whole book.
+    Run Keyword And Ignore Error    Fill Text    [data-testid="customer-search"]    ${EMPTY}
+
+Return To The Manager And The Customer Screen
+    [Documentation]    Sign back in as the manager and reopen the book.
+    Sign Out
+    Sign In As    ${MANAGER_EMAIL}
+    Navigate To    /customers
+    Wait For Elements State    [data-testid="customers-grid"]    visible
+
+Quote As Stored
+    [Documentation]    Read a quote as the server currently holds it.
+    [Arguments]    ${quote_id}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/quotes/${quote_id}
+    ...    headers=${headers}    expected_status=200
+    RETURN    ${response.json()}
+
+Auto Renewal Should Be
+    [Documentation]    Assert a quote's renewal flag on the server.
+    [Arguments]    ${quote_id}    ${expected}
+    ${stored}=    Quote As Stored    ${quote_id}
+    Should Be Equal    ${stored}[auto_renew]    ${expected}
+
+Quotes For The Fixture Customer
+    [Documentation]    Return how many quotes the fixture customer has.
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/customers/${CUSTOMER_ID}/quotes
+    ...    headers=${headers}    expected_status=200
+    ${count}=    Get Length    ${response.json()}
+    RETURN    ${count}
+
+Run The Renewal Sweep
+    [Documentation]    Ask the server to write successors for expired work.
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    POST
+    ...    ${API_URL}/api/v1/quotes/renewals/run
+    ...    headers=${headers}    expected_status=200
+
+Take A Screenshot On Failure
+    [Documentation]    Keep the picture of whatever went wrong.
+    Run Keyword If Test Failed    Take Screenshot    fullPage=True

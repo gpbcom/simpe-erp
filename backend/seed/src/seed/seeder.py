@@ -369,7 +369,7 @@ class Seeder:
             List[InterventionType]: Every catalog entry, seeded or existing.
         """
         stored: List[InterventionType] = []
-        for code, name, category, rate in self.data.INTERVENTION_TYPES:
+        for code, name, category in self.data.INTERVENTION_TYPES:
             type_id = self.data.identifier("intervention-type", code)
             if await self._exists(InterventionTypeRow, type_id):
                 existing = await self.types.get(type_id)

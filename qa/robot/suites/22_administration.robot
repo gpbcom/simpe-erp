@@ -32,6 +32,10 @@ Test Teardown    Take A Screenshot On Failure
 ${ORIGINAL_AGENCY}      ${EMPTY}
 ${QA_TYPE_CODE}         ${EMPTY}
 ${QA_TYPE_ID}           ${EMPTY}
+# The French heading the removed column used to carry. Written out rather than
+# read from the bundle: a test that asked i18n for the word would pass if the
+# key were deleted along with the column, which is the case it must catch.
+${CATEGORY_HEADING}     Catégorie
 
 
 *** Test Cases ***
@@ -115,7 +119,11 @@ A Manager Typing The Agency Address Is Turned Away
     ...    claim anyway.
     [Tags]    smoke    access
     Sign In As    ${MANAGER_EMAIL}
-    Navigate To    /company
+    # Typed, which is what the test is named for. ``Navigate To`` follows a
+    # navigation entry, and the entry this one is about is precisely the one a
+    # manager does not have — so it spent fifteen seconds waiting for a link
+    # that is missing on purpose and failed on the wrong thing entirely.
+    Go To    ${BASE_URL}/company
     Wait For Elements State    [data-testid="quote-tabs"]    visible
     ${forbidden}=    Get Element Count    [data-testid="company-section"]
     Should Be Equal As Integers    ${forbidden}    0
@@ -223,6 +231,39 @@ The Agency-Wide Rules Say They Are Not Editable Here
     Get Text    [data-testid="pricing-rules-readonly"]    !=    ${EMPTY}
     [Teardown]    Sign Out
 
+The Catalogue Does Not Claim A VAT Category Per Service
+    [Documentation]    **A column here would state something a quote can deny.**
+    ...
+    ...    The category used to be a column, and it read as a property of the
+    ...    service. It is not: the same service is necessity care for one
+    ...    customer and comfort care for another, so it is chosen on the quote
+    ...    line. Showing it here would tell a manager a fact about the service
+    ...    that the next quote written against it may contradict.
+    ...
+    ...    The entry still carries a *suggested* category, which fills the field
+    ...    in when an operator picks the service — that lives in the dialog, and
+    ...    the test below opens it.
+    [Tags]    smoke    catalog    vat
+    Sign In As    ${MANAGER_EMAIL}
+    Navigate To    /intervention-types
+    Wait For Elements State    [data-testid="catalog-grid"]    visible
+    ${headers}=    Get Text    [data-testid="catalog-grid"] .MuiDataGrid-columnHeaders
+    Should Not Contain    ${headers}    ${CATEGORY_HEADING}
+    ...    msg=The catalogue still shows a VAT category column.
+    ${cells}=    Get Element Count    css=[data-testid^="type-category-"]
+    Should Be Equal As Integers    ${cells}    0
+    [Teardown]    Sign Out
+
+The Suggested Category Is Still Editable On The Entry
+    [Documentation]    It is a default for new quote lines, not a rule.
+    [Tags]    catalog    vat
+    Sign In As    ${MANAGER_EMAIL}
+    Navigate To    /intervention-types
+    Click    [data-testid="edit-type-${QA_TYPE_CODE}"]
+    Wait For Elements State    [data-testid="type-dialog"]      visible
+    Wait For Elements State    [data-testid="type-category"]    editable
+    [Teardown]    Close The Type Dialog And Sign Out
+
 An Entry With No Rate Of Its Own Shows What It Inherits
     [Documentation]    **An empty cell would read as "free".**
     ...
@@ -238,6 +279,39 @@ An Entry With No Rate Of Its Own Shows What It Inherits
     Should Not Be Empty    ${shown}
     Should Match Regexp    ${shown}    [0-9]
     ...    msg=An entry inheriting the agency rate shows no figure at all.
+    [Teardown]    Sign Out
+
+Every Seeded Service Shows The Same Hourly Rate
+    [Documentation]    One price across the catalogue, as the seed sets it.
+    ...
+    ...    The seeded catalogue bills every service at the agency rate, so a
+    ...    demo total is checkable by hand — hours x the rate, times any
+    ...    surcharge — and the only thing that varies between two lines is the
+    ...    VAT their categories carry. A service that drifted to its own price
+    ...    would make every worked example in the documentation wrong.
+    ...
+    ...    Compared on the money figure alone: an entry that names no rate of
+    ...    its own renders the inherited one followed by "tarif de l'agence",
+    ...    so the cells' full text differs even when the price does not.
+    [Tags]    catalog    pricing
+    Sign In As    ${MANAGER_EMAIL}
+    Navigate To    /intervention-types
+    Wait For Elements State    [data-testid="catalog-grid"]    visible
+
+    @{cells}=    Create List
+    ${rows}=    Get Elements    css=[data-testid^="type-rate-"]
+    Should Not Be Empty    ${rows}
+    FOR    ${cell}    IN    @{rows}
+        ${text}=    Get Text    ${cell}
+        Append To List    ${cells}    ${text}
+    END
+
+    # First money-looking token from each cell, deduplicated. One line, because
+    # Robot splits a continued argument on whitespace and the tail would arrive
+    # as `Evaluate`'s namespace.
+    ${prices}=    Evaluate    sorted({__import__("re").search(r"[0-9][0-9 .,]*", c).group(0).strip() for c in $cells if __import__("re").search(r"[0-9]", c)})
+    Length Should Be    ${prices}    1
+    ...    msg=The catalogue shows more than one hourly rate: ${prices}
     [Teardown]    Sign Out
 
 A Rate Can Be Set On One Service

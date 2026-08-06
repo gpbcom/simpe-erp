@@ -11,6 +11,7 @@ import { RegisterCompanyPage } from '@/features/auth/RegisterCompanyPage';
 import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage';
 import { MyAccountPage } from '@/features/me/MyAccountPage';
 import { CompanyPage } from '@/features/company/CompanyPage';
+import { CustomersPage } from '@/features/customers/CustomersPage';
 import { InterventionTypesPage } from '@/features/catalog/InterventionTypesPage';
 import { MyCustomersPage } from '@/features/me/MyCustomersPage';
 import { MyPlanningPage } from '@/features/me/MyPlanningPage';
@@ -133,6 +134,14 @@ export function App() {
               element={
                 <RoleRoute minimum="manager">
                   <TeamPlanningPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/customers"
+              element={
+                <RoleRoute minimum="manager">
+                  <CustomersPage />
                 </RoleRoute>
               }
             />

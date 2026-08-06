@@ -82,7 +82,12 @@ The Working Day Is Bounded
     ...    narrow the day and this number moves with it.
     [Tags]    calendar
     Wait For Elements State    .fc-timegrid-slots    visible
-    ${slots}=    Get Element Count    .fc-timegrid-slot-label
+    # The *cushions*, not the label cells. FullCalendar's slots are half-hourly
+    # by default, so it lays out twenty-eight label cells and writes a time into
+    # every other one — counting cells asserts the slot duration, which nothing
+    # here cares about, and reported a correctly bounded day as 28 against 14.
+    # A cushion is rendered only where a label actually appears.
+    ${slots}=    Get Element Count    .fc-timegrid-slot-label-cushion
     Should Be Equal As Integers    ${slots}    14
     ...    msg=The day should span 07:00-21:00, which is 14 labelled hours.
 

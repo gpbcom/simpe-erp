@@ -43,12 +43,12 @@ Contact Details Can Be Saved
     ...    The value is written back to what it was, so the suite can run twice
     ...    without leaving the seeded assistant renamed.
     Navigate To    /me
-    Wait For Elements State    [data-testid="profile-phone"]    visible
-    ${original}=    Get Attribute    [data-testid="profile-phone"]    value
-    Fill Text    [data-testid="profile-phone"]    +33600000199
+    Wait For Elements State    [data-testid="profile-phone-number"]    visible
+    ${original}=    Get Attribute    [data-testid="profile-phone-number"]    value
+    Fill Text    [data-testid="profile-phone-number"]    +33600000199
     Click    [data-testid="profile-save"]
     Sleep    1s
-    Fill Text    [data-testid="profile-phone"]    ${original}
+    Fill Text    [data-testid="profile-phone-number"]    ${original}
     Click    [data-testid="profile-save"]
 
 

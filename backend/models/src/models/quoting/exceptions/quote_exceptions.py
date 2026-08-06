@@ -2,6 +2,10 @@ class MTInvalidQuoteException(Exception):
     """Exception raised when an invalid Quote field is provided."""
 
 
+class MTQuoteInvalidInterruption(MTInvalidQuoteException):
+    """Exception raised when the interruption date cannot apply to the quote."""
+
+
 class MTQuoteInvalidId(MTInvalidQuoteException):
     """Exception raised when an invalid ``id`` value is provided."""
 

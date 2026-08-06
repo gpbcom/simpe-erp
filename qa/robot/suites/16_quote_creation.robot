@@ -62,6 +62,46 @@ The Server Prices What The Screen Sends
         ...    msg=Line ${line}[name] came back without an amount.
     END
 
+Every Control On A Line Is Actually Usable
+    [Documentation]    **The layout defect this test exists for.**
+    ...
+    ...    The line row once held six controls in a flex row. `flex: 2` is
+    ...    shorthand for `flex: 2 1 0%`, so the two dropdowns were given a zero
+    ...    basis and shrank under their own content, while the date input —
+    ...    which had no `flex` at all — kept its intrinsic width and took the
+    ...    room. The result was a row of overlapping boxes with the VAT hint
+    ...    spilling out sideways, and every one of the campaign's other tests
+    ...    passed straight through it: they select and fill by test id, which
+    ...    Playwright does regardless of how wide a control is drawn.
+    ...
+    ...    So this asserts geometry, which is the only thing that noticed.
+    ...    Each control must be at least 60 pixels wide, and no two may
+    ...    overlap horizontally.
+    [Tags]    smoke    quotes    layout
+    Click    [data-testid="new-quote"]
+    Wait For Elements State    [data-testid="new-quote-dialog"]    visible
+
+    @{boxes}=    Create List
+    FOR    ${field}    IN
+    ...    new-quote-type-0    new-quote-category-0    new-quote-name-0
+    ...    new-quote-date-0    new-quote-minutes-0
+        ${box}=    Get BoundingBox    [data-testid="${field}"]
+        Should Be True    ${box}[width] > 60
+        ...    msg=${field} is only ${box}[width]px wide; it has collapsed.
+        Append To List    ${boxes}    ${box}
+    END
+
+    # Overlap, pair by pair. Two controls on the same row overlap when one
+    # starts before the other ends, and that is what the screenshot showed.
+    # On one line, deliberately. Robot splits a continued argument on
+    # whitespace, so an expression wrapped across `...` rows arrives as several
+    # arguments — the second becomes `Evaluate`'s `namespace` and the keyword
+    # fails with a type error that says nothing about the expression.
+    ${overlaps}=    Evaluate    [(a["x"], b["x"]) for i, a in enumerate($boxes) for b in $boxes[i + 1:] if abs(a["y"] - b["y"]) < 20 and a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"]]
+    Should Be Empty    ${overlaps}
+    ...    msg=Controls on the same line overlap: ${overlaps}
+    [Teardown]    Close The Quote Dialog
+
 The Tax Is Computed From The Category The Screen Chose
     [Documentation]    **What the VAT on every quote now depends on.**
     ...
@@ -123,6 +163,41 @@ Validating A Quote Changes Its Status And Issues It
     Should Not Be Equal    ${issued}[valid_until]   ${None}
     ...    msg=A sent quote carries no expiry.
 
+Sending A Hand-Written Quote Puts Its Hours In Front Of The Planner
+    [Documentation]    **The gap this test exists for.**
+    ...
+    ...    A quote a manager writes by hand is one they have already settled
+    ...    with the family, but it landed in ``draft`` and nothing in the agency
+    ...    ever moved it past ``sent`` — there is no accept button anywhere. So
+    ...    it stayed outside the statuses the planner reads, and visits that had
+    ...    been promised were never scheduled.
+    ...
+    ...    Sending it now *is* the agreement: the status goes straight to
+    ...    ``accepted``, the offer gets its dates, and the manager who sent it is
+    ...    recorded as having agreed to the figures. Asserted on the stored
+    ...    record, because that is what the planning computation reads.
+    [Tags]    smoke    quotes
+    ${suffix}=    Unique Suffix
+    Write A Quote    QA-SEND-${suffix}
+    ${stored}=    Quote With Reference    QA-SEND-${suffix}
+    Append To List    ${WRITTEN_QUOTE_IDS}    ${stored}[id]
+    Should Be Equal    ${stored}[status]    draft
+
+    Navigate To    /quotes
+    Reload
+    Click    [data-testid="quote-tab-draft"]
+    Wait For Elements State    [data-testid="send-QA-SEND-${suffix}"]    visible
+    Click    [data-testid="send-QA-SEND-${suffix}"]
+
+    Quote Status Should Become    ${stored}[id]    accepted
+    ${sent}=    Quote With Reference    QA-SEND-${suffix}
+    Should Not Be Equal    ${sent}[issued_on]      ${None}
+    ...    msg=A quote that went to the customer carries no issue date.
+    Should Not Be Equal    ${sent}[valid_until]    ${None}
+    ...    msg=A quote that went to the customer carries no expiry.
+    Should Not Be Equal    ${sent}[validated_by]   ${None}
+    ...    msg=Nobody is recorded as having agreed to the figures that were sent.
+
 The Validated Quote Leaves The Pending Tab
     [Documentation]    The status change, as the manager sees it.
     ...
@@ -139,6 +214,17 @@ The Validated Quote Leaves The Pending Tab
 
 
 *** Keywords ***
+Close The Quote Dialog
+    [Documentation]    Dismiss the dialog without writing a quote.
+    ...
+    ...    Both steps are attempted even when the first fails: a test that broke
+    ...    with the dialog open has no working Cancel to click, and a teardown
+    ...    that gave up there would leave the dialog covering the screen for
+    ...    every test after it.
+    Run Keyword And Ignore Error    Click    [data-testid="new-quote-cancel"]
+    Run Keyword And Ignore Error
+    ...    Wait For Elements State    [data-testid="new-quote-dialog"]    detached
+
 Open The Quote Screen As A Manager
     [Documentation]    Sign in and land on the quotes screen.
     Open The Application Without Coverage

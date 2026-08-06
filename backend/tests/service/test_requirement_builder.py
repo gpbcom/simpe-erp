@@ -216,6 +216,70 @@ class TestPlanningService:
 
         assert builder.build([quote], customers, MONDAY, PERIOD_END) == []
 
+    def test_an_interrupted_quote_stops_producing_work(
+        self, builder: PlanningService, customers: Dict[str, Customer]
+    ) -> None:
+        """**An arrangement ended early is not planned past its last day.**
+
+        Args:
+            builder (PlanningService): The builder under test.
+            customers (Dict[str, Customer]): The customers behind the quotes.
+
+        Notes:
+            Without this the planner would keep sending an assistant to a home
+            the family has stopped paying for — and, because the quote stays
+            accepted and priced, nothing else in the system would notice.
+        """
+        # Two visits a week apart, ended after the first. Built this way rather
+        # than by interrupting a single-line quote before its only service:
+        # that state is refused outright, because an accepted quote delivering
+        # nothing should be rejected instead of silenced.
+        quote = _quote(service_date=MONDAY)
+        both = quote.model_copy(
+            update={
+                "lines": [
+                    quote.lines[0],
+                    quote.lines[0].model_copy(
+                        update={"id": "line-2", "service_date": NEXT_MONDAY}
+                    ),
+                ],
+                "interrupted_on": MONDAY,
+            }
+        )
+
+        # Planning the week that starts after the end date finds nothing left.
+        assert builder.build([both], customers, NEXT_MONDAY, NEXT_MONDAY) == []
+
+    def test_the_days_before_an_interruption_are_still_planned(
+        self, builder: PlanningService, customers: Dict[str, Customer]
+    ) -> None:
+        """**The interruption cuts the quote in half, not out.**
+
+        Notes:
+            This is why the filter is per line rather than per quote. Dropping
+            the whole quote would cancel the visits *before* the end date too —
+            work the family is expecting this week, already agreed and already
+            paid for.
+        """
+        quote = _quote(service_date=MONDAY).model_copy(
+            update={"interrupted_on": MONDAY}
+        )
+
+        requirements = builder.build([quote], customers, MONDAY, PERIOD_END)
+
+        assert len(requirements) == 1
+        assert requirements[0].day == MONDAY
+
+    def test_the_last_day_of_an_arrangement_is_planned(
+        self, builder: PlanningService, customers: Dict[str, Customer]
+    ) -> None:
+        """Inclusive here too, or the final visit silently disappears."""
+        quote = _quote(service_date=MONDAY).model_copy(
+            update={"interrupted_on": MONDAY}
+        )
+
+        assert len(builder.build([quote], customers, MONDAY, PERIOD_END)) == 1
+
     def test_an_unresolved_address_is_dropped_rather_than_guessed(
         self, builder: PlanningService
     ) -> None:

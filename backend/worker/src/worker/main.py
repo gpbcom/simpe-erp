@@ -3,13 +3,12 @@ from __future__ import annotations
 # Standard library imports
 import asyncio
 import logging
+
+import os  # isort: skip
 from logging import Logger, getLogger
 from logging.config import dictConfig
-import os
 from pathlib import Path
 from typing import Optional
-
-from worker.runner import WorkerRunner
 
 # Third-party imports
 import yaml
@@ -17,8 +16,9 @@ import yaml
 # First-party imports
 from models.configuration.app_config import AppConfig
 
-logger: Logger = getLogger(__name__)
+from worker.runner import WorkerRunner  # isort: skip
 
+logger: Logger = getLogger(__name__)
 
 
 async def run() -> None:

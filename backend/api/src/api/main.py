@@ -19,6 +19,8 @@ from api.dependencies import (
     close_connection_manager,
     get_app_config,
     get_photo_storage,
+    start_notification_relay,
+    stop_notification_relay,
 )
 from api.exception_handlers import ExceptionHandlers
 from api.middleware.auth_middleware import AuthMiddleware
@@ -96,6 +98,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
           says nothing useful, and on a fresh object store there is nothing else
           that would ever create it. Creating it is idempotent, so a restart
           against an existing bucket is a no-op.
+        - The notification relay is started here for the same reason the pool is
+          not: it must outlive every request, and no request can own it. It is
+          survivable too — an API with no broker still lists notifications, it
+          just cannot announce them the moment they are written.
     """
     setup_logging()
     started_logger = logging.getLogger(__name__)
@@ -121,8 +127,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # The object store being unreachable is not a reason to refuse traffic:
         # everything that is not a photograph still works.
         started_logger.error("Could not prepare the photograph bucket: %s.", exc)
+    await start_notification_relay()
     yield
     logging.getLogger(__name__).info("Application shutting down.")
+    await stop_notification_relay()
     await close_connection_manager()
 
 

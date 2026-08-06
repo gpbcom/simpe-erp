@@ -12,14 +12,24 @@
         ▼
   RabbitMQ  exchange simple-erp (topic, durable)
         │
-        ├──▶ queue quote-notifications ──▶ worker  writes one Notification per supervisor
-        │                                          publishes notification.created
+        ├──▶ queue quote-notifications ──▶ WorkerRunner  writes one Notification
+        │                                                per supervisor, then
+        │                                                publishes notification.created
         │
-        └──▶ queue planning-runs ───────▶ worker   runs the CP-SAT solve
+        └──▶ queue planning-runs ───────▶ WorkerRunner   runs the CP-SAT solve
         │
         ▼
-  API   per-instance exclusive queue ──▶ NotificationBroadcaster ──▶ SSE ──▶ browser
+  API   per-instance exclusive queue ──▶ NotificationStreams ──▶ SSE ──▶ browser
+        │                                (a signal, carrying no data)
+        ▼
+  browser  refetches GET /api/v1/notifications             ← where the news lives
 ```
+
+**Two classes, end to end.** `WorkerRunner` is everything the worker consumes and
+everything it does; `NotificationStreams` is every reader an API instance is
+holding and the framing they are served. There is no notification service and no
+separate handler object between them — a passthrough over `NotificationRepository`
+and a callback the runner had to hand back to its own handlers, respectively.
 
 ## Topology
 
@@ -38,6 +48,7 @@ acknowledgement, `prefetch=1`, and a `simple-erp.dlx` dead-letter exchange.
 | `planning.run.requested.<company>` | `planning-runs.<company>` | worker | Runs the solve |
 | `planning.run.completed.<company>` | `quote-notifications.<company>` | worker | Notifies supervisors — **only on failure** |
 | `company.created.<company>` | exclusive, per worker | worker | Binds the new agency's queues |
+| `notification.created.<company>` | exclusive, per API instance | **API** | Wakes the readers that instance holds |
 
 **Two queues, not one, and then one set per agency.** A solve pins a core for
 thirty seconds; sharing a queue with the notification fan-out would leave a
@@ -145,10 +156,18 @@ reconnects rather than failing against a socket that has already gone.
 and two managers must be able to disagree about whether they have dealt with
 something.
 
-**Recipients are resolved from roles, in the service.** The thing publishing an
+**Recipients are resolved from roles, in the worker.** The thing publishing an
 event knows a quote was submitted; it does not know who is allowed to rule on
 it. A caller naming its own recipients would be a way to send a notification to
 anybody.
+
+**A fan-out with no agency writes nothing.** `list_supervisors(None)` means
+*every* supervisor of *every* agency, so a message that lost its `company_id`
+would put a badge on every manager on the platform, naming work they have no
+access to. The absence is refused rather than interpreted. This is why
+`quote.validated`, `quote.refused` and `planning.run.completed` carry
+`company_id` in the **payload** as well as the routing key: the key chooses the
+queue and is gone by the time a handler reads the message.
 
 `UserRepository.list_supervisors` returns **managers and administrators**, both,
 and excludes inactive accounts. Reaching only managers would silently skip an
@@ -168,22 +187,45 @@ Instead: `POST /api/v1/auth/stream-token` returns a **60-second token carrying
 directions, because a credential that works in two places is two places it can
 leak from.
 
-`NotificationBroadcaster` is an **in-process** fan-out: one `asyncio.Queue` per
+`NotificationStreams` is an **in-process** fan-out: one `asyncio.Queue` per
 connected client, held by the API process. Another process cannot write to those
 sockets, so there is nothing to gain from distributing the fan-out itself. What
-crosses processes is the broker message, and each API replica pushes to whichever
-readers it happens to hold.
+crosses processes is the broker message, which every API instance receives on an
+exclusive queue of its own and turns into wake-ups for the readers it happens to
+hold. A shared durable queue would hand each message to one instance while the
+readers on the others were never woken.
 
-A queue that fills is drained of its **oldest** frame rather than blocking the
-publisher. One reader on a bad connection must not hold up every other reader,
-and the frame it loses is still in the database behind it.
+### A frame carries no data
+
+`event: notification` with an empty `data: {}`. It says only that something
+changed; the reader then fetches what changed from
+`GET /api/v1/notifications`.
+
+That is a deliberate constraint rather than an omission. It keeps one source of
+truth instead of two that can disagree; it means a notification is never
+delivered by a route that cannot also replay it after a logout; it lets the
+broker message carry recipient identifiers rather than records, in keeping with
+the rule above; and it means the API pushes without reading the database at all.
+
+A reader that already has a wake-up pending is skipped rather than queued behind
+— the wake-ups are indistinguishable, so a second would only produce a duplicate
+refetch. That is why the queue holds one.
 
 ### Why losing a frame is survivable
 
-**The row is written before anything is pushed.** A reader who was offline finds
-the notification waiting; the client also polls the unread count every sixty
-seconds behind the stream. That is what lets the broadcaster stay simple — it is
-an accelerator, not a delivery guarantee.
+**The row is written before anything is pushed** — and after the session that
+wrote it has committed, so a reader that acts on the announcement finds the rows
+already there.
+
+A reader who was offline finds the notification waiting. There is no poll behind
+the stream: the stream announces `ready` on connect **and on every reconnect**,
+and the client refetches on it, so a stream that died over lunch catches up the
+moment it comes back rather than up to a minute later.
+
+**Signing out and signing back in changes nothing.** A notification is a row
+keyed by the account, not per-session state; the only thing that ends its unread
+life is the reader marking it. A fresh sign-in reaches the same table through the
+same query, and the bell refetches when it mounts.
 
 The stream sends a keep-alive comment every twenty seconds, because proxies
 close idle connections and a quiet afternoon is the normal case. nginx is
@@ -195,5 +237,10 @@ frame until the connection closed, turning a live feed into one long silence.
 | | |
 |---|---|
 | Publisher, envelope, never-raises | `tests/service/test_event_publisher.py` |
+| Worker topology: what is bound, start/stop ordering | `tests/worker/test_worker_runner.py` |
+| Fan-out, the announcement, the cross-tenant guard | `tests/worker/test_notification_handlers.py` |
+| Wake-ups, the relay, the frames | `tests/api/test_notification_streams.py` |
+| The five endpoints, incl. the 404 and persistence | `tests/api/test_notification_endpoints.py` |
+| Rows, paging, read state, per-account isolation | `tests/storage/test_notification_repository.py` |
 | Email really sent and really received | `tests/integration/test_email_delivery.py` (Mailpit) |
 | Badge rises after a real round trip | `qa/robot/suites/05_quote_validation_journey.robot`, `07_notifications.robot` |

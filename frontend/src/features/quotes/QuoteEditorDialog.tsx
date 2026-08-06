@@ -16,7 +16,11 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useInterventionTypes, useReplaceQuoteLines } from '@/api/queries';
+import {
+  useInterventionTypes,
+  usePricingRules,
+  useReplaceQuoteLines,
+} from '@/api/queries';
 import { QuoteStatusChip } from './QuoteStatusChip';
 import { formatMoney } from '@/utils/format';
 import type { Quote, QuoteLine } from '@/api/types';
@@ -85,8 +89,28 @@ interface QuoteEditorDialogProps {
 export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogProps) {
   const { t, i18n } = useTranslation();
   const { data: types } = useInterventionTypes();
+  const { data: rules } = usePricingRules();
   const replaceLines = useReplaceQuoteLines(scope);
   const [lines, setLines] = useState<DraftLine[]>([]);
+
+  /**
+   * Label the VAT a category implies, using the server's own rate.
+   *
+   * The percentage is read from the published pricing rules rather than
+   * written into a translation string. A rate spelled out in `fr.json` is a
+   * second copy of a figure the tax code sets, and the copy on screen would be
+   * the one an operator trusted while the invoice used the other.
+   */
+  const vatHint = (category: 'necessity' | 'comfort'): string => {
+    const rate = rules?.vat_rates[category];
+    if (rate === undefined) return '';
+    return t('quote.vatRateHint', {
+      rate: (Number(rate) * 100).toLocaleString(i18n.language, {
+        maximumFractionDigits: 1,
+      }),
+    });
+  };
+
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -253,7 +277,7 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
                     onChange={(event) =>
                       update(index, 'service_category', event.target.value)
                     }
-                    helperText={t(`quote.vatFor_${line.service_category}`)}
+                    helperText={vatHint(line.service_category)}
                     slotProps={{
                       select: { native: true },
                       inputLabel: { shrink: true },

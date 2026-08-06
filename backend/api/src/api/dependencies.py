@@ -8,14 +8,13 @@ from typing import AsyncIterator, Optional
 
 # Third-party imports
 from fastapi import Depends, HTTPException, Request, status
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
-from api.sse.broadcaster import NotificationBroadcaster
+from api.sse.streams import NotificationStreams
 from models.auth.user import User
 from models.configuration.app_config import AppConfig
-from models.enums import PlanningRunStatus, UserRole
+from models.enums import EventRoutingKey, PlanningRunStatus, UserRole
 from service.auth.auth import AuthService
 from service.companies.companies import CompanyService
 from service.companies.registration import CompanyRegistrationService
@@ -23,10 +22,11 @@ from service.customers.customers import CustomerService
 from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
 from service.intervention_types.intervention_types import InterventionTypeService
+from service.messaging.consumer import EventConsumer
 from service.messaging.publisher import EventPublisher
-from service.notifications.notifications import NotificationService
 from service.planning.interventions import InterventionService
 from service.planning.plannings import PlanningService
+from service.planning.webhook import PlanningWebhook
 from service.quotes.quotes import QuoteService
 from storage.db.connection_manager import DatabaseConnectionManager
 from storage.repositories.company import CompanyRepository
@@ -47,14 +47,16 @@ logger: Logger = getLogger(__name__)
 _connection_manager: Optional[DatabaseConnectionManager] = None
 # One per process, holding the event streams this instance is serving. It
 # cannot be request-scoped: a stream outlives the request that opened it, and
-# the whole point is that a later request can push into it.
-_notification_broadcaster: NotificationBroadcaster = NotificationBroadcaster(
-    logger=logger
-)
+# the whole point is that something arriving later can push into it.
+_notification_streams: NotificationStreams = NotificationStreams(logger=logger)
 # Also process-wide, and for the same reason: it holds a broker connection that
 # must be shared and reused rather than opened per request. Built on first use
 # rather than at import, because the configuration is not loaded yet here.
 _event_publisher: Optional[EventPublisher] = None
+# The other half of the stream: the queue this instance reads to learn that a
+# notification was written. Started and stopped by the application's lifespan,
+# because it must outlive every request and belongs to no one of them.
+_notification_consumer: Optional[EventConsumer] = None
 
 
 @lru_cache
@@ -264,22 +266,6 @@ async def get_notification_repository(
     return NotificationRepository(session=session, logger=logger)
 
 
-async def get_notification_service(
-    notifications: NotificationRepository = Depends(get_notification_repository),
-    users: UserRepository = Depends(get_user_repository),
-) -> NotificationService:
-    """Return the notification service.
-
-    Args:
-        notifications (NotificationRepository): The notification store.
-        users (UserRepository): The account store, used to resolve recipients.
-
-    Returns:
-        NotificationService: The service.
-    """
-    return NotificationService(notifications=notifications, users=users, logger=logger)
-
-
 def get_event_publisher() -> EventPublisher:
     """Return the process-wide broker publisher.
 
@@ -299,19 +285,74 @@ def get_event_publisher() -> EventPublisher:
     return _event_publisher
 
 
-def get_notification_broadcaster() -> NotificationBroadcaster:
-    """Return the process-wide event-stream fan-out.
+def get_notification_streams() -> NotificationStreams:
+    """Return the process-wide registry of open event streams.
 
     Returns:
-        NotificationBroadcaster: The broadcaster holding this instance's open
-        streams.
+        NotificationStreams: The registry holding this instance's open streams.
 
     Notes:
         Not a ``lru_cache``-d factory but a module-level instance, because it
         holds live state rather than configuration. Two callers must get the
-        *same* object or a push would go to a broadcaster nobody is reading.
+        *same* object or a wake-up would go to a registry nobody is reading.
     """
-    return _notification_broadcaster
+    return _notification_streams
+
+
+async def start_notification_relay() -> None:
+    """Begin turning ``notification.created`` messages into stream wake-ups.
+
+    Notes:
+        - **Best effort, unlike the worker's consumer.** A worker with no broker
+          has nothing to do and fails loudly so its supervisor restarts it. An
+          API with no broker still answers every request, including the one that
+          lists the notifications this would have announced — so a broker that
+          is down or disabled costs the live push and nothing else. Refusing to
+          start would turn a degraded convenience into an outage.
+        - The queue is **exclusive and server-named**, so every API instance
+          gets its own copy of every announcement. That is required, not
+          incidental: each instance holds different open streams, and a shared
+          durable queue would hand each message to one instance while the
+          readers connected to the others were never woken.
+        - Disabled is the default configuration, which is what keeps a laptop
+          and the test suite from needing a broker at all.
+    """
+    global _notification_consumer
+    config = get_app_config()
+    if not config.rabbitmq.enabled:
+        logger.info("The broker is disabled; notifications will not be pushed.")
+        return
+    consumer = EventConsumer(config=config.rabbitmq, logger=logger)
+    consumer.on(EventRoutingKey.NOTIFICATION_CREATED, get_notification_streams().relay)
+    try:
+        await consumer.start()
+        await consumer.consume_every_company([EventRoutingKey.NOTIFICATION_CREATED])
+    except Exception as exc:  # noqa: BLE001 - the API must still serve
+        logger.error(
+            "Could not consume %s; readers will see notifications on their "
+            "next fetch rather than immediately: %s.",
+            EventRoutingKey.NOTIFICATION_CREATED.value,
+            exc,
+        )
+        return
+    _notification_consumer = consumer
+    logger.info("Notifications written by the worker will be pushed to readers.")
+
+
+async def stop_notification_relay() -> None:
+    """Release the relay's broker connection, if one was opened.
+
+    Notes:
+        Called from the application's shutdown hook. Closing is best-effort for
+        the same reason the publisher's is: a process on its way out must not
+        hang on a broker that has already gone.
+    """
+    global _notification_consumer
+    if _notification_consumer is None:
+        logger.debug("No notification relay to close.")
+        return
+    await _notification_consumer.close()
+    _notification_consumer = None
 
 
 async def get_customer_service(
@@ -517,45 +558,13 @@ async def notify_planning_completed(run_id: str) -> None:
         run_id (str): The run that succeeded.
 
     Notes:
-        This is what makes the dispatch automatic: computing a planning is the
-        event, and the webhook is how it is announced. Pointing the configured
-        URL at this application's own endpoint is the ordinary arrangement —
-        the emails then go out through a normal request, with the same
-        handlers and logging as anything else.
-
-        A failure here is logged and swallowed. The planning itself succeeded
-        and is already stored; an unreachable webhook must not turn a good run
-        into a failed one, and the run can be dispatched again by calling the
-        endpoint by hand.
+        The call itself lives in
+        :class:`~service.planning.webhook.PlanningWebhook`, because the worker
+        finishes runs too and cannot import this module. This wrapper stays so
+        the in-process planning path reads the same as it did.
     """
-    config = get_app_config().webhook
-    if not config.enabled:
-        logger.debug("The planning webhook is disabled; not announcing %s.", run_id)
-        return
-    token = config.get_token()
-    if not token:
-        logger.warning(
-            "Not announcing planning run %s: the webhook secret (%s) is unset.",
-            run_id,
-            config.token_env,
-        )
-        return
-    logger.info("Announcing planning run %s to %s.", run_id, config.url)
-    try:
-        async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
-            response = await client.post(
-                config.url,
-                json={"run_id": run_id},
-                headers={"X-Webhook-Token": token},
-            )
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.error("Could not announce planning run %s: %s", run_id, exc)
-        return
-    logger.info(
-        "Planning run %s announced; the webhook answered %d.",
-        run_id,
-        response.status_code,
+    await PlanningWebhook(config=get_app_config().webhook, logger=logger).announce(
+        run_id
     )
 
 

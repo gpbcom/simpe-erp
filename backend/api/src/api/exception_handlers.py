@@ -61,6 +61,7 @@ from models.schemas.exceptions import (
     MTInvalidCompanyProfileUpdateRequestException,
     MTInvalidInterventionTypeChangeRequestException,
     MTInvalidInterventionTypeUpdateRequestException,
+    MTInvalidQuoteInterruptionRequestException,
     MTInvalidActiveUpdateRequestException,
     MTInvalidApplicationDecisionRequestException,
     MTInvalidCompanyRegistrationRequestException,
@@ -135,10 +136,6 @@ from service.intervention_types.exceptions import (
     MTInvalidInterventionTypeCatalogException,
 )
 from service.messaging.exceptions import MTInvalidMessagingException
-from service.notifications.exceptions import (
-    MTInvalidNotificationServiceException,
-    MTNotificationNotFound,
-)
 from service.planning.exceptions import (
     MTInvalidPlanningException,
     MTInterventionNotFound,
@@ -227,6 +224,9 @@ class ExceptionHandlers:
         MTInvalidInterventionTypeUpdateRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidQuoteInterruptionRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
         # A 500, not a 422. This family guards a *response* built from the
         # running configuration, so a caller cannot cause one and has nothing
         # to correct: it fires only when the deployment's own pricing rules
@@ -296,10 +296,6 @@ class ExceptionHandlers:
         MTPlanningPeriodTooLong: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTPlanningInfeasible: status.HTTP_409_CONFLICT,
         MTPlanningSettingsUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
-        # Notifications. The same 404 whether it does not exist or belongs to
-        # somebody else: telling the two apart would let a caller enumerate
-        # identifiers and learn what the agency has been told.
-        MTNotificationNotFound: status.HTTP_404_NOT_FOUND,
         # Outbound email
         MTEmailNoRecipient: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTEmailNotConfigured: status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -364,7 +360,6 @@ class ExceptionHandlers:
         MTInvalidCompanyServiceException: status.HTTP_400_BAD_REQUEST,
         MTInvalidInterventionTypeCatalogException: status.HTTP_400_BAD_REQUEST,
         MTInvalidPricingException: status.HTTP_400_BAD_REQUEST,
-        MTInvalidNotificationServiceException: status.HTTP_400_BAD_REQUEST,
         MTInvalidPlanningException: status.HTTP_400_BAD_REQUEST,
         # A response model that will not build is **our** bug: the caller asked
         # for something reasonable and we could not describe the answer.

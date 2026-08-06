@@ -36,7 +36,13 @@ The Workforce Grid Lists Every Assistant
 Each Row Carries A Portrait Or Initials
     [Documentation]    The same fallback the map pins use.
     [Tags]    hcas
-    Wait For Elements State    [data-testid="hcas-grid"] .MuiAvatar-root    visible
+    # The first one. Twelve assistants means twelve avatars, and Playwright's
+    # strict mode refuses a wait whose selector resolves to more than one
+    # element — so a grid full of portraits failed this as an error about the
+    # selector rather than passing. Waiting on the first says what the test
+    # means: portraits arrived. How many is the count below.
+    Wait For Elements State    [data-testid="hcas-grid"] .MuiAvatar-root >> nth=0
+    ...    visible
     ${avatars}=    Get Element Count    [data-testid="hcas-grid"] .MuiAvatar-root
     Should Be True    ${avatars} > 0
 
@@ -159,7 +165,8 @@ Target Assistant Id
     ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
     ${headers}=    Authorisation Header    ${token}
     ${response}=    GET
-    ...    ${API_URL}/api/v1/hcas?search=${TARGET_HCA_NAME}
+    ...    ${API_URL}/api/v1/hcas
+    ...    params=${{ {"search": $TARGET_HCA_NAME} }}
     ...    headers=${headers}
     ...    expected_status=200
     ${found}=    Set Variable    ${response.json()}

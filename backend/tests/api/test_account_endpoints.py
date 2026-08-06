@@ -558,6 +558,10 @@ class TestMandatoryChangeEnforcement:
         async def change() -> dict:
             return {"changed": True}
 
+        @app.get("/api/v1/auth/me")
+        async def me() -> dict:
+            return {"email": "flagged@example.com"}
+
         app.add_middleware(AuthMiddleware)
         return TestClient(app)
 
@@ -586,6 +590,25 @@ class TestMandatoryChangeEnforcement:
 
         response = client.post(
             "/api/v1/auth/password", headers={"Authorization": "Bearer token"}
+        )
+
+        assert response.status_code == 200
+
+    def test_the_identity_route_stays_reachable(self) -> None:
+        """**Without which the account can never reach the change screen.**
+
+        Notes:
+            The interface learns who the caller is from this route, and an
+            account it cannot identify is one it cannot route anywhere — it can
+            only report a failed sign-in. Refusing it here made the whole
+            forced-change journey unreachable through the browser while every
+            server-side test passed, because each of those already knew which
+            account it was acting as.
+        """
+        client = self._client_for(_user(role=UserRole.HCA, must_change=True))
+
+        response = client.get(
+            "/api/v1/auth/me", headers={"Authorization": "Bearer token"}
         )
 
         assert response.status_code == 200

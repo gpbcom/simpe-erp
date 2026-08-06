@@ -53,7 +53,19 @@ Sign In As
     ...    Through the UI on purpose: this is the one place the sign-in screen
     ...    is exercised. Everywhere else uses the API, because clicking through
     ...    a login for every test buys nothing and costs seconds each time.
+    ...
+    ...    Ends an open session first, rather than assuming the browser is on
+    ...    the sign-in card. A test whose predecessor finished signed in — its
+    ...    own teardown skipped because it failed earlier, or the session simply
+    ...    left open on purpose — otherwise fails on a sign-in field that is not
+    ...    there, and reports "login-email not found" about a suite whose real
+    ...    problem is three tests back. Counting is the check because it neither
+    ...    waits nor raises when there is no session.
     [Arguments]    ${email}    ${password}=${SEED_PASSWORD}
+    ${open}=    Get Element Count    [data-testid="sign-out"]
+    IF    ${open} > 0
+        Sign Out
+    END
     Fill Text    [data-testid="login-email"]    ${email}
     Fill Text    [data-testid="login-password"]    ${password}
     Click    [data-testid="login-submit"]

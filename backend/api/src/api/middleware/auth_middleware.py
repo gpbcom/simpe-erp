@@ -36,8 +36,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
           added without a guard is still authenticated: forgetting a dependency
           would otherwise leave the endpoint open. The *authorisation* decision
           stays in the per-route guards, which is where it belongs.
-        - ``/api/v1/auth/me`` is deliberately **not** exempt: it exists to report
-          who the caller is, which is meaningless without a credential.
+        - ``/api/v1/auth/me`` is deliberately **not** exempt from
+          *authentication*: it exists to report who the caller is, which is
+          meaningless without a credential. It *is* reachable while a temporary
+          password stands, for the reason given on :attr:`IDENTITY_PATH`.
         - **The mandatory password change is enforced here.** An account created
           by an administrator can sign in — it must, in order to change its
           temporary password — and without a check at this level it could then
@@ -87,6 +89,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/notifications/stream",
     )
     PASSWORD_CHANGE_PATH: ClassVar[str] = "/api/v1/auth/password"
+    # Reachable while the flag is set, along with the change itself. The client
+    # learns *who it is* from this route, and an account it cannot identify is
+    # one it cannot route to the change-password screen — it can only report a
+    # failed sign-in. Exempting it costs nothing: the route answers the caller's
+    # own identity, which their own token already asserts, and the flag is part
+    # of what it answers.
+    IDENTITY_PATH: ClassVar[str] = "/api/v1/auth/me"
     BEARER_PREFIX: ClassVar[str] = "bearer "
 
     def __init__(self, app: Callable, logger: Optional[Logger] = None) -> None:
@@ -223,9 +232,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Authentication backend unavailable."},
             )
 
-        if (
-            request.state.user.must_change_password
-            and request.url.path != self.PASSWORD_CHANGE_PATH
+        if request.state.user.must_change_password and request.url.path not in (
+            self.PASSWORD_CHANGE_PATH,
+            self.IDENTITY_PATH,
         ):
             self.logger.warning(
                 "Refused %s %s: account %s must change its temporary password first.",

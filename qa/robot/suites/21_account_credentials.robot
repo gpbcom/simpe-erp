@@ -192,6 +192,12 @@ Create A Throwaway Assistant And Account
     ...    country=France
     ...    latitude=${48.8566}
     ...    longitude=${2.3522}
+    # The agency is read from the caller's own account rather than named. Every
+    # person in this system belongs to one, and the record is refused without
+    # it — a fixture that carried a literal identifier would be a fixture that
+    # creates staff in whichever agency that string happens to be.
+    ${me}=    GET
+    ...    ${API_URL}/api/v1/me/account    headers=${headers}    expected_status=200
     ${hca}=    Create Dictionary
     ...    first_name=QA
     ...    last_name=Credentials-${suffix}
@@ -199,6 +205,7 @@ Create A Throwaway Assistant And Account
     ...    email=qa.hca.${suffix}@simple-erp.fr
     ...    address=${address}
     ...    contract_type=cdi
+    ...    company_id=${me.json()}[company_id]
     ${created}=    POST
     ...    ${API_URL}/api/v1/hcas
     ...    json=${hca}    headers=${headers}    expected_status=201

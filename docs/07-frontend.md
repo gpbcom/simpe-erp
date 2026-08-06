@@ -175,10 +175,33 @@ nothing led to it. And `/customers` had an entry with no route behind it, so
 clicking it silently redirected home, which reads as the click not registering.
 
 Both quote dialogs carry a **VAT category per line**, beside the service and
-labelled with the rate it implies. Picking a service fills it in with what that
+labelled with the rate it implies — read from `GET /intervention-types/pricing-rules`
+rather than written into a translation string, so the percentage on screen and
+the one on the invoice come from the same place.
+
+The line row is a **grid, not a flex row**. With `flex: N` (shorthand for
+`flex: N 1 0%`) the two dropdowns were given a zero basis and shrank under their
+own content, while the date input — which had no `flex` at all — kept its
+intrinsic width and took the room; the controls ended up overlapping. Every
+test-id-driven test passed straight through it, because Playwright fills a
+control regardless of how wide it is drawn. Picking a service fills it in with what that
 service usually is — the common case in one click — and leaves it editable,
 because only the person writing the quote knows whether this customer's hours
 fall under a care plan.
+
+**The customer's file** (`/customers`, manager and above) — a searchable grid
+of every household the agency serves, opening a drawer with everything held
+about one of them and, first, **the arrangements currently being delivered**.
+That is the question the screen is opened to answer; history sits below it.
+
+The two controls that end or extend care live on the arrangement card itself,
+not on a settings screen. Both are decisions taken while looking at what the
+arrangement currently delivers — which visits, from when, at what price — and a
+screen that makes somebody remember a reference and go elsewhere is a screen
+where the wrong quote gets cancelled.
+
+This entry was in the navigation for a long time **with no route behind it**, so
+clicking it fell through to the catch-all and silently redirected home.
 
 **Editing a quote** — `QuoteEditorDialog`, one component used by both the
 manager's grid and the assistant's. A manager editing any quote and an assistant

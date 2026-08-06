@@ -196,6 +196,9 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
             submitted_at=self.timestamps.to_utc(row.submitted_at),
             validated_by=row.validated_by,
             validated_at=self.timestamps.to_utc(row.validated_at),
+            interrupted_on=row.interrupted_on,
+            auto_renew=row.auto_renew,
+            renewed_from_id=row.renewed_from_id,
         )
 
     def _apply_fields(self, row: QuoteRow, model: Quote) -> None:
@@ -225,6 +228,9 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
         row.submitted_at = model.submitted_at
         row.validated_by = model.validated_by
         row.validated_at = model.validated_at
+        row.interrupted_on = model.interrupted_on
+        row.auto_renew = model.auto_renew
+        row.renewed_from_id = model.renewed_from_id
         row.lines = self._line_rows(row.id, model.lines)
         row.aggregates = self._aggregate_rows(row.id, model.aggregates)
         self.logger.info(

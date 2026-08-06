@@ -19,6 +19,7 @@ class Dataset:
         COMPANY_NAME (ClassVar[str]): The seeded agency's name.
         PASSWORD (ClassVar[str]): The password every seeded account signs in
             with.
+        HOURLY_RATE_HT (ClassVar[str]): The rate every seeded service bills at.
         INTERVENTION_TYPES (ClassVar[Tuple]): The service catalog.
         ASSISTANTS (ClassVar[Tuple]): The workforce.
         CUSTOMERS (ClassVar[Tuple]): The people served.
@@ -45,16 +46,34 @@ class Dataset:
     COMPANY_NAME: ClassVar[str] = "Aide et Presence Paris"
     PASSWORD: ClassVar[str] = "simple-erp-demo-2026"
 
-    # (code, name, category, hourly rate excluding tax)
-    INTERVENTION_TYPES: ClassVar[Tuple[Tuple[str, str, ServiceCategory, str], ...]] = (
-        ("TOI", "Aide a la toilette", ServiceCategory.NECESSITY, "31.905"),
-        ("REP", "Preparation des repas", ServiceCategory.NECESSITY, "28.500"),
-        ("MEN", "Entretien du logement", ServiceCategory.COMFORT, "26.000"),
-        ("COU", "Courses et accompagnement", ServiceCategory.COMFORT, "27.400"),
-        ("LEV", "Aide au lever et au coucher", ServiceCategory.NECESSITY, "33.200"),
-        ("ADM", "Aide administrative", ServiceCategory.COMFORT, "29.000"),
-        ("COM", "Compagnie et stimulation", ServiceCategory.COMFORT, "25.500"),
-        ("NUI", "Garde de nuit", ServiceCategory.NECESSITY, "38.750"),
+    #: The hourly rate every seeded service bills at, excluding tax.
+    #:
+    #: One constant rather than a figure per entry. "Every service costs the
+    #: same" is then a property of the seed rather than eight literals that
+    #: happen to agree today — an edit to one of them could not silently break
+    #: it, because there is only one.
+    #:
+    #: It is the same figure as ``PricingConfig.base_hourly_rate_ht``, so a
+    #: seeded quote costs what it would cost if the entry named no rate at all.
+    #: That makes a total easy to check by hand: hours x 31.905, times any
+    #: surcharge, and the only thing that varies between two lines is the VAT
+    #: their categories carry.
+    #:
+    #: Three decimal places, and the column is ``Numeric(12, 3)``, so it stores
+    #: exactly. The screens print 31,91 € because money is *displayed* to the
+    #: cent; the stored figure is what pricing multiplies.
+    HOURLY_RATE_HT: ClassVar[str] = "31.905"
+
+    # (code, name, category)
+    INTERVENTION_TYPES: ClassVar[Tuple[Tuple[str, str, ServiceCategory], ...]] = (
+        ("TOI", "Aide a la toilette", ServiceCategory.NECESSITY),
+        ("REP", "Preparation des repas", ServiceCategory.NECESSITY),
+        ("MEN", "Entretien du logement", ServiceCategory.COMFORT),
+        ("COU", "Courses et accompagnement", ServiceCategory.COMFORT),
+        ("LEV", "Aide au lever et au coucher", ServiceCategory.NECESSITY),
+        ("ADM", "Aide administrative", ServiceCategory.COMFORT),
+        ("COM", "Compagnie et stimulation", ServiceCategory.COMFORT),
+        ("NUI", "Garde de nuit", ServiceCategory.NECESSITY),
     )
 
     # (first name, last name, contract, street, postcode, city, lat, lon, drives)
@@ -360,9 +379,9 @@ class Dataset:
         Raises:
             KeyError: If the code is not in the catalog.
         """
-        for entry_code, _, _, rate in self.INTERVENTION_TYPES:
+        for entry_code, _, _ in self.INTERVENTION_TYPES:
             if entry_code == code:
-                return Decimal(rate)
+                return Decimal(self.HOURLY_RATE_HT)
         raise KeyError(f"No catalog entry {code!r}.")
 
     def service_days(self, week_start: date, count: int) -> List[date]:

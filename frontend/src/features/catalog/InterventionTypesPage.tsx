@@ -32,6 +32,17 @@ import type { InterventionType } from '@/api/types';
  * "free", and the difference between "inherits €31.905" and "costs nothing" is
  * the difference between a correct quote and one that bills a family nothing.
  *
+ * **The VAT category is not a column here.** It used to be, and it read as a
+ * property of the service — which is what the data model used to say and what
+ * turned out to be wrong. The same service is necessity care for one customer
+ * and comfort care for another, so the rate is chosen on the quote line, by the
+ * person who knows which the customer is. A column here would state a fact
+ * about the service that the next quote written against it may contradict.
+ *
+ * What the catalogue entry still carries is a *suggested* category, offered to
+ * fill the field in when an operator picks the service. That is a default, not
+ * a rule, and it is edited in the dialog rather than displayed as a column.
+ *
  * The agency-wide rules — the default rate, the weekday and holiday surcharges
  * — are shown but **not editable here**. They live in the deployment's
  * configuration, because a change to what every service costs is a commercial
@@ -49,26 +60,6 @@ export function InterventionTypesPage() {
   const columns: GridColDef<InterventionType>[] = [
     { field: 'code', headerName: t('catalog.code'), width: 130 },
     { field: 'name', headerName: t('catalog.name'), flex: 1, minWidth: 180 },
-    {
-      field: 'service_category',
-      headerName: t('catalog.category'),
-      width: 190,
-      sortable: false,
-      renderCell: (params) => (
-        <Chip
-          size="small"
-          label={`${t(`catalog.category_${params.row.service_category}`)} · ${t(
-            'catalog.vatShort',
-            {
-              rate: rules
-                ? `${(Number(rules.vat_rates[params.row.service_category] ?? 0) * 100).toFixed(1)}`
-                : '—',
-            },
-          )}`}
-          data-testid={`type-category-${params.row.code}`}
-        />
-      ),
-    },
     {
       field: 'base_hourly_rate_ht',
       headerName: t('catalog.hourlyRate'),

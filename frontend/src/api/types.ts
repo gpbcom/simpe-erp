@@ -173,6 +173,18 @@ export interface Quote {
   submitted_at: string | null;
   validated_by: string | null;
   validated_at: string | null;
+  /**
+   * The last day the arrangement is delivered, or `null` if it runs on.
+   *
+   * Services dated after it are neither planned nor billed, but they stay on
+   * the quote — so the document can still show what the cancelled visits would
+   * have cost.
+   */
+  interrupted_on: string | null;
+  /** Whether a successor is written when this quote expires. */
+  auto_renew: boolean;
+  /** The quote this one succeeds, when a renewal created it. */
+  renewed_from_id: string | null;
 }
 
 /** An entry in the service catalog. */

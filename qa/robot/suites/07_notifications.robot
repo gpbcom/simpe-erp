@@ -33,6 +33,49 @@ The Bell Carries The Unread Count
     Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    2s
     ...    Badge Should Be At Least    1
 
+The Badge Rises Without A Reload
+    [Documentation]    The event stream, end to end and for real.
+    ...
+    ...    Every other test in this suite reloads the page first, and they are
+    ...    right to: they are about the two screens, and a screen must show the
+    ...    unread queue however the reader got there. This one is about the
+    ...    push. It never reloads, so the only thing that can move the badge is
+    ...    a frame arriving on the open SSE connection — which means the whole
+    ...    chain ran: the API published, the worker wrote the rows and announced
+    ...    them, this instance's exclusive queue received the announcement, and
+    ...    the browser refetched.
+    ...
+    ...    It was unreachable before the relay existed: the badge only ever
+    ...    moved on a reload or on the sixty-second poll, and nothing here
+    ...    would have told the two apart.
+    [Tags]    notifications    stream
+    ${before}=    Current Badge Count
+    ${suffix}=    Raise A Notification For The Manager
+    ${expected}=    Evaluate    ${before} + 1
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    2s
+    ...    Badge Should Be At Least    ${expected}
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    2s
+    ...    Notification List Should Mention    QA-${suffix}
+
+The Unread Queue Survives Signing Out And Back In
+    [Documentation]    A notification is a row, not per-session state.
+    ...
+    ...    The frames carry no data, so the push is an accelerator and the
+    ...    database is the delivery. This is the other half of that bargain: a
+    ...    reader who was not connected when the notification was written — or
+    ...    who signed out without reading it — must find it waiting.
+    [Tags]    smoke    notifications    persistence
+    Raise A Notification For The Manager
+    Reload
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    2s
+    ...    Badge Should Be At Least    1
+    ${before}=    Current Badge Count
+    Sign Out
+    Sign In As    ${MANAGER_EMAIL}
+    Wait For Elements State    [data-testid="notification-badge"]    visible
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    2s
+    ...    Badge Should Be At Least    ${before}
+
 The Popover Lists The Notification
     [Documentation]    Opening the bell shows what arrived, and what it was about.
     [Tags]    notifications
@@ -103,9 +146,12 @@ Marking Everything Read Is Disabled With Nothing To Read
     [Tags]    notifications
     Mark Everything Read Through The API    ${MANAGER_EMAIL}
     Navigate To    /notifications
-    Wait For Elements State    [data-testid="page-mark-all-read"]    visible
-    ${disabled}=    Get Attribute    [data-testid="page-mark-all-read"]    disabled
-    Should Not Be Equal    ${disabled}    ${None}
+    # Waited for, not read off the DOM. ``Get Attribute`` raises when the
+    # attribute is absent, so a button that is merely slow to catch up with the
+    # read count fails this as an AttributeError rather than as the assertion
+    # it is — and the page only learns there is nothing unread when its own
+    # query comes back.
+    Wait For Elements State    [data-testid="page-mark-all-read"]    disabled
 
 An Account With No Notifications Sees The Empty State
     [Documentation]    Not a blank panel: a sentence saying there is nothing.
@@ -188,25 +234,53 @@ Badge Should Be At Least
     Should Not Be Empty    ${text}
     Should Be True    int("${text}".replace("+", "") or 0) >= ${minimum}
 
+Current Badge Count
+    [Documentation]    Read the unread badge as a number, right now.
+    ...
+    ...    Zero for an empty badge, because MUI keeps the node and hides it
+    ...    rather than removing it — and for a badge that has capped itself at
+    ...    "99+", the plus is dropped. Read without waiting, unlike every other
+    ...    badge keyword here: this is the *before* of a before-and-after, and
+    ...    retrying it until it changed would defeat the comparison it exists
+    ...    for.
+    ${text}=    Get Text    [data-testid="notification-badge"]
+    ${count}=    Evaluate    int("${text}".strip().replace("+", "") or 0)
+    RETURN    ${count}
+
 Clearing Empties The Queue
     [Documentation]    Mark everything read, and assert both counters are empty.
     ...
-    ...    Reads the button's ``disabled`` attribute rather than clicking and
-    ...    hoping: Playwright waits for a disabled button to become actionable
-    ...    and then reports a timeout, so a retry that found nothing left to
-    ...    mark would fail on the queue being already empty — the very state it
-    ...    is trying to reach.
-    ${disabled}=    Get Attribute    [data-testid="page-mark-all-read"]    disabled
-    IF    $disabled is None
+    ...    Gated on the unread chip rather than on clicking and hoping:
+    ...    Playwright waits for a disabled button to become actionable and then
+    ...    reports a timeout, so a retry that found nothing left to mark would
+    ...    fail on the queue being already empty — the very state it is trying
+    ...    to reach. The chip and the button are driven by the same number, and
+    ...    counting elements is the one check that neither waits nor raises.
+    # Reloaded first, so the chip that decides whether to click and the badge
+    # that is asserted afterwards are both freshly fetched. They are two
+    # different queries — the page counts the rows it holds, the bell asks the
+    # server — and a retry that read one stale and the other fresh would skip
+    # the click and then fail on the count it skipped clearing.
+    Reload
+    Wait For Elements State    [data-testid="page-mark-all-read"]    visible
+    ${unread}=    Get Element Count    [data-testid="unread-chip"]
+    IF    ${unread} > 0
         Click    [data-testid="page-mark-all-read"]
     END
     Unread Chip Should Be Gone
     Badge Should Be Empty
 
 Badge Should Be Empty
-    [Documentation]    Assert the badge shows nothing.
+    [Documentation]    Assert the badge announces nothing to read.
+    ...
+    ...    Empty **or** a zero. MUI hides a badge whose content is zero by
+    ...    marking it invisible rather than by removing it, so the node keeps
+    ...    the text "0" while the reader sees nothing at all. Insisting on an
+    ...    empty string fails a badge that is correctly cleared, which is the
+    ...    opposite of what this asserts — what must never appear is a count.
     ${text}=    Get Text    [data-testid="notification-badge"]
-    Should Be Equal    ${text.strip()}    ${EMPTY}
+    Should Match Regexp    ${text.strip()}    ^0?$
+    ...    msg=The bell still announces '${text.strip()}' unread.
 
 Unread Chip Should Be Gone
     [Documentation]    Assert the page's unread counter has disappeared.

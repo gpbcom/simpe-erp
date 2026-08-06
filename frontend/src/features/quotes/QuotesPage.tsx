@@ -12,6 +12,7 @@ import {
   useCustomers,
   useQuotes,
   useRefuseQuote,
+  useSendQuote,
   useValidateQuote,
 } from '@/api/queries';
 import { NewQuoteDialog } from './NewQuoteDialog';
@@ -53,6 +54,7 @@ export function QuotesPage() {
   const { data: customers } = useCustomers();
   const validate = useValidateQuote();
   const refuse = useRefuseQuote();
+  const send = useSendQuote();
 
   const customerName = (customerId: string): string => {
     const found = (customers ?? []).find((entry) => entry.id === customerId);
@@ -111,15 +113,32 @@ export function QuotesPage() {
               sent, and a quote awaiting validation is frozen so the figures a
               manager rules on are the ones they were shown. */}
           {params.row.status === 'draft' ? (
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<EditIcon />}
-              onClick={() => setEditing(params.row)}
-              data-testid={`edit-${params.row.reference}`}
-            >
-              {t('quote.edit')}
-            </Button>
+            <>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => setEditing(params.row)}
+                data-testid={`edit-${params.row.reference}`}
+              >
+                {t('quote.edit')}
+              </Button>
+              {/* Sending accepts the quote: a manager writes one for an
+                  arrangement they have already settled with the family, and
+                  the hours have to reach the planner. Nothing else in the
+                  agency moves a hand-written quote past `sent`, so without
+                  this the visits were promised and never scheduled. */}
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<AppIcon name="quoteValidate" />}
+                onClick={() => send.mutate(params.row.id ?? '')}
+                disabled={send.isPending}
+                data-testid={`send-${params.row.reference}`}
+              >
+                {t('quote.send')}
+              </Button>
+            </>
           ) : null}
           {params.row.status === 'pending-validation' ? (
             <>

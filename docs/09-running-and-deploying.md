@@ -100,6 +100,19 @@ It produces: 1 company, 3 staff accounts, 12 assistants (and their accounts),
 40 customers, 8 catalog entries, 54 quotes across every status, and next week's
 service dates so a planning run has something to place.
 
+## What the seed prices at
+
+Every service in the seeded catalogue bills at the **same** hourly rate,
+`Dataset.HOURLY_RATE_HT` — one constant rather than a figure per entry, so
+"every service costs the same" is a property of the seed rather than eight
+literals that happen to agree.
+
+It is deliberately the same figure as `PricingConfig.base_hourly_rate_ht`, which
+makes a demo total checkable by hand: hours x the rate, times any weekday or
+holiday surcharge. The only thing that then varies between two lines is the VAT
+their categories carry — which is the thing worth showing, since the category is
+chosen per quote line rather than per service.
+
 ## Health
 
 `GET /health` answers without touching the database, so the container reports

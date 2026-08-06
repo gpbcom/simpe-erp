@@ -161,7 +161,9 @@ export function fetchMe(): Promise<User> {
 /**
  * Open the notification event stream.
  *
- * @param onNotification - Called for every notification frame.
+ * @param onChanged - Called whenever the caller's notifications may have
+ *   changed: once when the stream goes live, and again for every notification
+ *   written while it is open.
  * @returns A function that closes the stream.
  *
  * @remarks
@@ -170,10 +172,18 @@ export function fetchMe(): Promise<User> {
  * query string. That token lives one minute and is refused on every other
  * route, so a URL captured in a proxy log is worth nothing by the time anybody
  * reads it — which is why the session token is not used here.
+ *
+ * **The frames carry no data.** A `notification` frame says only that something
+ * changed; the caller fetches what changed over HTTP. That keeps the database
+ * the single source of truth, and means the same code path serves a live push
+ * and a reader who has just signed back in.
+ *
+ * `ready` is reported too, and it is what makes the stream safe to rely on
+ * without a poll behind it: it fires on the first connection *and* on every
+ * reconnect, so anything written while the stream was down is picked up the
+ * moment it comes back rather than up to a minute later.
  */
-export function openNotificationStream(
-  onNotification: (payload: unknown) => void,
-): () => void {
+export function openNotificationStream(onChanged: () => void): () => void {
   let source: EventSource | null = null;
   let closed = false;
 
@@ -189,9 +199,8 @@ export function openNotificationStream(
           streamToken.access_token,
         )}`,
       );
-      source.addEventListener('notification', (event) => {
-        onNotification(JSON.parse((event as MessageEvent<string>).data));
-      });
+      source.addEventListener('ready', () => onChanged());
+      source.addEventListener('notification', () => onChanged());
       source.onerror = () => {
         // The token expires after a minute, so a reconnect needs a fresh one —
         // EventSource's own retry would keep replaying the dead one for ever.

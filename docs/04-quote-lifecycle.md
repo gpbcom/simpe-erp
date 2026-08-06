@@ -20,7 +20,7 @@ So an assistant writes the quote, and it waits.
      │                       │                          └───reject───▶ rejected
      └────refuse-validation──┘
      │
-     └──send──▶ sent            ┌──── a manager's path ────┐
+     └──send──▶ accepted        ┌──── a manager's path ────┐
 ```
 
 | Transition | Who | From → to | Also requires |
@@ -28,7 +28,7 @@ So an assistant writes the quote, and it waits.
 | `submit` | author (assistant) | `draft` → `pending-validation` | priced; the caller wrote it |
 | `validate` | manager | `pending-validation` → `sent` | priced |
 | `refuse-validation` | manager | `pending-validation` → `draft` | — |
-| `send` | manager | `draft` → `sent` | priced |
+| `send` | manager | `draft` → `accepted` | priced; stamps the issue dates and the sender as validator |
 | `accept` | manager | any → `accepted` | priced |
 | `reject` | manager | any → `rejected` | — |
 
@@ -44,6 +44,17 @@ planner.
 a price is not a customer agreeing to it. Making validation produce `ACCEPTED`
 would put work on assistants' calendars that no family had said yes to.
 
+**Sending a hand-written quote moves it to `ACCEPTED`, and that is not the same
+rule contradicted.** The two paths differ in what the agency knows. On the
+assistant's path the offer goes out and the family has not answered yet, so
+`SENT` is the honest state. A manager writing a quote by hand is recording an
+arrangement they have already settled — and nothing in the agency ever moved
+such a quote further: there is no accept button anywhere, so it sat outside
+`SCHEDULABLE_STATUSES` and the visits somebody had promised were never planned.
+Sending it *is* the agreement, so `send` stamps `issued_on`, `valid_until`, and
+the sender as `validated_by`, the same way `validate` does. If a family later
+changes its mind, `reject` says so.
+
 **Validating does not move it to `DRAFT` either**, which was the other obvious
 option. An approved quote would then be indistinguishable from one nobody had
 looked at, and the assistant could edit figures a manager had just signed off.
@@ -53,6 +64,62 @@ catalogued.** Each line carries its own `service_category`, and pricing reads it
 from there. `QuoteService.vat_rate_for` takes the *line*; if it ever takes an
 `InterventionType` again, two customers buying the same service could no longer
 be taxed differently, which is the case the field exists for.
+
+## Ending an arrangement early
+
+`interrupted_on` is the last day a quote is delivered. It is **inclusive**: a
+family cancelling "from the 15th" means the 15th is the last visit, and reading
+it the other way takes away a visit somebody is expecting.
+
+Three things follow from it, and they are the whole feature:
+
+- **The planner stops.** `build` drops lines dated after the interruption —
+  filtered per *line*, not per quote, because the visits before the end date are
+  still owed and a query that dropped the whole quote would cancel this week's
+  work too.
+- **The price follows.** `price_quote` aggregates over `effective_lines()`, and
+  the totals are sums of the aggregates, so a shortened quote costs what it
+  still delivers. Repricing happens when the interruption is *set*, not on every
+  read: an issued quote must reprint identically, so amounts are stored.
+- **The cancelled visits stay.** They keep their own amounts and stop counting.
+  A family asking why the invoice came in under the quote they signed needs to
+  see both figures, and a deleted line answers nothing. It also means an
+  interruption can be *moved* — a family extending their notice reprices from
+  lines that are all still there.
+
+Keeping them priced matters for a second reason: an unpriced line on an accepted
+quote trips `is_priced`, which would make the whole quote unschedulable — the
+interruption would cancel the arrangement rather than end it.
+
+An interruption before the first service is refused. It would leave an accepted
+quote that costs nothing, delivers nothing and still reads as live; rejecting or
+deleting the quote says what happened, and an end date in the past does not.
+
+## Renewing one
+
+`auto_renew` records that a customer wants the arrangement to continue.
+`POST /api/v1/quotes/renewals/run` writes a **successor** for every accepted,
+auto-renewing quote whose `valid_until` has passed.
+
+A successor rather than an extension: extending `valid_until` in place would
+rewrite what the customer accepted and lose the boundary between one period and
+the next — and the price. The successor's services are the parent's, shifted
+forward by the span the parent covered, so a Monday-and-Friday arrangement stays
+on Mondays and Fridays. It is priced against the catalogue **as it stands now**,
+so a rate change reaches the next period rather than the one already agreed.
+
+**The sweep is idempotent, and that is the design.** `renewed_from_id` records
+the parent, and a parent that already has a successor is skipped. Two workers
+waking together, a retry after a partial failure, or a manager pressing the
+button because the timer looked stuck — each leaves one successor, not two.
+Nothing else would be safe to put on a timer.
+
+An interrupted arrangement is never renewed: an end date is the customer saying
+stop. That is checked in the service as well as in the query, because a quote
+interrupted between the two would otherwise be renewed anyway.
+
+**Nothing calls the sweep automatically yet.** The endpoint exists and is safe
+to call as often as you like; binding it to the worker or a timer is still to do.
 
 **Who may rewrite a quote is a different question from when.** A manager or an
 administrator may edit any quote in the agency; an assistant may edit only the

@@ -140,3 +140,19 @@ email:
   username_env: SMTP_USERNAME
   password_env: SMTP_PASSWORD
   timeout_seconds: 10.0
+
+webhook:
+  # On, so a planning computed from the interface actually sends its documents.
+  # This is what a developer watches in Mailpit: compute a planning, and every
+  # assistant's diary and every accepted quote arrive at http://localhost:8025.
+  #
+  # Off in app.yaml, and deliberately so — the endpoint emails the whole
+  # workforce and every customer, so it is opt-in.
+  enabled: true
+  # The service name, not localhost. The caller is the *worker* container, and
+  # localhost there is the worker itself: the announcement would be refused by
+  # nothing at all, and the only sign would be a connection error in a log
+  # nobody reads.
+  url: http://backend:8000/api/v1/webhooks/planning-completed
+  token_env: PLANNING_WEBHOOK_TOKEN
+  timeout_seconds: 30.0

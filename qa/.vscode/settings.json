@@ -1,0 +1,18 @@
+{
+    // The GUI campaign's own environment, kept out of the backend's uv workspace
+    // (see requirements.txt). RobotCode has no `robotcode.python` override any
+    // more: it falls back to the Python extension's environment for this
+    // workspace folder, and the Python extension does expand ${workspaceFolder}.
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    // Relative to this folder, not the repo root.
+    "robotcode.robot.paths": [
+        "robot/suites"
+    ],
+    "robotcode.robot.outputDir": "results",
+    "robotcode.robot.pythonPath": [
+        "robot/resources"
+    ],
+    "files.associations": {
+        "*.resource": "robotframework"
+    }
+}

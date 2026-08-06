@@ -174,12 +174,7 @@ export function HcasPage() {
       // qualificationsPromouvoir manager" — and neither looks like something
       // that can be pressed. A border is what makes a button a button.
       renderCell: (params) => (
-        <Stack
-          direction="row"
-          spacing={1}
-          alignItems="center"
-          sx={{ height: '100%' }}
-        >
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ height: '100%' }}>
           <Button
             size="small"
             variant="outlined"

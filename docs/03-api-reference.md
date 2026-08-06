@@ -105,6 +105,9 @@ nothing.
 | POST | `/{id}/price` | Reprices against the current catalog. Drafts only |
 | POST | `/{id}/validate` | Approves a submitted quote → `sent`, recording who |
 | POST | `/{id}/refuse-validation` | Sends it back to its author → `draft` |
+| POST | `/renewals/run` | Writes successors for expired auto-renewing arrangements. **Safe to repeat** |
+| POST | `/{id}/interrupt` | Ends an arrangement on a day (inclusive) and reprices it |
+| PATCH | `/{id}/auto-renew` | Turns renewal on or off |
 | POST | `/{id}/send` | Issues a draft to the customer |
 | POST | `/{id}/accept` · `/{id}/reject` | Records the **customer's** answer |
 

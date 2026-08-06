@@ -35,6 +35,7 @@ job; it is not something this document can assert on its own.
 | `/map` | 04, 09 | Tiles, pins, tooltips, windows, side list, zoom |
 | `/notifications` | 07 | List, unread chip, mark-all, empty state |
 | `/intervention-types` | 22 | Grid, agency rules shown read-only, inherited rate printed, rate set and stored, code locked, validity gate |
+| `/customers` | 24 | Grid, search, no-match state, detail drawer, ongoing versus past arrangements |
 | `/company` | 22 | Read without an identifier, saved, blank name refused, manager turned away by URL **and** by the server |
 | unknown route | 12 | Falls back to the role's home |
 | forbidden route | 12 | Assistant typing `/quotes`, `/hcas`, `/map` is redirected |
@@ -44,7 +45,7 @@ job; it is not something this document can assert on its own.
 | Surface | Suite | What is asserted |
 |---|---|---|
 | `AppShell` — logo, account | 06 | Both render; the frame survives a route change |
-| `AppShell` — navigation | 06, 12, 22 | Every entry reaches its screen (walked from each entry's own `href`, so a dead entry fails); **My account present for all three roles**; role filtering both ways |
+| `AppShell` — navigation | 06, 12, 22, 24 | Every entry reaches its screen (walked from each entry's own `href`, so a dead entry fails); **My account present for all three roles**; role filtering both ways |
 | `AppShell` — language | 06 | Frame **and** body translate; choice survives a reload |
 | `AppShell` — theme | 06 | Dark and back; stored value; repainted background |
 | `AppShell` — sign out | 06 | Returns to the card **and** clears the token |
@@ -55,14 +56,17 @@ job; it is not something this document can assert on its own.
 | `QuoteStatusChip` | 10, vitest | Amber for pending, outline for draft, label per status |
 | `MyAccountPage` | 02, 14, 23 | Portrait fallback, seven fields, save, snackbar, locked chips + tooltip, assistant half absent for a manager |
 | `AccountSection` | 14, 23 | Name and address editable and saved; dirty and validity gates; role, active, agency and binding locked and non-empty; conflict on a taken address shown **on the page** and not stored; privileged field ignored |
-| `InterventionTypesPage` | 22 | Grid, pricing-rules card, inherited-rate rendering |
+| `InterventionTypesPage` | 22 | Grid, pricing-rules card, inherited-rate rendering; **no VAT-category column**, since that is a per-quote decision |
 | `InterventionTypeDialog` | 22 | Rate saved server-side, code locked on an existing entry, negative rate blocked |
+| `CustomersPage` / `CustomerDetailDrawer` | 24 | Every held field; ongoing arrangements first |
+| `QuoteArrangementCard` | 24 | Renewal switch asserted **server-side**; interruption stores the date, halves the total, keeps the cancelled visit priced; both guards |
 | `CompanyPage` | 22 | Fields, save, validity gate, applications caption, admin-only guard |
 | `PasswordSection` | 14, 21 | All three fields; confirmation mismatch; all-three-required gate; wrong current password reported and *not* applied; a real change confirmed, verified server-side, old password refused |
 | `MyPlanningPage` | 08 | Week/day/month, prev/next/today, day bounds, no weekends, drawer |
 | `MyCustomersPage` | 13 | Cards, contents, search, no-match empty state, drawer open and close |
 | `MyQuotesPage` | 10, 20 | Grid, submit and edit only on drafts, every authored status |
 | `QuotesPage` | 10, 16, 20 | Six tabs, status chips, sort, paging, conditional actions, empty queue |
+| `NewQuoteDialog` — layout | 16 | Every control on a line at least 60px wide and none overlapping, asserted from bounding boxes — the one check a test-id-driven suite cannot make |
 | `NewQuoteDialog` | 16 | Reference, customer, service, **VAT category**, server-side pricing of what was sent — with the stored tax asserted as a ratio, so it survives a rate change |
 | `QuoteEditorDialog` — VAT category | 20 | Chosen per line, stored, and the tax asserted to *rise* when it moves to comfort; suggested from the catalogue but overridable |
 | `QuoteEditorDialog` | 20 | Opens on stored lines; save reprices; add, remove, auto-naming; both guards; cancel changes nothing; the pricing hint |
@@ -92,6 +96,8 @@ job; it is not something this document can assert on its own.
 | Agency-wide rules that cannot be edited on screen | 22 |
 | Conflict — sign-in address already used | 23 |
 | Brand-new account with no history | 21 |
+| Customer with no ongoing arrangement | 24 |
+| Arrangement ended early | 24 |
 | Forced password change outstanding | 21 |
 | Error — wrong credentials | 01 |
 | Unread versus read | 07 |

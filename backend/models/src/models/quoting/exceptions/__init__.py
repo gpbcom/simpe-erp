@@ -4,6 +4,7 @@ from .quote_exceptions import (
     MTQuoteInvalidCustomerId,
     MTQuoteInvalidDate,
     MTQuoteInvalidId,
+    MTQuoteInvalidInterruption,
     MTQuoteInvalidLines,
     MTQuoteInvalidReference,
     MTQuoteInvalidStatus,
@@ -33,6 +34,7 @@ from .quote_type_week_aggregate_exceptions import (
 )
 
 __all__ = [
+    "MTQuoteInvalidInterruption",
     "MTQuoteLineInvalidServiceCategory",
     "MTAggregateInvalidAmount",
     "MTAggregateInvalidCount",

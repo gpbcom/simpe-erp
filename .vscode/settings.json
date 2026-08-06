@@ -1,10 +1,4 @@
 {
-    // ------------------------------------------------------------------ //
-    //  Python — the backend
-    // ------------------------------------------------------------------ //
-    // The uv workspace's environment. Every member (models, storage, service,
-    // api, worker, seed) is installed into it editable, so this one
-    // interpreter resolves imports across all six.
     "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
     "python-envs.pythonProjects": [
         {
@@ -29,53 +23,11 @@
         }
     },
     "pylint.enabled": false,
-    // ------------------------------------------------------------------ //
-    //  Python — the unit tests
-    // ------------------------------------------------------------------ //
-    // Run from `backend/`, not from the repository root: that is where
-    // pyproject.toml lives, and pytest reads its `[tool.pytest.ini_options]`
-    // — asyncio_mode, the markers, the `not integration` default — relative
-    // to the directory it starts in. Discovery from the root would find the
-    // tests and none of their configuration.
     "python.testing.cwd": "${workspaceFolder}/backend",
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
     "python.testing.pytestArgs": [
         "tests",
-        // Overrides the `-n auto` in pyproject.toml's addopts. The Test
-        // Explorer runs one test far more often than it runs the suite, and
-        // spawning a worker per core to run a single test costs more than the
-        // test does. It is also what makes "Debug Test" stop at a breakpoint:
-        // under xdist the test runs in a subprocess the debugger is not
-        // attached to, and breakpoints are silently ignored.
         "-n0"
-    ],
-    // ------------------------------------------------------------------ //
-    //  Robot Framework — the GUI campaign
-    // ------------------------------------------------------------------ //
-    // A separate interpreter on purpose. Robot Framework is a QA tool, not an
-    // application dependency, and installing it into the backend's workspace
-    // would ship it in the production image — see qa/requirements.txt.
-    //
-    // Absolute, and deliberately so: RobotCode reads this setting and hands it
-    // straight to `spawnSync`, with no `${workspaceFolder}` substitution and no
-    // cwd of its own. A relative path fails its interpreter check and the
-    // campaign then simply does not appear in the Test view, with no error to
-    // explain why. If the checkout moves, rerun `RobotCode: Select Python
-    // Environment` from the command palette — it rewrites this line.
-    "robotcode.python": "/home/gpaupard/Documents/Projects/rt-erp/qa/.venv/bin/python",
-    "robotcode.robot.paths": [
-        "qa/robot/suites"
-    ],
-    "robotcode.robot.outputDir": "qa/results",
-    // The suites reach their keywords through `qa/robot/resources`, so that
-    // directory has to be on the module search path the way
-    // `robot --pythonpath` would put it — otherwise a resource resolves in the
-    // editor but not in a run started from the Test Explorer.
-    "robotcode.robot.pythonPath": [
-        "qa/robot/resources"
-    ],
-    "files.associations": {
-        "*.resource": "robotframework"
-    }
+    ]
 }

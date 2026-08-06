@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
@@ -90,6 +91,15 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
         icon: 'planning',
         minimum: 'manager',
       },
+      {
+        // Back after being removed: the entry was here for a long time with no
+        // route behind it, so clicking it fell through to the catch-all and
+        // silently redirected home. It now has a screen.
+        to: '/customers',
+        labelKey: 'nav.customers',
+        icon: 'customer',
+        minimum: 'manager',
+      },
       { to: '/map', labelKey: 'nav.map', icon: 'mapPin', minimum: 'manager' },
       {
         to: '/notifications',
@@ -126,7 +136,24 @@ export function AppShell() {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const user = useSession((state) => state.user);
-  const signOut = useSession((state) => state.signOut);
+  const forgetSession = useSession((state) => state.signOut);
+  const client = useQueryClient();
+
+  /**
+   * End the session, and forget everything it fetched.
+   *
+   * @remarks
+   * **The cache has to go with the token.** Dropping the credential alone
+   * leaves every answer the last person received sitting in memory — their
+   * account, their customers, their quotes, their notifications — and the next
+   * person to sign in on the same browser is shown all of it until each query
+   * happens to refetch. In an agency office one machine is used by several
+   * people, so that is not a hypothetical.
+   */
+  const signOut = () => {
+    forgetSession();
+    client.clear();
+  };
   const [languageAnchor, setLanguageAnchor] = useState<null | HTMLElement>(null);
   const [mode, setMode] = useState(
     () => window.localStorage.getItem('simple-erp.theme') ?? 'light',

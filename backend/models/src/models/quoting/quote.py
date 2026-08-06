@@ -21,6 +21,7 @@ from models.quoting.exceptions import (
     MTQuoteInvalidCustomerId,
     MTQuoteInvalidDate,
     MTQuoteInvalidId,
+    MTQuoteInvalidInterruption,
     MTQuoteInvalidLines,
     MTQuoteInvalidReference,
     MTQuoteInvalidStatus,
@@ -49,6 +50,12 @@ class Quote(BaseModel):
         authored_by (Optional[str]): The account that wrote the quote.
         submitted_at (Optional[datetime]): When it was submitted for validation.
         validated_by (Optional[str]): The account that validated it.
+        interrupted_on (Optional[date]): Last day the arrangement is
+            delivered. Services dated after it are neither planned nor billed.
+        auto_renew (bool): Whether a successor quote is written when this one
+            reaches ``valid_until``.
+        renewed_from_id (Optional[str]): The quote this one succeeds, when it
+            was created by a renewal.
         validated_at (Optional[datetime]): When it was validated.
 
     Notes:
@@ -108,6 +115,18 @@ class Quote(BaseModel):
     validated_by: Optional[str] = Field(
         default=None,
         description="The account that validated it.",
+    )
+    interrupted_on: Optional[date] = Field(
+        default=None,
+        description="Last day this quote is delivered, or None if it runs on.",
+    )
+    auto_renew: bool = Field(
+        default=False,
+        description="Whether a successor is written when this quote expires.",
+    )
+    renewed_from_id: Optional[str] = Field(
+        default=None,
+        description="The quote this one was written to succeed, if any.",
     )
     validated_at: Optional[datetime] = Field(
         default=None,
@@ -361,9 +380,89 @@ class Quote(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def check_interruption(self) -> Quote:
+        """Validates that the interruption falls inside the arrangement.
+
+        Returns:
+            Quote: The validated quote.
+
+        Raises:
+            MTQuoteInvalidInterruption: If the quote is interrupted before it
+                was issued, or before the first service it sells.
+
+        Notes:
+            An interruption before the first service would silence the whole
+            quote while leaving it accepted and priced — a quote that costs
+            nothing, delivers nothing and still reads as live. Deleting it or
+            rejecting it says that; an end date in the past does not.
+
+            An interruption *after* the last service is allowed and does
+            nothing. That is a real thing to record: an arrangement given a
+            closing date the work already happens to fit inside.
+        """
+        if self.interrupted_on is None:
+            return self
+        if self.issued_on is not None and self.interrupted_on < self.issued_on:
+            raise MTQuoteInvalidInterruption(
+                f"Invalid interrupted_on: {self.interrupted_on}. "
+                f"Must be on or after issued_on ({self.issued_on})."
+            )
+        first_service = min((line.service_date for line in self.lines), default=None)
+        if first_service is not None and self.interrupted_on < first_service:
+            raise MTQuoteInvalidInterruption(
+                f"Invalid interrupted_on: {self.interrupted_on}. It falls before "
+                f"the first service ({first_service}), which would leave an "
+                "accepted quote delivering nothing; reject or delete it instead."
+            )
+        return self
+
     ############################
     # Publicly Exposed Methods #
     ############################
+
+    def covers(self, day: date) -> bool:
+        """Return whether the arrangement is still running on a day.
+
+        Args:
+            day (date): The day to test.
+
+        Returns:
+            bool: ``False`` once the quote has been interrupted and the day
+            falls after the interruption; ``True`` otherwise.
+
+        Notes:
+            The interruption date is **inclusive**: work on the day itself
+            still happens. A family cancelling "from the 15th" means the 15th
+            is the last visit, and reading it as the first cancelled day would
+            take away a visit somebody is expecting.
+        """
+        return self.interrupted_on is None or day <= self.interrupted_on
+
+    def effective_lines(self) -> List[QuoteLine]:
+        """Return the lines this quote still delivers.
+
+        Returns:
+            List[QuoteLine]: Every line, minus any dated after an interruption.
+
+        Notes:
+            **Interrupted lines are kept, not deleted.** What the customer
+            originally agreed to is a record worth having — a family asking why
+            they were charged less than the quote says needs to see both
+            figures — so the line stays and stops counting instead. Pricing
+            aggregates over this list, and the planner builds requirements from
+            it, so the shortened quote costs and schedules exactly what it
+            still delivers.
+        """
+        return [line for line in self.lines if self.covers(line.service_date)]
+
+    def is_interrupted(self) -> bool:
+        """Return whether an end date has been set on this quote.
+
+        Returns:
+            bool: ``True`` when the arrangement has been given a last day.
+        """
+        return self.interrupted_on is not None
 
     def is_priced(self) -> bool:
         """Return whether every line carries its computed amounts.

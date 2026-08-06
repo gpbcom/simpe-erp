@@ -27,10 +27,16 @@ import type { Notification } from '@/api/types';
  * @returns The rendered bell.
  *
  * @remarks
- * The badge is driven by the **event stream**, with a one-minute poll behind
- * it. That combination is what makes a dropped frame cost latency rather than a
- * lost notification: the row is written to the database before anything is
- * pushed, so the poll always catches up.
+ * The badge is driven by the **event stream**, and by nothing else. A frame
+ * carries no data — it says only that something changed — so both the list and
+ * the badge are refetched rather than patched: one source of truth beats two
+ * that can disagree.
+ *
+ * That is also what makes a dropped frame cost latency rather than a lost
+ * notification. The row is written to the database before anything is pushed,
+ * and the stream reports `ready` on every reconnect, so a stream that died over
+ * lunch catches up the moment it comes back — as does a reader who signed out
+ * and signed back in, because this component refetches when it mounts.
  */
 export function NotificationBell() {
   const { t, i18n } = useTranslation();
@@ -45,9 +51,6 @@ export function NotificationBell() {
   useEffect(() => {
     if (!user) return undefined;
     return openNotificationStream(() => {
-      // The frame carries the notification, but the list and the badge are
-      // invalidated rather than patched: one source of truth beats two that can
-      // disagree, and the refetch is a single small request.
       void client.invalidateQueries({ queryKey: keys.notifications });
       void client.invalidateQueries({ queryKey: keys.unreadCount });
     });

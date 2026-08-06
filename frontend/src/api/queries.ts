@@ -44,6 +44,8 @@ export const keys = {
   quotes: (status?: QuoteStatus, search?: string) =>
     ['quotes', status ?? 'all', search ?? ''] as const,
   quote: (id: string) => ['quotes', id] as const,
+  customer: (id: string) => ['customers', id] as const,
+  customerQuotes: (id: string) => ['customers', id, 'quotes'] as const,
   users: ['users'] as const,
   planningRuns: ['planning', 'runs'] as const,
   hcas: (search?: string) => ['hcas', search ?? ''] as const,
@@ -145,6 +147,62 @@ export function useCreateInterventionType() {
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.interventionTypes });
+    },
+  });
+}
+
+/** One customer, by identifier. */
+export function useCustomer(customerId: string) {
+  return useQuery({
+    queryKey: keys.customer(customerId),
+    queryFn: () => request<Customer>(`/api/v1/customers/${customerId}`),
+    enabled: Boolean(customerId),
+  });
+}
+
+/**
+ * Every quote ever written for a customer.
+ *
+ * @remarks
+ * Not filtered to the live ones here. Which quotes count as "ongoing" is a
+ * reading of status and dates that the screen makes and explains; doing it in
+ * the query would hide the rest of the history behind a rule nobody can see.
+ */
+export function useCustomerQuotes(customerId: string) {
+  return useQuery({
+    queryKey: keys.customerQuotes(customerId),
+    queryFn: () => request<Quote[]>(`/api/v1/customers/${customerId}/quotes`),
+    enabled: Boolean(customerId),
+  });
+}
+
+/** End a running arrangement on a given day, repricing it. */
+export function useInterruptQuote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ quoteId, lastDay }: { quoteId: string; lastDay: string }) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}/interrupt`, {
+        method: 'POST',
+        json: { last_day: lastDay },
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+      void client.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+}
+
+/** Turn a quote's renewal on or off. */
+export function useSetAutoRenew() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ quoteId, enabled }: { quoteId: string; enabled: boolean }) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}/auto-renew?enabled=${enabled}`, {
+        method: 'PATCH',
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+      void client.invalidateQueries({ queryKey: ['customers'] });
     },
   });
 }
@@ -443,15 +501,17 @@ export function useNotifications() {
   });
 }
 
-/** How many notifications the caller has not read. */
+/**
+ * How many notifications the caller has not read.
+ *
+ * No poll sits behind this. The event stream reports `ready` on connect and on
+ * every reconnect, which refetches it — so a dropped stream catches up when it
+ * comes back rather than on the next tick of a timer.
+ */
 export function useUnreadCount() {
   return useQuery({
     queryKey: keys.unreadCount,
     queryFn: () => request<{ unread: number }>('/api/v1/notifications/unread-count'),
-    // A safety net behind the event stream, not the primary path. If a frame is
-    // dropped the badge is briefly stale rather than wrong for ever — the row
-    // is already in the database either way.
-    refetchInterval: 60_000,
   });
 }
 
@@ -476,6 +536,29 @@ export function useValidateQuote() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['quotes'] });
       void client.invalidateQueries({ queryKey: keys.notifications });
+    },
+  });
+}
+
+/**
+ * Issue a hand-written draft to the customer.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Sending accepts the quote server-side, so the row leaves the draft tab for
+ * the accepted one and its visits enter the next planning run. The planning
+ * queries are invalidated for that reason: a schedule on screen was computed
+ * without these hours.
+ */
+export function useSendQuote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: string) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}/send`, { method: 'POST' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+      void client.invalidateQueries({ queryKey: ['planning'] });
     },
   });
 }

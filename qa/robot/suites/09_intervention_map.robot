@@ -62,7 +62,14 @@ Hovering A Pin Names The Customer And The Time
     [Tags]    smoke    map
     ${pins}=    Get Element Count    .simple-erp-pin
     Should Be True    ${pins} > 0
-    Hover    .leaflet-marker-icon >> nth=0
+    # Forced, because over a six-week window the seventy-odd visits fall on a
+    # dozen addresses and their pins sit on top of one another. Playwright
+    # refuses to hover a covered element and reports a timeout, which reads as
+    # a broken map rather than as a crowded one. What is asserted is that *a*
+    # pin names its customer and time; which of several at one address answers
+    # is Leaflet's business, and a manager clicking there has the same
+    # experience.
+    Hover    .leaflet-marker-icon >> nth=-1    force=${True}
     Wait For Elements State    .leaflet-tooltip    visible
     ${tooltip}=    Get Text    .leaflet-tooltip
     # A postcode and a clock time: the two things that identify which visit

@@ -70,7 +70,7 @@ class EventConsumer:
     # Internal Helpers Methods #
     ############################
 
-    async def _dispatch(self, message: aio_pika.abc.AbstractIncomingMessage) -> None:
+    async def _dispatch(self, message: aio_pika.abc.AbstractIncomingMessage) -> None:  # noqa: E501
         """Route one message to its handler.
 
         Args:

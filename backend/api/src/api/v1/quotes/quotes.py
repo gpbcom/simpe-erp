@@ -17,6 +17,9 @@ from api.dependencies import (
 from models.auth.user import User
 from models.enums import EventRoutingKey, QuoteStatus
 from models.quoting.quote import Quote
+from models.schemas.requests.quote_interruption_request import (
+    QuoteInterruptionRequest,
+)
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
 from service.messaging.publisher import EventPublisher
 from service.quotes.quotes import QuoteService
@@ -91,6 +94,96 @@ async def list_quotes(
         status=quote_status,
         authored_by=authored_by,
     )
+
+
+@router.post("/renewals/run", response_model=List[Quote])
+async def run_renewals(
+    service: QuoteService = Depends(get_quote_service),
+    _: User = Depends(get_manager_user),
+) -> List[Quote]:
+    """Write successors for every arrangement that has expired.
+
+    Args:
+        service (QuoteService): The quote service.
+        _ (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        List[Quote]: The successors created, which is empty on most days.
+
+    Notes:
+        **Declared before ``/{quote_id}``**, or the path would be read as a
+        request about the quote whose identifier is ``"renewals"``.
+
+        **Safe to call repeatedly.** A quote that already has a successor is
+        skipped, so a second run the same day creates nothing. That is what
+        makes this callable from a timer, from the worker, or by hand when
+        somebody notices the timer did not fire — without billing a customer
+        twice for one period.
+    """
+    logger.info("Running the renewal sweep.")
+    return await service.renew_due()
+
+
+@router.post("/{quote_id}/interrupt", response_model=Quote)
+async def interrupt_quote(
+    quote_id: str,
+    request: QuoteInterruptionRequest,
+    service: QuoteService = Depends(get_quote_service),
+    _: User = Depends(get_manager_user),
+) -> Quote:
+    """Give a running arrangement a last day, and reprice it.
+
+    Args:
+        quote_id (str): The quote to end.
+        request (QuoteInterruptionRequest): The final day it runs.
+        service (QuoteService): The quote service.
+        _ (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        Quote: The shortened quote, with its new total.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteInvalidInterruption: If the day falls before the quote was
+            issued or before its first service; answered as a 422.
+
+    Notes:
+        The cancelled visits stay on the quote, priced, and stop counting
+        towards the total — so the document can still answer why the invoice
+        came in under what was signed. The planner stops producing work the day
+        after ``last_day``.
+    """
+    logger.info("Interrupting quote %s on %s.", quote_id, request.last_day)
+    return await service.interrupt(quote_id, request.last_day)
+
+
+@router.patch("/{quote_id}/auto-renew", response_model=Quote)
+async def set_quote_auto_renew(
+    quote_id: str,
+    enabled: bool = Query(...),
+    service: QuoteService = Depends(get_quote_service),
+    _: User = Depends(get_manager_user),
+) -> Quote:
+    """Record whether a quote writes a successor when it expires.
+
+    Args:
+        quote_id (str): The quote to change.
+        enabled (bool): Whether renewal is wanted.
+        service (QuoteService): The quote service.
+        _ (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        Quote: The updated quote.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists; answered as a 404.
+
+    Notes:
+        Nothing is renewed until the quote reaches ``valid_until``, so turning
+        this on and off before then costs nothing.
+    """
+    logger.info("Setting auto-renewal on quote %s to %s.", quote_id, enabled)
+    return await service.set_auto_renew(quote_id, enabled)
 
 
 @router.get("/{quote_id}", response_model=Quote)
@@ -242,6 +335,10 @@ async def validate_quote(
             "quote_id": validated.id,
             "reference": validated.reference,
             "author_id": validated.authored_by,
+            # Carried in the payload as well as the routing key: the key chooses
+            # the queue and is gone by the time a handler reads the message, and
+            # the handler needs the agency again to announce what it wrote.
+            "company_id": caller.company_id,
         },
     )
     return validated
@@ -286,6 +383,7 @@ async def refuse_quote_validation(
             "quote_id": refused.id,
             "reference": refused.reference,
             "author_id": refused.authored_by,
+            "company_id": caller.company_id,
         },
     )
     return refused
@@ -295,23 +393,31 @@ async def refuse_quote_validation(
 async def send_quote(
     quote_id: str,
     service: QuoteService = Depends(get_quote_service),
-    _: User = Depends(get_manager_user),
+    caller: User = Depends(get_manager_user),
 ) -> Quote:
-    """Mark a priced quote as sent to the customer.
+    """Issue a hand-written quote to the customer, agreed as it goes out.
 
     Args:
         quote_id (str): The quote to send.
         service (QuoteService): The quote service.
-        _ (User): The authenticated caller; enforces manager access.
+        caller (User): The authenticated caller; enforces manager access and is
+            recorded as the account that agreed to the figures.
 
     Returns:
-        Quote: The updated quote.
+        Quote: The issued quote, accepted and schedulable.
 
     Raises:
         MTQuoteNotFound: If no such quote exists; answered as a 404.
         MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.
+        MTQuoteNotEditable: If the quote is past draft; answered as a 409.
+
+    Notes:
+        Sending accepts the quote, so this is the moment its lines are
+        committed to the planning computation. Manager-gated for that reason:
+        the credential that sends is the one recorded as having agreed.
     """
-    return await service.send(quote_id)
+    logger.info("Sending quote %s at the request of %s.", quote_id, caller.email)
+    return await service.send(quote_id, validator_id=caller.id or caller.email)
 
 
 @router.post("/{quote_id}/accept", response_model=Quote)

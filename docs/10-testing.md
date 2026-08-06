@@ -7,7 +7,7 @@ Three campaigns, answering three different questions.
 | **pytest** — unit | Does each piece behave? | 938 test functions, hermetic |
 | **pytest** — integration | Do the real services actually work? | 3, needing the stack |
 | **Vitest** | Do the front-end's own units behave? | 8 |
-| **Robot Framework** | Does the product work, in a browser, end to end? | 193 across 24 suites |
+| **Robot Framework** | Does the product work, in a browser, end to end? | 216 across 25 suites |
 
 ## Backend — unit
 
@@ -85,7 +85,7 @@ pip install -r qa/requirements.txt && rfbrowser init
 robot --outputdir qa/results qa/robot/suites
 ```
 
-24 suites, 193 tests, driving Chromium through Playwright against the real API.
+25 suites, 216 tests, driving Chromium through Playwright against the real API.
 
 | Suite | Covers |
 |---|---|
@@ -109,6 +109,7 @@ robot --outputdir qa/results qa/robot/suites
 | 18 promotion | Granting an assistant an account, and taking it back |
 | 19 planning computation | The solver run, end to end |
 | 23 account by role | Every role gets an account page; employment locked for an assistant, editable for a manager; privileged fields refused |
+| **24 customer file** | The beneficiary's file, ending an arrangement, and renewal |
 | **20 quote editor** | Editing a quote, and who is allowed to — from both sides |
 | 21 account credentials | The forced first change, and changing a password afterwards |
 | **22 administration** | Navigation by role, the agency screen, and per-service pricing |

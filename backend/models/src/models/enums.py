@@ -612,6 +612,8 @@ class EventRoutingKey(StrEnum):
         PLANNING_RUN_REQUESTED (str): A planning computation was asked for.
         PLANNING_RUN_COMPLETED (str): A planning computation finished.
         COMPANY_CREATED (str): An agency was founded.
+        NOTIFICATION_CREATED (str): Notifications were written and their
+            recipients may be holding an open event stream.
 
     Notes:
         - An enumeration rather than string literals scattered across the
@@ -626,6 +628,12 @@ class EventRoutingKey(StrEnum):
           the agency it announces. That keeps the rule uniform — there is no
           "global" event to remember to treat differently — and a worker that
           wants every one of them binds ``company.created.*`` explicitly.
+        - ``NOTIFICATION_CREATED`` runs the other way round from the rest: the
+          worker publishes it and the **API** consumes it, on a queue of each
+          instance's own. It is what turns a written row into a push, and it
+          carries recipient identifiers rather than the notifications
+          themselves — the reader fetches those over HTTP, from the same
+          endpoint it would have used had the push never arrived.
     """
 
     QUOTE_SUBMITTED = "quote.submitted"
@@ -634,6 +642,7 @@ class EventRoutingKey(StrEnum):
     PLANNING_RUN_REQUESTED = "planning.run.requested"
     PLANNING_RUN_COMPLETED = "planning.run.completed"
     COMPANY_CREATED = "company.created"
+    NOTIFICATION_CREATED = "notification.created"
 
     def scoped_to(self, company_id: str) -> str:
         """Return the routing key this event takes for one agency.

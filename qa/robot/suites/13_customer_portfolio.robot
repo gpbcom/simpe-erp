@@ -121,7 +121,8 @@ Count Of My Customers
     ${token}=    Sign In Through The API    ${ASSISTANT_EMAIL}
     ${headers}=    Authorisation Header    ${token}
     ${response}=    GET
-    ...    ${API_URL}/api/v1/me/customers?size=200
+    ...    ${API_URL}/api/v1/me/customers
+    ...    params=${{ {"size": 200} }}
     ...    headers=${headers}
     ...    expected_status=200
     RETURN    ${{ len($response.json()) }}
@@ -131,7 +132,8 @@ Count Of Agency Customers
     ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
     ${headers}=    Authorisation Header    ${token}
     ${response}=    GET
-    ...    ${API_URL}/api/v1/customers?size=200
+    ...    ${API_URL}/api/v1/customers
+    ...    params=${{ {"size": 200} }}
     ...    headers=${headers}
     ...    expected_status=200
     RETURN    ${{ len($response.json()) }}

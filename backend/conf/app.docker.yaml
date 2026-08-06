@@ -123,3 +123,13 @@ rabbitmq:
   # core for its whole budget. Taking a second message while the first solves
   # would only delay acknowledging both.
   prefetch: 1
+
+webhook:
+  # Off, like app.yaml: emailing every assistant and every customer is a
+  # decision, not a default. The URL is corrected regardless, so switching it
+  # on is one flag rather than a flag and a debugging session — the caller is
+  # the worker container, where localhost is the worker itself.
+  enabled: false
+  url: http://backend:8000/api/v1/webhooks/planning-completed
+  token_env: PLANNING_WEBHOOK_TOKEN
+  timeout_seconds: 30.0

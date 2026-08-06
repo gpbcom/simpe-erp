@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
 # Third-party imports
-from sqlalchemy import Date, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 # First-party imports
@@ -56,6 +56,10 @@ class QuoteRow(Base):
         # An assistant's own list is the first screen they open, and the only
         # filter it applies is this one.
         Index("ix_quotes_authored_by", "authored_by"),
+        # The renewal sweep asks for expiring quotes that opted in, which
+        # is a two-column question and a rare one: without the index it
+        # scans every quote the agency has ever written, nightly.
+        Index("ix_quotes_auto_renew", "auto_renew", "valid_until"),
     )
 
     id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), primary_key=True)
@@ -83,6 +87,14 @@ class QuoteRow(Base):
         DateTime(timezone=True), nullable=True
     )
     validated_by: Mapped[Optional[str]] = mapped_column(
+        String(Base.ID_LENGTH), nullable=True
+    )
+    # Kept alongside the lines rather than by deleting them: what the customer
+    # originally agreed to is a record worth having when they ask why they were
+    # charged less than the quote says.
+    interrupted_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    renewed_from_id: Mapped[Optional[str]] = mapped_column(
         String(Base.ID_LENGTH), nullable=True
     )
     validated_at: Mapped[Optional[datetime]] = mapped_column(

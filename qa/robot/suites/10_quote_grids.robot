@@ -40,7 +40,12 @@ The Status Column Uses The Shared Chip
     [Tags]    quotes
     Click    [data-testid="quote-tab-accepted"]
     Sleep    1s
-    Wait For Elements State    [data-testid="quote-status-accepted"]    visible
+    # The first chip. A tab full of accepted quotes carries one chip per row, so
+    # the bare test id resolves to twenty-five elements and Playwright's strict
+    # mode refuses the wait — the assertion failed on the grid being full rather
+    # than on the chip being wrong.
+    Wait For Elements State
+    ...    [data-testid="quote-status-accepted"] >> nth=0    visible
     [Teardown]    Select The Pending Tab
 
 The Grid Sorts By A Column
@@ -157,7 +162,8 @@ Clear The Validation Queue
     ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
     ${headers}=    Authorisation Header    ${token}
     ${response}=    GET
-    ...    ${API_URL}/api/v1/quotes?status=pending-validation&size=200
+    ...    ${API_URL}/api/v1/quotes
+    ...    params=${{ {"status": "pending-validation", "size": 200} }}
     ...    headers=${headers}
     ${waiting}=    Set Variable    ${response.json()}
     Set Suite Variable    ${CLEARED_QUOTES}    ${waiting}

@@ -250,6 +250,57 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             self.logger.warning("No quote matched the query.")
         return [self.mapper.to_model(row) for row in rows]
 
+    async def list_renewable(self, today: date) -> List[Quote]:
+        """Return the quotes that opted into renewal and have expired.
+
+        Args:
+            today (date): The day to measure expiry against.
+
+        Returns:
+            List[Quote]: The candidates, oldest expiry first.
+
+        Notes:
+            Expiry is strict: a quote whose ``valid_until`` is today is still
+            valid, and renewing it would end an arrangement a day early.
+
+            Only accepted quotes are considered. A draft that expired was never
+            an arrangement, and renewing one would put work on the planner that
+            no customer ever agreed to.
+        """
+        self.logger.debug("Listing quotes renewable as of %s.", today)
+        statement = (
+            select(QuoteRow)
+            .where(QuoteRow.auto_renew.is_(True))
+            .where(QuoteRow.valid_until.is_not(None))
+            .where(QuoteRow.valid_until < today)
+            .where(QuoteRow.status == QuoteStatus.ACCEPTED.value)
+            .where(QuoteRow.interrupted_on.is_(None))
+            .order_by(QuoteRow.valid_until.asc())
+        )
+        rows = await self._fetch_all(statement)
+        if not rows:
+            self.logger.debug("Nothing is due for renewal.")
+        return [self.mapper.to_model(row) for row in rows]
+
+    async def has_successor(self, quote_id: str) -> bool:
+        """Return whether a quote has already been renewed.
+
+        Args:
+            quote_id (str): The parent quote.
+
+        Returns:
+            bool: ``True`` when some quote records this one as its parent.
+
+        Notes:
+            This is what makes the renewal sweep safe to put on a timer. Two
+            workers waking together, or a retry after a partial failure, would
+            otherwise each write a successor and the customer would be billed
+            twice for the same period.
+        """
+        statement = select(QuoteRow.id).where(QuoteRow.renewed_from_id == quote_id)
+        existing = await self._fetch_all(statement.limit(1))
+        return bool(existing)
+
     async def count(
         self,
         customer_id: Optional[str] = None,

@@ -5,22 +5,21 @@ from logging import Logger, getLogger
 from typing import List
 
 # Third-party imports
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 # First-party imports
 from api.dependencies import (
     get_auth_service,
     get_current_user,
-    get_notification_broadcaster,
-    get_notification_service,
+    get_notification_repository,
+    get_notification_streams,
 )
-from api.sse.broadcaster import NotificationBroadcaster
-from api.sse.notification_stream import NotificationStream
+from api.sse.streams import NotificationStreams
 from models.auth.user import User
 from models.notifications.notification import Notification
 from service.auth.auth import AuthService
-from service.notifications.notifications import NotificationService
+from storage.repositories.notification import NotificationRepository
 
 logger: Logger = getLogger(__name__)
 
@@ -32,7 +31,7 @@ async def list_notifications(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=50, ge=1, le=200),
     unread_only: bool = Query(default=False),
-    service: NotificationService = Depends(get_notification_service),
+    notifications: NotificationRepository = Depends(get_notification_repository),
     caller: User = Depends(get_current_user),
 ) -> List[Notification]:
     """Return the caller's own notifications, newest first.
@@ -41,17 +40,23 @@ async def list_notifications(
         page (int): One-based page number.
         size (int): Page size.
         unread_only (bool): Restrict to notifications not yet read.
-        service (NotificationService): The notification service.
+        notifications (NotificationRepository): The notification store.
         caller (User): The authenticated caller.
 
     Returns:
         List[Notification]: The caller's notifications.
 
     Notes:
-        There is no way to read anybody else's queue, and no parameter that
-        names a recipient. The recipient is the credential.
+        - There is no way to read anybody else's queue, and no parameter that
+          names a recipient. The recipient is the credential.
+        - **This is the delivery path, not a fallback for one.** The event
+          stream carries no notification data — it says only that something
+          changed — so every notification a reader ever sees arrives through
+          here. That is what makes an unread notification survive a logout, a
+          closed laptop and a dropped stream alike: the row is the truth, and
+          this reads the row.
     """
-    return await service.list_for(
+    return await notifications.list_for(
         recipient_id=caller.id or "",
         page=page,
         size=size,
@@ -61,13 +66,13 @@ async def list_notifications(
 
 @router.get("/unread-count")
 async def count_unread_notifications(
-    service: NotificationService = Depends(get_notification_service),
+    notifications: NotificationRepository = Depends(get_notification_repository),
     caller: User = Depends(get_current_user),
 ) -> dict:
     """Return how many notifications the caller has not read.
 
     Args:
-        service (NotificationService): The notification service.
+        notifications (NotificationRepository): The notification store.
         caller (User): The authenticated caller.
 
     Returns:
@@ -77,48 +82,67 @@ async def count_unread_notifications(
         Served separately from the list so the badge can be refreshed without
         transferring a page of notifications to count them.
     """
-    unread = await service.unread_count(caller.id or "")
+    unread = await notifications.count_unread(caller.id or "")
     return {"unread": unread}
 
 
 @router.post("/{notification_id}/read", response_model=Notification)
 async def mark_notification_read(
     notification_id: str,
-    service: NotificationService = Depends(get_notification_service),
+    notifications: NotificationRepository = Depends(get_notification_repository),
     caller: User = Depends(get_current_user),
 ) -> Notification:
     """Mark one of the caller's notifications as read.
 
     Args:
         notification_id (str): The notification to mark.
-        service (NotificationService): The notification service.
+        notifications (NotificationRepository): The notification store.
         caller (User): The authenticated caller.
 
     Returns:
         Notification: The updated notification.
 
     Raises:
-        MTNotificationNotFound: If it does not exist or is addressed to
-            somebody else; answered as a 404 either way.
+        HTTPException: 404 if it does not exist or is addressed to somebody
+            else.
+
+    Notes:
+        **The same 404 either way, and deliberately.** The recipient is part of
+        the repository's ``WHERE`` clause, so a notification belonging to
+        another account is indistinguishable from one that was never written —
+        telling the two apart would confirm the existence of other people's
+        notifications to anybody willing to guess identifiers.
     """
-    return await service.mark_read(notification_id, recipient_id=caller.id or "")
+    marked = await notifications.mark_read(notification_id, caller.id or "")
+    if marked is None:
+        logger.warning(
+            "Account %s cannot mark notification %s: no such notification is "
+            "addressed to them.",
+            caller.id,
+            notification_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No notification {notification_id!r} is addressed to you.",
+        )
+    return marked
 
 
 @router.post("/read-all")
 async def mark_all_notifications_read(
-    service: NotificationService = Depends(get_notification_service),
+    notifications: NotificationRepository = Depends(get_notification_repository),
     caller: User = Depends(get_current_user),
 ) -> dict:
     """Clear the caller's unread queue.
 
     Args:
-        service (NotificationService): The notification service.
+        notifications (NotificationRepository): The notification store.
         caller (User): The authenticated caller.
 
     Returns:
         dict: ``{"marked": <count>}``.
     """
-    marked = await service.mark_all_read(caller.id or "")
+    marked = await notifications.mark_all_read(caller.id or "")
     return {"marked": marked}
 
 
@@ -127,16 +151,16 @@ async def stream_notifications(
     request: Request,
     token: str = Query(...),
     auth: AuthService = Depends(get_auth_service),
-    broadcaster: NotificationBroadcaster = Depends(get_notification_broadcaster),
+    streams: NotificationStreams = Depends(get_notification_streams),
 ) -> StreamingResponse:
-    """Stream the caller's notifications as Server-Sent Events.
+    """Stream a signal to the caller whenever they have something new to read.
 
     Args:
         request (Request): The incoming request, watched for disconnection.
         token (str): A short-lived stream token from
             ``POST /api/v1/auth/stream-token``.
         auth (AuthService): The authentication service.
-        broadcaster (NotificationBroadcaster): The in-process fan-out.
+        streams (NotificationStreams): This instance's open streams.
 
     Returns:
         StreamingResponse: An ``text/event-stream`` response.
@@ -156,15 +180,12 @@ async def stream_notifications(
           bearer headers, and would leave ``request.state.user`` unset here.
         - The framing itself — the ready frame, the keep-alive interval, the
           headers that stop a proxy buffering the feed — lives in
-          :class:`~api.sse.notification_stream.NotificationStream`. This route
+          :class:`~api.sse.streams.NotificationStreams`. This route
           authenticates and hands over.
     """
     user = await auth.resolve_stream_token(token)
-    stream = NotificationStream(
+    return streams.response(
         request=request,
-        broadcaster=broadcaster,
         recipient_id=user.id or "",
         user_email=str(user.email),
-        logger=logger,
     )
-    return stream.response()
