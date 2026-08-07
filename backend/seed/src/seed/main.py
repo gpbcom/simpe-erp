@@ -14,8 +14,8 @@ from service.messaging.publisher import EventPublisher
 
 from seed.seeder import Seeder  # isort: skip
 from storage.db.connection_manager import DatabaseConnectionManager
-from storage.repositories.hca import HcaRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.auth.user import UserRepository
+from storage.repositories.people.hca import HcaRepository
 
 logger = getLogger(__name__)
 
@@ -49,13 +49,16 @@ async def _announce(company_id: str, config: AppConfig) -> None:
     publisher = EventPublisher(config=config.rabbitmq, logger=logger)
     try:
         announced = await publisher.publish(
-            EventRoutingKey.COMPANY_CREATED, company_id, {"company_id": company_id}
+            EventRoutingKey.COMPANY_CREATED,
+            company_id,
+            {"company_id": company_id},  # noqa: E501
         )
         if announced:
             logger.info("Announced agency %s to the worker.", company_id)
         else:
             logger.warning(
-                "Could not announce agency %s: the worker will pick it up when "
+                "Could not announce agency %s: "
+                "the worker will pick it up when "   # noqa: E501
                 "it next starts.",
                 company_id,
             )
@@ -93,12 +96,14 @@ async def run() -> None:
 
             company_id = await seeder.seed_company()
             catalog = await seeder.seed_catalog()
+            await seeder.seed_certifications()
+            await seeder.seed_skill_types()
             assistants = await seeder.seed_assistants(company_id)
             customers = await seeder.seed_customers()
             await seeder.seed_accounts(company_id, assistants)
 
             author_ids = seeder.account_ids_for(assistants)
-            await seeder.seed_quotes(customers, catalog, author_ids)
+            await seeder.seed_quotes(company_id, customers, catalog, author_ids)  # noqa: E501
         await _announce(company_id, config)
     finally:
         await manager.disconnect()

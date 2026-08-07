@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import date
 from typing import Optional
 from unittest.mock import AsyncMock
 
@@ -11,6 +12,8 @@ import pytest
 
 # First-party imports
 from api.dependencies import (
+    get_event_publisher,
+    get_planning_service,
     get_current_user,
     get_customer_service,
     get_hca_service,
@@ -24,11 +27,13 @@ from models.auth.user import User
 from models.enums import (
     AvailabilityKind,
     ContractType,
+    PlanningRunStatus,
     QuoteStatus,
     RegistrationStatus,
     UserRole,
 )
-from models.people.availability_slot import AvailabilitySlot
+from models.planning.planning_run import PlanningRun
+from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.quoting.quote import Quote
@@ -115,13 +120,20 @@ def _slot() -> AvailabilitySlot:
     )
 
 
-def _client(customers: AsyncMock, hcas: AsyncMock, caller: User = None) -> TestClient:
+def _client(
+    customers: AsyncMock,
+    hcas: AsyncMock,
+    caller: User = None,
+    plannings: AsyncMock = None,
+) -> TestClient:
     """Build a client for the people routers alone.
 
     Args:
         customers (AsyncMock): The stubbed customer service.
         hcas (AsyncMock): The stubbed assistant service.
         caller (User): The account the request is authenticated as.
+        plannings (AsyncMock): The stubbed planning service. Defaults to one
+            reporting that nobody has future work, which is the 204 path.
 
     Returns:
         TestClient: A client over an app mounting only the routers under test.
@@ -144,6 +156,15 @@ def _client(customers: AsyncMock, hcas: AsyncMock, caller: User = None) -> TestC
     app.dependency_overrides[get_hca_service] = lambda: hcas
     app.dependency_overrides[get_manager_user] = lambda: caller
     app.dependency_overrides[get_current_user] = lambda: caller
+    # Both delete routes end in a replan, so they reach the planning service
+    # and the broker. Stubbed to "this person had no future visit", which is
+    # the 204 path every test here but the replan ones expects.
+    if plannings is None:
+        plannings = AsyncMock()
+        plannings.future_period_for_hca.return_value = None
+        plannings.future_period_for_customer.return_value = None
+    app.dependency_overrides[get_planning_service] = lambda: plannings
+    app.dependency_overrides[get_event_publisher] = lambda: AsyncMock()
     return TestClient(app)
 
 
@@ -162,6 +183,7 @@ def customers() -> AsyncMock:
     stub.set_status.return_value = _customer()
     stub.quotes_for.return_value = [
         Quote(
+            company_id="company-1",
             id="quote-1",
             reference="Q-2026-0001",
             customer_id="customer-1",
@@ -268,28 +290,71 @@ class TestCustomerEndpoints:
         assert response.status_code == 200
         assert response.json()[0]["reference"] == "Q-2026-0001"
 
-    def test_deleting_a_quoted_customer_is_409(
+    def test_a_customer_whose_quote_cannot_be_identified_is_409(
         self, customers: AsyncMock, hcas: AsyncMock
     ) -> None:
-        """A customer on an accounting record cannot be removed.
+        """An unidentifiable quote stops the whole deletion.
 
         Notes:
-            409 rather than 403: the request is permitted, the state refuses
-            it, and the remedy — stop them instead — is in the message.
+            409 rather than 403: the request is permitted and the state
+            refuses it. Deleting the customer anyway would leave the quote
+            behind, which is the orphan the cascade exists to avoid.
         """
-        customers.delete.side_effect = MTCustomerHasQuotes("they have quotes")
+        customers.delete.side_effect = MTCustomerHasQuotes("an unidentified quote")
 
         response = _client(customers, hcas).delete("/api/v1/customers/customer-1")
 
         assert response.status_code == 409
 
-    def test_deleting_an_unquoted_customer_answers_204(
+    def test_deleting_a_customer_with_no_future_visit_answers_204(
         self, customers: AsyncMock, hcas: AsyncMock
     ) -> None:
-        """A removable customer is removed."""
+        """Nothing to replan means nothing is queued.
+
+        Notes:
+            Queueing a run that would place the same visits in the same slots
+            costs thirty seconds of a worker and makes the calendar flicker for
+            no reason.
+        """
         response = _client(customers, hcas).delete("/api/v1/customers/customer-1")
 
         assert response.status_code == 204
+        assert response.content == b""
+
+    def test_deleting_a_customer_with_future_visits_answers_202(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A replan is queued over exactly the days they were visited on.
+
+        Notes:
+            The span is measured **before** the delete: their visits go with
+            their quotes, so asking afterwards would find nothing and replan
+            nothing.
+        """
+        plannings = AsyncMock()
+        plannings.future_period_for_customer.return_value = (
+            date(2026, 8, 10),
+            date(2026, 8, 14),
+        )
+        plannings.queue_replan.return_value = PlanningRun(
+            company_id="company-1",
+            id="run-1",
+            status=PlanningRunStatus.PENDING,
+            requested_by="user-1",
+            period_start=date(2026, 8, 10),
+            period_end=date(2026, 8, 14),
+        )
+
+        response = _client(customers, hcas, plannings=plannings).delete(
+            "/api/v1/customers/customer-1"
+        )
+
+        assert response.status_code == 202
+        assert response.json()["id"] == "run-1"
+        assert plannings.queue_replan.await_args.kwargs["period"] == (
+            date(2026, 8, 10),
+            date(2026, 8, 14),
+        )
 
 
 class TestHcaEndpoints:

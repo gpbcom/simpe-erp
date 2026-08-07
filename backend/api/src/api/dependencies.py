@@ -16,47 +16,62 @@ from models.auth.user import User
 from models.configuration.app_config import AppConfig
 from models.enums import EventRoutingKey, PlanningRunStatus, UserRole
 from service.auth.auth import AuthService
+from service.certifications.certifications import CertificationTypeService
+from service.skills.skills import SkillTypeService
 from service.companies.companies import CompanyService
 from service.companies.registration import CompanyRegistrationService
 from service.customers.customers import CustomerService
 from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
-from service.intervention_types.intervention_types import InterventionTypeService
+from service.intervention_types.intervention_types import (
+    InterventionTypeService,
+)
 from service.messaging.consumer import EventConsumer
 from service.messaging.publisher import EventPublisher
 from service.planning.interventions import InterventionService
 from service.planning.plannings import PlanningService
 from service.planning.webhook import PlanningWebhook
 from service.quotes.quotes import QuoteService
+from service.observability.metrics import ApplicationMetrics
 from storage.db.connection_manager import DatabaseConnectionManager
-from storage.repositories.company import CompanyRepository
-from storage.repositories.customer import CustomerRepository
-from storage.repositories.hca import HcaRepository
-from storage.repositories.hca_application import HcaApplicationRepository
-from storage.repositories.intervention import InterventionRepository
-from storage.repositories.intervention_type import InterventionTypeRepository
-from storage.repositories.notification import NotificationRepository
-from storage.repositories.planning_run import PlanningRunRepository
-from storage.repositories.planning_settings import PlanningSettingsRepository
-from storage.repositories.quote import QuoteRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.catalog.certification_type import CertificationTypeRepository
+from storage.repositories.catalog.skill_type import SkillTypeRepository
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.people.hca_application import HcaApplicationRepository
+from storage.repositories.planning.intervention import InterventionRepository
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository
+from storage.repositories.notifications.notification import NotificationRepository
+from storage.repositories.planning.planning_run import PlanningRunRepository
+from storage.repositories.planning.planning_settings import PlanningSettingsRepository
+from storage.repositories.quoting.quote import QuoteRepository
+from storage.repositories.auth.user import UserRepository
 from storage.s3.s3_storage import S3Storage
 
 logger: Logger = getLogger(__name__)
 
 _connection_manager: Optional[DatabaseConnectionManager] = None
-# One per process, holding the event streams this instance is serving. It
-# cannot be request-scoped: a stream outlives the request that opened it, and
-# the whole point is that something arriving later can push into it.
 _notification_streams: NotificationStreams = NotificationStreams(logger=logger)
-# Also process-wide, and for the same reason: it holds a broker connection that
-# must be shared and reused rather than opened per request. Built on first use
-# rather than at import, because the configuration is not loaded yet here.
 _event_publisher: Optional[EventPublisher] = None
-# The other half of the stream: the queue this instance reads to learn that a
-# notification was written. Started and stopped by the application's lifespan,
-# because it must outlive every request and belongs to no one of them.
 _notification_consumer: Optional[EventConsumer] = None
+
+
+@lru_cache
+def get_metrics() -> ApplicationMetrics:
+    """Return this API instance's metrics registry.
+
+    Returns:
+        ApplicationMetrics: The registry, built once per process.
+
+    Notes:
+        **Cached, and that is load-bearing.** A registry per request would
+        declare the same metric names again on every call and raise a
+        duplicate-timeseries error on the second one — and the figures a
+        registry holds are cumulative, so even if it did not raise, a fresh one
+        per request would report zero for everything, for ever.
+    """
+    return ApplicationMetrics()
 
 
 @lru_cache
@@ -67,13 +82,12 @@ def get_app_config() -> AppConfig:
         AppConfig: The configuration, loaded once per process.
 
     Notes:
-        Cached because the configuration is immutable for the process's
-        lifetime and re-reading the file on every request would be pure waste.
-
-        Which file is loaded is :class:`AppConfig`'s decision, driven by
-        ``$SIMPLE_ERP_CONFIG``; the Alembic environment loads the same way, so the
-        schema and the running application can never come from different
-        configurations.
+        - Cached because the configuration is immutable for the process's
+          lifetime and re-reading the file on every request would be pure waste.
+        - Which file is loaded is :class:`AppConfig`'s decision, driven by
+          ``$SIMPLE_ERP_CONFIG``; the Alembic environment loads the same way, so the
+          schema and the running application can never come from different
+          configurations.
     """
     logger.debug("Loading the application configuration.")
     return AppConfig.load()
@@ -133,14 +147,13 @@ async def get_session(
         back when it raises.
 
     Notes:
-        One transaction per request, not per repository call. A handler that
-        writes to several tables therefore either lands entirely or not at all.
-
-        The session is published on ``request.state`` so
-        :class:`TransactionMiddleware` can commit it *before* the response is
-        written. This teardown still commits, but FastAPI runs it after the
-        response has been sent — too late for a client that immediately reads
-        back what it just wrote.
+        - One transaction per request, not per repository call. A handler that
+          writes to several tables therefore either lands entirely or not at all.
+        - The session is published on ``request.state`` so
+          :class:`TransactionMiddleware` can commit it *before* the response is
+          written. This teardown still commits, but FastAPI runs it after the
+          response has been sent — too late for a client that immediately reads
+          back what it just wrote.
     """
     async with manager.session() as session:
         request.state.session = session
@@ -158,7 +171,7 @@ async def get_user_repository(
     Returns:
         UserRepository: The repository.
     """
-    return UserRepository(session=session, logger=logger)
+    return UserRepository(session=session)
 
 
 async def get_hca_repository(
@@ -172,7 +185,7 @@ async def get_hca_repository(
     Returns:
         HcaRepository: The repository.
     """
-    return HcaRepository(session=session, logger=logger)
+    return HcaRepository(session=session)
 
 
 async def get_customer_repository(
@@ -186,7 +199,7 @@ async def get_customer_repository(
     Returns:
         CustomerRepository: The repository.
     """
-    return CustomerRepository(session=session, logger=logger)
+    return CustomerRepository(session=session)
 
 
 async def get_intervention_type_repository(
@@ -200,21 +213,117 @@ async def get_intervention_type_repository(
     Returns:
         InterventionTypeRepository: The repository.
     """
-    return InterventionTypeRepository(session=session, logger=logger)
+    return InterventionTypeRepository(session=session)
+
+
+async def get_certification_type_repository(
+    session: AsyncSession = Depends(get_session),
+) -> CertificationTypeRepository:
+    """Return the certification-catalogue repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        CertificationTypeRepository: The repository.
+    """
+    return CertificationTypeRepository(session=session)
+
+
+async def get_certification_type_service(
+    certifications: CertificationTypeRepository = Depends(
+        get_certification_type_repository
+    ),
+    hcas: HcaRepository = Depends(get_hca_repository),
+    types: InterventionTypeRepository = Depends(get_intervention_type_repository),
+) -> CertificationTypeService:
+    """Return the certification-catalogue service.
+
+    Args:
+        certifications (CertificationTypeRepository): The catalogue store.
+        hcas (HcaRepository): The workforce, consulted before a delete.
+        types (InterventionTypeRepository): The service catalogue, consulted
+            before a delete.
+
+    Returns:
+        CertificationTypeService: The service.
+
+    Notes:
+        It takes three repositories because nothing in the database enforces
+        the references to a certification code: they live in a JSON array and
+        in a nullable column, so refusing to strand one means counting the rows
+        that name it.
+    """
+    return CertificationTypeService(
+        certifications=certifications,
+        hcas=hcas,
+        types=types,
+        logger=logger,
+    )
+
+
+async def get_skill_type_repository(
+    session: AsyncSession = Depends(get_session),
+) -> SkillTypeRepository:
+    """Return the skill-catalogue repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        SkillTypeRepository: The repository.
+    """
+    return SkillTypeRepository(session=session)
+
+
+async def get_skill_type_service(
+    skills: SkillTypeRepository = Depends(get_skill_type_repository),
+    hcas: HcaRepository = Depends(get_hca_repository),
+    types: InterventionTypeRepository = Depends(get_intervention_type_repository),
+) -> SkillTypeService:
+    """Return the skill-catalogue service.
+
+    Args:
+        skills (SkillTypeRepository): The catalogue store.
+        hcas (HcaRepository): The workforce, consulted before a delete.
+        types (InterventionTypeRepository): The service catalogue, consulted
+            before a delete.
+
+    Returns:
+        SkillTypeService: The service.
+
+    Notes:
+        Three repositories, for the same reason its certification twin takes
+        three: nothing in the database enforces the references to a skill code,
+        so refusing to strand one means counting the rows that name it.
+    """
+    return SkillTypeService(
+        skills=skills,
+        hcas=hcas,
+        types=types,
+        logger=logger,
+    )
 
 
 async def get_intervention_type_service(
     types: InterventionTypeRepository = Depends(get_intervention_type_repository),
+    certifications: CertificationTypeService = Depends(get_certification_type_service),
+    skills: SkillTypeService = Depends(get_skill_type_service),
 ) -> InterventionTypeService:
     """Return the intervention-type catalog service.
 
     Args:
         types (InterventionTypeRepository): The catalog store.
+        certifications (CertificationTypeService): The certification
+            catalogue, consulted before a requirement is stored.
+        skills (SkillTypeService): The skill catalogue, consulted the same way.
 
     Returns:
         InterventionTypeService: The service.
     """
-    return InterventionTypeService(types=types, logger=logger)
+    return InterventionTypeService(
+        types=types, certifications=certifications, skills=skills
+    )
 
 
 async def get_quote_repository(
@@ -228,18 +337,24 @@ async def get_quote_repository(
     Returns:
         QuoteRepository: The repository.
     """
-    return QuoteRepository(session=session, logger=logger)
+    return QuoteRepository(session=session)
 
 
 async def get_quote_service(
     quotes: QuoteRepository = Depends(get_quote_repository),
     types: InterventionTypeRepository = Depends(get_intervention_type_repository),
+    certifications: CertificationTypeService = Depends(get_certification_type_service),
+    skills: SkillTypeService = Depends(get_skill_type_service),
 ) -> QuoteService:
     """Return the quote service.
 
     Args:
         quotes (QuoteRepository): The quote store.
         types (InterventionTypeRepository): The catalog store.
+        certifications (CertificationTypeService): The certification
+            catalogue, consulted before a line's requirement override is
+            stored.
+        skills (SkillTypeService): The skill catalogue, consulted the same way.
 
     Returns:
         QuoteService: The service.
@@ -248,6 +363,8 @@ async def get_quote_service(
         quotes=quotes,
         types=types,
         config=get_app_config().pricing,
+        certifications=certifications,
+        skills=skills,
         logger=logger,
     )
 
@@ -263,7 +380,7 @@ async def get_notification_repository(
     Returns:
         NotificationRepository: The repository.
     """
-    return NotificationRepository(session=session, logger=logger)
+    return NotificationRepository(session=session)
 
 
 def get_event_publisher() -> EventPublisher:
@@ -279,9 +396,7 @@ def get_event_publisher() -> EventPublisher:
     """
     global _event_publisher
     if _event_publisher is None:
-        _event_publisher = EventPublisher(
-            config=get_app_config().rabbitmq, logger=logger
-        )
+        _event_publisher = EventPublisher(config=get_app_config().rabbitmq)
     return _event_publisher
 
 
@@ -320,9 +435,9 @@ async def start_notification_relay() -> None:
     global _notification_consumer
     config = get_app_config()
     if not config.rabbitmq.enabled:
-        logger.info("The broker is disabled; notifications will not be pushed.")
+        logger.info("The broker is disabled. Notifications will not be pushed.")
         return
-    consumer = EventConsumer(config=config.rabbitmq, logger=logger)
+    consumer = EventConsumer(config=config.rabbitmq)
     consumer.on(EventRoutingKey.NOTIFICATION_CREATED, get_notification_streams().relay)
     try:
         await consumer.start()
@@ -368,7 +483,7 @@ async def get_customer_service(
     Returns:
         CustomerService: The service.
     """
-    return CustomerService(customers=customers, quotes=quotes, logger=logger)
+    return CustomerService(customers=customers, quotes=quotes)
 
 
 @lru_cache
@@ -383,7 +498,7 @@ def get_photo_storage() -> S3Storage:
         Building one per request would defeat it and re-resolve credentials
         every time.
     """
-    return S3Storage(config=get_app_config().s3, logger=logger)
+    return S3Storage(config=get_app_config().s3)
 
 
 @lru_cache
@@ -397,7 +512,7 @@ def get_email_service() -> EmailService:
         Cached like the object store: it holds configuration and opens a
         connection per message, so there is nothing per-request about it.
     """
-    return EmailService(config=get_app_config().email, logger=logger)
+    return EmailService(config=get_app_config().email)
 
 
 async def get_hca_service(
@@ -411,7 +526,7 @@ async def get_hca_service(
     Returns:
         HcaService: The service, photograph handling included.
     """
-    return HcaService(hcas=hcas, photos=get_photo_storage(), logger=logger)
+    return HcaService(hcas=hcas, photos=get_photo_storage())
 
 
 async def get_planning_run_repository(
@@ -425,7 +540,7 @@ async def get_planning_run_repository(
     Returns:
         PlanningRunRepository: The repository.
     """
-    return PlanningRunRepository(session=session, logger=logger)
+    return PlanningRunRepository(session=session)
 
 
 async def get_intervention_repository(
@@ -439,7 +554,7 @@ async def get_intervention_repository(
     Returns:
         InterventionRepository: The repository.
     """
-    return InterventionRepository(session=session, logger=logger)
+    return InterventionRepository(session=session)
 
 
 async def get_intervention_service(
@@ -476,7 +591,7 @@ async def get_planning_settings_repository(
     Returns:
         PlanningSettingsRepository: The repository.
     """
-    return PlanningSettingsRepository(session=session, logger=logger)
+    return PlanningSettingsRepository(session=session)
 
 
 async def get_planning_service(
@@ -485,6 +600,7 @@ async def get_planning_service(
     quotes: QuoteRepository = Depends(get_quote_repository),
     customers: CustomerRepository = Depends(get_customer_repository),
     hcas: HcaRepository = Depends(get_hca_repository),
+    types: InterventionTypeRepository = Depends(get_intervention_type_repository),
     settings: PlanningSettingsRepository = Depends(get_planning_settings_repository),
 ) -> PlanningService:
     """Return the planning service.
@@ -495,6 +611,8 @@ async def get_planning_service(
         quotes (QuoteRepository): The accepted work.
         customers (CustomerRepository): Where the work happens.
         hcas (HcaRepository): The workforce.
+        types (InterventionTypeRepository): The service catalogue, read for the
+            qualifications each kind of work requires.
         settings (PlanningSettingsRepository): The store holding the
             manager-owned planning rules.
 
@@ -507,6 +625,7 @@ async def get_planning_service(
         quotes=quotes,
         customers=customers,
         hcas=hcas,
+        types=types,
         settings=settings,
         config=get_app_config().planning,
         logger=logger,
@@ -520,26 +639,26 @@ async def run_planning_job(run_id: str) -> None:
         run_id (str): The run to execute.
 
     Notes:
-        Built by hand rather than through ``Depends`` because a background task
-        outlives its request. The request-scoped session is committed and
-        returned to the pool as soon as the 202 is written, so reusing it here
-        would work on a closed connection.
-
-        Nothing is raised out of this. A background task's exception has
-        nowhere to go — the client already holds its 202 — so a failure is
-        recorded on the run itself, which is what the caller polls.
+        - Built by hand rather than through ``Depends`` because a background task
+          outlives its request. The request-scoped session is committed and
+          returned to the pool as soon as the 202 is written, so reusing it here
+          would work on a closed connection.
+        - Nothing is raised out of this. A background task's exception has
+          nowhere to go — the client already holds its 202 — so a failure is
+          recorded on the run itself, which is what the caller polls.
     """
     logger.info("Starting the background planning run %s.", run_id)
     manager = await get_connection_manager()
     try:
         async with manager.session() as session:
             service = PlanningService(
-                runs=PlanningRunRepository(session=session, logger=logger),
-                interventions=InterventionRepository(session=session, logger=logger),
-                quotes=QuoteRepository(session=session, logger=logger),
-                customers=CustomerRepository(session=session, logger=logger),
-                hcas=HcaRepository(session=session, logger=logger),
-                settings=PlanningSettingsRepository(session=session, logger=logger),
+                runs=PlanningRunRepository(session=session),
+                interventions=InterventionRepository(session=session),
+                quotes=QuoteRepository(session=session),
+                customers=CustomerRepository(session=session),
+                hcas=HcaRepository(session=session),
+                types=InterventionTypeRepository(session=session),
+                settings=PlanningSettingsRepository(session=session),
                 config=get_app_config().planning,
                 logger=logger,
             )
@@ -563,9 +682,7 @@ async def notify_planning_completed(run_id: str) -> None:
         finishes runs too and cannot import this module. This wrapper stays so
         the in-process planning path reads the same as it did.
     """
-    await PlanningWebhook(config=get_app_config().webhook, logger=logger).announce(
-        run_id
-    )
+    await PlanningWebhook(config=get_app_config().webhook).announce(run_id)
 
 
 async def get_company_repository(
@@ -579,7 +696,7 @@ async def get_company_repository(
     Returns:
         CompanyRepository: The repository.
     """
-    return CompanyRepository(session=session, logger=logger)
+    return CompanyRepository(session=session)
 
 
 async def get_company_service(
@@ -598,7 +715,7 @@ async def get_company_service(
     Returns:
         CompanyService: The service.
     """
-    return CompanyService(companies=companies, users=users, hcas=hcas, logger=logger)
+    return CompanyService(companies=companies, users=users, hcas=hcas)
 
 
 async def get_hca_application_repository(
@@ -612,7 +729,7 @@ async def get_hca_application_repository(
     Returns:
         HcaApplicationRepository: The repository.
     """
-    return HcaApplicationRepository(session=session, logger=logger)
+    return HcaApplicationRepository(session=session)
 
 
 async def get_hca_application_service(
@@ -643,9 +760,7 @@ async def get_hca_application_service(
         applications=applications,
         companies=companies,
         users=users,
-        auth=AuthService(
-            users=users, hcas=hcas, config=get_app_config().auth, logger=logger
-        ),
+        auth=AuthService(users=users, hcas=hcas, config=get_app_config().auth),
         logger=logger,
     )
 
@@ -661,12 +776,20 @@ async def get_auth_service(
         hcas (HcaRepository): The assistant store.
 
     Returns:
-        AuthService: The service.
+        AuthService: The service, portrait handling included.
+
+    Notes:
+        The object store is passed here and not to
+        :func:`get_auth_service_standalone`. This factory serves the routes,
+        including the two that replace and remove a portrait; the standalone one
+        serves the authentication middleware, which only resolves tokens and has
+        no business holding a bucket client.
     """
     return AuthService(
         users=users,
         hcas=hcas,
         config=get_app_config().auth,
+        photos=get_photo_storage(),
         logger=logger,
     )
 
@@ -706,27 +829,25 @@ async def get_auth_service_standalone() -> AsyncIterator[AuthService]:
         AuthService: A service bound to its own short-lived session.
 
     Notes:
-        Middleware runs before FastAPI resolves dependencies, so it cannot use
-        ``Depends``. This builds the same object by hand.
-
-        **A context manager, not a plain factory.** The session has to be
-        closed when the token lookup finishes: every request carrying a bearer
-        token passes through here, and a session left to the garbage collector
-        holds its pooled connection until then. Under any real load that
-        exhausts the pool, and the symptom — requests hanging on connection
-        checkout — points nowhere near the middleware.
-
-        The session is closed around the lookup rather than shared with the
-        request's own. The middleware only reads, and holding a connection for
-        the whole request, including the time the handler spends working, is
-        the same exhaustion by a slower route.
+        - Middleware runs before FastAPI resolves dependencies, so it cannot use
+          ``Depends``. This builds the same object by hand.
+        - **A context manager, not a plain factory.** The session has to be
+          closed when the token lookup finishes: every request carrying a bearer
+          token passes through here, and a session left to the garbage collector
+          holds its pooled connection until then. Under any real load that
+          exhausts the pool, and the symptom — requests hanging on connection
+          checkout — points nowhere near the middleware.
+        - The session is closed around the lookup rather than shared with the
+          request's own. The middleware only reads, and holding a connection for
+          the whole request, including the time the handler spends working, is
+          the same exhaustion by a slower route.
     """
     manager = await get_connection_manager()
     factory = manager.get_session_factory()
     async with factory() as session:
         yield AuthService(
-            users=UserRepository(session=session, logger=logger),
-            hcas=HcaRepository(session=session, logger=logger),
+            users=UserRepository(session=session),
+            hcas=HcaRepository(session=session),
             config=get_app_config().auth,
             logger=logger,
         )
@@ -753,7 +874,9 @@ def get_current_user(request: Request) -> User:
     user = getattr(request.state, "user", None)
     if user is None:
         logger.warning(
-            "Unauthenticated request to %s %s.", request.method, request.url.path
+            "Unauthenticated request to %s %s.",
+            request.method,
+            request.url.path,
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

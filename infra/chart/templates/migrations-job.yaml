@@ -1,0 +1,56 @@
+{{/*
+Migrations, as a hook that runs before anything reads the schema.
+
+**This is the Kubernetes half of the arrangement compose expresses as a one-shot
+`migrate` service.** It used to be the first half of the API's start command,
+which meant every API replica ran it — fine with one, a race with two, and "how
+a deployment ends up half-upgraded" by the architecture's own account.
+
+`before-hook-creation` and not `hook-succeeded`: a failed Job is *kept*, so its
+logs are still there when somebody asks why the rollout stopped. The next
+upgrade deletes it.
+*/}}
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-migrate
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  # Never retried. A migration that failed must stop the rollout and be looked
+  # at, not run again against a schema it may have half-applied.
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "simple-erp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: {{ include "simple-erp.image" . }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command: ["migrate"]
+          env:
+            {{- include "simple-erp.backendEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/conf/app.k8s.yaml
+              subPath: app.k8s.yaml
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "simple-erp.fullname" . }}-config
+{{- end }}

@@ -9,8 +9,13 @@ the boundary rather than propagating.
 
 ```
 Company ──┬── Hca ──────── AvailabilitySlot
-          │     └───────── Certification, DrivingLicense
+          │     └───────── Certification, Skill, DrivingLicense
           └── User (account)
+
+Certification ┈┈code┈┈▶ CertificationType ◀┈┈code┈┈ InterventionType
+                                          ◀┈┈code┈┈ QuoteLine
+Skill         ┈┈code┈┈▶ SkillType         ◀┈┈code┈┈ InterventionType
+                                          ◀┈┈code┈┈ QuoteLine
 
 Customer ──── Quote ──── QuoteLine ──── InterventionType
                  └────── QuoteTypeWeekAggregate
@@ -22,25 +27,161 @@ Notification ──▶ User
 
 ## People
 
+Every person the system holds descends from **`Person`**
+(`models/base/person.py`): an identifier, a given and family name, a telephone
+number, an email address, a postal address and the two timestamps, with the
+validators for all eight and a `full_name()` that composes the two names.
+`Hca`, `Customer`, `HcaApplication` and `User` all extend it.
+
+It exists because those four had four copies of the same rules, spelled four
+slightly different ways, so a fix to one of them was a fix to one of them. The
+per-model exceptions survive the move: each subclass declares `INVALID_ID`,
+`INVALID_EMAIL` and so on as class attributes, the shared validator raises
+`cls.INVALID_*`, and Pydantic binds `cls` to the concrete subclass — so an
+`Hca` still raises `MTHcaInvalidEmail` and a `Customer` still raises
+`MTCustomerInvalidEmail`. That is not tidiness: the API's exception-to-status
+map is keyed on those classes.
+
+Where a subclass genuinely differs it **overrides**, and says why in the
+docstring — `HcaApplication` lower-cases the email because it becomes a
+sign-in, and parses its own timestamps; `User` does both of those and relaxes
+two more rules, below.
+
+**`PortraitHolder`** (`models/base/portrait_holder.py`) is a mixin beside it,
+carrying `photo_url`, the object-store key prefix and the check that a URL was
+issued by this application. `Hca` and `User` inherit it; `Customer` and
+`HcaApplication` do not, which is the whole reason it is a mixin rather than
+part of `Person` — folding it in would publish an empty field on a customer and
+on a job application. The rule it holds is a security one: both holders render
+the image wherever the person appears, so a third-party URL would report every
+viewer to whoever hosts it, and two copies of that check are two chances for
+one of them to be relaxed.
+
 **`Hca`** — a home care assistant. Identity, address, contract, qualifications,
 an optional driving licence, an optional photograph, and declared absences.
 `can_drive()` decides which travel speed the planner uses for them;
-`is_available_on(day)` is what an absence removes them from.
+`is_available_on(day)` is what an absence removes them from; and
+`holds_certifications(codes, day)` / `holds_skills(codes, day)` are what a
+gated intervention asks before it can be given to them.
+
+**`working_weekdays` and `availability` are two different questions**, and
+keeping them apart is deliberate. The first is the *recurring* pattern —
+"never Wednesdays" — and the second is *dated*: this fortnight's leave.
+Both stop the planner scheduling somebody, and `is_schedulable_on(day)` is
+the conjunction the solver actually uses. They stay separate because only
+one of them ends when the person comes back, and because the unplaced-work
+report has to tell a manager which they are looking at: hiring cover for a
+Wednesday and waiting out a fortnight's leave are different actions.
+A week naming no day is refused rather than read as a request for the
+default — clearing every box is a statement, and its two readings are
+opposites. Declared by the assistant themselves and visible to their
+manager, on the same ownership check the absences use — so a manager or an
+administrator sets anybody's, including their own.
+
+**`DEFAULT_WORKING_WEEKDAYS` is Monday-to-Friday, and it is a default rather
+than a rule.** `Weekday` carries all seven days, `WorkingDaysRequest` accepts
+any of them, and the planner asks `works_on_weekday` rather than testing for a
+weekend — so Saturday and Sunday are ordinary working days for anybody whose
+declared week names them. The distinction matters because it is invisible: a
+record nobody has edited shows both greyed, which reads exactly like a rule
+forbidding them.
+
+**`field_employee` decides who the planner may schedule at all**, and it
+**defaults to `True`**. The default is the whole reason the field could be
+added safely: every assistant record that existed before it did was, by
+definition, somebody the planner was already free to schedule, so defaulting to
+`False` would have emptied the workforce on the deployment that introduced it
+and failed every planning run until somebody ticked a box they had not been
+told about.
+
+It is a boolean on the *person*, not a check on their account's role. Who goes
+out is not what an account may do: a manager who covers rounds and an assistant
+on office duties are both ordinary, and neither is expressible as a `UserRole`.
+Only a manager or an administrator may change it — for anybody, including
+themselves — which is enforced by the field living on the manager-gated
+`EmploymentUpdateRequest` and being absent from `HcaProfileUpdateRequest`.
 
 **`Customer`** — somebody served. Identity, address, and a
 `RegistrationStatus`. A stopped customer gets no new interventions.
 
-**`User`** — an account. Carries `role`, an optional `hca_id` binding it to an
-assistant record, `company_id`, and `must_change_password`. `owns_hca(id)` is
-the row-level check the planning and self-service routes rest on.
+**`User`** — an account, and a `Person` like the rest. On top of the shared
+record it carries `role`, an optional `hca_id` binding it to an assistant
+record, `company_id`, `must_change_password` and an optional `photo_url`.
+`owns_hca(id)` is the row-level check the planning and self-service routes rest
+on.
 
-**Everybody belongs to exactly one agency.** `company_id` is required on `User`
-and on `Hca` alike — administrator, manager and assistant — and `NOT NULL` in
-both tables since migration `0008`. It was optional while companies were newer
+It relaxes two of the base's rules, both because an account is a *credential*
+rather than a contact record:
+
+| Rule | On a person | On an account |
+|---|---|---|
+| `phone_number`, `address` | Required — an assistant's address is a routing depot, a customer's is where the care happens | Optional, and not stored at all. A manager has neither, and no screen asks them for one |
+| `first_name` | Required | May be empty. A mononym or a service account has no given name, and its whole name sits in `last_name` |
+
+**The display name is two columns.** `users.full_name` became `first_name` and
+`last_name` in migration `0014`, and `full_name()` recomposes them. Nothing
+above the model had to change: every caller still passes a single
+`full_name="Claire Bernard"`, which a `mode="before"` model validator splits on
+the **first** space, and `UserResponse` still publishes `full_name` — so the
+API shape, the front-end and the emails are exactly as they were.
+
+Splitting on the first space rather than the last is what makes the round trip
+exact: `"Jean Pierre de la Tour"` stores `"Jean"` and `"Pierre de la Tour"` and
+reads back identical, where a last-space split would file the same person under
+the surname `"Tour"`. A name with no space at all goes wholly into `last_name`,
+which is the reason an account may have an empty given name and no other person
+type may.
+
+One trap worth knowing: `full_name` is a **method** on an account now, so
+`user.model_copy(update={"full_name": ...})` no longer renames anybody — it
+shadows the method with a string, and the failure surfaces as
+`'str' object is not callable` somewhere else entirely. `User.name_parts()` is
+the supported way to go from a display name to the two halves, and
+`AuthService.update_account` uses it.
+
+The portrait is on the *account* as well as on `Hca`, and the two are not one
+field split in half. `Hca.photo_url` is the pin the manager's map draws, and it
+belongs to the person being scheduled; `User.photo_url` belongs to the
+credential, so a manager and an administrator have one too — before it existed
+they had nowhere to put a face at all. When an account is bound to a record the
+service writes both from one upload, because it is the same photograph of the
+same person. Both validate that the URL carries the object store's own key
+prefix, so neither can be pointed at a third-party address.
+
+**Everybody belongs to exactly one agency**, and since `0016` so does
+everything the planner touches. `company_id` is required on `User` and on `Hca`
+alike — administrator, manager and assistant — and `NOT NULL` in both tables
+since migration `0008`. It was optional while companies were newer
 than the rows pointing at them; nothing keeps that true now. An account without
 an agency is covered by no per-company scoping and produces events that cannot
 be routed to a queue, so the state is refused rather than stored and puzzled
 over later.
+
+### What the planner is scoped by
+
+`Quote`, `PlanningRun` and `Intervention` each carry a **required** `company_id`
+as of migration `0016`. These are the three the planning computation reads and
+writes, and until each named an agency the computation had no way to tell whose
+work it was scheduling: a run selected every agency's accepted quotes and then
+deleted and rewrote every agency's visits in its period.
+
+| Model | Where the agency comes from | Why it is not derived |
+|---|---|---|
+| `Quote` | the caller's credential, at creation | `authored_by` is nullable — an author who leaves must not take their quotes with them — so the join it would replace passes through a column that is allowed to be empty |
+| `PlanningRun` | the caller's credential, at request | `requested_by` carries no foreign key, so the account may be gone by the time a worker picks the run up |
+| `Intervention` | the run that produced it | it is deleted in bulk by agency and day, so one that did not name an agency would escape every replacement for ever |
+
+**Required rather than optional, on all three.** What makes the scoping a
+property rather than a discipline is that there is no state in which one of
+these records exists without naming an agency.
+
+The agency is never something a payload can set. `POST /quotes` takes a
+`QuoteCreateRequest` — reference, customer and lines, and nothing else — because
+a caller who could name an agency could write a quote into another one and have
+that agency's assistants sent out to deliver it. The same model closed a second
+hole on the way past: the route used to accept a whole `Quote`, so a payload
+could also carry `status="accepted"` and `validated_by`, approving its own quote
+in somebody else's name.
 
 Where the agency comes from is never the caller's choice:
 
@@ -55,7 +196,114 @@ no agency used to be treated as system-wide when deciding applications, which
 meant **any** administrator without an agency could decide every agency's
 queue.
 
+**`Certification`** — one qualification somebody holds. A free-text `name`,
+an optional `code` naming the catalogue entry it instantiates, an issuer and
+two dates. `satisfies(code, day)` is the match, and it answers `False` for an
+**untyped** qualification: a free-text name is a record of something somebody
+holds, not a claim the agency can match against, and treating one as a match
+would let a spelling decide who is qualified.
+
+The code is optional, and the free-text name stays beside it, because the
+catalogue arrived after the records did. A qualification typed before it
+existed is still a qualification somebody holds; making the link mandatory
+would have meant inventing a catalogue entry for every distinct spelling
+already stored, and getting some of them wrong.
+
+**`CertificationType`** — the catalogue. A `code`, a `label`, a description and
+`is_active`. **The code is the contract, not the label**: an assistant's stored
+qualification and an intervention type's requirement are matched on it, so
+renaming the label is cosmetic while changing the code would silently
+disqualify everybody who held it. That is why the two are separate fields, why
+the code is restricted to unaccented letters, digits, hyphens and underscores,
+and why no edit payload carries it at all.
+
+Retired with `is_active`, never deleted — like `InterventionType`, and for the
+same kind of reason: a stored qualification still names its code, and removing
+the row would leave somebody holding a certification nothing could describe.
+Deleting *is* offered while nothing refers to the entry, which in practice
+means the morning it was added by mistake.
+
+**`Skill`** — one thing somebody says they can do. The same shape as a
+`Certification` — a free-text `name`, an optional `code`, an issuer and two
+dates, with the same `satisfies(code, day)` — plus **an `id`**, which a
+certification does not have.
+
+That one extra field is the whole difference in how the two are written. A
+certification list is replaced wholesale by the employment form, so no
+individual row is ever addressed. A skill is added one at a time by its owner
+and removed one at a time by its owner, a manager or an administrator, and
+every one of those operations names a single record. Matching on the fields
+instead cannot tell two skills entered under the same name apart.
+
+There is deliberately **no `hca_id`**. The owning assistant comes from the
+route and is applied by the repository, so a payload cannot file a declaration
+against a colleague — the absence *is* the control, the same way
+`AccountUpdateRequest` carries no role.
+
+### Who writes what, and why the two are not one field
+
+| | Certification | Skill |
+|---|---|---|
+| What it claims | What somebody was **awarded** | What somebody **can do** |
+| Who records it | A manager, through `PATCH /hcas/{id}/employment` | Its owner, through `POST /me/hca/skills` |
+| Who removes it | A manager, by resending the list | Its owner, a manager or an administrator |
+| Approval | Recorded by somebody who already decides | None — the supervisors are **notified** instead |
+| Unplaced reason | `missing-certification` | `missing-skill` |
+
+An assistant who could grant themselves a diploma could be routed to work they
+are not trained for. An assistant who cannot say they speak Portuguese is one
+the agency does not know it has. Both are real failures, and they point in
+opposite directions, which is why the two live in separate tables under
+separate permissions rather than in one list with a flag.
+
+The declaration takes effect **immediately**. Approval-first would leave
+somebody off the visit they are the right person for while a form sat in a
+queue; instead every manager and administrator gets a `skill-added`
+notification and any of them can withdraw it before the next run acts on it.
+
+**`SkillType`** — the skill catalogue, character for character the twin of
+`CertificationType`: a `code`, a `label`, a description and `is_active`, the
+code immutable and restricted to unaccented letters, digits, hyphens and
+underscores, retired rather than deleted. **The catalogue is a manager's even
+though the declarations are not** — a workforce able to invent catalogue
+entries would produce a list nobody could require anything from.
+
 **`HcaApplication`** — somebody asking to be hired, before they are an `Hca`.
+
+## Everybody can be deleted, and something has to happen next
+
+Deleting a person used to be refused wherever it mattered. A customer with any
+quote answered 409 and was told to be *stopped* instead; an assistant with a
+sign-in account answered 409 because the foreign key would not have it. Both
+refusals were defensible and both were wrong in the same way: they left no way
+at all to remove a household entered by mistake, or an assistant raised in
+error, or the fixtures a test campaign is obliged to clean up after itself.
+
+So each deletion now **cascades what cannot outlive the person**, and then
+**replans what they were due**:
+
+| Deleting | Takes with it | Then |
+|---|---|---|
+| `Customer` | Every quote written for them, and the visits scheduled from them | Replans their remaining days |
+| `Hca` | The sign-in account bound to them | Replans their remaining days |
+| `User` | Nothing | Nothing |
+
+The account goes with the assistant because an account whose `hca_id` names
+nothing cannot pass the row-level planning check and cannot be repaired through
+any screen. It is removed **first**, and through `AuthService`, so that
+service's own refusals still hold: nobody deletes their own account, and the
+last administrator cannot be deleted at all. Doing it in the other order would
+remove the assistant and *then* discover the account could not go — leaving
+exactly the orphan this avoids. Both writes share one transaction, so a refusal
+rolls the whole thing back.
+
+Deleting a `User` replans nothing, and that is not an oversight. An account is
+not scheduled; the assistant record is. Removing one cannot change a calendar.
+
+**Stopping a customer is still the right answer** for one who was really served
+and has really left — it keeps what was billed and who agreed to it. Deletion
+is for the records that were never part of that history, and the screen that
+offers it counts the quotes first.
 
 ## Quoting
 
@@ -73,9 +321,40 @@ is renamed or repriced.
 are `Decimal`, never float, and reach the wire as **strings** — JSON numbers are
 binary floats, and money is not.
 
+Its `required_certification_codes` **distinguishes three states**, and the
+third is why the field is nullable rather than a plain list:
+
+| Value | Means |
+|---|---|
+| `null` | Whatever the catalog entry requires |
+| `["DEAES"]` | These, instead of the catalog's |
+| `[]` | This hour needs no qualification at all |
+
+The last is a real answer somebody has to be able to give when the catalogue's
+default is wrong for one customer, and collapsing it into `null` would silently
+reinstate a requirement the person writing the quote had deliberately removed.
+`effective_certification_codes(catalog_codes)` resolves the fallback in one
+place, the way `InterventionType.effective_hourly_rate_ht` does for the rate.
+
+`required_skill_codes` carries the same three states, overridden
+**independently**. A line that needs the catalogue's diplomas but no particular
+skill is an ordinary thing to want, and one nullable field covering both would
+make it inexpressible.
+
 **`InterventionType`** — a catalog entry: a name, a code, a category that
-decides the VAT rate, and a base hourly rate. Retired with `is_active` rather
-than deleted, because a quote issued last year still references it.
+decides the VAT rate, a base hourly rate, and the qualifications the work
+requires. Retired with `is_active` rather than deleted, because a quote issued
+last year still references it.
+
+`required_certification_codes` and `required_skill_codes` are both **empty by
+default**, so adding either changed nothing about work already being sold. A
+default that required something would have failed every planning run the moment
+it shipped, which is a migration failure wearing a solver's clothes.
+
+They are two lists rather than one. Both become the same kind of hard
+constraint, so merging them would produce an identical plan — what it would
+cost is the diagnosis. A run that placed nothing has to be able to say whether
+the fix is a hire or a profile somebody has not filled in.
 
 ## Planning
 
@@ -129,11 +408,12 @@ From `backend/models/src/models/enums.py`.
 | `InterventionStatus` | `planned`, `confirmed`, `completed`, `cancelled` |
 | `AvailabilityKind` | `holiday`, `day-off`, `sick-leave`, `training`, `unavailable` |
 | `PlanningRunStatus` | `pending`, `running`, `succeeded`, `failed` |
-| `UnplacedReason` | `out-of-radius`, `no-assistant-available`, `outside-working-day`, `customer-conflict`, `no-feasible-slot` |
+| `UnplacedReason` | `out-of-radius`, `not-a-working-day`, `no-assistant-available`, `outside-working-day`, `missing-certification`, `missing-skill`, `customer-conflict`, `no-feasible-slot` |
 | `HcaApplicationStatus` | `pending`, `approved`, `rejected` |
-| `NotificationKind` | `quote-submitted`, `quote-validated`, `quote-refused`, `planning-completed` |
-| `EventRoutingKey` | `quote.submitted`, `quote.validated`, `quote.refused`, `planning.run.requested`, `planning.run.completed` |
+| `NotificationKind` | `quote-submitted`, `quote-validated`, `quote-refused`, `planning-completed`, `skill-added` |
+| `EventRoutingKey` | `quote.submitted`, `quote.validated`, `quote.refused`, `planning.run.requested`, `planning.run.completed`, `company.created`, `skill.added`, `notification.created` |
 | `Weekday` | `monday` … `sunday` |
+| `Language` | `fr`, `en` — what an account reads, and what its emailed documents are written in |
 | `ProbeStatus`, `DatabaseStatus` | health-probe values |
 
 `QuoteStatus.EXPIRED` is declared and **nothing ever sets it** — there is no
@@ -151,12 +431,69 @@ you build a screen around it.
 | 0005 | Companies, applications, planning settings |
 | 0006 | Quote validation: `pending-validation`, four authorship columns, and a **widened `status` column** |
 | 0007 | Notifications |
+| 0008 | `company_id` made `NOT NULL` on accounts and assistants |
+| 0009 | The VAT category moved onto the quote line |
+| 0010 | Quote interruption and renewal |
+| 0011 | An account's own photograph |
+| 0012 | The certification catalogue, its requirements, and `field_employee` |
+| 0013 | Per-assistant working days, and the agency's working hours |
+| 0014 | `users.full_name` split into `first_name` + `last_name`, so an account is a `Person` |
+| 0015 | `users.language`, so the emailed quotes can be generated in it |
+| 0018 | The agency's legal identity: form, share capital, RCS, VAT number, telephone |
+| 0016 | `company_id` on quotes, planning runs and interventions — the planning computation's own scoping |
+| 0017 | The skill catalogue, self-declared skills, and their requirements |
 
 The widening in 0006 is the one to remember. `status` was `String(16)`, sized
 when `accepted` was the longest value; `pending-validation` is eighteen
 characters. SQLite truncates silently and PostgreSQL errors — so without that
 migration the feature passes the whole test suite and fails on first contact
 with the real database.
+
+The split in 0014 is the one with a data hazard, and it is handled in the
+backfill rather than left to chance. Names are split on the **first** space so
+`full_name()` reproduces the original exactly; a name with no space at all goes
+wholly into `last_name`, because inventing a given name for a mononym or a
+service account would be worse than leaving the column blank. Both columns land
+with a server default of `''` so the constraint can be added before the backfill
+runs, and the default is dropped afterwards. `tests/storage/test_migration_0014_backfill.py`
+asserts each case, including that the downgrade recomposes what was there.
+
+**0018 backfills nothing, and that is the point.** Its five columns are all
+nullable because none has a safe value to invent: a share capital written as
+zero would be a false declaration, and an RCS entry copied from the SIRET a
+wrong one. An agency that has not filled them in prints without them — the
+quote joins only the parts that are set. That is the opposite of what 0012,
+0013 and 0015 do, and for the opposite reason: those columns had a correct
+answer for every existing row, and these have none.
+
+**0015 backfills every account to French**, with a server default that is
+then dropped — the shape 0012 and 0013 both use. The preference lived in the
+browser until that revision, so the migration cannot see what anybody had
+chosen; French is what the agency, its contract types and its holidays are,
+which makes it the safe reading rather than merely the common one. An
+English backfill would have sent every French agency's customers an English
+document on the deployment that was only supposed to make the setting
+reachable. `tests/storage/test_migration_0015_backfill.py` asserts it.
+
+**The two backfills in 0013 disagree on purpose.** The four working-day
+columns on `planning_settings` are backfilled with the values the
+configuration file shipped, so making them editable does not move the
+agency's day. `hcas.working_weekdays` is backfilled with **all seven days**,
+not the Monday-to-Friday a *new* assistant defaults to: every row that
+existed before the column did was schedulable on any day the planner had
+work for them, and narrowing them here would cancel weekend rounds nobody
+asked to cancel — visible only as a run that suddenly cannot place a
+Saturday visit. `tests/storage/test_migration_0013_backfill.py` asserts
+both, and pins the divergence so it is not tidied away.
+
+The two defaults in 0012 are the load-bearing part of that one. `field_employee`
+is added with a server default of true which is then **dropped**: the default
+backfills every existing row, and dropping it afterwards keeps the value the
+application model's to decide rather than the database's.
+`intervention_types.required_certification_codes` is backfilled to an empty
+array before it is made `NOT NULL`, so no service already being sold suddenly
+requires something nobody holds. The quote-line column stays nullable, because
+`NULL` there means "inherit" and is not the same statement as `[]`.
 
 `tests/storage/test_migrations.py` walks every revision against a temporary
 database and diffs the result against `Base.metadata`, so ORM/migration drift

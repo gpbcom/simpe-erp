@@ -13,8 +13,8 @@ from models.configuration.planning_config import PlanningConfig
 from models.enums import AvailabilityKind, ContractType
 from models.geo.geo_point import GeoPoint
 from models.people.hca import Hca
-from models.planning.intervention_requirement import InterventionRequirement
-from models.planning.planning_solution import PlanningSolution
+from models.planning.intervention.intervention_requirement import InterventionRequirement
+from models.planning.planning_run.planning_solution import PlanningSolution
 from models.settings.planning_settings import PlanningSettings
 
 # First-party imports
@@ -134,6 +134,7 @@ def _planner(
         quotes=AsyncMock(),
         customers=AsyncMock(),
         hcas=AsyncMock(),
+        types=AsyncMock(),
         settings=AsyncMock(),
         config=config,
     )
@@ -188,6 +189,7 @@ def _solve(
         quotes=MagicMock(),
         customers=MagicMock(),
         hcas=MagicMock(),
+        types=MagicMock(),
         settings=MagicMock(),
         config=config,
     )
@@ -543,6 +545,7 @@ class TestPlanningService:
             quotes=MagicMock(),
             customers=MagicMock(),
             hcas=MagicMock(),
+            types=MagicMock(),
             settings=MagicMock(),
             config=config,
         )

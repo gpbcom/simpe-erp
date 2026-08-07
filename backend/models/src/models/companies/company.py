@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 # Standard library imports
+import re
+
+# Standard library imports
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import ClassVar, Optional, Union
 
 # Third-party imports
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator
 
 from models.companies.company_choice import CompanyChoice
 
@@ -15,8 +19,13 @@ from models.companies.exceptions import (
     MTCompanyInvalidEmail,
     MTCompanyInvalidId,
     MTCompanyInvalidIsAcceptingApplications,
+    MTCompanyInvalidLegalForm,
     MTCompanyInvalidName,
+    MTCompanyInvalidPhoneNumber,
+    MTCompanyInvalidRcsNumber,
     MTCompanyInvalidRegistrationNumber,
+    MTCompanyInvalidShareCapital,
+    MTCompanyInvalidVatNumber,
 )
 from models.geo.postal_address import PostalAddress
 
@@ -60,11 +69,35 @@ class Company(BaseModel):
 
     MAX_NAME_LENGTH: ClassVar[int] = 200
     MAX_REGISTRATION_LENGTH: ClassVar[int] = 64
+    MAX_LEGAL_FORM_LENGTH: ClassVar[int] = 64
+    MAX_RCS_LENGTH: ClassVar[int] = 64
+    #: ``FR`` plus a two-character key plus the nine-digit SIREN.
+    VAT_NUMBER_PATTERN: ClassVar[str] = r"^[A-Z]{2}[0-9A-Z]{2}[0-9]{9}$"
 
     id: Optional[str] = Field(
         default=None, description="Identifier, assigned by the store."
     )
     name: str = Field(description="Trading name.")
+    legal_form: Optional[str] = Field(
+        default=None,
+        description="Legal form, such as SARL, SAS or Association.",
+    )
+    share_capital: Optional[Decimal] = Field(
+        default=None,
+        description="Share capital, in euros.",
+    )
+    rcs_number: Optional[str] = Field(
+        default=None,
+        description="Trade-register entry, such as 'RCS Paris B 123 456 789'.",
+    )
+    vat_number: Optional[str] = Field(
+        default=None,
+        description="Intra-community VAT number, such as FR12345678901.",
+    )
+    phone_number: Optional[str] = Field(
+        default=None,
+        description="Contact telephone number.",
+    )
     registration_number: Optional[str] = Field(
         default=None, description="Company registration number."
     )
@@ -89,11 +122,11 @@ class Company(BaseModel):
     #############################
 
     @field_validator("id", mode="before")
-    def validate_id(cls, value: Union[str, None]) -> Optional[str]:
+    def validate_id(cls, value: Optional[str]) -> Optional[str]:
         """Validates that ``id``, when given, is a non-empty string.
 
         Args:
-            value (Union[str, None]): Raw ``id`` value.
+            value (Optional[str]): Raw ``id`` value.
 
         Returns:
             Optional[str]: The identifier, or ``None`` before it is stored.
@@ -111,11 +144,11 @@ class Company(BaseModel):
         return value.strip()
 
     @field_validator("name", mode="before")
-    def validate_name(cls, value: Union[str, None]) -> str:
+    def validate_name(cls, value: Optional[str]) -> str:
         """Validates that ``name`` is a usable trading name.
 
         Args:
-            value (Union[str, None]): Raw ``name`` value.
+            value (Optional[str]): Raw ``name`` value.
 
         Returns:
             str: The trimmed name.
@@ -142,11 +175,11 @@ class Company(BaseModel):
         return trimmed
 
     @field_validator("registration_number", mode="before")
-    def validate_registration_number(cls, value: Union[str, None]) -> Optional[str]:
+    def validate_registration_number(cls, value: Optional[str]) -> Optional[str]:
         """Validates that the registration number, when given, is usable.
 
         Args:
-            value (Union[str, None]): Raw registration-number value.
+            value (Optional[str]): Raw registration-number value.
 
         Returns:
             Optional[str]: The upper-cased number, or ``None``.
@@ -183,11 +216,11 @@ class Company(BaseModel):
         return cleaned
 
     @field_validator("contact_email", mode="before")
-    def validate_contact_email(cls, value: Union[str, None]) -> Optional[str]:
+    def validate_contact_email(cls, value: Optional[str]) -> Optional[str]:
         """Validates that the contact address, when given, is an address.
 
         Args:
-            value (Union[str, None]): Raw ``contact_email`` value.
+            value (Optional[str]): Raw ``contact_email`` value.
 
         Returns:
             Optional[str]: The lower-cased address, or ``None``.
@@ -274,3 +307,177 @@ class Company(BaseModel):
             agency's registered office and contact address to anybody who asks.
         """
         return CompanyChoice(id=self.id if self.id else "", name=self.name)
+
+    @field_validator("legal_form", "rcs_number", mode="before")
+    def validate_printed_label(
+        cls, value: Optional[str], info: ValidationInfo
+    ) -> Optional[str]:
+        """Validates a legal label that is only ever printed.
+
+        Args:
+            value (Optional[str]): Raw ``legal_form`` or ``rcs_number`` value.
+            info (ValidationInfo): Names the field, so each raises its own
+                exception.
+
+        Returns:
+            Optional[str]: The trimmed label, or ``None`` when blank.
+
+        Raises:
+            MTCompanyInvalidLegalForm: If the value is neither ``None`` nor a
+                string within the accepted length.
+
+        Notes:
+            Free text, not an enumeration. French home care is delivered by
+            SARLs, SAS, associations, CCAS, mutuelles and sole traders alike,
+            and a closed list would lock out a provider whose form nobody
+            thought of — on a field the application only ever prints.
+
+            Blank becomes ``None`` rather than an empty string. The quote joins
+            only the parts that are set, and an empty string would print a
+            stray separator on a document a customer is asked to sign.
+
+            One rule, two exceptions. The check is identical for both
+            fields, but the API's exception-to-status map is keyed on the
+            class — so a rejected RCS entry has to say so rather than
+            report itself as a bad legal form.
+        """
+        refuse = (
+            MTCompanyInvalidRcsNumber
+            if info.field_name == "rcs_number"
+            else MTCompanyInvalidLegalForm
+        )
+        limit = (
+            cls.MAX_RCS_LENGTH
+            if info.field_name == "rcs_number"
+            else cls.MAX_LEGAL_FORM_LENGTH
+        )
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise refuse(
+                f"Invalid {info.field_name}: {value!r}. Must be a string "
+                f"or None."
+            )
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        if len(trimmed) > limit:
+            raise refuse(
+                f"Invalid {info.field_name}: {trimmed!r}. Must be at most "
+                f"{limit} characters."
+            )
+        return trimmed
+
+    @field_validator("share_capital", mode="before")
+    def validate_share_capital(
+        cls, value: Union[str, int, float, Decimal, None]
+    ) -> Optional[Decimal]:
+        """Validates that the share capital is a positive amount.
+
+        Args:
+            value (Union[str, int, float, Decimal, None]): Raw capital.
+
+        Returns:
+            Optional[Decimal]: The capital, or ``None`` when unset.
+
+        Raises:
+            MTCompanyInvalidShareCapital: If the value is neither ``None`` nor
+                a positive number.
+
+        Notes:
+            A :class:`~decimal.Decimal`, and built from the string form, so a
+            capital of ``10000.50`` is exact rather than the binary
+            approximation a float would carry onto a printed document.
+
+            Zero is refused. A company with no capital does not declare
+            "0 €" on its papers, it declares nothing — which is ``None``.
+        """
+        if value is None:
+            return None
+        try:
+            amount = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            raise MTCompanyInvalidShareCapital(
+                f"Invalid share_capital: {value!r}. Must be a number."
+            ) from None
+        if amount <= 0:
+            raise MTCompanyInvalidShareCapital(
+                f"Invalid share_capital: {amount!r}. Must be greater than zero."
+            )
+        return amount
+
+    @field_validator("vat_number", mode="before")
+    def validate_vat_number(cls, value: Optional[str]) -> Optional[str]:
+        """Validates the intra-community VAT number.
+
+        Args:
+            value (Optional[str]): Raw ``vat_number`` value.
+
+        Returns:
+            Optional[str]: The number, upper-cased and stripped of spaces, or
+            ``None``.
+
+        Raises:
+            MTCompanyInvalidVatNumber: If the value does not look like an
+                intra-community VAT number.
+
+        Notes:
+            Checked against a shape rather than merely stored. This number
+            appears on every quote and invoice, and one with a digit missing
+            is the kind of error nobody notices until an accountant does.
+
+            Spaces are removed and the letters upper-cased before the check, so
+            ``fr 123 456 789 01`` and ``FR12345678901`` are the same number —
+            which is how somebody reads it off a document to type it in.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise MTCompanyInvalidVatNumber(
+                f"Invalid vat_number: {value!r}. Must be a string or None."
+            )
+        cleaned = value.replace(" ", "").upper()
+        if not cleaned:
+            return None
+        if not re.match(cls.VAT_NUMBER_PATTERN, cleaned):
+            raise MTCompanyInvalidVatNumber(
+                f"Invalid vat_number: {value!r}. Must be a country code, a "
+                f"two-character key and nine digits, such as FR12345678901."
+            )
+        return cleaned
+
+    @field_validator("phone_number", mode="before")
+    def validate_phone_number(cls, value: Optional[str]) -> Optional[str]:
+        """Validates that the contact telephone number is usable.
+
+        Args:
+            value (Optional[str]): Raw ``phone_number`` value.
+
+        Returns:
+            Optional[str]: The trimmed number, or ``None`` when blank.
+
+        Raises:
+            MTCompanyInvalidPhoneNumber: If the value is neither ``None`` nor a
+                string of plausible length.
+
+        Notes:
+            Deliberately looser than the assistant's ``PhoneNumber``. That one
+            is dialled by the application; this one is printed on a quote, and
+            an agency whose papers carry a switchboard number written
+            "01 23 45 67 89 (poste 12)" should not be refused for it.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise MTCompanyInvalidPhoneNumber(
+                f"Invalid phone_number: {value!r}. Must be a string or None."
+            )
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        if len(trimmed) > cls.MAX_REGISTRATION_LENGTH:
+            raise MTCompanyInvalidPhoneNumber(
+                f"Invalid phone_number: {trimmed!r}. Must be at most "
+                f"{cls.MAX_REGISTRATION_LENGTH} characters."
+            )
+        return trimmed

@@ -8,8 +8,8 @@ from typing import Any, List
 import pytest
 
 # First-party imports
-from models.people.driving_license import DrivingLicense
-from models.people.exceptions import (
+from models.people.hca.driving_license import DrivingLicense
+from models.people.hca.exceptions import (
     MTDrivingLicenseInvalidCategories,
     MTDrivingLicenseInvalidExpiresOn,
     MTDrivingLicenseInvalidNumber,

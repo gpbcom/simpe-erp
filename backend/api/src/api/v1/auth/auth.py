@@ -11,9 +11,9 @@ from api.dependencies import get_auth_service, get_current_user
 from models.auth.access_token import AccessToken
 from models.auth.user import User
 from models.enums import UserRole
-from models.schemas.requests.login_request import LoginRequest
-from models.schemas.requests.register_request import RegisterRequest
-from models.schemas.responses.user_response import UserResponse
+from models.schemas.requests.auth.login_request import LoginRequest
+from models.schemas.requests.auth.register_request import RegisterRequest
+from models.schemas.responses.auth.user_response import UserResponse
 from service.auth.auth import AuthService
 
 logger: Logger = getLogger(__name__)

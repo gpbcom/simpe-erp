@@ -12,11 +12,13 @@
         ▼
   RabbitMQ  exchange simple-erp (topic, durable)
         │
-        ├──▶ queue quote-notifications ──▶ WorkerRunner  writes one Notification
-        │                                                per supervisor, then
-        │                                                publishes notification.created
+        ├──▶ queue quote-notifications ──▶ worker-notifications
+        │                                     writes one Notification per
+        │                                     supervisor, then publishes
+        │                                     notification.created
         │
-        └──▶ queue planning-runs ───────▶ WorkerRunner   runs the CP-SAT solve
+        └──▶ queue planning-runs ───────▶ worker-planning
+                                              runs the CP-SAT solve
         │
         ▼
   API   per-instance exclusive queue ──▶ NotificationStreams ──▶ SSE ──▶ browser
@@ -25,16 +27,19 @@
   browser  refetches GET /api/v1/notifications             ← where the news lives
 ```
 
-**Two classes, end to end.** `WorkerRunner` is everything the worker consumes and
-everything it does; `NotificationStreams` is every reader an API instance is
-holding and the framing they are served. There is no notification service and no
+**Two classes and two deployments.** `WorkerRunner` is everything a worker
+consumes and everything it does; which half it does is decided by its
+`WorkerRole` — `worker planning` or `worker notifications`, one image, two
+Deployments. `NotificationStreams` is every reader an API instance is holding
+and the framing they are served. There is no notification service and no
 separate handler object between them — a passthrough over `NotificationRepository`
 and a callback the runner had to hand back to its own handlers, respectively.
 
 ## Topology
 
-One durable topic exchange, `simple-erp`. Durable queues, publisher confirms, manual
-acknowledgement, `prefetch=1`, and a `simple-erp.dlx` dead-letter exchange.
+One durable topic exchange, `simple-erp`. **Quorum** queues, publisher
+confirms, manual acknowledgement, `prefetch=1`, and a `simple-erp.dlx`
+dead-letter exchange.
 
 **Every routing key ends in an agency**, and every queue is that agency's own.
 `EventRoutingKey` holds the *event* half; the whole key is
@@ -42,20 +47,61 @@ acknowledgement, `prefetch=1`, and a `simple-erp.dlx` dead-letter exchange.
 
 | Routing key | Queue | Consumer | Effect |
 |---|---|---|---|
-| `quote.submitted.<company>` | `quote-notifications.<company>` | worker | A notification per manager and admin of the agency |
-| `quote.validated.<company>` | `quote-notifications.<company>` | worker | A notification for the author |
-| `quote.refused.<company>` | `quote-notifications.<company>` | worker | A notification for the author |
-| `planning.run.requested.<company>` | `planning-runs.<company>` | worker | Runs the solve |
-| `planning.run.completed.<company>` | `quote-notifications.<company>` | worker | Notifies supervisors — **only on failure** |
-| `company.created.<company>` | exclusive, per worker | worker | Binds the new agency's queues |
+| `quote.submitted.<company>` | `quote-notifications.<company>` | worker-notifications | A notification per manager and admin of the agency |
+| `quote.validated.<company>` | `quote-notifications.<company>` | worker-notifications | A notification for the author |
+| `quote.refused.<company>` | `quote-notifications.<company>` | worker-notifications | A notification for the author |
+| `planning.run.requested.<company>` | `planning-runs.<company>` | worker-planning | Runs the solve |
+| `planning.run.completed.<company>` | `quote-notifications.<company>` | worker-notifications | Notifies supervisors — **only on failure** |
+| `skill.added.<company>` | `quote-notifications.<company>` | worker-notifications | Notifies every manager and admin that somebody declared a skill |
+| `company.created.<company>` | exclusive, per worker | **both** roles | Binds the new agency's queues |
 | `notification.created.<company>` | exclusive, per API instance | **API** | Wakes the readers that instance holds |
+
+`skill.added` is the one topic here raised by a **subordinate** rather than by
+the quote workflow or the solver, and it is what makes a self-declared skill
+safe to take effect without approval. Somebody adding one silently widens what
+the planner may send them to; the notification is what leaves a supervisor able
+to challenge it before the next run acts on it. It carries no `quote_id`, which
+is why `NotificationKind.concerns_a_quote` had to stop being written as "not
+the planning one" — a skill notification rendered as a link would be a dead
+one.
 
 **Two queues, not one, and then one set per agency.** A solve pins a core for
 thirty seconds; sharing a queue with the notification fan-out would leave a
 manager waiting half a minute to be told a quote needs looking at. Splitting
 again by agency means one agency's backlog or poison message is its own, rather
-than something every other agency waits behind. The dead-letter queues are
-per-agency too, so reading one agency's failures is not reading everybody's.
+than something every other agency waits behind.
+
+### Quorum, and why it cannot be changed later
+
+RabbitMQ 4 **removed** mirrored queues. A durable *classic* queue on a cluster
+therefore lives on exactly one node and goes with it, taking every planning run
+nobody had picked up yet — and durability and replication look identical in a
+single-node development stack, which is where the arrangement was written.
+
+The queues are declared `x-queue-type: quorum`, replicated by Raft, with an
+`x-delivery-limit`. That limit is protection against a message that poisons the
+*process* rather than the handler: a handler that raises already dead-letters,
+but one that is **killed** — an out-of-memory solve — never returns to reject
+anything, and without a limit the broker redelivers it for ever, taking a worker
+down on each attempt.
+
+**Redeclaring an existing classic queue as quorum is a `PRECONDITION_FAILED`,
+not an upgrade.** A deployment that ran on classic queues needs them drained and
+deleted once, which is why it was done while there was at most one deployment to
+drain.
+
+### One dead-letter queue per role, not per agency
+
+The per-agency arrangement read well and did not scale: at a few hundred
+agencies it is a few hundred extra queues, each a Raft cluster of its own,
+holding failures that arrive at a rate of nearly none.
+
+There is now one per role — `planning-runs.dlx`, `quote-notifications.dlx` —
+bound to that role's own topics across every agency rather than to `#`. The
+exchange is shared between the roles, so a catch-all binding would put planning
+failures and notification failures in one queue and leave a reader unable to
+tell which worker had given up on what. The agency is still the last field of
+every routing key, so one agency's failures remain one selector away.
 
 **`company_id` is a required parameter of `publish()`, with no default.** It
 decides which agency's queue a message lands in, so a default would mean a
@@ -113,6 +159,24 @@ morning's.
 `envelope.string_field(name)` returns `None` for both a missing field and a
 malformed one — which is what a handler wants either way, and stops every
 handler repeating the same three checks.
+
+### The one field that is not about the event
+
+`traceparent` carries W3C trace context across the broker. Every instrumentation
+library propagates it over HTTP and **none of them does it over a broker**, so
+without this a trace stops at `POST /api/v1/planning/runs` — and the thirty
+seconds that actually matter are attributed to nothing.
+
+It is **nullable**, because a queue is not drained the instant a deployment
+lands: messages written by the previous version are still in it, and a required
+field would dead-letter every one of them.
+
+A malformed one is **refused** rather than dropped. Extracted leniently it would
+be ignored and a *new* trace begun, so the solve appears to have started on its
+own with no request behind it — which reads as a complete picture, and is the
+reason that is worse than no trace at all. The check is the specification's own
+shape: four hyphen-separated fields, lower-case hexadecimal, and neither
+identifier all zeroes.
 
 ## Acknowledgement and failure
 

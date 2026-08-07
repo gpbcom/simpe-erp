@@ -10,11 +10,15 @@ from sqlalchemy.exc import IntegrityError
 
 # First-party imports
 from models.catalog.intervention_type import InterventionType
+from service.certifications.certifications import CertificationTypeService
+from service.certifications.exceptions import MTCertificationTypeUnknownCode
+from service.skills.skills import SkillTypeService
+from service.skills.exceptions import MTSkillTypeUnknownCode
 from service.intervention_types.exceptions import (
     MTInterventionTypeAlreadyExists,
     MTInterventionTypeNotFound,
 )
-from storage.repositories.intervention_type import InterventionTypeRepository
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository
 
 
 class InterventionTypeService:
@@ -22,6 +26,10 @@ class InterventionTypeService:
 
     Attributes:
         types (InterventionTypeRepository): The catalog store.
+        certifications (Optional[CertificationTypeService]): The certification
+            catalogue, consulted before a requirement is stored.
+        skills (Optional[SkillTypeService]): The skill catalogue, consulted the
+            same way and for the same reason.
         logger (Logger): Logger for catalog operations.
 
     Notes:
@@ -33,18 +41,97 @@ class InterventionTypeService:
     def __init__(
         self,
         types: InterventionTypeRepository,
-        logger: Optional[Logger] = None,  # noqa: E501
+        certifications: Optional[CertificationTypeService] = None,
+        skills: Optional[SkillTypeService] = None,
+        logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the service.
 
         Args:
             types (InterventionTypeRepository): The catalog store.
+            certifications (Optional[CertificationTypeService]): The
+                certification catalogue. Optional so a caller that only reads
+                the catalog need not build one; a write naming a requirement
+                without it is refused rather than stored unchecked.
+            skills (Optional[SkillTypeService]): The skill catalogue, optional
+                on the same terms.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
         self.types = types
+        self.certifications = certifications
+        self.skills = skills
         self.logger = logger if logger else getLogger(__name__)
         self.logger.debug("InterventionTypeService created.")
+
+    ############################
+    # Internal Helpers Methods #
+    ############################
+
+    async def _assert_requirements_known(self, codes: List[str]) -> None:
+        """Refuse a requirement naming a code the catalogue does not offer.
+
+        Args:
+            codes (List[str]): The certification codes being stored.
+
+        Raises:
+            MTCertificationTypeUnknownCode: If any code is unknown or retired,
+                or if no certification catalogue is available to check against.
+
+        Notes:
+            **The integrity check a foreign key cannot make.** The codes live
+            in a JSON array, so nothing at the database level would stop a typo
+            being stored — and a requirement nobody can satisfy fails every
+            planning run it touches, with a message that reads as a staffing
+            problem rather than as the typo it is.
+
+            A service built without the catalogue refuses rather than skipping
+            the check. Storing a requirement unchecked is the one outcome worse
+            than refusing the write.
+        """
+        if not codes:
+            return
+        if self.certifications is None:
+            self.logger.error(
+                "A requirement naming %d certification code(s) cannot be "
+                "checked: no certification catalogue is available.",
+                len(codes),
+            )
+            raise MTCertificationTypeUnknownCode(
+                "Certification requirements cannot be verified; the "
+                "certification catalogue is unavailable."
+            )
+        await self.certifications.assert_known(codes)
+
+    async def _assert_skills_known(self, codes: List[str]) -> None:
+        """Refuse a requirement naming a skill code the catalogue lacks.
+
+        Args:
+            codes (List[str]): The skill codes being stored.
+
+        Raises:
+            MTSkillTypeUnknownCode: If any code is unknown or retired, or if no
+                skill catalogue is available to check against.
+
+        Notes:
+            The twin of :meth:`_assert_requirements_known`, and separate from
+            it rather than folded in. The two catalogues answer different
+            questions, and a message that named the wrong one would send
+            somebody to look for a typo in the list that did not have it.
+        """
+        if not codes:
+            return
+        if self.skills is None:
+            self.logger.error(
+                "A requirement naming %d skill code(s) cannot be checked: no "
+                "skill catalogue is available.",
+                len(codes),
+            )
+            raise MTSkillTypeUnknownCode(
+                "Skill requirements cannot be verified; the skill catalogue is "
+                "unavailable."
+            )
+        await self.skills.assert_known(codes)
 
     #############################
     # Publicly Exposed Mzethods #
@@ -61,11 +148,19 @@ class InterventionTypeService:
 
         Raises:
             MTInterventionTypeAlreadyExists: If the name or the code is taken.
+            MTCertificationTypeUnknownCode: If it requires a qualification the
+                certification catalogue does not offer.
+            MTSkillTypeUnknownCode: If it requires a skill the skill catalogue
+                does not offer.
         """
         self.logger.info(
             "Adding intervention type %s to the catalog.",
-            intervention_type.name,  # noqa: E501
+            intervention_type.name,
         )
+        await self._assert_requirements_known(
+            intervention_type.required_certification_codes
+        )
+        await self._assert_skills_known(intervention_type.required_skill_codes)
         try:
             return await self.types.create(intervention_type)
         except IntegrityError as exc:
@@ -111,8 +206,16 @@ class InterventionTypeService:
         Raises:
             MTInterventionTypeNotFound: If no such type exists.
             MTInterventionTypeAlreadyExists: If the new name or code is taken.
+            MTCertificationTypeUnknownCode: If it requires a qualification the
+                certification catalogue does not offer.
+            MTSkillTypeUnknownCode: If it requires a skill the skill catalogue
+                does not offer.
         """
         self.logger.info("Updating intervention type %s.", intervention_type.id)
+        await self._assert_requirements_known(
+            intervention_type.required_certification_codes
+        )
+        await self._assert_skills_known(intervention_type.required_skill_codes)
         try:
             updated = await self.types.update(intervention_type)
         except IntegrityError as exc:

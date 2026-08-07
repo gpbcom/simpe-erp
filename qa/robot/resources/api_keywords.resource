@@ -42,9 +42,21 @@ Unique Suffix
     ...
     ...    This is what lets the campaign run twice against the same stack. A
     ...    fixture named ``QA-DEVIS`` collides on the second run; one named
-    ...    ``QA-DEVIS-20260806-085301-4821`` does not.
+    ...    ``QA-DEVIS-20260806-085301-4821x`` does not.
+    ...
+    ...    **The random part carries the uniqueness, not the timestamp.** The
+    ...    stamp has one-second granularity, so it distinguishes nothing between
+    ...    two workers that start a fixture in the same second — which is the
+    ...    normal case once the campaign is sharded across parallel runs. Four
+    ...    digits gave a collision every ten thousand draws per pair, and a
+    ...    collision here presents as a mysterious 409 in an unrelated suite.
+    ...
+    ...    Eight alphanumerics instead: ~2.8e12 combinations, and letters as
+    ...    well as digits so a suffix cannot be mistaken for a reference number.
+    ...    The stamp stays because it is what makes a leftover fixture readable
+    ...    when one does survive a failed teardown.
     ${stamp}=    Get Current Date    result_format=%Y%m%d-%H%M%S
-    ${random}=    Generate Random String    4    [NUMBERS]
+    ${random}=    Generate Random String    8    [LETTERS][NUMBERS]
     RETURN    ${stamp}-${random}
 
 Create A Draft Quote As
@@ -302,3 +314,79 @@ Agency Named
     ...    [c for c in $response.json() if c["name"]=="""${name}"""]
     ${found}=    Set Variable If    ${matching}    ${matching}[0]    ${None}
     RETURN    ${found}
+
+Ensure A Planning Has Been Computed
+    [Documentation]    Compute a planning if the window has no visits in it.
+    ...
+    ...    **Three suites read a planning they do not create.** The calendar
+    ...    (08), the map (09) and the team planning (17) all assert on visits
+    ...    that only exist once suite 19 has pressed *compute*. The seeder
+    ...    writes quotes, not interventions, so on a virgin database there is
+    ...    nothing to draw.
+    ...
+    ...    Two of them already degrade gracefully — 08 and 17 carry ``Skip If``
+    ...    on an empty window — but 09 asserts ``${pins} > 0`` four times with
+    ...    no guard at all, so it simply fails. That is latent today and only
+    ...    hidden because a long-lived stack has always already had a planning
+    ...    computed into it.
+    ...
+    ...    **Suite order cannot fix this.** Robot runs a directory's suites in
+    ...    *name* order, so 08, 09 and 17 sort before 19 under every possible
+    ...    arrangement, sharded or not. The precondition has to be asked for.
+    ...
+    ...    Keyed on *interventions in the window*, never on the status of the
+    ...    newest run: suite 28 deliberately leaves a FAILED run at the head of
+    ...    the list, and a status check would answer "no planning" for a stack
+    ...    that has a perfectly good one — then pay a thirty-second solve to
+    ...    prove itself wrong.
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${monday}=    The Monday Of The Planned Week
+    ${sunday}=    Add Time To Date    ${monday}    6 days    result_format=%Y-%m-%d
+    ${params}=    Create Dictionary    period_start=${monday}    period_end=${sunday}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/planning/hcas
+    ...    params=${params}    headers=${headers}    expected_status=200
+    ${visits}=    Evaluate
+    ...    sum(len(p["interventions"]) for p in $response.json())
+    IF    ${visits} > 0
+        Log    The window already holds ${visits} visit(s).    console=${True}
+        RETURN
+    END
+    Log    No visit in the window; computing a planning first.    console=${True}
+    POST
+    ...    ${API_URL}/api/v1/planning/runs
+    ...    params=${params}    headers=${headers}    expected_status=202
+    Wait Until Keyword Succeeds    90s    3s    A Planning Covers The Window
+
+A Planning Covers The Window
+    [Documentation]    Fail until the planned week holds at least one visit.
+    ...
+    ...    Asserted on the *result* rather than on the run's status, for the
+    ...    reason given in ``Ensure A Planning Has Been Computed``: another
+    ...    suite's failed run may be newer than ours.
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${monday}=    The Monday Of The Planned Week
+    ${sunday}=    Add Time To Date    ${monday}    6 days    result_format=%Y-%m-%d
+    ${params}=    Create Dictionary    period_start=${monday}    period_end=${sunday}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/planning/hcas
+    ...    params=${params}    headers=${headers}    expected_status=200
+    ${visits}=    Evaluate
+    ...    sum(len(p["interventions"]) for p in $response.json())
+    Should Be True    ${visits} > 0    msg=The planning run placed nothing.
+
+The Monday Of The Planned Week
+    [Documentation]    Return the Monday the seeder plans its work into.
+    ...
+    ...    Computed the same way the seeder computes it rather than written
+    ...    down, so the window follows the seeded data instead of going stale
+    ...    the day after it was typed. Suite 19 has its own copy of this for
+    ...    historical reasons; this is the one the shared precondition uses.
+    ${today}=      Get Current Date    result_format=%Y-%m-%d
+    ${weekday}=    Convert Date    ${today}    result_format=%w
+    ${ahead}=      Evaluate    7 - int(${weekday}) if int(${weekday}) > 0 else 1
+    ${monday}=     Add Time To Date    ${today}    ${ahead} days
+    ...    result_format=%Y-%m-%d
+    RETURN    ${monday}

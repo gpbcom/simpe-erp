@@ -1,6 +1,6 @@
 # SimpleERP — documentation
 
-Twelve chapters. Each answers a different question, and the table says which.
+Fourteen chapters. Each answers a different question, and the table says which.
 
 If you are new to the codebase, read **01** and **02** and stop there — they are
 enough to find your way around. Come back for the rest when you need them.
@@ -19,6 +19,8 @@ enough to find your way around. Come back for the rest when you need them.
 | 10 | [Testing](10-testing.md) | The three campaigns, what each covers, and how to run them |
 | 11 | [Security](11-security.md) | Authentication, the role model, the row-level checks, and the known gaps |
 | 12 | [Conventions](12-conventions.md) | The house style, and the rules a change is reviewed against |
+| 13 | [Kubernetes](13-kubernetes.md) | How it scales, which autoscaler watches what, and the ceilings that were measured |
+| 14 | [Observability](14-observability.md) | What it reports about itself, what is alerted on, and where LangChain will fit |
 
 ---
 

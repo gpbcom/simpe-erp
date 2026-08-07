@@ -4,10 +4,10 @@ Three campaigns, answering three different questions.
 
 | Campaign | Question | Size |
 |---|---|---|
-| **pytest** — unit | Does each piece behave? | 938 test functions, hermetic |
+| **pytest** — unit | Does each piece behave? | 1500 test functions, hermetic |
 | **pytest** — integration | Do the real services actually work? | 3, needing the stack |
-| **Vitest** | Do the front-end's own units behave? | 8 |
-| **Robot Framework** | Does the product work, in a browser, end to end? | 216 across 25 suites |
+| **Vitest** | Do the front-end's own units behave? | 30 |
+| **Robot Framework** | Does the product work, in a browser, end to end? | 288 across 31 suites |
 
 ## Backend — unit
 
@@ -45,7 +45,7 @@ and this is what catches it.
 ## Backend — integration
 
 ```sh
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml up -d
 cd backend && uv run pytest -m integration
 ```
 
@@ -77,15 +77,29 @@ formatters, the initials fallback the map pins use, and `QuoteStatusChip` —
 including that `pending-validation` really renders amber, because if it renders
 like a draft the manager's queue is invisible in a list of ninety.
 
+`LineCertifications` is the other one, and it is here rather than in the GUI
+campaign because what it holds is a **three-state** value the browser cannot
+show apart: inherit, override, and require-nothing. Unticking "inherit" must
+hand back the inherited codes rather than an empty list, and an emptied
+override must not fall back to showing the service's chips — collapsing either
+pair silently reinstates a requirement somebody deliberately removed, and
+neither is visible as a difference on screen.
+
+`LineSkills` is tested the same way and separately, rather than by
+parameterising the certification suite. The two sit on the same quote line, so
+the last case asserts their test ids do **not** collide — ids that did would
+make the GUI campaign operate whichever the DOM happened to yield first, and
+the two requirements are satisfied from different places.
+
 ## GUI campaign
 
 ```sh
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d --build
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml up -d --build
 pip install -r qa/requirements.txt && rfbrowser init
 robot --outputdir qa/results qa/robot/suites
 ```
 
-25 suites, 216 tests, driving Chromium through Playwright against the real API.
+31 suites, 288 tests, driving Chromium through Playwright against the real API.
 
 | Suite | Covers |
 |---|---|
@@ -99,7 +113,7 @@ robot --outputdir qa/results qa/robot/suites
 | 08 calendar | Three views, four controls, day bounds, drawer |
 | 09 map | Pins, tooltips, windows, pin-count = list-count |
 | 10 quote grids | Tabs, sort, page, conditional actions |
-| 11 certifications | Full add → save → remove cycle |
+| 11 certifications | Full add → save → remove cycle, with the qualification **picked from the catalogue** — the code is resolved at run time, since a picker that hides what is already held has no fixed option |
 | 12 routing & access | Guards reached by **typed URL**, rejected token |
 | 13 portfolio | Cards, search, scoping asserted as a number |
 | 14 account form | Every field, save, re-geocoding, locked fields preserved |
@@ -108,11 +122,18 @@ robot --outputdir qa/results qa/robot/suites
 | 17 team planning | The manager's who-and-when view: everybody, then one assistant, and that the narrowing really hides the others |
 | 18 promotion | Granting an assistant an account, and taking it back |
 | 19 planning computation | The solver run, end to end |
-| 23 account by role | Every role gets an account page; employment locked for an assistant, editable for a manager; privileged fields refused |
-| **24 customer file** | The beneficiary's file, ending an arrangement, and renewal |
+| 23 account by role | Every role gets an account page **and a portrait control**; employment locked for an assistant, editable for a manager; privileged fields refused |
+| **24 customer file** | Registering a beneficiary, their file, ending an arrangement, and renewal |
 | **20 quote editor** | Editing a quote, and who is allowed to — from both sides |
 | 21 account credentials | The forced first change, and changing a password afterwards |
 | **22 administration** | Navigation by role, the agency screen, and per-service pricing |
+| 25 certification catalogue | What the agency recognises, and the code everything else is keyed on |
+| 26 field employee | Who the planner may schedule, and who decides it |
+| 27 person deletion | Removing a person, what it costs, and what the planning does about it |
+| 28 required certifications | A service that requires a qualification, end to end |
+| 31 skills | The catalogue, an assistant declaring one on their own account, and a manager withdrawing it |
+| 29 planning rules | The agency's working hours, and which days each assistant works |
+| 30 quote language | The language a quote is emailed in, stored on the account |
 | 99 coverage | Merges the raw V8 output into one report |
 
 Suite 05 is the one to read first: it is the only test that exercises the

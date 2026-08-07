@@ -28,3 +28,9 @@ service dates so a planning run has something to place.
 Credentials are printed at the end of every run — `admin@simple-erp.fr`,
 `manager@simple-erp.fr`, `firstname.lastname@simple-erp.fr`, all with
 `simple-erp-demo-2026`.
+
+One of those assistants — `marc.dubois@simple-erp.fr` — is seeded with the
+**manager** role rather than the assistant one, so the agency has somebody who
+manages *and* still covers rounds. Without them, no account held both a
+manager's role and an assistant record, and the parts of the account page that
+need both were unreachable.

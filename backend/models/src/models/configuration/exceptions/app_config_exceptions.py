@@ -26,6 +26,10 @@ class MTAppConfigInvalidGeocoding(MTInvalidAppConfigException):
     """Exception raised when an invalid ``geocoding`` section is provided."""
 
 
+class MTAppConfigInvalidObservability(MTInvalidAppConfigException):
+    """Exception raised when the ``observability`` section is not a mapping."""
+
+
 class MTAppConfigInvalidS3(MTInvalidAppConfigException):
     """Exception raised when an invalid ``s3`` section is provided."""
 

@@ -15,8 +15,8 @@ from models.schemas.exceptions import (
     MTReadinessResponseInvalidDatabase,
     MTReadinessResponseInvalidStatus,
 )
-from models.schemas.responses.health_response import HealthResponse
-from models.schemas.responses.readiness_response import ReadinessResponse
+from models.schemas.responses.observability.health_response import HealthResponse
+from models.schemas.responses.observability.readiness_response import ReadinessResponse
 
 
 class TestHealthResponse:

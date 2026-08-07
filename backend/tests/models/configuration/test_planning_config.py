@@ -16,6 +16,7 @@ from models.configuration.exceptions import (
     MTPlanningConfigInvalidLunchWindow,
     MTPlanningConfigInvalidPenalty,
     MTPlanningConfigInvalidSolverTimeLimit,
+    MTPlanningConfigInvalidSolverWorkers,
     MTPlanningConfigInvalidSpeed,
 )
 from models.configuration.planning_config import PlanningConfig
@@ -159,6 +160,62 @@ class TestPlanningConfig:
         """A non-positive solver budget is rejected."""
         with pytest.raises(MTPlanningConfigInvalidSolverTimeLimit):
             PlanningConfig(solver_time_limit_seconds=invalid_limit)
+
+    # ------------------------------------------------------------------ #
+    #  solver_workers validation
+    # ------------------------------------------------------------------ #
+
+    def test_the_thread_count_is_configurable(self) -> None:
+        """**A deployment can match it to the CPU it actually grants.**
+
+        Notes:
+            It was hard-coded at eight against a two-core container. The budget
+            beside it is *wall-clock*, so under a container CPU limit the extra
+            threads do not merely fail to help: the kernel throttles the whole
+            cgroup, and a thirty-second budget takes a minute of real time while
+            the run still reports as having used its budget.
+        """
+        assert PlanningConfig(solver_workers=2).solver_workers == 2
+
+    def test_it_defaults_to_a_single_worker_for_reproducibility(self) -> None:
+        """**The default is about the answer, not about the cores.**
+
+        Notes:
+            It was ``8``, chosen to preserve the behaviour that was hard-coded
+            before the field existed. It is ``1`` now for a different reason
+            entirely: CP-SAT's parallel workers race each other to the
+            incumbent solution, so the plan depends on which one got there
+            first. Re-planning an unchanged week returned 404 minutes of
+            travel, then 371, then 355 — three numbers a manager cannot tell
+            apart from a real improvement, and no way to see whether the quote
+            they just accepted changed anything.
+
+            Raising it trades that determinism back for speed, per
+            deployment and on purpose.
+        """
+        assert PlanningConfig().solver_workers == 1
+
+    @pytest.mark.parametrize(
+        "invalid_workers",
+        [
+            pytest.param(0, id="Invalid - zero"),
+            pytest.param(-1, id="Invalid - negative"),
+            pytest.param(2.0, id="Invalid - float"),
+            pytest.param("8", id="Invalid - string"),
+            pytest.param(True, id="Invalid - bool"),
+            pytest.param(None, id="Invalid - None"),
+        ],
+    )
+    def test_an_invalid_thread_count_raises(self, invalid_workers: Any) -> None:
+        """Zero is refused rather than read as "let the solver decide".
+
+        Notes:
+            CP-SAT takes zero as a request for no search at all: it returns
+            immediately with UNKNOWN, and the run fails looking like an
+            infeasible plan rather than like a misconfiguration.
+        """
+        with pytest.raises(MTPlanningConfigInvalidSolverWorkers):
+            PlanningConfig(solver_workers=invalid_workers)
 
     # ------------------------------------------------------------------ #
     #  objective-term validation

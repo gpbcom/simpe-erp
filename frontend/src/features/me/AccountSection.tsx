@@ -75,7 +75,10 @@ export function AccountSection({ account }: AccountSectionProps) {
     setError(null);
     setSaved(false);
     update.mutate(
-      { full_name: fullName.trim(), email: email.trim() },
+      // The language is sent back unchanged. The payload replaces the whole
+      // account, so omitting it would reset the holder's preference to French
+      // every time they corrected a typo in their name.
+      { full_name: fullName.trim(), email: email.trim(), language: account.language },
       {
         onSuccess: () => setSaved(true),
         onError: (cause) =>

@@ -4,10 +4,6 @@ on:
   push:
     branches: ['**']
   pull_request:
-
-# A second push to the same branch cancels the first. A pipeline this wide
-# would otherwise queue several full runs deep on a busy afternoon, and only
-# the last one's answer matters.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -36,13 +32,6 @@ jobs:
   backend-types:
     name: Backend · ty
     runs-on: ubuntu-latest
-    # NOT blocking yet, and the reason is measured rather than assumed: `ty`
-    # reports 137 diagnostics on src/ today — 80 of them the documented generic
-    # mapper contract (downgraded to warnings in pyproject.toml), leaving ~57
-    # real findings, mostly the Optional[str] identifier pattern. Landing this
-    # blocking would make every pipeline red until that burn-down is finished,
-    # so it reports and does not gate. **Flip `continue-on-error` to false once
-    # `uv run ty check` is clean.**
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +41,6 @@ jobs:
           python-version-file: ${{ env.PYTHON_VERSION_FILE }}
       - run: uv sync --frozen
         working-directory: backend
-      # Pinned: ty is in preview, and its rule set moves between releases. An
-      # unpinned checker turns somebody else's release into our red build.
       - run: uv run --with 'ty==0.0.1a21' ty check
         working-directory: backend
 
@@ -68,8 +55,6 @@ jobs:
           python-version-file: ${{ env.PYTHON_VERSION_FILE }}
       - run: uv sync --frozen
         working-directory: backend
-      # The unit suite is hermetic: in-memory SQLite, every outbound call
-      # stubbed. `-m 'not integration'` is already the default in pyproject.
       - run: uv run pytest -q
         working-directory: backend
 
@@ -98,9 +83,6 @@ jobs:
           --health-interval 10s --health-timeout 5s --health-retries 10
       mailpit:
         image: axllent/mailpit:latest
-        # Load-bearing, not convenience: EmailService._deliver calls login()
-        # unconditionally, so a catcher that refuses authentication fails every
-        # send before a message is ever built.
         env:
           MP_SMTP_AUTH_ACCEPT_ANY: 1
           MP_SMTP_AUTH_ALLOW_INSECURE: 1
@@ -119,17 +101,14 @@ jobs:
           POSTGRES_PASSWORD: simple_erp_ci
           RABBITMQ_PASSWORD: simple_erp_ci
           JWT_SECRET_KEY: ci-only-secret
-        run: uv run pytest -q -m integration -p no:randomly
+        run: uv run pytest -q -m integration -n0
       - name: Run it a second time
         working-directory: backend
         env:
           POSTGRES_PASSWORD: simple_erp_ci
           RABBITMQ_PASSWORD: simple_erp_ci
           JWT_SECRET_KEY: ci-only-secret
-        # The only honest proof that the fixtures clean up after themselves. A
-        # suite that passes once and fails twice is a suite that was asserting
-        # on its own leftovers.
-        run: uv run pytest -q -m integration -p no:randomly
+        run: uv run pytest -q -m integration -n0
 
   frontend-lint:
     name: Front-end · lint & types
@@ -197,11 +176,6 @@ jobs:
           python-version-file: ${{ env.PYTHON_VERSION_FILE }}
       - run: uv sync --frozen
         working-directory: backend
-      # The front-end's types are hand-written, which is a deliberate trade —
-      # FastAPI publishes no securitySchemes and Pydantic splits every model
-      # into Input/Output variants, so a generated client is worse. This job is
-      # the other half of that trade: the schema is regenerated and compared,
-      # so "hand-written" cannot quietly become "out of date".
       - name: Generate the schema
         working-directory: backend
         env:
@@ -217,20 +191,32 @@ jobs:
       - name: Fail if it moved
         run: git diff --exit-code -- openapi.json
 
-  e2e-robot:
-    name: E2E · Robot Framework
+  e2e-shards:
+    name: E2E · shard lists
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 qa/shards/balance.py --check
+
+  e2e-robot:
+    name: E2E · Robot (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    needs: [e2e-shards]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Bring the stack up
         run: |
-          cp .env.example .env
-          docker compose -f docker-compose.yaml -f docker-compose.dev.yaml \
+          # Compose reads .env from the project directory, which is the
+          # directory of the first -f file — not the checkout root.
+          cp infra/compose/.env.example infra/compose/.env
+          docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml \
             up -d --build
 
       - name: Wait for the API and the front-end
@@ -242,17 +228,94 @@ jobs:
             curl -sf http://localhost:5173 >/dev/null && break || sleep 5
           done
           curl -sf http://localhost:8000/ready
+      - name: Cache the campaign's dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/pip
+          key: rf-campaign-${{ runner.os }}-${{ hashFiles('qa/requirements.txt') }}
 
       - name: Install the campaign
         run: |
           pip install -r qa/requirements.txt
-          rfbrowser init --skip-browsers chromium || rfbrowser init
+          rfbrowser init chromium
 
       - name: Run the campaign
-        # Collects V8 coverage while it drives the application; the final suite
-        # merges every suite's raw output into one report. That is what turns
-        # "the campaign covers the front-end" from a claim into a number.
-        run: robot --outputdir qa/results --xunit xunit.xml qa/robot/suites
+        run: |
+          robot --argumentfile qa/shards/4/${{ matrix.shard }}.args \
+            --outputdir qa/results --xunit xunit.xml qa/robot/suites
+
+      - name: Run it a second time
+        run: |
+          robot --argumentfile qa/shards/4/${{ matrix.shard }}.args \
+            --outputdir qa/results-rerun --xunit xunit.xml qa/robot/suites
+
+      - name: Dump the container logs
+        if: failure()
+        run: |
+          docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml \
+            logs --no-color --tail 400
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robot-results-${{ matrix.shard }}
+          path: |
+            qa/results
+            qa/results-rerun
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robot-coverage-raw-${{ matrix.shard }}
+          path: qa/results/coverage-raw
+          retention-days: 14
+
+      - uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Robot Framework (shard ${{ matrix.shard }})
+          path: qa/results/xunit.xml
+          reporter: java-junit
+
+  e2e-coverage:
+    name: E2E · coverage
+    runs-on: ubuntu-latest
+    needs: [e2e-robot]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: robot-coverage-raw-*
+          path: qa/results/shard-coverage
+
+      - name: Fail if a shard's coverage went missing
+        run: |
+          shards=$(ls qa/results/shard-coverage 2>/dev/null | wc -l)
+          echo "$shards of 4 shards reported coverage."
+          test "$shards" -eq 4
+
+      - name: Union the shards' raw output
+        run: |
+          mkdir -p qa/results/coverage-raw
+          cp -r qa/results/shard-coverage/*/. qa/results/coverage-raw/
+          echo "$(ls qa/results/coverage-raw | wc -l) suite(s) recorded coverage."
+
+      - name: Install the campaign
+        run: |
+          pip install -r qa/requirements.txt
+          rfbrowser init --skip-browsers
+
+      - name: Merge every shard's coverage into one report.
+        run: |
+          robot --outputdir qa/results \
+            --variable COVERAGE_RAW_DIR:${{ github.workspace }}/qa/results/coverage-raw \
+            qa/robot/suites/99_coverage_report.robot
 
       - name: Report the measured coverage
         if: always()
@@ -273,40 +336,12 @@ jobs:
             echo "No coverage summary was produced." >&2
           fi
 
-      - name: Run it a second time
-        # Without resetting the stack. This is the only honest proof the
-        # campaign is idempotent: a suite that edits seeded data, or leaves its
-        # own fixtures behind, passes here once and fails here twice.
-        run: robot --outputdir qa/results-rerun --xunit xunit.xml qa/robot/suites
-
-      - name: Dump the container logs
-        if: failure()
-        run: |
-          docker compose -f docker-compose.yaml -f docker-compose.dev.yaml \
-            logs --no-color --tail 400
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: robot-results
-          path: |
-            qa/results
-            qa/results-rerun
-          retention-days: 14
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: frontend-coverage
           path: qa/results/coverage
           retention-days: 14
-
-      - uses: dorny/test-reporter@v1
-        if: always()
-        with:
-          name: Robot Framework
-          path: qa/results/xunit.xml
-          reporter: java-junit
 
   docker-build:
     name: Images · build
@@ -327,6 +362,5 @@ jobs:
           context: ./frontend
           target: production
           push: false
-          build-args: VITE_API_BASE_URL=/api
           cache-from: type=gha
           cache-to: type=gha,mode=max

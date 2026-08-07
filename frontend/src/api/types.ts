@@ -38,9 +38,26 @@ export interface User {
   email: string;
   full_name: string;
   role: UserRole;
+  /**
+   * The language this holder reads the application in.
+   *
+   * @remarks
+   * Stored on the server, not only in `localStorage`, because it decides
+   * what language the quotes emailed to customers are generated in — and
+   * those are built by a background webhook with no browser attached.
+   */
+  language: Language;
   is_active: boolean;
   hca_id: string | null;
   company_id: string | null;
+  /**
+   * The holder's portrait, when they have uploaded one.
+   *
+   * On the *account* rather than only on the assistant record, because every
+   * signed-in person has an account and only some of them are assistants — a
+   * manager had nowhere to put a face at all.
+   */
+  photo_url: string | null;
   must_change_password: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -67,9 +84,113 @@ export interface PostalAddress {
 /** A qualification an assistant holds. */
 export interface Certification {
   name: string;
+  /**
+   * The catalogue entry this qualification instantiates.
+   *
+   * @remarks
+   * Optional, and the free-text `name` stays beside it, because the catalogue
+   * arrived after the records did. Only a coded qualification can be matched
+   * against a service's requirement — an untyped name is a record of something
+   * somebody holds, not a claim the planner can act on.
+   */
+  code: string | null;
   issuer: string | null;
   obtained_on: string | null;
   expires_on: string | null;
+}
+
+/** A qualification the agency recognises. */
+export interface CertificationType {
+  id: string | null;
+  /**
+   * The stable key everything else refers to.
+   *
+   * @remarks
+   * Immutable once created. It is what an assistant's stored qualification and
+   * a service's requirement are matched on, so renaming it would disqualify
+   * every holder on the next planning run.
+   */
+  code: string;
+  label: string;
+  description: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/** A partial edit to a certification-catalogue entry. */
+export interface CertificationTypeUpdate {
+  label?: string;
+  description?: string | null;
+  is_active?: boolean;
+}
+
+/** A skill an assistant declared about themselves. */
+export interface Skill {
+  /**
+   * The identifier a delete addresses.
+   *
+   * @remarks
+   * Present on every stored skill, unlike a {@link Certification}. A skill is
+   * removed one at a time — by its owner, a manager or an administrator — so
+   * the browser has to be able to name the row it means.
+   */
+  id: string | null;
+  name: string;
+  /**
+   * The catalogue entry this skill instantiates.
+   *
+   * @remarks
+   * Optional, and the free-text `name` stays beside it: somebody may declare
+   * something the catalogue has no name for yet. Only a coded skill can be
+   * matched against a service's requirement.
+   */
+  code: string | null;
+  issuer: string | null;
+  obtained_on: string | null;
+  expires_on: string | null;
+}
+
+/**
+ * A skill being declared.
+ *
+ * @remarks
+ * Carries no `id` and no assistant. The server takes the owner from the
+ * credential and mints the identifier, so this payload cannot file a
+ * declaration against a colleague or overwrite an existing one.
+ */
+export interface SkillCreate {
+  name: string;
+  code: string | null;
+  issuer: string | null;
+  obtained_on: string | null;
+  expires_on: string | null;
+}
+
+/** A skill the agency recognises. */
+export interface SkillType {
+  id: string | null;
+  /**
+   * The stable key everything else refers to.
+   *
+   * @remarks
+   * Immutable once created. It is what an assistant's declared skill and a
+   * service's requirement are matched on, so renaming it would un-skill every
+   * holder on the next planning run.
+   */
+  code: string;
+  label: string;
+  description: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/** A partial edit to a skill-catalogue entry. */
+export interface SkillTypeUpdate {
+  label?: string;
+  description?: string | null;
+  is_active?: boolean;
 }
 
 /** An assistant's driving licence. */
@@ -79,6 +200,51 @@ export interface DrivingLicense {
   obtained_on: string | null;
   expires_on: string | null;
 }
+
+/**
+ * A day of the week. Mirrors `Weekday` on the server.
+ *
+ * @remarks
+ * Ordered Monday first, which is both the ISO order and the order the server
+ * sorts a working week into. Rendering from this constant rather than from the
+ * order an API response happens to arrive in keeps the checkboxes from moving
+ * about between saves.
+ */
+export const WEEKDAYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
+/** One of the seven days of the week. */
+export type Weekday = (typeof WEEKDAYS)[number];
+
+/**
+ * The planning rules a manager or administrator owns.
+ *
+ * @remarks
+ * Times are minutes from midnight, not `HH:MM` strings, because that is the
+ * unit the solver works in and the API publishes. The forms convert at the
+ * edge; see `minutesToTime` and `timeToMinutes` in `@/utils/format`.
+ */
+export interface PlanningSettings {
+  id: string;
+  max_intervention_radius_km: number;
+  day_start_minute: number;
+  day_end_minute: number;
+  lunch_break_minutes: number;
+  lunch_window_start_minute: number;
+  lunch_window_end_minute: number;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+/** A language the application, and the documents it emails, speak. */
+export type Language = 'fr' | 'en';
 
 /** A period an assistant cannot work. */
 export interface AvailabilitySlot {
@@ -102,9 +268,41 @@ export interface Hca {
   address: PostalAddress;
   contract_type: ContractType;
   certifications: Certification[];
+  /**
+   * The skills this assistant declared about themselves.
+   *
+   * @remarks
+   * The one planner-visible field its owner writes. A certification is
+   * recorded by a manager; a skill is a claim about what somebody can do, so
+   * they enter it themselves and every supervisor is notified.
+   */
+  skills: Skill[];
   driving_license: DrivingLicense | null;
   photo_url: string | null;
   availability: AvailabilitySlot[];
+  /**
+   * The days of the week this assistant works at all.
+   *
+   * @remarks
+   * The recurring pattern — "never Wednesdays" — as opposed to `availability`,
+   * which records dated absences. The two are separate on purpose: the planner
+   * refuses work on both, but only one of them resolves itself when somebody
+   * comes back from leave.
+   *
+   * Never empty. The server refuses a week nobody works rather than reading it
+   * as a request for the default.
+   */
+  working_weekdays: Weekday[];
+  /**
+   * Whether this person may be placed on an intervention planning.
+   *
+   * @remarks
+   * A property of the person, not of their account's role: a manager who
+   * covers rounds and an assistant on office duties are both ordinary, and
+   * neither is expressible as a `UserRole`. Defaults to `true`, which is what
+   * every record that predates the field already was.
+   */
+  field_employee: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -120,6 +318,29 @@ export interface Customer {
   registration_status: RegistrationStatus;
   created_at: string | null;
   updated_at: string | null;
+}
+
+/**
+ * A customer being registered, before the server stores them.
+ *
+ * @remarks
+ * Narrower than `Customer`: no identifier and no timestamps, which the store
+ * sets. The address carries no coordinate either — geocoding happens server-side
+ * while the payload is validated, and a latitude typed in a browser would be a
+ * second answer that can disagree with the one the planner routes to.
+ */
+export interface NewCustomer {
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+  email: string;
+  address: {
+    street: string;
+    postal_code: string;
+    city: string;
+    country: string;
+  };
+  registration_status: RegistrationStatus;
 }
 
 /** One service on a quote. */
@@ -139,6 +360,25 @@ export interface QuoteLine {
   earliest_start: string;
   latest_end: string;
   duration_minutes: number;
+  /**
+   * The qualifications this line requires, or `null` to inherit the catalogue.
+   *
+   * @remarks
+   * Three states, and the third is why it is nullable. `null` means "whatever
+   * the catalogue entry requires"; an array means "these, instead"; and an
+   * **empty** array means "this hour needs no qualification at all", which is
+   * a real answer when the catalogue's default is wrong for one customer.
+   */
+  required_certification_codes: string[] | null;
+  /**
+   * The skills this line requires, or `null` to inherit the catalogue.
+   *
+   * @remarks
+   * The same three states as `required_certification_codes`, overridden
+   * independently — a line that needs the catalogue's diplomas but no
+   * particular skill is an ordinary thing to want.
+   */
+  required_skill_codes: string[] | null;
   hourly_rate_ht: string | null;
   total_ht: string | null;
   vat_amount: string | null;
@@ -162,6 +402,16 @@ export interface QuoteTypeWeekAggregate {
 /** A priced offer of home care. */
 export interface Quote {
   id: string | null;
+  /**
+   * The agency that offers the work.
+   *
+   * @remarks
+   * Read-only from the client's side. It is taken from the credential when a
+   * quote is created and decides whose accepted work a planning run schedules,
+   * so no payload can set it — see {@link NewQuote} and {@link QuoteLinesEdit},
+   * neither of which carries one.
+   */
+  company_id: string;
   reference: string;
   customer_id: string;
   status: QuoteStatus;
@@ -196,6 +446,24 @@ export interface InterventionType {
   service_category: 'necessity' | 'comfort';
   base_hourly_rate_ht: string | null;
   is_active: boolean;
+  /**
+   * The qualifications an assistant must hold to be given this work.
+   *
+   * @remarks
+   * Empty by default, so nothing already being sold suddenly requires a
+   * diploma nobody holds. A quote line may override it.
+   */
+  required_certification_codes: string[];
+  /**
+   * The skills an assistant must have declared to be given this work.
+   *
+   * @remarks
+   * A second, independent list rather than more entries in the first. The
+   * planner reports the two as different reasons for leaving work unplaced:
+   * "nobody holds DEAES" is a hire, "nobody has declared LEVE-PERSONNE" may be
+   * somebody who can already do it not having said so.
+   */
+  required_skill_codes: string[];
 }
 
 /** One scheduled visit. */
@@ -258,8 +526,25 @@ export interface Company {
   id: string;
   /** Trading name. */
   name: string;
-  /** Registration number, when the agency has been issued one. */
+  /**
+   * Registration number, when the agency has been issued one.
+   *
+   * @remarks
+   * This and the five fields below are what a quote must say about whoever
+   * is making the offer. All are nullable: none has a safe default, and an
+   * agency prints only what it has filled in.
+   */
   registration_number: string | null;
+  /** Legal form, such as SARL, SAS or Association. */
+  legal_form: string | null;
+  /** Share capital in euros, as a decimal string. */
+  share_capital: string | null;
+  /** Trade-register entry, such as "RCS Paris B 123 456 789". */
+  rcs_number: string | null;
+  /** Intra-community VAT number, such as FR12345678901. */
+  vat_number: string | null;
+  /** Contact telephone number. */
+  phone_number: string | null;
   /** Contact address. */
   contact_email: string | null;
   /** Registered address, when one has been recorded. */
@@ -282,6 +567,11 @@ export interface Company {
 export interface CompanyProfileUpdate {
   name: string;
   registration_number: string | null;
+  legal_form: string | null;
+  share_capital: string | null;
+  rcs_number: string | null;
+  vat_number: string | null;
+  phone_number: string | null;
   contact_email: string | null;
   address: PostalAddress | null;
   is_accepting_applications: boolean;
@@ -299,6 +589,23 @@ export interface InterventionTypeUpdate {
   service_category?: 'necessity' | 'comfort';
   base_hourly_rate_ht?: string | null;
   is_active?: boolean;
+  /**
+   * The qualifications this service requires.
+   *
+   * @remarks
+   * Omitted means "leave them alone"; an empty array means "require nothing
+   * from now on". The two are different requests, which is why every field
+   * here is optional and the caller sends only what it changed.
+   */
+  required_certification_codes?: string[];
+  /**
+   * The skills this service requires.
+   *
+   * @remarks
+   * Omitted means "leave them alone"; an empty array means "require nothing
+   * from now on", exactly as for the qualifications above.
+   */
+  required_skill_codes?: string[];
 }
 
 /** The agency-wide rules a catalogue entry is priced against. */
@@ -359,6 +666,23 @@ export interface NewQuoteLine {
   latest_end: string;
   /** How long it takes. */
   duration_minutes: number;
+  /**
+   * The qualifications it requires, or `null` to inherit the catalogue entry.
+   *
+   * @remarks
+   * The dialogs pre-fill this from the chosen service and leave it editable,
+   * exactly as they do the VAT category — only the person writing the quote
+   * knows whether this customer's hours are the ordinary case.
+   */
+  required_certification_codes: string[] | null;
+  /**
+   * The skills it requires, or `null` to inherit the catalogue entry.
+   *
+   * @remarks
+   * Pre-filled from the chosen service and left editable, like the
+   * qualifications above it.
+   */
+  required_skill_codes: string[] | null;
 }
 
 /**
@@ -375,5 +699,20 @@ export interface NewQuote {
   /** Who it is addressed to. */
   customer_id: string;
   /** The services offered. */
+  lines: NewQuoteLine[];
+}
+
+/**
+ * The body of `PUT /quotes/{id}/lines`.
+ *
+ * @remarks
+ * Only the lines, and that is the whole point. The endpoint used to accept a
+ * whole {@link Quote} and read one field of it, so a client could send a
+ * reference, a customer or a status and watch them be quietly ignored — and,
+ * once a quote carried its agency, could have moved one between agencies. The
+ * server now takes this shape, so there is nothing else to send.
+ */
+export interface QuoteLinesEdit {
+  /** The services that replace the stored ones. */
   lines: NewQuoteLine[];
 }

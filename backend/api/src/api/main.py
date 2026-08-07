@@ -6,7 +6,7 @@ import logging
 from logging.config import dictConfig
 import os
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 # Third-party imports
 from fastapi import FastAPI
@@ -28,11 +28,15 @@ from api.middleware.transaction_middleware import TransactionMiddleware
 from api.observability import router as observability_router
 from api.v1.auth.accounts import router as accounts_router
 from api.v1.auth.auth import router as auth_router
+from api.v1.certifications.certifications import (
+    router as certifications_router,
+)
 from api.v1.companies.companies import router as companies_router
 from api.v1.customers.customers import router as customers_router
 from api.v1.hcas.applications import router as hca_applications_router
 from api.v1.hcas.availability import router as availability_router
 from api.v1.hcas.hcas import router as hcas_router
+from api.v1.hcas.skills import router as hca_skills_router
 from api.v1.hcas.photos import router as hca_photos_router
 from api.v1.intervention_types.intervention_types import (
     router as intervention_types_router,
@@ -44,28 +48,42 @@ from api.v1.planning.plannings import router as plannings_router
 from api.v1.planning.runs import router as planning_runs_router
 from api.v1.planning.settings import router as planning_settings_router
 from api.v1.quotes.quotes import router as quotes_router
+from api.v1.skills.skills import router as skills_router
 from api.v1.users.users import router as users_router
 from api.v1.webhooks.webhooks import router as webhooks_router
 from models.geo.postal_address import PostalAddress
 
 logger = logging.getLogger(__name__)
 
+#: Names the logging configuration to use. A container sets it to
+#: ``conf/logger.k8s.yaml``, which writes JSON to stdout and nothing to disk;
+#: unset, the colourised console-and-file configuration is used. An env var
+#: rather than a key in app.yaml because logging has to be configured before
+#: that file is read — a failure loading it is the first thing worth logging.
+LOGGER_PATH_ENV = "SIMPLE_ERP_LOGGER"
+DEFAULT_LOGGER_PATH = "conf/logger.yaml"
 
-def setup_logging(config_path: str = "conf/logger.yaml") -> None:
+
+def setup_logging(config_path: Optional[str] = None) -> None:
     """Configure logging from a YAML file.
 
     Args:
-        config_path (str): Path to the logging configuration.
+        config_path (Optional[str]): Path to the logging configuration.
+            Defaults to what ``SIMPLE_ERP_LOGGER`` names, and to the
+            development configuration when that is unset.
 
     Notes:
         A missing or unreadable file falls back to a basic configuration rather
         than aborting start-up: losing structured logs is bad, refusing to
         serve because of it is worse.
     """
-    resolved = Path(config_path)
+    chosen = config_path if config_path else os.environ.get(
+        LOGGER_PATH_ENV, DEFAULT_LOGGER_PATH
+    )
+    resolved = Path(chosen)
     if not resolved.exists():
         # main.py -> api -> src -> api -> backend
-        resolved = Path(__file__).resolve().parents[3] / config_path
+        resolved = Path(__file__).resolve().parents[3] / chosen
     try:
         with open(resolved, "r", encoding="utf-8") as config_file:
             configuration = yaml.safe_load(config_file)
@@ -183,7 +201,10 @@ app.include_router(customers_router)
 app.include_router(hca_photos_router)
 app.include_router(hcas_router)
 app.include_router(availability_router)
+app.include_router(hca_skills_router)
 app.include_router(intervention_types_router)
+app.include_router(certifications_router)
+app.include_router(skills_router)
 app.include_router(quotes_router)
 app.include_router(notifications_router)
 # Mounted after the manager-facing routers: /api/v1/me is a distinct prefix,

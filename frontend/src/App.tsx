@@ -12,6 +12,8 @@ import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage';
 import { MyAccountPage } from '@/features/me/MyAccountPage';
 import { CompanyPage } from '@/features/company/CompanyPage';
 import { CustomersPage } from '@/features/customers/CustomersPage';
+import { CertificationsPage } from '@/features/certifications/CertificationsPage';
+import { SkillsPage } from '@/features/skills/SkillsPage';
 import { InterventionTypesPage } from '@/features/catalog/InterventionTypesPage';
 import { MyCustomersPage } from '@/features/me/MyCustomersPage';
 import { MyPlanningPage } from '@/features/me/MyPlanningPage';
@@ -20,6 +22,7 @@ import { QuotesPage } from '@/features/quotes/QuotesPage';
 import { HcasPage } from '@/features/hcas/HcasPage';
 import { InterventionMapPage } from '@/features/map/InterventionMapPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
+import { PlanningSettingsPage } from '@/features/plannings/PlanningSettingsPage';
 import { TeamPlanningPage } from '@/features/plannings/TeamPlanningPage';
 import { buildTheme } from '@/theme/theme';
 import { hasAtLeast, useSession } from '@/store/session';
@@ -138,6 +141,14 @@ export function App() {
               }
             />
             <Route
+              path="/planning-settings"
+              element={
+                <RoleRoute minimum="manager">
+                  <PlanningSettingsPage />
+                </RoleRoute>
+              }
+            />
+            <Route
               path="/customers"
               element={
                 <RoleRoute minimum="manager">
@@ -150,6 +161,22 @@ export function App() {
               element={
                 <RoleRoute minimum="manager">
                   <InterventionTypesPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/certifications"
+              element={
+                <RoleRoute minimum="manager">
+                  <CertificationsPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/skills"
+              element={
+                <RoleRoute minimum="manager">
+                  <SkillsPage />
                 </RoleRoute>
               }
             />

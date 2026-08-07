@@ -37,6 +37,9 @@ job; it is not something this document can assert on its own.
 | `/intervention-types` | 22 | Grid, agency rules shown read-only, inherited rate printed, rate set and stored, code locked, validity gate |
 | `/customers` | 24 | Grid, search, no-match state, detail drawer, ongoing versus past arrangements |
 | `/company` | 22 | Read without an identifier, saved, blank name refused, manager turned away by URL **and** by the server |
+| `/certifications` | 25, 28 | Grid, what-this-is caption, add, locked code, malformed code refused, label edited, retirement, both delete refusals, delete of an unreferenced entry |
+| `/skills` | 31 | Grid, what-this-is caption, add, locked code, malformed code refused, delete of an unreferenced entry |
+| `/me` — my skills | 31 | An assistant declares one from their own account, the picker stops offering it, the alert says it takes effect at once, and a manager withdraws it |
 | unknown route | 12 | Falls back to the role's home |
 | forbidden route | 12 | Assistant typing `/quotes`, `/hcas`, `/map` is redirected |
 
@@ -54,11 +57,12 @@ job; it is not something this document can assert on its own.
 | `NotificationBell` | 07 | Badge count, popover, unread emphasis, click-through |
 | `NotificationsPage` | 07 | List, unread chip, mark-all, disabled when empty |
 | `QuoteStatusChip` | 10, vitest | Amber for pending, outline for draft, label per status |
+| `MyAccountPage` — employment | 26 | The on-the-rounds flag shown to an assistant as a **locked chip**, and refused to them by the server through both routes that could carry it |
 | `MyAccountPage` | 02, 14, 23 | Portrait fallback, seven fields, save, snackbar, locked chips + tooltip, assistant half absent for a manager |
 | `AccountSection` | 14, 23 | Name and address editable and saved; dirty and validity gates; role, active, agency and binding locked and non-empty; conflict on a taken address shown **on the page** and not stored; privileged field ignored |
 | `InterventionTypesPage` | 22 | Grid, pricing-rules card, inherited-rate rendering; **no VAT-category column**, since that is a per-quote decision |
-| `InterventionTypeDialog` | 22 | Rate saved server-side, code locked on an existing entry, negative rate blocked |
-| `CustomersPage` / `CustomerDetailDrawer` | 24 | Every held field; ongoing arrangements first |
+| `InterventionTypeDialog` | 22, 28 | Rate saved server-side, code locked on an existing entry, negative rate blocked, required qualifications chosen from the catalogue and stored |
+| `CustomersPage` / `CustomerDetailDrawer` | 24, 27 | Every held field; ongoing arrangements first; the delete control, its quote count, and the cascade |
 | `QuoteArrangementCard` | 24 | Renewal switch asserted **server-side**; interruption stores the date, halves the total, keeps the cancelled visit priced; both guards |
 | `CompanyPage` | 22 | Fields, save, validity gate, applications caption, admin-only guard |
 | `PasswordSection` | 14, 21 | All three fields; confirmation mismatch; all-three-required gate; wrong current password reported and *not* applied; a real change confirmed, verified server-side, old password refused |
@@ -71,8 +75,11 @@ job; it is not something this document can assert on its own.
 | `QuoteEditorDialog` — VAT category | 20 | Chosen per line, stored, and the tax asserted to *rise* when it moves to comfort; suggested from the catalogue but overridable |
 | `QuoteEditorDialog` | 20 | Opens on stored lines; save reprices; add, remove, auto-naming; both guards; cancel changes nothing; the pricing hint |
 | `QuoteEditorDialog` — scoping | 20 | Manager edits a quote they did not write; assistant edits only their own, refused server-side on anybody else's; no edit button past draft |
-| `HcasPage` | 11 | Grid, avatars, search, empty search |
-| `HcasPage` — editor | 11 | Open, cancel-changes-nothing, add+save, grid refetch, remove+save |
+| `HcasPage` | 11, 26, 27 | Grid, avatars, search, empty search, the on-the-rounds chip, the delete control |
+| `HcasPage` — editor | 11, 26 | Open, cancel-changes-nothing, add+save, grid refetch, remove+save — the qualification **picked from the catalogue**, never typed, since only a coded one can be matched; the on-the-rounds switch saved and restored |
+| `HcasPage` — deletion | 27 | Confirm dialog, its warning, and the sign-in account going with the record |
+| `CertificationsPage` / `CertificationTypeDialog` | 25 | Every control, both validity gates, and the two refusals that stand in for a foreign key that cannot exist |
+| `LineCertifications` | 28, vitest | Inherit versus override versus require-nothing — the three states asserted apart, since collapsing two of them silently reinstates a requirement somebody removed |
 | `InterventionMapPage` | 09 | Tiles, attribution, pin count = list count, photo-or-initials, tooltip, three windows, counter, zoom |
 | `AppIcon` | 06, 09, 11 | Rendered inside navigation, actions and pins |
 | `RoleRoute` guard | 12 | Typed URLs, both directions |
@@ -93,6 +100,14 @@ job; it is not something this document can assert on its own.
 | Empty — HCA search | 11 |
 | Account with no assistant record | 23 |
 | Catalogue entry inheriting the agency rate | 22 |
+| Catalogue entry requiring no qualification — the default | 28 |
+| Quote line inheriting its service's requirement | 28 |
+| Quote line requiring nothing, against its service | 28 |
+| Certification retired but still held | 25 |
+| Certification referenced, so undeletable | 25 |
+| Assistant off the rounds | 26 |
+| Deletion with nothing to replan — 204, no run queued | 27 |
+| Planning refused: nobody holds the qualification | 28 |
 | Agency-wide rules that cannot be edited on screen | 22 |
 | Conflict — sign-in address already used | 23 |
 | Brand-new account with no history | 21 |
@@ -131,7 +146,7 @@ The rules that make it so:
 ## Running it
 
 ```sh
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up -d --build
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml up -d --build
 pip install -r qa/requirements.txt
 rfbrowser init
 robot --outputdir qa/results qa/robot/suites

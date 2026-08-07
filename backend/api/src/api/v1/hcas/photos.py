@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, File, UploadFile
 # First-party imports
 from api.dependencies import get_app_config, get_hca_service, get_manager_user
 from models.auth.user import User
-from models.schemas.responses.hca_response import HcaResponse
-from models.schemas.responses.photo_constraints_response import (
+from models.schemas.responses.hca.hca_response import HcaResponse
+from models.schemas.responses.hca.photo_constraints_response import (
     PhotoConstraintsResponse,
 )
 from service.hcas.hcas import HcaService

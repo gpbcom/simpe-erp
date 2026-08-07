@@ -2,6 +2,48 @@
 
 Drives the real application in a real browser, against the real API.
 
+## Running a quarter of it
+
+The campaign is partitioned into shards — lists of suites, in
+`qa/shards/{2,3,4}/*.args`. A shard is an ordinary `robot` run with a
+`--suite` filter, so running one needs no extra infrastructure:
+
+```sh
+qa/.venv/bin/robot --argumentfile qa/shards/4/2.args \
+  --outputdir qa/results qa/robot/suites
+```
+
+That is the local win: a quarter of the campaign against the one stack you
+already have up. Pick the shard that covers what you changed.
+
+**The lists are generated, not hand-written.** `qa/shards/balance.py` packs
+suites by measured duration — the campaign is very unevenly weighted, so
+splitting by count would waste most of the parallelism. Re-balance after any
+full run:
+
+```sh
+python3 qa/shards/balance.py qa/results/output.xml   # re-derive and rewrite
+python3 qa/shards/balance.py --check                 # verify the partition
+```
+
+The `--check` mode is what CI runs on every push, and it is the control that
+matters: **Robot does not fail when a `--suite` pattern matches nothing** while
+others match. Rename a suite, or add one and forget the lists, and the campaign
+silently shrinks while every shard stays green.
+
+In CI each shard is a matrix job with its **own runner**, so it gets its own
+stack, its own database and its own mail catcher. That is what makes sharding
+worth doing: nearly all the cross-suite contention in this campaign is
+contention for shared *server* state — the seeded assistant, the validation
+queue, the agency record, the planning runs — and one database per shard means
+it does not arise. On a single shared stack no amount of parallelism gets past
+about 2x, because the group of suites contending for the seeded assistant alone
+is bigger than a balanced quarter.
+
+`99_coverage_report` is in no shard. It reads what the others recorded, so CI
+runs it once, in a join job, over the union of the shards' raw output.
+
+
 ## Running it
 
 The stack has to be up and seeded first:

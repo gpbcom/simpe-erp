@@ -23,7 +23,7 @@ from models.planning.planning_run import PlanningRun
 from models.settings.planning_settings import PlanningSettings
 from service.planning.exceptions import MTPlanningForbidden, MTPlanningRunNotFound
 from service.planning.plannings import PlanningService
-from storage.repositories.planning_settings import PlanningSettingsRepository
+from storage.repositories.planning.planning_settings import PlanningSettingsRepository
 
 MONDAY = date(2026, 8, 3)
 SUNDAY = date(2026, 8, 9)
@@ -88,6 +88,7 @@ def _visit(hca_id: str = "hca-1") -> Intervention:
         Intervention: The visit.
     """
     return Intervention(
+        company_id="company-1",
         id="visit-1",
         planning_run_id="run-1",
         name="Toilette matin",
@@ -119,6 +120,18 @@ def runs() -> AsyncMock:
     """
     repository = AsyncMock()
     repository.get.return_value = None
+    # The real claim is a conditional update that hands back the run it won,
+    # now RUNNING. Returning None would mean "another worker holds it", which
+    # is a case these tests set up explicitly when they want it.
+    repository.claim.side_effect = lambda run_id, started_at: PlanningRun(
+        company_id="company-1",
+        id=run_id,
+        status=PlanningRunStatus.RUNNING,
+        requested_by="admin-1",
+        period_start=MONDAY,
+        period_end=SUNDAY,
+        started_at=started_at,
+    )
     return repository
 
 
@@ -148,6 +161,23 @@ def hcas() -> AsyncMock:
 
 
 @pytest.fixture
+def types() -> AsyncMock:
+    """Return a stand-in catalogue repository.
+
+    Returns:
+        AsyncMock: The repository double, resolving no catalogue entry.
+
+    Notes:
+        An empty catalogue is the right default here: a line whose entry is not
+        loaded is planned as requiring no qualification, which is the state
+        every one of these lifecycle tests is written against.
+    """
+    repository = AsyncMock()
+    repository.get_many.return_value = {}
+    return repository
+
+
+@pytest.fixture
 def planning_settings() -> AsyncMock:
     """Return a stand-in settings store with a wide-open radius.
 
@@ -166,6 +196,7 @@ def service(
     runs: AsyncMock,
     interventions: AsyncMock,
     hcas: AsyncMock,
+    types: AsyncMock,
     planning_settings: AsyncMock,
 ) -> PlanningService:
     """Return a planning service over stand-in repositories.
@@ -174,6 +205,7 @@ def service(
         runs (AsyncMock): The run repository double.
         interventions (AsyncMock): The intervention repository double.
         hcas (AsyncMock): The assistant repository double.
+        types (AsyncMock): The catalogue repository double.
         planning_settings (AsyncMock): The settings-repository double.
 
     Returns:
@@ -185,6 +217,7 @@ def service(
         quotes=AsyncMock(),
         customers=AsyncMock(),
         hcas=hcas,
+        types=types,
         settings=planning_settings,
         config=PlanningConfig(),
     )
@@ -338,8 +371,140 @@ class TestPlanningConfidentiality:
             await service.all_plannings(unbound, MONDAY, SUNDAY)
 
 
+class TestPlanningRunIsScopedToOneAgency:
+    """Tests for the rule that a run only ever reads and writes its own agency."""
+
+    async def test_the_run_decides_whose_work_is_scheduled(
+        self, service: PlanningService, runs: AsyncMock
+    ) -> None:
+        """The workload query is asked for the run's agency, not for everybody.
+
+        Notes:
+            Unscoped, a run built one agency's week out of every agency's
+            accepted work and handed those visits to its own assistants — people
+            who have never met the customers and are not insured to attend them.
+        """
+        runs.get.return_value = PlanningRun(
+            company_id="company-2",
+            id="run-1",
+            status=PlanningRunStatus.PENDING,
+            requested_by="admin-1",
+            period_start=MONDAY,
+            period_end=SUNDAY,
+        )
+        runs.claim.side_effect = lambda run_id, started_at: runs.get.return_value
+        runs.update.side_effect = lambda run: run
+        service.quotes.list_schedulable.return_value = []
+        service.hcas.list_all.return_value = [_hca()]
+
+        await service.execute_run("run-1")
+
+        assert service.quotes.list_schedulable.await_args.args[0] == "company-2"
+
+    async def test_the_run_decides_whose_calendar_is_rewritten(
+        self, service: PlanningService, runs: AsyncMock, interventions: AsyncMock
+    ) -> None:
+        """The replacement is asked for the run's agency too.
+
+        Notes:
+            This is the destructive half. The two have to agree: reading one
+            agency's work and clearing another's period would empty a calendar
+            and fill it with somebody else's visits.
+        """
+        runs.get.return_value = PlanningRun(
+            company_id="company-2",
+            id="run-1",
+            status=PlanningRunStatus.PENDING,
+            requested_by="admin-1",
+            period_start=MONDAY,
+            period_end=SUNDAY,
+        )
+        runs.claim.side_effect = lambda run_id, started_at: runs.get.return_value
+        runs.update.side_effect = lambda run: run
+        service.quotes.list_schedulable.return_value = []
+        service.hcas.list_all.return_value = [_hca()]
+        interventions.replace_for_period.return_value = 0
+
+        await service.execute_run("run-1")
+
+        assert interventions.replace_for_period.await_args.args[0] == "company-2"
+
+    async def test_a_requested_run_records_the_agency_that_asked(
+        self, service: PlanningService, runs: AsyncMock
+    ) -> None:
+        """The agency is stored, not resolved from the requester later.
+
+        Notes:
+            ``requested_by`` carries no foreign key, so the administrator is
+            allowed to be gone by the time a worker picks the run up.
+        """
+        runs.create.side_effect = lambda run: run.model_copy(update={"id": "run-1"})
+
+        run = await service.request_run("admin-1", "company-2", MONDAY, SUNDAY)
+
+        assert run.company_id == "company-2"
+
+
 class TestPlanningRunLifecycle:
     """Tests for requesting, polling and failing a run."""
+
+    # ------------------------------------------------------------------ #
+    #  Claiming
+    # ------------------------------------------------------------------ #
+
+    async def test_a_run_another_worker_holds_is_left_alone(
+        self, service: PlanningService, runs: AsyncMock, interventions: AsyncMock
+    ) -> None:
+        """Losing the claim solves nothing and writes nothing.
+
+        Notes:
+            **A message really is handed to two workers.** It is acknowledged
+            only once its handler returns, so a worker killed mid-solve leaves
+            its run to be redelivered — and the second worker must not solve the
+            same period and overwrite the first's plan.
+        """
+        pending = PlanningRun(
+            company_id="company-1",
+            id="run-1",
+            status=PlanningRunStatus.PENDING,
+            requested_by="admin-1",
+            period_start=MONDAY,
+            period_end=SUNDAY,
+        )
+        runs.get.return_value = pending
+        runs.claim.side_effect = lambda run_id, started_at: None
+
+        finished = await service.execute_run("run-1")
+
+        assert finished is pending
+        service.quotes.list_schedulable.assert_not_awaited()
+        interventions.replace_for_period.assert_not_awaited()
+
+    async def test_losing_the_claim_is_not_a_failure(
+        self, service: PlanningService, runs: AsyncMock
+    ) -> None:
+        """The run is returned as it stands, not marked failed.
+
+        Notes:
+            Recording a failure would put a red run in front of a manager for
+            work that is being done correctly by another worker — and, because
+            the handler dead-letters what raises, would take the message with
+            it.
+        """
+        runs.get.return_value = PlanningRun(
+            company_id="company-1",
+            id="run-1",
+            status=PlanningRunStatus.RUNNING,
+            requested_by="admin-1",
+            period_start=MONDAY,
+            period_end=SUNDAY,
+        )
+        runs.claim.side_effect = lambda run_id, started_at: None
+
+        finished = await service.execute_run("run-1")
+
+        assert finished.status is PlanningRunStatus.RUNNING
+        runs.update.assert_not_awaited()
 
     # ------------------------------------------------------------------ #
     #  Requesting
@@ -357,7 +522,7 @@ class TestPlanningRunLifecycle:
         """
         runs.create.side_effect = lambda run: run.model_copy(update={"id": "run-1"})
 
-        run = await service.request_run("admin-1", MONDAY, SUNDAY)
+        run = await service.request_run("admin-1", "company-1", MONDAY, SUNDAY)
 
         assert run.status is PlanningRunStatus.PENDING
         assert run.requested_by == "admin-1"
@@ -395,6 +560,7 @@ class TestPlanningRunLifecycle:
             ever, so the failure has to land where the client is looking.
         """
         pending = PlanningRun(
+            company_id="company-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -421,6 +587,7 @@ class TestPlanningRunLifecycle:
             status is for.
         """
         pending = PlanningRun(
+            company_id="company-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -449,6 +616,7 @@ class TestPlanningRunLifecycle:
             before it reaches a log.
         """
         runs.get.return_value = PlanningRun(
+            company_id="company-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -510,3 +678,121 @@ class TestPlanningReads:
 
         assert visits[0].name == "Toilette matin"
         assert visits[0].start_time == time(9, 0)
+
+
+class TestPlanningSettingsLifecycle:
+    """Tests for the rules a manager reads and changes."""
+
+    @pytest.fixture
+    def settings(self) -> AsyncMock:
+        """Return a stand-in settings store holding nothing yet.
+
+        Returns:
+            AsyncMock: The store, seeding whatever it is handed.
+        """
+        store = AsyncMock(spec=PlanningSettingsRepository)
+        store.get.return_value = None
+        store.seed.side_effect = lambda model: model
+        store.update.side_effect = lambda model: model
+        return store
+
+    @pytest.fixture
+    def service(self, settings: AsyncMock) -> PlanningService:
+        """Return a planning service over a stand-in settings store.
+
+        Args:
+            settings (AsyncMock): The settings store.
+
+        Returns:
+            PlanningService: The service under test.
+        """
+        return PlanningService(
+            runs=AsyncMock(),
+            interventions=AsyncMock(),
+            quotes=AsyncMock(),
+            customers=AsyncMock(),
+            hcas=AsyncMock(),
+            types=AsyncMock(),
+            settings=settings,
+            config=PlanningConfig(
+                day_start_minute=8 * 60,
+                day_end_minute=19 * 60,
+                lunch_break_minutes=75,
+                lunch_window_start_minute=12 * 60,
+                lunch_window_end_minute=14 * 60,
+                max_intervention_radius_km=25.0,
+            ),
+        )
+
+    async def test_the_whole_working_day_is_seeded_from_configuration(
+        self, service: PlanningService
+    ) -> None:
+        """A fresh install plans on the deployed hours, not on the defaults.
+
+        Notes:
+            All six values are seeded, not just the two that were stored
+            before. Seeding a subset would leave a deployment that had set
+            ``day_start_minute: 480`` planning from 09:00 anyway — the exact
+            failure this feature exists to remove.
+        """
+        seeded = await service.current_settings()
+
+        assert seeded.day_start_minute == 8 * 60
+        assert seeded.day_end_minute == 19 * 60
+        assert seeded.lunch_break_minutes == 75
+        assert seeded.lunch_window_start_minute == 12 * 60
+        assert seeded.lunch_window_end_minute == 14 * 60
+        assert seeded.max_intervention_radius_km == 25.0
+
+    async def test_a_stored_row_is_not_reseeded(
+        self, service: PlanningService, settings: AsyncMock
+    ) -> None:
+        """The configuration is a seed, not a fallback.
+
+        Notes:
+            Treating the file as a live fallback would let a redeployment
+            silently overwrite a manager's decision.
+        """
+        settings.get.return_value = PlanningSettings(
+            max_intervention_radius_km=40.0, day_start_minute=7 * 60
+        )
+        current = await service.current_settings()
+
+        assert current.day_start_minute == 7 * 60
+        settings.seed.assert_not_called()
+
+    async def test_a_change_carries_the_whole_working_day(
+        self, service: PlanningService, settings: AsyncMock
+    ) -> None:
+        """Every field a manager sent reaches the store."""
+        updated = await service.update_settings(
+            max_intervention_radius_km=35.0,
+            day_start_minute=7 * 60 + 30,
+            day_end_minute=18 * 60,
+            lunch_break_minutes=60,
+            lunch_window_start_minute=11 * 60,
+            lunch_window_end_minute=13 * 60,
+            updated_by="user-1",
+        )
+
+        assert updated.day_start_minute == 7 * 60 + 30
+        assert updated.day_end_minute == 18 * 60
+        assert updated.lunch_window_start_minute == 11 * 60
+        assert updated.lunch_window_end_minute == 13 * 60
+        assert updated.updated_by == "user-1"
+        assert settings.update.await_count == 1
+
+    async def test_a_change_records_who_made_it(self, service: PlanningService) -> None:
+        """A day that quietly moved is a question with a name attached."""
+        updated = await service.update_settings(
+            max_intervention_radius_km=30.0,
+            day_start_minute=9 * 60,
+            day_end_minute=20 * 60,
+            lunch_break_minutes=60,
+            lunch_window_start_minute=11 * 60 + 30,
+            lunch_window_end_minute=14 * 60 + 30,
+            updated_by="manager-7",
+        )
+
+        assert updated.updated_by == "manager-7"
+        assert updated.updated_at is not None

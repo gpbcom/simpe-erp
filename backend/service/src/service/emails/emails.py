@@ -6,12 +6,14 @@ from datetime import date, timedelta
 from email.message import EmailMessage
 from logging import Logger, getLogger
 import smtplib
-from typing import ClassVar, List, Optional, Tuple
+from typing import ClassVar, Dict, List, Optional, Tuple
 
 from models.auth.user import User
 
 # First-party imports
 from models.configuration.email_config import EmailConfig
+from models.companies.company import Company
+from models.enums import Language
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.planning.hca_planning import HcaPlanning
@@ -285,33 +287,82 @@ class EmailService:
             payload=Formatter.format_planning(planning),
         )
 
-    async def send_quote(self, quote: Quote, customer: Customer) -> None:
+    QUOTE_EMAIL: ClassVar[Dict[Language, Dict[str, str]]] = {
+        Language.EN: {
+            "subject": "Your quote {reference}",
+            "greeting": "Hello {name},",
+            "body": (
+                "Quote {reference} from {company} is attached, totalling "
+                "{total} € including VAT."
+            ),
+            "automatic": "This message was sent automatically.",
+            "filename": "quote-{reference}.xlsx",
+        },
+        Language.FR: {
+            "subject": "Votre devis {reference}",
+            "greeting": "Bonjour {name},",
+            "body": (
+                "Le devis {reference} de {company} est joint à ce message, "
+                "pour un total de {total} € TTC."
+            ),
+            "automatic": "Ce message a été envoyé automatiquement.",
+            "filename": "devis-{reference}.xlsx",
+        },
+    }
+
+    async def send_quote(
+        self,
+        quote: Quote,
+        customer: Customer,
+        company: Company,
+        language: Language = Language.FR,
+    ) -> None:
         """Send a customer their quote as a spreadsheet.
 
         Args:
             quote (Quote): The quote to send.
             customer (Customer): The customer it is addressed to; supplies the
                 address.
+            company (Company): The agency issuing it, named on the document.
+            language (Language): The language to write the message and the
+                attachment in.
 
         Raises:
             MTEmailNotConfigured: If outbound email is not usable.
             MTEmailNoRecipient: If the customer has no email address.
             MTEmailDeliveryFailed: If the SMTP conversation fails.
+
+        Notes:
+            The message and the attachment are written in the **same** language,
+            from one catalogue. A French covering note over an English
+            spreadsheet is worse than either on its own: it reads as a mistake
+            in a document the customer is being asked to agree to.
+
+            Even the filename is translated. It is the first thing the
+            recipient sees in their attachment list, and often the only thing
+            they see before deciding whether to open it.
         """
+        wording = self.QUOTE_EMAIL[language]
         self.logger.info(
-            "Emailing quote %s to customer %s.", quote.reference, customer.id
+            "Emailing quote %s to customer %s in %s.",
+            quote.reference,
+            customer.id,
+            language.value,
         )
         await self._send(
             recipient=str(customer.email),
-            subject=f"Your quote {quote.reference}",
+            subject=wording["subject"].format(reference=quote.reference),
             body=(
-                f"Hello {customer.full_name()},\n\n"
-                f"Quote {quote.reference} is attached, totalling "
-                f"{quote.total_ttc()} € including VAT.\n\n"
-                f"This message was sent automatically.\n"
+                f"{wording['greeting'].format(name=customer.full_name())}\n\n"
+                f"{wording['body'].format(
+                    reference=quote.reference,
+                    company=company.name,
+                    total=quote.total_ttc(),
+                )}\n\n"
+                f"{wording['automatic']}\n"
             ),
-            filename=f"quote-{quote.reference}.xlsx",
-            payload=Formatter.format_quote(quote, customer),
+            filename=wording["filename"].format(reference=quote.reference),
+            payload=Formatter.format_quote(quote, customer, company, language),
         )
 
     async def send_team_planning(
@@ -348,7 +399,7 @@ class EmailService:
             recipient=str(recipient.email),
             subject=f"Team planning, {period}",
             body=(
-                f"Hello {recipient.full_name},\n\n"
+                f"Hello {recipient.full_name()},\n\n"
                 f"The planning for {period} is attached, with one sheet per "
                 f"assistant ({len(plannings)} in total).\n\n"
                 f"This message was sent automatically when the planning was "
@@ -442,15 +493,29 @@ class EmailService:
         self.logger.info("Delivered %d planning message(s).", delivered)
         return delivered
 
-    async def send_quotes(self, quotes: List[Quote], customers: List[Customer]) -> int:
+    async def send_quotes(
+        self,
+        quotes: List[Quote],
+        customers: List[Customer],
+        company: Company,
+        language: Language = Language.FR,
+    ) -> int:
         """Send every customer behind a computed run their quote.
 
         Args:
             quotes (List[Quote]): The quotes to send.
             customers (List[Customer]): The customers they are addressed to.
+            company (Company): The agency issuing them.
+            language (Language): The language to write them in.
 
         Returns:
             int: How many were delivered.
+
+        Notes:
+            One language for the whole batch, taken from the account that asked
+            for the planning run. A customer-by-customer preference would be a
+            better document but a different feature: customers carry no
+            language, and inventing a default per recipient would mean guessing.
         """
         by_id = {customer.id: customer for customer in customers}
         delivered = 0
@@ -462,7 +527,7 @@ class EmailService:
                 )
                 continue
             try:
-                await self.send_quote(quote, customer)
+                await self.send_quote(quote, customer, company, language)
             except (
                 MTEmailDeliveryFailed,
                 MTEmailNoRecipient,

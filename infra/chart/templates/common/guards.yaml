@@ -1,0 +1,52 @@
+{{/*
+Render-time checks. Nothing here produces an object; the file exists so that a
+values file which cannot work fails `helm template` rather than a deployment.
+
+Each of these is a mistake that is silent at runtime — the pods start, report
+Ready, and do the wrong thing.
+*/}}
+
+{{/*
+solver_workers against the planning worker's CPU limit.
+
+The solver's budget is *wall-clock*. With more threads than cores the kernel
+throttles the whole cgroup, so a thirty-second budget takes a minute of real
+time — and the run still reports as having used its budget, so the only symptom
+is a queue that will not drain. It was hard-coded at 8 against a two-core
+container, which is exactly that shape.
+*/}}
+{{- $cpu := .Values.workerPlanning.resources.limits.cpu -}}
+{{- $workers := .Values.workerPlanning.solverWorkers -}}
+{{- if ne (printf "%v" $cpu) (printf "%v" $workers) }}
+{{- fail (printf "workerPlanning.solverWorkers (%v) must equal workerPlanning.resources.limits.cpu (%v). The solver's budget is wall-clock, so more threads than cores means the kernel throttles the cgroup and thirty seconds of budget takes a minute of real time." $workers $cpu) }}
+{{- end }}
+
+{{/*
+Guaranteed QoS for the planning worker.
+
+Requests must equal limits, or the pod is Burstable and the CPU it was sized
+for is a ceiling rather than a reservation — which is the throttling above,
+arrived at from the other side.
+*/}}
+{{- if ne (printf "%v" .Values.workerPlanning.resources.requests.cpu) (printf "%v" $cpu) }}
+{{- fail (printf "workerPlanning CPU request (%v) must equal its limit (%v): the planning worker needs Guaranteed QoS, or its wall-clock solve budget is throttled away." .Values.workerPlanning.resources.requests.cpu $cpu) }}
+{{- end }}
+
+{{/*
+The grace period against the solve budget.
+
+Kubernetes' default is thirty seconds, which is exactly the budget — so a
+scale-down SIGKILLs mid-solve and the message is redelivered from the start.
+*/}}
+{{- if lt (int .Values.workerPlanning.terminationGracePeriodSeconds) 60 }}
+{{- fail (printf "workerPlanning.terminationGracePeriodSeconds is %v, which does not leave a thirty-second solve time to finish and acknowledge. Kubernetes would SIGKILL mid-solve on every scale-down." .Values.workerPlanning.terminationGracePeriodSeconds) }}
+{{- end }}
+
+{{/*
+The notification worker must not scale to zero.
+
+A badge should be instant, and a cold start is not.
+*/}}
+{{- if eq (int .Values.workerNotifications.scaling.minReplicas) 0 }}
+{{- fail "workerNotifications.scaling.minReplicas must be at least 1: a notification is answered in milliseconds, and a cold start is not." }}
+{{- end }}

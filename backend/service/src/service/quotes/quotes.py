@@ -13,6 +13,10 @@ from models.enums import QuoteStatus
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
+from service.certifications.certifications import CertificationTypeService
+from service.certifications.exceptions import MTCertificationTypeUnknownCode
+from service.skills.skills import SkillTypeService
+from service.skills.exceptions import MTSkillTypeUnknownCode
 from service.quotes.exceptions import (
     MTPricingUnknownInterventionType,
     MTQuoteForbidden,
@@ -20,8 +24,8 @@ from service.quotes.exceptions import (
     MTQuoteNotFound,
     MTQuoteNotPriced,
 )
-from storage.repositories.intervention_type import InterventionTypeRepository
-from storage.repositories.quote import QuoteRepository
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository
+from storage.repositories.quoting.quote import QuoteRepository
 
 
 class QuoteService:
@@ -77,6 +81,8 @@ class QuoteService:
         quotes: QuoteRepository,
         types: InterventionTypeRepository,
         config: PricingConfig,
+        certifications: Optional[CertificationTypeService] = None,
+        skills: Optional[SkillTypeService] = None,
         logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the service.
@@ -86,18 +92,115 @@ class QuoteService:
             types (InterventionTypeRepository): The catalog store.
             CENTS (ClassVar[Decimal]): The quantum every amount is rounded to.
         config (PricingConfig): The agency-wide pricing rules.
+            certifications (Optional[CertificationTypeService]): The
+                certification catalogue, consulted before a line's requirement
+                override is stored.
+            skills (Optional[SkillTypeService]): The skill catalogue, consulted
+                the same way and for the same reason.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
         self.quotes = quotes
         self.types = types
         self.config = config
+        self.certifications = certifications
+        self.skills = skills
         self.logger = logger if logger else getLogger(__name__)
         self.logger.debug("QuoteService created.")
 
     ############################
     # Internal Helpers Methods #
     ############################
+
+    async def _assert_line_requirements_known(self, quote: Quote) -> None:
+        """Refuse a line requiring a qualification the catalogue lacks.
+
+        Args:
+            quote (Quote): The quote whose lines are being stored.
+
+        Raises:
+            MTCertificationTypeUnknownCode: If a line's override names a code
+                that is unknown or retired.
+
+        Notes:
+            Only the lines that actually override are checked. A line
+            inheriting its catalog entry's requirement carries ``None``, and
+            that entry was already checked when it was saved — re-checking it
+            here would refuse a quote because of a code that has been retired
+            since, which is a change to the catalogue punishing the person
+            writing an unrelated quote.
+
+            No catalogue wired in is only tolerable while nothing overrides.
+            A requirement stored unchecked is worse than a refused write: it
+            fails every planning run it touches, and the message reads as a
+            staffing problem.
+        """
+        overridden = [
+            code
+            for line in quote.lines
+            if line.required_certification_codes is not None
+            for code in line.required_certification_codes
+        ]
+        if not overridden:
+            return
+        if self.certifications is None:
+            self.logger.error(
+                "Quote %s overrides its certification requirements but no "
+                "certification catalogue is available to check them against.",
+                quote.reference,
+            )
+            raise MTCertificationTypeUnknownCode(
+                "Certification requirements cannot be verified; the "
+                "certification catalogue is unavailable."
+            )
+        self.logger.debug(
+            "Checking %d overridden certification code(s) on quote %s.",
+            len(overridden),
+            quote.reference,
+        )
+        await self.certifications.assert_known(overridden)
+
+    async def _assert_line_skills_known(self, quote: Quote) -> None:
+        """Refuse a line requiring a skill the catalogue lacks.
+
+        Args:
+            quote (Quote): The quote whose lines are being stored.
+
+        Raises:
+            MTSkillTypeUnknownCode: If a line's override names a code that is
+                unknown or retired.
+
+        Notes:
+            The twin of :meth:`_assert_line_requirements_known`, with the same
+            two rules: only the lines that actually override are checked,
+            because a line inheriting its catalog entry carries ``None`` and
+            that entry was checked when it was saved; and no catalogue wired in
+            is tolerable only while nothing overrides.
+        """
+        overridden = [
+            code
+            for line in quote.lines
+            if line.required_skill_codes is not None
+            for code in line.required_skill_codes
+        ]
+        if not overridden:
+            return
+        if self.skills is None:
+            self.logger.error(
+                "Quote %s overrides its skill requirements but no skill "
+                "catalogue is available to check them against.",
+                quote.reference,
+            )
+            raise MTSkillTypeUnknownCode(
+                "Skill requirements cannot be verified; the skill catalogue is "
+                "unavailable."
+            )
+        self.logger.debug(
+            "Checking %d overridden skill code(s) on quote %s.",
+            len(overridden),
+            quote.reference,
+        )
+        await self.skills.assert_known(overridden)
 
     async def _price(self, quote: Quote) -> Quote:
         """Price a quote against the catalog entries its lines name.
@@ -245,6 +348,10 @@ class QuoteService:
 
         Raises:
             MTPricingUnknownInterventionType: If a line names a missing type.
+            MTCertificationTypeUnknownCode: If a line requires a qualification
+                the certification catalogue does not offer.
+            MTSkillTypeUnknownCode: If a line requires a skill the skill
+                catalogue does not offer.
 
         Notes:
             The author is taken from the caller's own account, never from the
@@ -258,6 +365,8 @@ class QuoteService:
             quote.customer_id,
             author_id,
         )
+        await self._assert_line_requirements_known(quote)
+        await self._assert_line_skills_known(quote)
         priced = await self._price(quote)
         if author_id is not None:
             priced = priced.model_copy(update={"authored_by": author_id})
@@ -363,14 +472,14 @@ class QuoteService:
     async def replace_lines(
         self,
         quote_id: str,
-        quote: Quote,
+        lines: List[QuoteLine],
         author_id: Optional[str] = None,
     ) -> Quote:
         """Replace a draft quote's lines and reprice it.
 
         Args:
             quote_id (str): The quote to change.
-            quote (Quote): A quote carrying the new lines.
+            lines (List[QuoteLine]): The services that replace the stored ones.
             author_id (Optional[str]): When given, the caller must be the
                 quote's author. ``None`` skips the check, for a manager who may
                 edit any quote in their agency.
@@ -383,11 +492,20 @@ class QuoteService:
             MTQuoteForbidden: If ``author_id`` is given and did not write it.
             MTQuoteNotEditable: If the quote is past draft.
             MTPricingUnknownInterventionType: If a line names a missing type.
+            MTCertificationTypeUnknownCode: If a line requires a qualification
+                the certification catalogue does not offer.
+            MTSkillTypeUnknownCode: If a line requires a skill the skill
+                catalogue does not offer.
 
         Notes:
-            - Only the lines are taken from the payload. The reference, the
-              customer and the status stay as stored, so editing lines cannot
-              reassign a quote to another customer or quietly accept it.
+            - **Only the lines can be given, rather than only the lines being
+              read.** This took a whole quote and used one field of it, which
+              meant the promise that a reference, a customer or a status could
+              not be changed here rested on this method remembering not to look.
+              Taking the lines themselves makes it a property of the signature —
+              and it had to become one once a quote carried its agency, since a
+              body able to name one would let a repricing move a quote between
+              agencies.
             - **The authorship check is a parameter rather than a second
               method.** A manager may edit any quote and an assistant only
               their own, but everything after that decision — the draft check,
@@ -418,9 +536,12 @@ class QuoteService:
             "Replacing the %d line(s) of quote %s with %d new one(s).",
             len(existing.lines),
             existing.reference,
-            len(quote.lines),
+            len(lines),
         )
-        priced = await self._price(existing.model_copy(update={"lines": quote.lines}))
+        edited = existing.model_copy(update={"lines": list(lines)})
+        await self._assert_line_requirements_known(edited)
+        await self._assert_line_skills_known(edited)
+        priced = await self._price(edited)
         updated = await self.quotes.update(priced)
         if updated is None:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
@@ -612,6 +733,7 @@ class QuoteService:
 
         successor = Quote(
             reference=f"{parent.reference}-R{today:%Y%m}",
+            company_id=parent.company_id,
             customer_id=parent.customer_id,
             status=parent.status,
             authored_by=parent.authored_by,

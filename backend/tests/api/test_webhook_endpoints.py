@@ -17,13 +17,15 @@ from api.dependencies import (
     get_hca_service,
     get_planning_service,
     get_quote_service,
+    get_company_repository,
     get_user_repository,
 )
 from api.exception_handlers import ExceptionHandlers
 from api.middleware.auth_middleware import AuthMiddleware
 from api.v1.webhooks.webhooks import router as webhooks_router
 from models.auth.user import User
-from models.enums import PlanningRunStatus, UserRole
+from models.companies.company import Company
+from models.enums import Language, PlanningRunStatus, UserRole
 from models.planning.planning_run import PlanningRun
 from service.planning.exceptions import MTPlanningRunNotFound
 
@@ -77,6 +79,7 @@ def client(emails: MagicMock) -> TestClient:
         return_value=PlanningRun(
             id="run-1",
             requested_by="admin@example.com",
+            company_id="company-1",
             period_start=date(2026, 8, 3),
             period_end=date(2026, 8, 9),
             status=PlanningRunStatus.SUCCEEDED,
@@ -107,6 +110,16 @@ def client(emails: MagicMock) -> TestClient:
         )
     )
 
+    # The agency named on every quote it sends, resolved from the requester.
+    companies = MagicMock()
+    companies.get = AsyncMock(
+        return_value=Company(
+            id="company-1",
+            name="Aide et Presence Paris",
+            registration_number="123456789",
+        )
+    )
+
     app = FastAPI()
     app.include_router(webhooks_router)
     ExceptionHandlers().register(app)
@@ -116,6 +129,7 @@ def client(emails: MagicMock) -> TestClient:
     app.dependency_overrides[get_quote_service] = lambda: quotes
     app.dependency_overrides[get_customer_service] = lambda: customers
     app.dependency_overrides[get_user_repository] = lambda: users
+    app.dependency_overrides[get_company_repository] = lambda: companies
     return TestClient(app, raise_server_exceptions=False)
 
 
@@ -212,3 +226,66 @@ class TestWebhookExemption:
             never run.
         """
         assert "/api/v1/webhooks/" in AuthMiddleware.EXEMPT_PATHS
+
+    def test_the_quotes_are_issued_by_the_requester_agency(
+        self, client: TestClient, emails: MagicMock
+    ) -> None:
+        """**The agency named on the document, and the language it is in.**
+
+        Args:
+            client (TestClient): The client under test.
+            emails (MagicMock): The stubbed email service.
+
+        Notes:
+            Neither a customer nor a quote carries a company, and a webhook has
+            no request to read an ``Accept-Language`` header from. Both come
+            from the account that asked for the planning run — which is the
+            whole reason the language is stored on the account rather than left
+            in the browser.
+        """
+        response = client.post(
+            "/api/v1/webhooks/planning-completed",
+            json={"run_id": "run-1"},
+            headers={"X-Webhook-Token": TOKEN},
+        )
+
+        assert response.status_code == 200
+        company, language = emails.send_quotes.await_args.args[2:4]
+        assert company.name == "Aide et Presence Paris"
+        assert language is Language.FR
+
+    def test_an_agency_that_no_longer_exists_is_reported(
+        self, client: TestClient, emails: MagicMock
+    ) -> None:
+        """A quote with no issuer is not a quote worth sending.
+
+        Args:
+            client (TestClient): The client under test.
+            emails (MagicMock): The stubbed email service.
+
+        Notes:
+            Answered as a 409 rather than sent with a blank header. A document
+            naming no agency cannot be replied to, and a customer receiving one
+            has no way of telling whether it is genuine.
+        """
+        client.app.dependency_overrides[get_company_repository] = lambda: _absent()
+
+        response = client.post(
+            "/api/v1/webhooks/planning-completed",
+            json={"run_id": "run-1"},
+            headers={"X-Webhook-Token": TOKEN},
+        )
+
+        assert response.status_code == 409
+        emails.send_quotes.assert_not_awaited()
+
+
+def _absent() -> MagicMock:
+    """Return a company repository that finds nothing.
+
+    Returns:
+        MagicMock: The repository double.
+    """
+    repository = MagicMock()
+    repository.get = AsyncMock(return_value=None)
+    return repository

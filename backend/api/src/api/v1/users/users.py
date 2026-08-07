@@ -15,11 +15,11 @@ from api.dependencies import (  # noqa: E501
 )
 from models.auth.user import User
 from models.enums import UserRole
-from models.schemas.requests.active_update_request import ActiveUpdateRequest
-from models.schemas.requests.role_update_request import RoleUpdateRequest
-from models.schemas.responses.user_response import UserResponse
+from models.schemas.requests.auth.active_update_request import ActiveUpdateRequest
+from models.schemas.requests.auth.role_update_request import RoleUpdateRequest
+from models.schemas.responses.auth.user_response import UserResponse
 from service.auth.auth import AuthService
-from storage.repositories.user import UserRepository
+from storage.repositories.auth.user import UserRepository
 
 logger: Logger = getLogger(__name__)
 

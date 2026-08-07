@@ -19,7 +19,7 @@ from api.sse.streams import NotificationStreams
 from models.auth.user import User
 from models.notifications.notification import Notification
 from service.auth.auth import AuthService
-from storage.repositories.notification import NotificationRepository
+from storage.repositories.notifications.notification import NotificationRepository
 
 logger: Logger = getLogger(__name__)
 

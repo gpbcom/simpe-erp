@@ -1,0 +1,201 @@
+# The defaults. Every environment overrides some of these in its own values
+# file; nothing here is a secret, and nothing here is environment-specific
+# except by being overridden.
+global:
+  image:
+    registry: ghcr.io
+    repository: simple-erp
+    # Set by CI to the git SHA. A moving tag would make a rollback mean
+    # "whatever that tag points at now", which is not a rollback.
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  # Mounted at /app/conf and selected by SIMPLE_ERP_CONFIG. One file, four
+  # processes — the same arrangement compose uses.
+  configFile: conf/app.k8s.yaml
+
+  # JSON to stdout. The rotating file the development configuration writes is
+  # invisible from outside a container, unbounded on a layer nobody sized for
+  # it, and gone when the pod is replaced.
+  loggerFile: conf/logger.k8s.yaml
+
+# The secret External Secrets writes, and which every workload reads with
+# envFrom. Its keys are the *_env names the YAML configuration points at.
+secrets:
+  name: simple-erp
+  # Where ESO reads them from. A SecretStore is a cluster-level object the
+  # bootstrap installs; this only names it.
+  storeName: ""
+  storeKind: ClusterSecretStore
+  refreshInterval: 1h
+
+migrations:
+  # A pre-install/pre-upgrade hook Job. This is the Kubernetes half of the
+  # arrangement compose expresses as a one-shot `migrate` service: exactly one
+  # process migrates, and everything else waits for it.
+  enabled: true
+  # Never retried. A migration that failed must stop the rollout and be looked
+  # at, not run again against a schema it may have half-applied.
+  backoffLimit: 0
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+api:
+  replicas: 2
+  # CPU, and only for the API. A consumer waiting on a broker burns no CPU, so
+  # the same autoscaler on a worker would never scale it — see the workers'
+  # KEDA blocks below.
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: 1, memory: 1Gi}
+  # Long enough for an open server-sent-event stream to drain rather than be
+  # severed. A reader that loses one reconnects and refetches, but doing that
+  # to every reader on every deploy is a badge that flickers agency-wide.
+  terminationGracePeriodSeconds: 60
+  preStopSleepSeconds: 10
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+workerPlanning:
+  # KEDA on queue depth, which is the figure that actually moves. One
+  # ScaledObject covers every agency through the scaler's regex support, so a
+  # per-agency queue topology does not mean a ScaledObject per agency.
+  scaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 20
+    # `sum` maximises throughput. The notification worker uses `max` instead,
+    # and the reason is in its own block.
+    operation: sum
+    queuePattern: "^planning-runs\\.(?!.*\\.dlx$).*"
+    messagesPerReplica: 2
+    pollingInterval: 15
+    # Longer than the solver's budget, so a draining queue does not evict a pod
+    # twenty-five seconds into a thirty-second solve.
+    cooldownPeriod: 120
+    scaleDownStabilizationSeconds: 300
+  resources:
+    # Guaranteed QoS: requests equal limits. The solver's budget is wall-clock,
+    # so under a CPU limit with no matching request the kernel throttles the
+    # cgroup and thirty seconds of budget takes a minute of real time.
+    requests: {cpu: 2, memory: 2Gi}
+    limits: {cpu: 2, memory: 2Gi}
+  # Must equal the CPU above. There is a test in the chart that fails if it
+  # does not.
+  solverWorkers: 2
+  # The default is thirty seconds, which is exactly the solve budget — so
+  # Kubernetes would SIGKILL mid-solve on every scale-down.
+  terminationGracePeriodSeconds: 90
+  # A thirty-second core-pinning solve next to the API destroys its tail
+  # latency. The node pool is created by Terraform; this is what attracts pods
+  # to it.
+  nodeSelector: {}
+  tolerations: []
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+
+workerNotifications:
+  scaling:
+    enabled: true
+    # Never zero. A badge should be instant, and a cold start is not.
+    minReplicas: 1
+    maxReplicas: 6
+    # `max`, not `sum`. With `sum`, one agency submitting a thousand quotes
+    # decides the replica count for everybody — which is the opposite of what
+    # the per-agency queues exist for.
+    operation: max
+    queuePattern: "^quote-notifications\\.(?!.*\\.dlx$).*"
+    messagesPerReplica: 20
+    pollingInterval: 15
+    cooldownPeriod: 60
+    scaleDownStabilizationSeconds: 120
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  terminationGracePeriodSeconds: 30
+  nodeSelector: {}
+  tolerations: []
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+
+frontend:
+  replicas: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 200m, memory: 128Mi}
+  # Replaces the /config.json that ships in the image. The image is therefore
+  # the same digest in every environment — promoted, not rebuilt.
+  apiBaseUrl: /api
+
+ingress:
+  enabled: true
+  className: nginx
+  host: simple-erp.local
+  tls:
+    enabled: true
+    issuer: letsencrypt-prod
+
+observability:
+  # ServiceMonitors for the API and both workers. The rules below are the same
+  # file the compose stack reads, so an alert cannot fire in one and not the
+  # other.
+  serviceMonitors: true
+  prometheusRules: true
+  # The collector the application exports to. It is the only tracing address
+  # the application ever knows: the fan-out to Tempo, and later to Langfuse,
+  # happens inside the collector.
+  otlpEndpoint: http://otel-collector.observability:4317
+  tracingEnabled: false
+
+# ---------------------------------------------------------------------------
+# The stores. All three are operator-managed and installed by infra/bootstrap;
+# what follows is only where to find them.
+# ---------------------------------------------------------------------------
+database:
+  # PgBouncer, not PostgreSQL. Every replica opens up to pool_size +
+  # max_overflow connections, and at the replica counts above that is more
+  # backends than PostgreSQL's default max_connections allows.
+  host: pgbouncer
+  port: 5432
+  name: simple_erp
+  username: simple_erp
+
+rabbitmq:
+  host: rabbitmq
+  port: 5672
+  username: simple_erp
+
+s3:
+  bucket: simple-erp
+  region: fr-par
+  endpointUrl: http://minio:9000
+  # What a browser fetches, which is not what the backend writes through — a
+  # pin loaded from an in-cluster address is a broken image.
+  publicBaseUrl: https://simple-erp.local/photos
+
+pricing:
+  baseHourlyRateHt: 31.905
+
+geocoding:
+  # The public instance rate-limits and asks for an identifying User-Agent. A
+  # deployment entering addresses in bulk should point this at its own.
+  baseUrl: https://nominatim.openstreetmap.org/search
+  userAgent: "simple-erp/1.0 (home-care planning; contact: ops@simple-erp.local)"
+
+email:
+  enabled: false
+  host: smtp.example.com
+  port: 587
+  sender: no-reply@simple-erp.local
+
+webhook:
+  enabled: false

@@ -1,0 +1,20 @@
+{{/*
+How KEDA reaches the broker's management API to read a queue's depth.
+
+A TriggerAuthentication rather than the URL in the ScaledObject, because that
+URL carries the password — and a ScaledObject is an ordinary object anybody with
+read access to the namespace can print.
+*/}}
+{{- if or .Values.workerPlanning.scaling.enabled .Values.workerNotifications.scaling.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-rabbitmq
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: {{ .Values.secrets.name }}
+      key: RABBITMQ_MANAGEMENT_URL
+{{- end }}

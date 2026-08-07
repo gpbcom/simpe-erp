@@ -10,11 +10,18 @@ from sqlalchemy.exc import IntegrityError
 
 # First-party imports
 from models.auth.user import User
-from models.enums import AccountOrigin, ContractType, HcaApplicationStatus, UserRole
+from models.enums import (
+    AccountOrigin,
+    ContractType,
+    HcaApplicationStatus,
+    UserRole,
+    Weekday,
+)
 from models.geo.postal_address import PostalAddress
-from models.people.availability_slot import AvailabilitySlot
-from models.people.certification import Certification
-from models.people.driving_license import DrivingLicense
+from models.people.hca.availability_slot import AvailabilitySlot
+from models.people.hca.certification import Certification
+from models.people.hca.driving_license import DrivingLicense
+from models.people.hca.skill import Skill
 from models.people.hca import Hca
 from models.people.hca_application import HcaApplication
 from service.auth.auth import AuthService
@@ -31,11 +38,12 @@ from service.hcas.exceptions import (
     MTHcaForbidden,
     MTHcaHasAccount,
     MTHcaNotFound,
+    MTSkillNotFound,
 )
-from storage.repositories.company import CompanyRepository
-from storage.repositories.hca import HcaRepository
-from storage.repositories.hca_application import HcaApplicationRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.people.hca_application import HcaApplicationRepository
+from storage.repositories.auth.user import UserRepository
 from storage.s3.exceptions import MTS3DeleteFailed
 from storage.s3.s3_storage import S3Storage
 
@@ -60,10 +68,15 @@ class HcaService:
          halves here means the ordering rule below is stated once, in the place
          that owns the record, rather than split across services that each know
          only half of it.
-       - Two mutations are deliberately narrow. :meth:`set_employment` is all a
-         manager may change, and :meth:`add_availability` is how an absence is
-         filed. A single general update would let either caller overwrite fields
-         they have no business touching.
+       - Three mutations are deliberately narrow. :meth:`set_employment` is all
+         a manager may change, :meth:`add_availability` is how an absence is
+         filed, and :meth:`add_skill` is how a skill is declared. A single
+         general update would let any of those callers overwrite fields they
+         have no business touching.
+       - The skill pair is the only planner-visible write an assistant may make
+         about themselves, and it is guarded by the same ownership check as an
+         absence rather than by a role. Who may declare a skill is a question
+         about *whose* record it is, which no route guard can answer.
     """
 
     def __init__(
@@ -104,6 +117,59 @@ class HcaService:
     ############################
     # Internal Helpers Methods #
     ############################
+
+    async def _delete_bound_account(
+        self, hca_id: str, requested_by: Optional[User]
+    ) -> None:
+        """Remove the sign-in account pointing at an assistant, if any.
+
+        Args:
+            hca_id (str): The assistant being removed.
+            requested_by (Optional[User]): The caller asking.
+
+        Raises:
+            MTHcaHasAccount: If an account exists but no caller was named, or
+                the account store is not wired in.
+            MTAuthLastAdmin: If the account is the caller's own or the last
+                administrator's, raised by
+                :meth:`~service.auth.auth.AuthService.delete_account`.
+
+        Notes:
+            Silent when the assistant has no account, which is the common case:
+            a record created by a manager for somebody who has not registered
+            yet has nothing to remove.
+
+            The refusal when ``requested_by`` is ``None`` is not defensiveness
+            about a missing argument. Removing an account is guarded by rules
+            that are *about the caller* — not your own, not the last
+            administrator — and there is no safe way to apply them to nobody.
+            A caller that cannot be identified gets the old behaviour: the
+            delete is refused and says why.
+        """
+        if self.users is None or self.auth is None:
+            self.logger.debug(
+                "No account store is wired in; assistant %s is removed alone.",
+                hca_id,
+            )
+            return
+        account = await self.users.get_by_hca_id(hca_id)
+        if account is None:
+            return
+        if requested_by is None:
+            self.logger.warning(
+                "Refused to remove assistant %s: account %s is bound to it and "
+                "no caller was named to authorise removing it.",
+                hca_id,
+                account.email,
+            )
+            raise MTHcaHasAccount(
+                f"Assistant {hca_id!r} still has a sign-in account. Remove the "
+                f"account first."
+            )
+        self.logger.info(
+            "Removing account %s along with assistant %s.", account.email, hca_id
+        )
+        await self.auth.delete_account(account.id or "", requested_by=requested_by)
 
     async def _remove_superseded(
         self, previous_url: Optional[str], current_url: Optional[str]
@@ -162,6 +228,88 @@ class HcaService:
             raise MTHcaForbidden(
                 f"You may only manage your own availability, not that of "
                 f"assistant {hca_id!r}."
+            )
+
+    async def _get_application(self, application_id: str) -> HcaApplication:
+        """Return an application or report that it does not exist.
+
+        Args:
+            application_id (str): The application to read.
+
+        Returns:
+            HcaApplication: The application.
+
+        Raises:
+            MTApplicationNotFound: If no such application exists.
+        """
+        application = await self.applications.get(application_id)
+        if application is None:
+            self.logger.warning("Application %s does not exist.", application_id)
+            raise MTApplicationNotFound(f"No application {application_id!r} exists.")
+        return application
+
+    def _check_may_decide(self, application: HcaApplication, decider: User) -> None:
+        """Refuse a decider acting on another company's queue.
+
+        Args:
+            application (HcaApplication): The application being decided.
+            decider (User): The manager or administrator deciding it.
+
+        Raises:
+            MTApplicationForbidden: If the decider belongs to a different
+                company.
+
+        Notes:
+            - **Row-level, like every other rule of this shape here.** A route
+              guard proves the caller is a manager; it cannot tell whether the
+              application identifier in the path belongs to their agency.
+            - There used to be an exemption here: an administrator belonging to
+              no company was treated as system-wide, so that the first agency
+              could have its first application approved before any company
+              existed. Nothing needs it now — an agency and its first
+              administrator are created by the same call, and ``company_id`` is
+              required on every account — and while it stood it meant any
+              administrator without an agency could decide every agency's
+              applications. Removed rather than kept as dead code, because an
+              exemption that cannot currently be reached is one a later change
+              can quietly make reachable again.
+        """
+        if decider.company_id == application.company_id:
+            return
+        self.logger.warning(
+            "Account %s (company %s) attempted to decide an application "
+            "addressed to company %s.",
+            decider.email,
+            decider.company_id,
+            application.company_id,
+        )
+        raise MTApplicationForbidden(
+            "You may only decide applications addressed to your own company."
+        )
+
+    def _require_pending(self, application: HcaApplication) -> None:
+        """Refuse a second decision on an already-decided application.
+
+        Args:
+            application (HcaApplication): The application being decided.
+
+        Raises:
+            MTApplicationAlreadyDecided: If it has already been decided.
+
+        Notes:
+            Approving twice would create a second assistant and a second
+            account for the same person; rejecting an approved one would leave
+            the account it created behind, unreferenced.
+        """
+        if not application.is_pending():
+            self.logger.warning(
+                "Application %s is already %s.",
+                application.id,
+                application.status.value,
+            )
+            raise MTApplicationAlreadyDecided(
+                f"Application {application.id!r} was already "
+                f"{application.status.value}."
             )
 
     ############################
@@ -241,13 +389,16 @@ class HcaService:
         hca_id: str,
         contract_type: ContractType,
         certifications: List[Certification],
+        field_employee: bool,
     ) -> Hca:
-        """Change an assistant's contract type and qualifications.
+        """Change an assistant's contract, qualifications and rounds flag.
 
         Args:
             hca_id (str): The assistant to change.
             contract_type (ContractType): The new employment contract.
             certifications (List[Certification]): The qualifications now held.
+            field_employee (bool): Whether this person may be placed on an
+                intervention planning.
 
         Returns:
             Hca: The updated assistant.
@@ -256,21 +407,130 @@ class HcaService:
             MTHcaNotFound: If no such assistant exists.
 
         Notes:
-            These are the only two fields a manager may change, which is
-            enforced by this method existing instead of a general update — no
-            manager-facing route can reach the contact details, the home
-            address or the availability.
+            - These are the only three fields a manager may change, which is
+              enforced by this method existing instead of a general update — no
+              manager-facing route can reach the contact details, the home
+              address or the availability.
+            - **``field_employee`` is a parameter, and used to not be.** The
+              request model carried it, the screen sent it, and this method
+              took three arguments — so the value was dropped here and the
+              repository's own default put it back to ``True``. A manager
+              switching somebody off the rounds got a 200 and no change, and an
+              unrelated contract edit silently put back anybody who *had* been
+              switched off. Both are invisible until a planning run schedules
+              somebody who should not have been on it.
+            - It applies to **whoever holds the record**, with no reference to
+              their account's role. A manager who also covers rounds is an
+              ordinary thing to be, and the planner reads this flag rather than
+              a role — see
+              :meth:`~service.planning.plannings.PlanningService._field_employees`.
         """
-        updated = await self.hcas.set_employment(hca_id, contract_type, certifications)
+        updated = await self.hcas.set_employment(
+            hca_id, contract_type, certifications, field_employee
+        )
         if updated is None:
             raise MTHcaNotFound(f"No assistant {hca_id!r} exists.")
         self.logger.info(
-            "Assistant %s is now on a %s contract with %d certification(s).",
+            "Assistant %s is now on a %s contract with %d certification(s), "
+            "field_employee=%s.",
             hca_id,
             contract_type.value,
             len(certifications),
+            field_employee,
         )
+        if not field_employee:
+            self.logger.warning(
+                "Assistant %s is not a field employee; every planning run from "
+                "now on will leave them out.",
+                hca_id,
+            )
         return updated
+
+    async def add_skill(self, hca_id: str, skill: Skill, caller: User) -> Skill:
+        """Record a skill an assistant declares about themselves.
+
+        Args:
+            hca_id (str): The assistant the skill belongs to.
+            skill (Skill): The skill to record.
+            caller (User): Who is declaring it.
+
+        Returns:
+            Skill: The stored skill, carrying its generated identifier.
+
+        Raises:
+            MTHcaForbidden: If an assistant declares a skill for a colleague.
+            MTHcaNotFound: If no such assistant exists.
+
+        Notes:
+            - **Gated by :meth:`_check_owns`, which lets managers through.**
+              That is deliberate and it is not a widening of the rule: an
+              assistant may only declare their own, and a manager recording
+              what somebody told them on the telephone is the same act somebody
+              else's account is doing on their behalf. What no route offers is
+              an assistant writing a colleague's profile.
+            - The declaration takes effect immediately. Making it wait for
+              approval would mean somebody who can already do the work is left
+              off the visit that needs it, which is the failure this whole
+              field exists to prevent; the supervisors are told instead, and
+              can withdraw it.
+            - Announcing that is the **caller's** job, not this method's. The
+              publish happens in the route, after the request's transaction has
+              committed — a notification sent from here would fire on a write
+              that a later failure rolled back, and tell three managers about a
+              skill nobody holds.
+        """
+        self._check_owns(hca_id, caller)
+        stored = await self.hcas.add_skill(hca_id, skill)
+        if stored is None:
+            self.logger.warning("Skill declared for absent assistant %s.", hca_id)
+            raise MTHcaNotFound(f"No assistant {hca_id!r} exists.")
+        self.logger.info(
+            "Assistant %s declared the skill %r (code %s), at the request of %s.",
+            hca_id,
+            stored.name,
+            stored.code,
+            caller.email,
+        )
+        return stored
+
+    async def remove_skill(self, hca_id: str, skill_id: str, caller: User) -> None:
+        """Withdraw a declared skill.
+
+        Args:
+            hca_id (str): The assistant the skill belongs to.
+            skill_id (str): The skill to withdraw.
+            caller (User): Who is withdrawing it.
+
+        Raises:
+            MTHcaForbidden: If an assistant withdraws a colleague's skill.
+            MTSkillNotFound: If the skill does not belong to that assistant.
+
+        Notes:
+            - **Three people may do this**, and the check that decides is the
+              one already used for an absence: the owner, a manager, or an
+              administrator. A skill is somebody's own claim, so they may take
+              it back; it also decides who gets sent where, so a supervisor who
+              believes it is wrong must be able to remove it without waiting.
+            - The assistant is part of the lookup, so knowing a skill
+              identifier is not enough to strip a colleague of one.
+            - Withdrawing does not re-plan anything. It applies to the next
+              planning run, so a skill removed this afternoon does not cancel a
+              visit somebody has already been told to make.
+        """
+        self._check_owns(hca_id, caller)
+        if not await self.hcas.remove_skill(hca_id, skill_id):
+            self.logger.warning(
+                "Skill %s does not belong to assistant %s.", skill_id, hca_id
+            )
+            raise MTSkillNotFound(
+                f"No skill {skill_id!r} belongs to assistant {hca_id!r}."
+            )
+        self.logger.info(
+            "Withdrew skill %s from assistant %s, at the request of %s.",
+            skill_id,
+            hca_id,
+            caller.email,
+        )
 
     async def add_availability(
         self, hca_id: str, slot: AvailabilitySlot, caller: User
@@ -337,12 +597,60 @@ class HcaService:
             )
         self.logger.info("Withdrew absence %s for assistant %s.", slot_id, hca_id)
 
+    async def set_working_days(
+        self, hca_id: str, working_weekdays: List[Weekday], caller: User
+    ) -> Hca:
+        """Replace the days of the week an assistant works.
+
+        Args:
+            hca_id (str): The assistant to change.
+            working_weekdays (List[Weekday]): The days now worked.
+            caller (User): Who is making the change.
+
+        Returns:
+            Hca: The updated assistant.
+
+        Raises:
+            MTHcaForbidden: If an assistant sets a colleague's working week.
+            MTHcaNotFound: If no such assistant exists.
+
+        Notes:
+            Gated by the same ownership check as an absence, and for the same
+            reason: the working week is the assistant's own declaration, and
+            one filed against a colleague would take that colleague off their
+            rounds. Managers and administrators pass — recording that somebody
+            has dropped to four days is exactly their job.
+
+            A change does not re-plan anything. It applies to the next planning
+            run, so a day withdrawn this afternoon does not cancel a visit
+            somebody has already been told to make.
+        """
+        self._check_owns(hca_id, caller)
+        self.logger.info(
+            "Setting the working week of assistant %s to %s, at the request of %s.",
+            hca_id,
+            ", ".join(day.value for day in working_weekdays),
+            caller.email,
+        )
+        updated = await self.hcas.set_working_weekdays(hca_id, working_weekdays)
+        if updated is None:
+            self.logger.warning(
+                "Working-week change requested for absent assistant %s.", hca_id
+            )
+            raise MTHcaNotFound(f"No assistant {hca_id!r} exists.")
+        self.logger.debug(
+            "Assistant %s now works %d day(s) a week.",
+            hca_id,
+            len(updated.working_weekdays),
+        )
+        return updated
+
     async def list_availability(
         self,
         hca_id: str,
         caller: User,
         start: Optional[date] = None,
-        end: Optional[date] = None,  # noqa: E501
+        end: Optional[date] = None,
     ) -> List[AvailabilitySlot]:
         """Return an assistant's absences within a window.
 
@@ -461,7 +769,9 @@ class HcaService:
             str(assistant.photo_url) if assistant.photo_url is not None else None
         )
         self.logger.info(
-            "Storing a %d-byte photograph for assistant %s.", len(payload), hca_id
+            "Storing a %d-byte photograph for assistant %s.",
+            len(payload),
+            hca_id,
         )
         photo_url = await self.photos.upload_photo(hca_id, payload)
         updated = await self.hcas.set_photo_url(hca_id, photo_url)
@@ -506,20 +816,48 @@ class HcaService:
         self.logger.info("Assistant %s no longer has a photograph.", hca_id)
         return updated
 
-    async def delete(self, hca_id: str) -> None:
-        """Remove an assistant and their photograph.
+    async def delete(self, hca_id: str, requested_by: Optional[User] = None) -> None:
+        """Remove an assistant, their account and their photograph.
 
         Args:
             hca_id (str): The assistant to remove.
+            requested_by (Optional[User]): The caller asking, needed to remove
+                the bound account. Without one the account is left in place and
+                the delete is refused, because the checks that protect the last
+                administrator cannot be made anonymously.
 
         Raises:
             MTHcaNotFound: If no such assistant exists.
-            MTHcaHasAccount: If a sign-in account still points at the assistant.
+            MTHcaHasAccount: If an account points at the assistant and no
+                caller was named to authorise removing it.
+            MTAuthLastAdmin: If the bound account is the caller's own or the
+                last administrator's.
+
+        Notes:
+            - **The account goes with the record.** An account whose ``hca_id``
+              names nothing cannot pass the row-level planning check and cannot
+              be repaired through any screen, so leaving it behind was never an
+              option — the foreign key was ``RESTRICT`` and the delete simply
+              failed, which meant "everybody can be deleted" was not true of
+              anybody who had ever signed in.
+            - **The account is removed first, and through
+              :class:`~service.auth.auth.AuthService`.** Its own refusals still
+              apply: nobody deletes their own account, and the last
+              administrator cannot be deleted at all. Doing it in the other
+              order would remove the assistant and then discover the account
+              could not go, leaving exactly the orphan this is avoiding — both
+              writes share one transaction, so a refusal here rolls the whole
+              thing back.
+            - The photograph is removed **after** the row, not before. An
+              object deleted ahead of a write that then fails is gone for good;
+              a record whose portrait is already unreachable is a broken image,
+              which is recoverable.
         """
         assistant = await self.get(hca_id)
         previous_url = (
-            str(assistant.photo_url) if assistant.photo_url is not None else None  # noqa: E501
+            str(assistant.photo_url) if assistant.photo_url is not None else None
         )
+        await self._delete_bound_account(hca_id, requested_by)
         try:
             removed = await self.hcas.delete(hca_id)
         except IntegrityError as exc:
@@ -535,88 +873,6 @@ class HcaService:
             raise MTHcaNotFound(f"No assistant {hca_id!r} exists.")
         await self._remove_superseded(previous_url, None)
         self.logger.info("Removed assistant %s.", hca_id)
-
-    async def _get_application(self, application_id: str) -> HcaApplication:
-        """Return an application or report that it does not exist.
-
-        Args:
-            application_id (str): The application to read.
-
-        Returns:
-            HcaApplication: The application.
-
-        Raises:
-            MTApplicationNotFound: If no such application exists.
-        """
-        application = await self.applications.get(application_id)
-        if application is None:
-            self.logger.warning("Application %s does not exist.", application_id)
-            raise MTApplicationNotFound(f"No application {application_id!r} exists.")
-        return application
-
-    def _check_may_decide(self, application: HcaApplication, decider: User) -> None:
-        """Refuse a decider acting on another company's queue.
-
-        Args:
-            application (HcaApplication): The application being decided.
-            decider (User): The manager or administrator deciding it.
-
-        Raises:
-            MTApplicationForbidden: If the decider belongs to a different
-                company.
-
-        Notes:
-            - **Row-level, like every other rule of this shape here.** A route
-              guard proves the caller is a manager; it cannot tell whether the
-              application identifier in the path belongs to their agency.
-            - There used to be an exemption here: an administrator belonging to
-              no company was treated as system-wide, so that the first agency
-              could have its first application approved before any company
-              existed. Nothing needs it now — an agency and its first
-              administrator are created by the same call, and ``company_id`` is
-              required on every account — and while it stood it meant any
-              administrator without an agency could decide every agency's
-              applications. Removed rather than kept as dead code, because an
-              exemption that cannot currently be reached is one a later change
-              can quietly make reachable again.
-        """
-        if decider.company_id == application.company_id:
-            return
-        self.logger.warning(
-            "Account %s (company %s) attempted to decide an application "
-            "addressed to company %s.",
-            decider.email,
-            decider.company_id,
-            application.company_id,
-        )
-        raise MTApplicationForbidden(
-            "You may only decide applications addressed to your own company."
-        )
-
-    def _require_pending(self, application: HcaApplication) -> None:
-        """Refuse a second decision on an already-decided application.
-
-        Args:
-            application (HcaApplication): The application being decided.
-
-        Raises:
-            MTApplicationAlreadyDecided: If it has already been decided.
-
-        Notes:
-            Approving twice would create a second assistant and a second
-            account for the same person; rejecting an approved one would leave
-            the account it created behind, unreferenced.
-        """
-        if not application.is_pending():
-            self.logger.warning(
-                "Application %s is already %s.",
-                application.id,
-                application.status.value,
-            )
-            raise MTApplicationAlreadyDecided(
-                f"Application {application.id!r} was already "
-                f"{application.status.value}."
-            )
 
     async def submit(
         self,

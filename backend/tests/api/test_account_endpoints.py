@@ -443,7 +443,7 @@ class TestStaffAccountEndpoints:
             one they typed into a ticket and probably reused across three new
             starters. There is no field for it, so there is nothing to reuse.
         """
-        from models.schemas.requests.staff_account_request import StaffAccountRequest
+        from models.schemas.requests.account.staff_account_request import StaffAccountRequest
 
         assert "password" not in StaffAccountRequest.model_fields
 
@@ -451,7 +451,7 @@ class TestStaffAccountEndpoints:
         self, applications: AsyncMock, companies: AsyncMock, auth: AsyncMock
     ) -> None:
         """This route creates assistants; promotion is a separate act."""
-        from models.schemas.requests.staff_account_request import StaffAccountRequest
+        from models.schemas.requests.account.staff_account_request import StaffAccountRequest
 
         assert "role" not in StaffAccountRequest.model_fields
 

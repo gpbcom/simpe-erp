@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatMoney, formatTime, initialsOf } from '../format';
+import {
+  formatMoney,
+  formatTime,
+  initialsOf,
+  minutesToTime,
+  timeToMinutes,
+} from '../format';
 
 describe('formatMoney', () => {
   it('formats an amount as euros', () => {
@@ -33,5 +39,41 @@ describe('initialsOf', () => {
     // Used by the map pins: an assistant with no photograph must still be a
     // distinguishable pin rather than a blank circle.
     expect(initialsOf('Luc')).toBe('L');
+  });
+});
+
+describe('minutesToTime', () => {
+  it('zero-pads both halves', () => {
+    // The planning rules are minutes from midnight because that is the unit
+    // the solver works in; a `<input type="time">` needs `HH:MM`.
+    expect(minutesToTime(9 * 60)).toBe('09:00');
+    expect(minutesToTime(19 * 60 + 30)).toBe('19:30');
+  });
+
+  it('renders midnight rather than an empty string', () => {
+    expect(minutesToTime(0)).toBe('00:00');
+  });
+});
+
+describe('timeToMinutes', () => {
+  it('parses a clock time into minutes from midnight', () => {
+    expect(timeToMinutes('08:00')).toBe(480);
+    expect(timeToMinutes('19:30')).toBe(1170);
+  });
+
+  it('round-trips every minute of the day', () => {
+    for (const minute of [0, 1, 59, 540, 1170, 1439]) {
+      expect(timeToMinutes(minutesToTime(minute))).toBe(minute);
+    }
+  });
+
+  it('returns null rather than zero for an unparseable value', () => {
+    // **The case that would save a day nobody chose.** A cleared time input
+    // reads as an empty string, and returning 0 would store it as a working
+    // day starting at midnight — a plausible-looking number, silently wrong.
+    expect(timeToMinutes('')).toBeNull();
+    expect(timeToMinutes('morning')).toBeNull();
+    expect(timeToMinutes('25:00')).toBeNull();
+    expect(timeToMinutes('09:75')).toBeNull();
   });
 });

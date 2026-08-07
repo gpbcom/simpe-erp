@@ -17,13 +17,17 @@ import Typography from '@mui/material/Typography';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {
+  useCertificationTypes,
   useInterventionTypes,
   usePricingRules,
   useReplaceQuoteLines,
+  useSkillTypes,
 } from '@/api/queries';
 import { QuoteStatusChip } from './QuoteStatusChip';
+import { LineCertifications } from './LineCertifications';
+import { LineSkills } from './LineSkills';
 import { formatMoney } from '@/utils/format';
-import type { Quote, QuoteLine } from '@/api/types';
+import type { NewQuoteLine, Quote } from '@/api/types';
 
 /** A line while it is being edited: every field a string, as inputs give them. */
 interface DraftLine {
@@ -34,7 +38,24 @@ interface DraftLine {
   earliest_start: string;
   latest_end: string;
   duration_minutes: string;
+  /** The line's own qualifications, or `null` to inherit the catalogue entry. */
+  required_certification_codes: string[] | null;
+  /** The line's own skills, or `null` to inherit the catalogue entry. */
+  required_skill_codes: string[] | null;
 }
+
+/**
+ * The fields a text input writes.
+ *
+ * The two requirement lists are edited by their own controls, which hand back
+ * an array or `null`. Letting {@link QuoteEditorDialog}'s generic `update` take
+ * their keys would let a string be written into a field the server reads as a
+ * list of codes.
+ */
+type DraftTextField = Exclude<
+  keyof DraftLine,
+  'required_certification_codes' | 'required_skill_codes'
+>;
 
 /** What a fresh line starts as: a morning slot, one hour long. */
 const NEW_LINE: DraftLine = {
@@ -48,6 +69,11 @@ const NEW_LINE: DraftLine = {
   earliest_start: '09:00',
   latest_end: '12:00',
   duration_minutes: '60',
+  // Inherit, on both counts. A new line requires whatever its service does
+  // until somebody deliberately says otherwise; starting at `[]` would mean
+  // "needs nothing", which silently drops the catalogue's own requirement.
+  required_certification_codes: null,
+  required_skill_codes: null,
 };
 
 interface QuoteEditorDialogProps {
@@ -82,6 +108,9 @@ interface QuoteEditorDialogProps {
  * total calculated in the browser would be a second pricing implementation,
  * and the one the customer is billed from is the other one.
  *
+ * **Only the lines are sent.** The payload carries no customer and no status,
+ * so editing cannot reassign the quote or accept it on the customer's behalf.
+ *
  * Only a **draft** can be opened. A sent quote must stay what the customer was
  * shown, and one awaiting validation is frozen so a manager rules on the
  * figures they were actually given.
@@ -90,6 +119,8 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
   const { t, i18n } = useTranslation();
   const { data: types } = useInterventionTypes();
   const { data: rules } = usePricingRules();
+  const { data: catalogue } = useCertificationTypes();
+  const { data: skillCatalogue } = useSkillTypes();
   const replaceLines = useReplaceQuoteLines(scope);
   const [lines, setLines] = useState<DraftLine[]>([]);
 
@@ -125,11 +156,13 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
         earliest_start: line.earliest_start.slice(0, 5),
         latest_end: line.latest_end.slice(0, 5),
         duration_minutes: String(line.duration_minutes),
+        required_certification_codes: line.required_certification_codes,
+        required_skill_codes: line.required_skill_codes,
       })),
     );
   }, [quote]);
 
-  const update = (index: number, key: keyof DraftLine, value: string) => {
+  const update = (index: number, key: DraftTextField, value: string) => {
     setLines(lines.map((line, i) => (i === index ? { ...line, [key]: value } : line)));
   };
 
@@ -154,6 +187,13 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
               // operator is the one who knows whether this customer's hours are
               // under a care plan. The field stays editable afterwards.
               service_category: entry?.service_category ?? line.service_category,
+              // Both requirement overrides drop back to "inherit". They were an
+              // override of the *previous* service's requirement, and carrying
+              // them across would silently demand a diploma the new service
+              // never asked for — or, worse, keep an empty override and drop the
+              // one it does.
+              required_certification_codes: null,
+              required_skill_codes: null,
             }
           : line,
       ),
@@ -171,24 +211,19 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
   const save = () => {
     if (!quote?.id) return;
     setError(null);
-    const payload: Partial<Quote> = {
-      reference: quote.reference,
-      customer_id: quote.customer_id,
-      lines: lines.map(
-        (line) =>
-          ({
-            name: line.name.trim(),
-            intervention_type_id: line.intervention_type_id,
-            service_category: line.service_category,
-            service_date: line.service_date,
-            earliest_start: `${line.earliest_start}:00`,
-            latest_end: `${line.latest_end}:00`,
-            duration_minutes: Number(line.duration_minutes),
-          }) as QuoteLine,
-      ),
-    };
+    const payload: NewQuoteLine[] = lines.map((line) => ({
+      name: line.name.trim(),
+      intervention_type_id: line.intervention_type_id,
+      service_category: line.service_category,
+      service_date: line.service_date,
+      earliest_start: `${line.earliest_start}:00`,
+      latest_end: `${line.latest_end}:00`,
+      duration_minutes: Number(line.duration_minutes),
+      required_certification_codes: line.required_certification_codes,
+      required_skill_codes: line.required_skill_codes,
+    }));
     replaceLines.mutate(
-      { quoteId: quote.id, quote: payload },
+      { quoteId: quote.id, lines: payload },
       {
         onSuccess: onClose,
         onError: (cause) =>
@@ -212,7 +247,15 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
           line.intervention_type_id !== quote.lines[index]?.intervention_type_id ||
           line.service_category !== quote.lines[index]?.service_category ||
           line.service_date !== quote.lines[index]?.service_date ||
-          Number(line.duration_minutes) !== quote.lines[index]?.duration_minutes,
+          Number(line.duration_minutes) !== quote.lines[index]?.duration_minutes ||
+          // Compared as JSON because the three states — inherit, override to
+          // these, override to nothing — are `null`, an array and an empty
+          // array. `!==` on two arrays is always true, which would leave the
+          // save button lit on a quote nobody had touched.
+          JSON.stringify(line.required_certification_codes) !==
+            JSON.stringify(quote.lines[index]?.required_certification_codes ?? null) ||
+          JSON.stringify(line.required_skill_codes) !==
+            JSON.stringify(quote.lines[index]?.required_skill_codes ?? null),
       ));
 
   return (
@@ -356,6 +399,48 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
+                </Grid>
+                <Grid size={12}>
+                  <LineCertifications
+                    index={index}
+                    value={line.required_certification_codes}
+                    inherited={
+                      (types ?? []).find(
+                        (entry) => entry.id === line.intervention_type_id,
+                      )?.required_certification_codes ?? []
+                    }
+                    catalogue={catalogue ?? []}
+                    onChange={(codes) =>
+                      setLines(
+                        lines.map((entry, position) =>
+                          position === index
+                            ? { ...entry, required_certification_codes: codes }
+                            : entry,
+                        ),
+                      )
+                    }
+                  />
+                </Grid>
+                <Grid size={12}>
+                  <LineSkills
+                    index={index}
+                    value={line.required_skill_codes}
+                    inherited={
+                      (types ?? []).find(
+                        (entry) => entry.id === line.intervention_type_id,
+                      )?.required_skill_codes ?? []
+                    }
+                    catalogue={skillCatalogue ?? []}
+                    onChange={(codes) =>
+                      setLines(
+                        lines.map((entry, position) =>
+                          position === index
+                            ? { ...entry, required_skill_codes: codes }
+                            : entry,
+                        ),
+                      )
+                    }
+                  />
                 </Grid>
               </Grid>
               <Divider sx={{ mt: 1.5 }} />

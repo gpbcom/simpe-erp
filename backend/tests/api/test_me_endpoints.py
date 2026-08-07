@@ -24,13 +24,14 @@ from api.exception_handlers import ExceptionHandlers
 from api.v1.me.me import router as me_router
 from models.auth.user import User
 from models.companies.company import Company
-from models.enums import ContractType, QuoteStatus, UserRole
+from models.enums import Language, ContractType, QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.quoting.quote import Quote
 from service.auth.exceptions import MTAuthEmailAlreadyRegistered
 from service.customers.exceptions import MTCustomerNotFound
 from service.quotes.exceptions import MTQuoteForbidden
+from storage.s3.exceptions import MTS3PayloadTooLarge, MTS3UnsupportedContentType
 
 ADDRESS = {
     "street": "12 rue de Rivoli",
@@ -126,6 +127,7 @@ def _quote(status: QuoteStatus = QuoteStatus.DRAFT) -> Quote:
         Quote: The quote.
     """
     return Quote(
+        company_id="company-1",
         id="quote-1",
         reference="D-0142",
         customer_id="customer-1",
@@ -442,7 +444,11 @@ class TestMyAccount:
         auth = MagicMock()
         auth.update_account = AsyncMock(
             return_value=_user().model_copy(
-                update={"full_name": "Luc Martin-Durand", "email": "luc@simple-erp.fr"}
+                update={
+                    "first_name": "Luc",
+                    "last_name": "Martin-Durand",
+                    "email": "luc@simple-erp.fr",
+                }
             )
         )
 
@@ -456,6 +462,7 @@ class TestMyAccount:
         assert auth.update_account.await_args.kwargs == {
             "full_name": "Luc Martin-Durand",
             "email": "luc@simple-erp.fr",
+            "language": Language.FR,
         }
 
     def test_the_account_changed_is_the_callers_own(self) -> None:
@@ -504,7 +511,11 @@ class TestMyAccount:
         )
 
         assert response.status_code == 200
-        assert set(auth.update_account.await_args.kwargs) == {"full_name", "email"}
+        assert set(auth.update_account.await_args.kwargs) == {
+            "full_name",
+            "email",
+            "language",
+        }
 
     @pytest.mark.parametrize(
         "payload",
@@ -550,6 +561,162 @@ class TestMyAccount:
         )
 
         assert response.status_code == 409
+
+
+class TestMyAccountPhoto:
+    """Tests for the portrait every signed-in account may set."""
+
+    @pytest.mark.parametrize(
+        "role,hca_id",
+        [
+            (UserRole.HCA, "hca-1"),
+            (UserRole.MANAGER, None),
+            (UserRole.ADMIN, None),
+        ],
+    )
+    def test_every_role_may_upload_one(
+        self, role: UserRole, hca_id: Optional[str]
+    ) -> None:
+        """**The gap this route exists to close.**
+
+        Args:
+            role (UserRole): The role signing in.
+            hca_id (Optional[str]): The assistant record it is bound to.
+
+        Notes:
+            The only portrait route was ``PUT /me/hca/photo``, which refuses
+            any account with no assistant record — every manager and every
+            administrator. Their account screen showed a blank circle with
+            nothing to click, so this asserts all three roles get an answer.
+        """
+        caller = _user(role, hca_id=hca_id)
+        auth = MagicMock()
+        auth.set_photo = AsyncMock(
+            return_value=caller.model_copy(
+                update={"photo_url": "https://cdn.example.com/hca-photos/u/a.jpg"}
+            )
+        )
+
+        response = _client(caller, auth=auth).put(
+            "/api/v1/me/account/photo",
+            files={"photo": ("portrait.jpg", b"\xff\xd8\xffbytes", "image/jpeg")},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["photo_url"] == (
+            "https://cdn.example.com/hca-photos/u/a.jpg"
+        )
+
+    def test_the_account_changed_is_the_callers_own(self) -> None:
+        """There is no identifier in the path to point at somebody else.
+
+        Notes:
+            The service takes the ``User`` itself, so the only portrait a
+            caller can replace is their own — the same shape
+            ``PATCH /me/account`` uses.
+        """
+        caller = _user(user_id="user-7")
+        auth = MagicMock()
+        auth.set_photo = AsyncMock(return_value=caller)
+
+        _client(caller, auth=auth).put(
+            "/api/v1/me/account/photo",
+            files={"photo": ("portrait.jpg", b"bytes", "image/jpeg")},
+        )
+
+        assert auth.set_photo.await_args.args[0] is caller
+
+    def test_the_whole_file_reaches_the_service(self) -> None:
+        """The bytes are read here, so the store can check them itself.
+
+        Notes:
+            The declared content type is not passed on: the store decides the
+            format from the file's own leading bytes, because a client controls
+            that header completely.
+        """
+        auth = MagicMock()
+        auth.set_photo = AsyncMock(return_value=_user())
+
+        _client(_user(), auth=auth).put(
+            "/api/v1/me/account/photo",
+            files={"photo": ("portrait.png", b"\x89PNG\r\n\x1a\nrest", "text/html")},
+        )
+
+        assert auth.set_photo.await_args.args[1] == b"\x89PNG\r\n\x1a\nrest"
+
+    def test_an_image_the_store_refuses_is_answered_415(self) -> None:
+        """A file that is not a JPEG, PNG or WebP is not stored."""
+        auth = MagicMock()
+        auth.set_photo = AsyncMock(
+            side_effect=MTS3UnsupportedContentType("Not an image.")
+        )
+
+        response = _client(_user(), auth=auth).put(
+            "/api/v1/me/account/photo",
+            files={"photo": ("payload.svg", b"<svg/>", "image/svg+xml")},
+        )
+
+        assert response.status_code == 415
+
+    def test_an_oversized_image_is_answered_413(self) -> None:
+        """The configured limit is reported as a size failure, not a crash."""
+        auth = MagicMock()
+        auth.set_photo = AsyncMock(side_effect=MTS3PayloadTooLarge("Too big."))
+
+        response = _client(_user(), auth=auth).put(
+            "/api/v1/me/account/photo",
+            files={"photo": ("portrait.jpg", b"x" * 32, "image/jpeg")},
+        )
+
+        assert response.status_code == 413
+
+    def test_a_request_with_no_file_is_refused(self) -> None:
+        """A portrait is uploaded as a file, never named as a URL."""
+        auth = MagicMock()
+        auth.set_photo = AsyncMock()
+
+        response = _client(_user(), auth=auth).put(
+            "/api/v1/me/account/photo",
+            json={"photo_url": "https://evil.example.com/tracker.png"},
+        )
+
+        assert response.status_code == 422
+        auth.set_photo.assert_not_awaited()
+
+    def test_a_portrait_can_be_removed(self) -> None:
+        """Removing one leaves the initials, which is a legible avatar."""
+        caller = _user()
+        auth = MagicMock()
+        auth.clear_photo = AsyncMock(return_value=caller)
+
+        response = _client(caller, auth=auth).delete("/api/v1/me/account/photo")
+
+        assert response.status_code == 200
+        assert response.json()["photo_url"] is None
+        assert auth.clear_photo.await_args.args[0] is caller
+
+    @pytest.mark.parametrize("method", ["put", "delete"])
+    def test_the_password_hash_is_never_returned(self, method: str) -> None:
+        """Both routes answer with an account; neither may carry a credential.
+
+        Args:
+            method (str): The verb under test.
+        """
+        auth = MagicMock()
+        auth.set_photo = AsyncMock(return_value=_user())
+        auth.clear_photo = AsyncMock(return_value=_user())
+        client = _client(_user(), auth=auth)
+
+        body = (
+            client.put(
+                "/api/v1/me/account/photo",
+                files={"photo": ("portrait.jpg", b"bytes", "image/jpeg")},
+            )
+            if method == "put"
+            else client.delete("/api/v1/me/account/photo")
+        ).json()
+
+        assert "hashed_password" not in body
 
 
 class TestSelfServiceRequiresAnAssistantRecord:

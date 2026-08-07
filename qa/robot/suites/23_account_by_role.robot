@@ -49,10 +49,13 @@ Every Role Gets An Account Page At All
 An Account With No Assistant Record Says So
     [Documentation]    An explanation, not an error and not a blank page.
     ...
-    ...    A manager has no schedule, no customer portfolio and no round
-    ...    photograph, because those belong to the person being scheduled. The
-    ...    page says that in a sentence rather than leaving four sections
-    ...    mysteriously absent.
+    ...    A manager has no schedule and no customer portfolio, because those
+    ...    belong to the person being scheduled. The page says that in a
+    ...    sentence rather than leaving the sections mysteriously absent.
+    ...
+    ...    The portrait is **not** one of them any more: it belongs to the
+    ...    account rather than to the assistant record, so every role has one —
+    ...    see "Every Role Can Set A Portrait" below.
     [Tags]    smoke    account
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /me
@@ -67,6 +70,29 @@ An Account With No Assistant Record Says So
         Wait For Elements State    [data-testid="absences-section"]    visible
     END
     [Teardown]    Sign Out
+
+Every Role Can Set A Portrait
+    [Documentation]    **The gap this closes: a manager had no photograph.**
+    ...
+    ...    The only portrait route was bound to an assistant record, so a
+    ...    manager and an administrator were shown a blank circle with nothing
+    ...    to click — not a locked control, simply nothing. The avatar and its
+    ...    button are now on the account, which every signed-in caller has.
+    ...
+    ...    Only the controls are asserted. Uploading a real image is covered by
+    ...    the backend's own tests, and a fixture photograph left on a seeded
+    ...    account would break the second run.
+    [Tags]    smoke    account
+    FOR    ${email}    IN    ${ASSISTANT_EMAIL}    ${MANAGER_EMAIL}    ${ADMIN_EMAIL}
+        Sign In As    ${email}
+        Navigate To    /me
+        Wait For Elements State    [data-testid="profile-avatar"]    visible
+        ...    message=${email} has no portrait on /me.
+        Wait For Elements State    [data-testid="upload-photo"]    visible
+        ...    message=${email} cannot change their portrait.
+        Wait For Elements State    [data-testid="photo-input"]    attached
+        Sign Out
+    END
 
 The Display Name Is The Holder's Own To Change
     [Documentation]    Saved for real, then put back.

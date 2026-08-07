@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Union
+from decimal import Decimal
+from typing import Any, Optional, Union
 
 # Third-party imports
 import pytest
@@ -10,6 +11,11 @@ import pytest
 from models.companies.company import Company
 from models.companies.company_choice import CompanyChoice
 from models.companies.exceptions import (
+    MTCompanyInvalidLegalForm,
+    MTCompanyInvalidPhoneNumber,
+    MTCompanyInvalidRcsNumber,
+    MTCompanyInvalidShareCapital,
+    MTCompanyInvalidVatNumber,
     MTCompanyInvalidEmail,
     MTCompanyInvalidId,
     MTCompanyInvalidIsAcceptingApplications,
@@ -91,13 +97,13 @@ class TestCompany:
         ],
     )
     def test_the_registration_number_is_normalised(
-        self, value: str, expected: Union[str, None]
+        self, value: str, expected: Optional[str]
     ) -> None:
         """Two spellings of one number are one number.
 
         Args:
             value (str): The number as typed.
-            expected (Union[str, None]): What should be stored.
+            expected (Optional[str]): What should be stored.
 
         Notes:
             Registration numbers get copied off letterheads by hand, and the
@@ -248,3 +254,145 @@ class TestCompany:
         assert rebuilt.name == "Aide et Soins"
         assert rebuilt.registration_number == "123456789"
         assert rebuilt.is_accepting_applications is False
+
+
+class TestCompanyLegalIdentity:
+    """Tests for what an agency must be able to say about itself on a quote."""
+
+    def test_every_legal_field_is_optional(self) -> None:
+        """An agency that has not filled them in is still an agency.
+
+        Notes:
+            All five arrived after the rows did and none has a safe default —
+            a share capital invented as zero would be a false declaration.
+            The quote prints only the parts that are set.
+        """
+        company = Company(name="Aide et Presence")
+
+        assert company.legal_form is None
+        assert company.share_capital is None
+        assert company.rcs_number is None
+        assert company.vat_number is None
+        assert company.phone_number is None
+
+    def test_a_complete_legal_identity_is_accepted(self) -> None:
+        """The ordinary case: everything a French quote must carry."""
+        company = Company(
+            name="Aide et Presence Paris",
+            legal_form="SARL",
+            share_capital="10000.50",
+            rcs_number="RCS Paris B 123 456 789",
+            vat_number="FR12345678901",
+            phone_number="01 23 45 67 89",
+        )
+
+        assert company.legal_form == "SARL"
+        assert company.share_capital == Decimal("10000.50")
+        assert company.vat_number == "FR12345678901"
+
+    def test_a_share_capital_keeps_its_cents(self) -> None:
+        """A Decimal built from the string form, not a float.
+
+        Notes:
+            ``10000.50`` as a float is not ``10000.50``, and the difference
+            reaches a document the customer is asked to sign.
+        """
+        assert Company(
+            name="X", share_capital="10000.50"
+        ).share_capital == Decimal("10000.50")
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param(0, id="Invalid - zero"),
+            pytest.param(-1, id="Invalid - negative"),
+            pytest.param("lots", id="Invalid - not a number"),
+        ],
+    )
+    def test_an_unusable_share_capital_is_refused(self, value: Any) -> None:
+        """A company with no capital declares nothing, not zero.
+
+        Args:
+            value (Any): The rejected capital.
+        """
+        with pytest.raises(MTCompanyInvalidShareCapital):
+            Company(name="X", share_capital=value)
+
+    def test_a_vat_number_is_normalised(self) -> None:
+        """Spaces removed and letters upper-cased, so it round-trips.
+
+        Notes:
+            Somebody reading it off a letterhead types ``fr 123 456 789 01``.
+            Storing that verbatim would make two spellings of one number.
+        """
+        assert (
+            Company(name="X", vat_number="fr 123 456 789 01").vat_number
+            == "FR12345678901"
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("FR123", id="Invalid - too short"),
+            pytest.param("FR123456789012", id="Invalid - too long"),
+            pytest.param("123456789012", id="Invalid - no country code"),
+        ],
+    )
+    def test_a_malformed_vat_number_is_refused(self, value: str) -> None:
+        """**Checked, not merely stored.**
+
+        Args:
+            value (str): The rejected number.
+
+        Notes:
+            This appears on every quote, and one with a digit missing is the
+            kind of error nobody notices until an accountant does.
+        """
+        with pytest.raises(MTCompanyInvalidVatNumber):
+            Company(name="X", vat_number=value)
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            pytest.param("legal_form", "   ", id="legal form of spaces"),
+            pytest.param("rcs_number", "", id="empty RCS entry"),
+            pytest.param("phone_number", "  ", id="phone of spaces"),
+            pytest.param("vat_number", "  ", id="VAT of spaces"),
+        ],
+    )
+    def test_a_blank_label_becomes_none(self, field: str, value: str) -> None:
+        """Blank is absent, not an empty string.
+
+        Args:
+            field (str): The field being cleared.
+            value (str): The blank value.
+
+        Notes:
+            The quote joins the parts that are set with a middle dot. An empty
+            string would print a stray separator on a legal document.
+        """
+        assert getattr(Company(name="X", **{field: value}), field) is None
+
+    def test_an_rcs_entry_reports_itself_rather_than_a_legal_form(self) -> None:
+        """One rule, two exceptions, because the status map is keyed on class.
+
+        Notes:
+            The check is identical for both labels, but a rejected RCS entry
+            has to say so — reporting it as a bad legal form would send an
+            administrator to the wrong field.
+        """
+        with pytest.raises(MTCompanyInvalidRcsNumber):
+            Company(name="X", rcs_number="R" * 200)
+        with pytest.raises(MTCompanyInvalidLegalForm):
+            Company(name="X", legal_form="S" * 200)
+
+    def test_every_leaf_shares_one_base(self) -> None:
+        """One except clause catches everything this model raises."""
+        for exception in (
+            MTCompanyInvalidLegalForm,
+            MTCompanyInvalidShareCapital,
+            MTCompanyInvalidRcsNumber,
+            MTCompanyInvalidVatNumber,
+            MTCompanyInvalidPhoneNumber,
+        ):
+            assert issubclass(exception, MTInvalidCompanyException)

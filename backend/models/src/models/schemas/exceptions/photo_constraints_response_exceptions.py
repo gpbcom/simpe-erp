@@ -36,6 +36,18 @@ class MTInterventionTypeUpdateRequestInvalidName(
     """Exception raised when the display name is empty."""
 
 
+class MTInterventionTypeUpdateRequestInvalidSkills(
+    MTInvalidInterventionTypeUpdateRequestException
+):
+    """Exception raised when an invalid ``required_skill_codes`` is given."""
+
+
+class MTInterventionTypeUpdateRequestInvalidCertifications(
+    MTInvalidInterventionTypeUpdateRequestException
+):
+    """Exception raised when the required certification codes are malformed."""
+
+
 class MTInterventionTypeUpdateRequestInvalidRate(
     MTInvalidInterventionTypeUpdateRequestException
 ):

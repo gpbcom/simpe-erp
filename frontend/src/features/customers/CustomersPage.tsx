@@ -1,15 +1,25 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import Alert from '@mui/material/Alert';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import DeleteIcon from '@mui/icons-material/Delete';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import SearchIcon from '@mui/icons-material/Search';
-import { useCustomers } from '@/api/queries';
+import { useCustomerQuotes, useCustomers, useDeleteCustomer } from '@/api/queries';
 import { CustomerDetailDrawer } from './CustomerDetailDrawer';
+import { CustomerDialog } from './CustomerDialog';
 import type { Customer } from '@/api/types';
 
 /**
@@ -27,12 +37,34 @@ import type { Customer } from '@/api/types';
  * A grid rather than the card layout the assistant's own portfolio uses. A
  * manager scans forty households looking for one; an assistant reads the eight
  * they visit. Cards are better for reading and worse for finding.
+ *
+ * **Registering somebody starts here**, beside the search that proves they are
+ * not already on file. A manager taking a telephone enquiry looks the family up
+ * first; putting the button anywhere else would mean leaving the one screen that
+ * can answer "do we already know them?" in order to say that we do not.
  */
 export function CustomersPage() {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
+  const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Customer | null>(null);
   const { data: customers, isLoading } = useCustomers(search || undefined);
+  const [removing, setRemoving] = useState<Customer | null>(null);
+  const [removalError, setRemovalError] = useState<string | null>(null);
+  const remove = useDeleteCustomer();
+  // Counted before anything is destroyed, so the confirmation can say what it
+  // costs. A dialog that does not is a dialog nobody reads.
+  const { data: doomedQuotes } = useCustomerQuotes(removing?.id ?? '');
+
+  const confirmRemoval = () => {
+    if (!removing?.id) return;
+    setRemovalError(null);
+    remove.mutate(removing.id, {
+      onSuccess: () => setRemoving(null),
+      onError: (cause) =>
+        setRemovalError(cause instanceof Error ? cause.message : t('common.error')),
+    });
+  };
 
   const columns: GridColDef<Customer>[] = [
     {
@@ -70,28 +102,68 @@ export function CustomersPage() {
         />
       ),
     },
+    {
+      field: 'actions',
+      headerName: '',
+      width: 70,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <IconButton
+          size="small"
+          color="error"
+          onClick={(event) => {
+            // The row itself opens the detail drawer, so the click must not
+            // reach it — a confirm dialog behind a drawer is a confirm dialog
+            // nobody can read.
+            event.stopPropagation();
+            setRemovalError(null);
+            setRemoving(params.row);
+          }}
+          aria-label={t('customers.delete')}
+          data-testid={`delete-customer-${params.row.id}`}
+        >
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      ),
+    },
   ];
 
   return (
     <Stack spacing={3}>
       <Typography variant="h1">{t('nav.customers')}</Typography>
 
-      <TextField
-        placeholder={t('customer.search')}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        sx={{ maxWidth: 420 }}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          },
-          htmlInput: { 'data-testid': 'customer-search' },
-        }}
-      />
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={2}
+        alignItems={{ sm: 'center' }}
+      >
+        <TextField
+          placeholder={t('customer.search')}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          sx={{ maxWidth: 420, flexGrow: 1 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+            htmlInput: { 'data-testid': 'customer-search' },
+          }}
+        />
+        <Box sx={{ flexGrow: 1 }} />
+        <Button
+          variant="contained"
+          startIcon={<PersonAddIcon />}
+          onClick={() => setCreating(true)}
+          data-testid="add-customer"
+        >
+          {t('customer.add')}
+        </Button>
+      </Stack>
 
       {(customers ?? []).length === 0 && !isLoading ? (
         <Typography color="text.secondary" data-testid="no-customer">
@@ -115,6 +187,58 @@ export function CustomersPage() {
           data-testid="customers-grid"
         />
       </Box>
+
+      <Dialog
+        open={Boolean(removing)}
+        onClose={() => setRemoving(null)}
+        fullWidth
+        data-testid="delete-customer-dialog"
+      >
+        <DialogTitle>
+          {t('customers.deleteTitle', {
+            name: removing ? `${removing.first_name} ${removing.last_name}` : '',
+          })}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="warning">{t('customers.deleteWarning')}</Alert>
+            <Typography variant="body2" data-testid="delete-customer-counts">
+              {t('customers.deleteCounts', { quotes: (doomedQuotes ?? []).length })}
+            </Typography>
+            {removalError ? (
+              <Alert severity="error" data-testid="delete-customer-error">
+                {removalError}
+              </Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setRemoving(null)}
+            data-testid="cancel-delete-customer"
+          >
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmRemoval}
+            disabled={remove.isPending}
+            data-testid="confirm-delete-customer"
+          >
+            {t('common.delete')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <CustomerDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        // Straight into the file that was just created: the next thing a manager
+        // does after registering a family is write their first quote, and that
+        // lives on the drawer.
+        onCreated={(customer) => setSelected(customer)}
+      />
 
       <CustomerDetailDrawer customer={selected} onClose={() => setSelected(null)} />
     </Stack>

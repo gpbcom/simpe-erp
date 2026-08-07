@@ -10,19 +10,31 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
+import Alert from '@mui/material/Alert';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
+import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
-import { useQueryClient } from '@tanstack/react-query';
-import { request } from '@/api/client';
-import { keys, useHcas, usePromoteUser, useUsers } from '@/api/queries';
+import {
+  useCertificationTypes,
+  useDeleteHca,
+  useHcas,
+  usePromoteUser,
+  useUpdateEmployment,
+  useUsers,
+} from '@/api/queries';
 import { useSession } from '@/store/session';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { FieldEmployeeToggle } from './FieldEmployeeToggle';
 import { initialsOf } from '@/utils/format';
+import { WEEKDAYS } from '@/api/types';
+import { WorkingDaysDialog } from './WorkingDaysDialog';
 import type { Certification, Hca, User } from '@/api/types';
 
 /**
@@ -43,7 +55,6 @@ import type { Certification, Hca, User } from '@/api/types';
  */
 export function HcasPage() {
   const { t } = useTranslation();
-  const client = useQueryClient();
   // Promotion and the accounts list are both administrator-only. A manager
   // sees the workforce without the role column rather than a column that
   // says 'no account' about every one of them.
@@ -68,21 +79,54 @@ export function HcasPage() {
   const [editing, setEditing] = useState<Hca | null>(null);
   const [draft, setDraft] = useState<Certification[]>([]);
   const [added, setAdded] = useState('');
+  const [onRounds, setOnRounds] = useState(true);
+  const [removing, setRemoving] = useState<Hca | null>(null);
+  const [removalError, setRemovalError] = useState<string | null>(null);
+  const { data: catalogue } = useCertificationTypes();
+  const remove = useDeleteHca();
+
+  // Only what is not already held, so the picker cannot add a duplicate the
+  // server would store twice and the planner would read once.
+  const available = (catalogue ?? []).filter(
+    (entry) => !draft.some((held) => held.code === entry.code),
+  );
+
+  const [editingDays, setEditingDays] = useState<Hca | null>(null);
 
   const openEditor = (hca: Hca) => {
     setEditing(hca);
     setDraft([...hca.certifications]);
     setAdded('');
+    setOnRounds(hca.field_employee);
   };
 
-  const save = async () => {
+  // Through the shared mutation rather than a hand-rolled request. It knows
+  // to invalidate `['planning']` as well as the workforce, which this screen
+  // did not: taking somebody off the rounds changes who the next run may
+  // schedule, so the calendars stop agreeing with the grid until they are
+  // refetched — and nothing on either screen would have said so.
+  const updateEmployment = useUpdateEmployment(editing?.id ?? null);
+
+  const save = () => {
     if (!editing?.id) return;
-    await request(`/api/v1/hcas/${editing.id}/employment`, {
-      method: 'PATCH',
-      json: { contract_type: editing.contract_type, certifications: draft },
+    updateEmployment.mutate(
+      {
+        contract_type: editing.contract_type,
+        certifications: draft,
+        field_employee: onRounds,
+      },
+      { onSuccess: () => setEditing(null) },
+    );
+  };
+
+  const confirmRemoval = () => {
+    if (!removing?.id) return;
+    setRemovalError(null);
+    remove.mutate(removing.id, {
+      onSuccess: () => setRemoving(null),
+      onError: (cause) =>
+        setRemovalError(cause instanceof Error ? cause.message : t('common.error')),
     });
-    await client.invalidateQueries({ queryKey: keys.hcas(search || undefined) });
-    setEditing(null);
   };
 
   const columns: GridColDef<Hca>[] = [
@@ -109,6 +153,58 @@ export function HcasPage() {
       width: 120,
       renderCell: (params) => (
         <Chip label={t(`hca.contract_${params.row.contract_type}`)} />
+      ),
+    },
+    {
+      field: 'field_employee',
+      headerName: t('hcas.fieldEmployee'),
+      width: 150,
+      sortable: false,
+      // Changed in the cell rather than only inside the qualifications
+      // dialog. Taking somebody off the rounds has nothing to do with their
+      // diplomas, and burying it behind a button labelled "edit the
+      // qualifications" made the one field a manager changes weekly the
+      // hardest one on the screen to find. Everybody who reaches this page
+      // already holds the role the route asks for.
+      renderCell: (params) => <FieldEmployeeToggle hca={params.row} />,
+    },
+    {
+      field: 'working_weekdays',
+      headerName: t('hca.workingDays'),
+      width: 190,
+      sortable: false,
+      // The initials of the days worked, in ISO order, so a manager can read a
+      // rota down the column. Spelling them out would need a column nobody has
+      // room for; a count would say "4 days" without saying which four, which
+      // is the only part that decides who can take a Wednesday visit.
+      // The cell is the control. A separate button would be a fourth one on a
+      // row that already carries three, and the chips are what a manager is
+      // looking at when they decide the rota is wrong.
+      renderCell: (params) => (
+        <Tooltip title={t('hcas.editWorkingDays')}>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            sx={{ flexWrap: 'wrap', cursor: 'pointer' }}
+            onClick={() => setEditingDays(params.row)}
+            data-testid={`edit-working-days-${params.row.id}`}
+          >
+            {WEEKDAYS.map((day) => {
+              const worked = params.row.working_weekdays.includes(day);
+              return (
+                <Chip
+                  key={day}
+                  size="small"
+                  variant={worked ? 'filled' : 'outlined'}
+                  color={worked ? 'primary' : 'default'}
+                  label={t(`common.weekdayShort_${day}`)}
+                  data-testid={`working-day-${params.row.id}-${day}`}
+                  data-selected={worked ? 'true' : 'false'}
+                />
+              );
+            })}
+          </Stack>
+        </Tooltip>
       ),
     },
     {
@@ -194,6 +290,18 @@ export function HcasPage() {
               {t('hca.promote')}
             </Button>
           ) : null}
+          <IconButton
+            size="small"
+            color="error"
+            onClick={() => {
+              setRemovalError(null);
+              setRemoving(params.row);
+            }}
+            aria-label={t('hcas.delete')}
+            data-testid={`delete-hca-${params.row.id}`}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
         </Stack>
       ),
     },
@@ -260,6 +368,45 @@ export function HcasPage() {
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={Boolean(removing)}
+        onClose={() => setRemoving(null)}
+        fullWidth
+        data-testid="delete-hca-dialog"
+      >
+        <DialogTitle>
+          {t('hcas.deleteTitle', {
+            name: removing ? `${removing.first_name} ${removing.last_name}` : '',
+          })}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {/* What it costs, before it is asked for. A confirmation that does
+                not say what it destroys is a confirmation nobody reads. */}
+            <Alert severity="warning">{t('hcas.deleteWarning')}</Alert>
+            {removalError ? (
+              <Alert severity="error" data-testid="delete-hca-error">
+                {removalError}
+              </Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoving(null)} data-testid="cancel-delete-hca">
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={confirmRemoval}
+            disabled={remove.isPending}
+            data-testid="confirm-delete-hca"
+          >
+            {t('common.delete')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog open={Boolean(editing)} onClose={() => setEditing(null)} fullWidth>
         <DialogTitle>{t('hca.editCertifications')}</DialogTitle>
         <DialogContent>
@@ -283,18 +430,33 @@ export function HcasPage() {
             ))}
             <Box sx={{ display: 'flex', gap: 1 }}>
               <TextField
+                select
                 label={t('hca.certifications')}
                 value={added}
                 onChange={(event) => setAdded(event.target.value)}
-                inputProps={{ 'data-testid': 'new-certification' }}
-              />
+                sx={{ flexGrow: 1 }}
+                slotProps={{
+                  select: { native: true },
+                  inputLabel: { shrink: true },
+                  htmlInput: { 'data-testid': 'new-certification' },
+                }}
+              >
+                <option value="" />
+                {available.map((entry) => (
+                  <option key={entry.code} value={entry.code}>
+                    {entry.label}
+                  </option>
+                ))}
+              </TextField>
               <Button
                 onClick={() => {
-                  if (!added.trim()) return;
+                  const chosen = available.find((entry) => entry.code === added);
+                  if (!chosen) return;
                   setDraft([
                     ...draft,
                     {
-                      name: added.trim(),
+                      name: chosen.label,
+                      code: chosen.code,
                       issuer: null,
                       obtained_on: null,
                       expires_on: null,
@@ -307,6 +469,20 @@ export function HcasPage() {
                 +
               </Button>
             </Box>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={onRounds}
+                  onChange={(event) => setOnRounds(event.target.checked)}
+                  data-testid="field-employee"
+                />
+              }
+              label={t('hcas.fieldEmployee')}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {t('hcas.fieldEmployeeHint')}
+            </Typography>
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -318,6 +494,7 @@ export function HcasPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <WorkingDaysDialog hca={editingDays} onClose={() => setEditingDays(null)} />
     </Stack>
   );
 }

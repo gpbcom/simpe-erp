@@ -22,7 +22,9 @@
     "teamPlanning": "Team planning",
     "operations": "Operations",
     "administration": "Administration",
-    "company": "My agency"
+    "company": "My agency",
+    "certifications": "Certifications",
+    "skills": "Skills"
   },
   "auth": {
     "signIn": "Sign in",
@@ -53,8 +55,8 @@
     "validate": "Validate",
     "refuse": "Send back to author",
     "send": "Send to customer",
-    "accept": "Accepted by customer",
-    "reject": "Declined by customer",
+    "accept": "Accept",
+    "reject": "Decline",
     "validationQueue": "Quotes awaiting validation",
     "emptyQueue": "No quote is awaiting validation.",
     "status_draft": "Draft",
@@ -145,7 +147,10 @@
     "promote": "Promote to manager",
     "promoteTitle": "Promote to manager",
     "promoteExplain": "{{name}} will be able to validate quotes and manage assistants. An administrator can reverse this.",
-    "record": "Record"
+    "record": "Record",
+    "workingDays": "Working days",
+    "workingDaysHint": "The days of the week you work at all. A day left off is not an absence — it is a standing arrangement, and the planner never schedules you on it.",
+    "workingDaysEmpty": "Select at least one day. A week with no working day cannot be saved."
   },
   "customer": {
     "registrationStatus": "Status",
@@ -165,7 +170,17 @@
     "ongoingQuotes": "Ongoing arrangements",
     "pastQuotes": "History",
     "noOngoingQuote": "No ongoing arrangement.",
-    "addressNotResolved": "This address could not be located: no planning run will route to this home until it is corrected."
+    "addressNotResolved": "This address could not be located: no planning run will route to this home until it is corrected.",
+    "add": "Add a customer",
+    "identity": "Identity",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "address": "Address",
+    "street": "Street",
+    "postalCode": "Postcode",
+    "city": "Town",
+    "country": "Country",
+    "addressIsRouted": "This is where the care is delivered, and the address every planning run routes to."
   },
   "planning": {
     "week": "Week",
@@ -197,7 +212,29 @@
     "deleteVisitTitle": "Delete this visit?",
     "deleteVisitExplain": "“{{name}}” on {{day}} will be taken off the planning and off the service billed for. The quote is repriced and the planning recomputed.",
     "everybody": "All assistants",
-    "assistant": "Assistant"
+    "assistant": "Assistant",
+    "settingsTitle": "Planning rules",
+    "settingsSubtitle": "The working day, the midday break and how far an assistant may be sent.",
+    "settingsAppliesNextRun": "Changes apply to the next planning run. Calendars already computed are left as they are.",
+    "workingDayTitle": "Working day",
+    "workingDayHint": "No visit starts before this, and none ends after it.",
+    "dayStart": "Day starts at",
+    "dayEnd": "Day ends at",
+    "lunchTitle": "Midday break",
+    "lunchHint": "An uninterrupted break every assistant gets on a day they work.",
+    "lunchMinutes": "Break length (minutes)",
+    "lunchWindowStart": "Break may start from",
+    "lunchWindowEnd": "Break must end by",
+    "radiusTitle": "Intervention radius",
+    "radiusHint": "How far from their own home an assistant may be sent.",
+    "radiusKm": "Radius (km)",
+    "settingsIncomplete": "Every field is required.",
+    "settingsRadiusInvalid": "The radius must be greater than zero.",
+    "settingsLunchTooShort": "The break must be at least 60 minutes.",
+    "settingsDayInverted": "The working day must end after it starts.",
+    "settingsLunchInverted": "The break window must end after it starts.",
+    "settingsLunchOutsideDay": "The break window must fall inside the working day.",
+    "settingsLunchWindowTooNarrow": "The break window is too narrow to hold the break."
   },
   "notification": {
     "title": "Notifications",
@@ -224,7 +261,24 @@
     "remove": "Remove",
     "yes": "Yes",
     "no": "No",
-    "edit": "Edit"
+    "edit": "Edit",
+    "delete": "Delete",
+    "saveFailed": "Could not save. Please try again.",
+    "weekday_monday": "Monday",
+    "weekday_tuesday": "Tuesday",
+    "weekday_wednesday": "Wednesday",
+    "weekday_thursday": "Thursday",
+    "weekday_friday": "Friday",
+    "weekday_saturday": "Saturday",
+    "weekday_sunday": "Sunday",
+    "weekdayShort_monday": "Mo",
+    "weekdayShort_tuesday": "Tu",
+    "weekdayShort_wednesday": "We",
+    "weekdayShort_thursday": "Th",
+    "weekdayShort_friday": "Fr",
+    "weekdayShort_saturday": "Sa",
+    "weekdayShort_sunday": "Su",
+    "add": "Add"
   },
   "company": {
     "registerPrompt": "Create an agency account",
@@ -249,7 +303,16 @@
     "applications": "Applications",
     "acceptingApplications": "Accept unsolicited applications",
     "acceptingApplicationsHint": "Decides whether the agency appears on the list an applicant chooses from. Closing it does not discard applications already submitted: somebody who applied yesterday is still waiting for an answer.",
-    "administratorOnly": "Only an administrator may view and change the agency's details."
+    "administratorOnly": "Only an administrator may view and change the agency's details.",
+    "legalIdentity": "Legal identity",
+    "legalIdentityHint": "What a quote must state about the agency making the offer. Left blank, it simply does not appear on the document.",
+    "legalForm": "Legal form",
+    "legalFormHint": "SARL, SAS, Association, and so on.",
+    "shareCapital": "Share capital (€)",
+    "rcsNumber": "Trade register (RCS)",
+    "vatNumber": "Intra-community VAT number",
+    "vatNumberHint": "Such as FR12345678901.",
+    "phoneNumber": "Telephone"
   },
   "role": {
     "hca": "Assistant",
@@ -280,7 +343,9 @@
     "passwordMismatch": "The two entries differ.",
     "changePassword": "Change password",
     "passwordChanged": "Password changed.",
-    "noAssistantRecordExplained": "This account is bound to no assistant record, so it has no schedule, no customer portfolio and no round photograph. What is above is everything the system holds about you."
+    "noAssistantRecordExplained": "This account is bound to no assistant record, so it has no schedule and no customer portfolio. What is above — your photo, your details and your password — is everything the system holds about you.",
+    "changePhoto": "Change photo",
+    "photoExplained": "Your photo is shown beside your name to your colleagues. JPEG, PNG or WebP."
   },
   "catalog": {
     "title": "Catalogue and rates",
@@ -316,5 +381,67 @@
     "day_friday": "Friday",
     "day_saturday": "Saturday",
     "day_sunday": "Sunday"
+  },
+  "certifications": {
+    "title": "Certifications",
+    "add": "Add a certification",
+    "edit": "Edit the certification",
+    "code": "Code",
+    "label": "Label",
+    "description": "Description",
+    "status": "Status",
+    "active": "In use",
+    "retired": "Retired",
+    "codeHint": "Letters, digits, - and _ ; no accents.",
+    "codeIsFixed": "The code cannot be changed.",
+    "retiredExplained": "A retired certification is still held by those who hold it, but can no longer be required of a new service.",
+    "whatThisIs": "The qualifications the agency recognises. A service may require one: only assistants holding it, unexpired on the day of the visit, can be scheduled on that work.",
+    "requiredBy": "Required certifications",
+    "requiredHint": "None by default. Only assistants holding every certification chosen can be scheduled.",
+    "inheritsFromService": "Inherited from the service",
+    "overrideForThisLine": "Require something else for this line",
+    "none": "None"
+  },
+  "skills": {
+    "title": "Skill catalogue",
+    "add": "Add a skill",
+    "edit": "Edit skill",
+    "code": "Code",
+    "label": "Name",
+    "description": "Description",
+    "status": "Status",
+    "active": "In use",
+    "retired": "Retired",
+    "codeHint": "Letters, digits, - and _ only. Cannot be changed later.",
+    "codeIsFixed": "Fixed: every declared skill and requirement is matched on it.",
+    "retiredExplained": "A retired skill can no longer be required or declared. Everybody who already declared it keeps it.",
+    "whatThisIs": "The skills the agency recognises. Assistants declare their own from their account page, and a service can require one — the planner will only assign work to somebody who has declared it.",
+    "requiredBy": "Skills required",
+    "requiredHint": "Hold Ctrl (or Cmd) to select several. Only somebody who has declared all of them can be given this work.",
+    "inheritsFromService": "Use the skills the service requires",
+    "none": "No skill required",
+    "mine": "My skills",
+    "mineExplained": "You declare these yourself and they take effect immediately. Your managers are notified of every one you add, and can withdraw it.",
+    "noneDeclared": "You have not declared any skill yet.",
+    "declare": "Declare a skill",
+    "withdraw": "Withdraw this skill"
+  },
+  "hcas": {
+    "fieldEmployee": "On the rounds",
+    "fieldEmployeeHint": "Cleared, this person is no longer placed on interventions. Their record, their quotes and their account are unchanged.",
+    "notFieldEmployee": "Office",
+    "delete": "Delete the assistant",
+    "deleteTitle": "Delete {{name}}?",
+    "deleteWarning": "The record and the sign-in account bound to it are removed for good. Their remaining visits will be replanned.",
+    "deleteReplanned": "A replan has been queued.",
+    "editWorkingDays": "Edit working days",
+    "workingDaysManagerHint": "The days of the week this person works at all — a day left off is a standing arrangement, not an absence. Saturday and Sunday may be selected like any other day."
+  },
+  "customers": {
+    "delete": "Delete the customer",
+    "deleteTitle": "Delete {{name}}?",
+    "deleteWarning": "The customer and every quote written for them are removed for good, along with the visits scheduled from them. This cannot be undone: for a customer who is stopping the service, set their status to “stopped” instead.",
+    "deleteCounts": "{{quotes}} quote(s) will be deleted.",
+    "deleteReplanned": "A replan has been queued."
   }
 }

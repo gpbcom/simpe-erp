@@ -30,5 +30,30 @@ class MTInterventionTypeInvalidIsActive(MTInvalidInterventionTypeException):
     """Exception raised when an invalid ``is_active`` value is provided."""
 
 
+class MTInterventionTypeInvalidRequiredCertifications(
+    MTInvalidInterventionTypeException
+):
+    """Exception raised when an invalid ``required_certification_codes`` is given.
+
+    Notes:
+        A malformed requirement is refused rather than dropped. Silently
+        ignoring an entry would schedule an unqualified assistant on work the
+        agency believed was gated, which is the one failure this field exists
+        to prevent.
+    """
+
+
+class MTInterventionTypeInvalidRequiredSkills(MTInvalidInterventionTypeException):
+    """Exception raised when an invalid ``required_skill_codes`` is given.
+
+    Notes:
+        Distinct from the certification exception beside it even though the
+        rule is character-for-character the same. The two requirements are
+        satisfied from different places — a manager records a certification,
+        an assistant declares a skill — so a message naming the wrong one
+        sends somebody to the wrong screen.
+    """
+
+
 class MTInterventionTypeInvalidDate(MTInvalidInterventionTypeException):
     """Exception raised when an invalid timestamp value is provided."""

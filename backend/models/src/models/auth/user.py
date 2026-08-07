@@ -2,38 +2,45 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import datetime
-from typing import Dict, Optional, Union
+from typing import ClassVar, Dict, Optional, Tuple, Type, Union
 
 # Third-party imports
 from pydantic import (
-    BaseModel,
-    EmailStr,
     Field,
+    HttpUrl,
     JsonValue,
-    field_serializer,
     field_validator,
     model_validator,
 )
+from pydantic_extra_types.phone_numbers import PhoneNumber
 
 # First-party imports
 from models.auth.exceptions import (
     MTUserInvalidAccountOrigin,
+    MTUserInvalidAddress,
     MTUserInvalidCompanyId,
     MTUserInvalidDate,
     MTUserInvalidEmail,
     MTUserInvalidFullName,
     MTUserInvalidHashedPassword,
     MTUserInvalidHcaId,
+    MTUserInvalidLanguage,
     MTUserInvalidId,
     MTUserInvalidMustChangePassword,
+    MTUserInvalidPhoneNumber,
+    MTUserInvalidPhotoUrl,
     MTUserInvalidRole,
     MTUserRoleHcaRequiresHcaId,
     MTUserStaffAccountNeedsChange,
 )
-from models.enums import AccountOrigin, UserRole
+from models.base.exceptions import MTInvalidPersonException
+from models.base.person import Person
+from models.base.portrait_holder import PortraitHolder
+from models.enums import AccountOrigin, Language, UserRole
+from models.geo.postal_address import PostalAddress
 
 
-class User(BaseModel):
+class User(Person, PortraitHolder):
     """An account able to sign in to the backend.
 
     Attributes:
@@ -48,6 +55,9 @@ class User(BaseModel):
             every role — see :meth:`validate_company_id`.
         account_origin (AccountOrigin): Whether the account was
             self-registered or created by staff.
+        photo_url (Optional[HttpUrl]): URL of the holder's portrait in the
+            object store, when one has been uploaded. Inherited from
+            :class:`~models.base.portrait_holder.PortraitHolder`.
         must_change_password (bool): Whether the holder must set a new
             password before the account can do anything else.
         password_changed_at (Optional[datetime]): When the holder last
@@ -58,24 +68,40 @@ class User(BaseModel):
             store.
 
     Notes:
-        ``hca_id`` is what makes row-level access possible. An assistant may
-        only read their own planning, and the check compares this field with
-        the assistant whose planning was asked for — a route guard alone would
-        only prove the caller is *an* assistant, not the right one. The
-        cross-field validator therefore refuses to build an assistant account
-        that carries no link, since such an account could never be checked.
-
-        ``hashed_password`` is optional so a user record can exist before a
-        password is set, but it is never serialised: see
-        :meth:`to_public_dict`.
+        - ``hca_id`` is what makes row-level access possible. An assistant may
+          only read their own planning, and the check compares this field with
+          the assistant whose planning was asked for — a route guard alone would
+          only prove the caller is *an* assistant, not the right one. The
+          cross-field validator therefore refuses to build an assistant account
+          that carries no link, since such an account could never be checked.
+        - ``hashed_password`` is optional so a user record can exist before a
+          password is set, but it is never serialised: see
+          :meth:`to_public_dict`.
+        - ``photo_url`` lives on the *account* rather than only on the assistant
+          record, because every signed-in person has an account and only some of
+          them are assistants. A manager or an administrator had nowhere to put a
+          portrait at all, so their own account screen showed a blank circle with
+          nothing to click.
     """
 
-    id: Optional[str] = Field(
-        default=None,
-        description="Identifier, populated on read from the store.",
+    INVALID_ID: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidId
+    INVALID_FIRST_NAME: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidFullName
+    INVALID_LAST_NAME: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidFullName
+    INVALID_PHONE_NUMBER: ClassVar[Type[MTInvalidPersonException]] = (
+        MTUserInvalidPhoneNumber
     )
-    email: EmailStr = Field(description="Sign-in address; unique across accounts.")
-    full_name: str = Field(description="Display name.")
+    INVALID_EMAIL: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidEmail
+    INVALID_ADDRESS: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidAddress
+    INVALID_DATE: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidDate
+    INVALID_PHOTO_URL: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidPhotoUrl
+    phone_number: Optional[PhoneNumber] = Field(
+        default=None,
+        description="Contact telephone number, when one has been recorded.",
+    )
+    address: Optional[PostalAddress] = Field(
+        default=None,
+        description="Postal address, when one has been recorded.",
+    )
     hashed_password: Optional[str] = Field(
         default=None,
         description="Bcrypt hash of the password.",
@@ -99,6 +125,14 @@ class User(BaseModel):
         default=AccountOrigin.SELF_REGISTERED,
         description="Whether the account was self-registered or staff-created.",
     )
+    photo_url: Optional[HttpUrl] = Field(
+        default=None,
+        description="URL of the holder's portrait in the object store.",
+    )
+    language: Language = Field(
+        default=Language.FR,
+        description="The language this holder reads the application in.",
+    )
     must_change_password: bool = Field(
         default=False,
         description="Whether the password must be changed before anything else.",
@@ -107,40 +141,109 @@ class User(BaseModel):
         default=None,
         description="When the holder last chose their own password.",
     )
-    created_at: Optional[datetime] = Field(
-        default=None,
-        description="Creation timestamp, set by the store.",
-    )
-    updated_at: Optional[datetime] = Field(
-        default=None,
-        description="Last-update timestamp, set by the store.",
-    )
 
-    @field_validator("id", mode="before")
-    def validate_id(cls, value: Optional[str]) -> Optional[str]:
-        """Validates that ``id`` is ``None`` or a non-empty string.
+    @classmethod
+    def name_parts(cls, display_name: str) -> Tuple[str, str]:
+        """Split a display name into a given name and a family name.
 
         Args:
-            value (Optional[str]): Raw ``id`` value.
+            display_name (str): The single name an account is given.
 
         Returns:
-            Optional[str]: The identifier, or ``None`` before it is persisted.
+            Tuple[str, str]: The given name — empty for a mononym — and the
+            family name.
 
         Raises:
-            MTUserInvalidId: If ``value`` is neither ``None`` nor a non-empty
+            MTUserInvalidFullName: If ``display_name`` is not a non-empty
                 string.
+
+        Notes:
+            - **The one place the rule lives.** It is used by
+              :meth:`split_display_name` when an account is built and by
+              :meth:`~service.auth.auth.AuthService.update_account` when one is
+              renamed, and a second copy of "where does the surname start" is a
+              second answer.
+            - The split is on the **first** space, so the round trip through
+              :meth:`full_name` is exact. A name with no space goes entirely into
+              the family name; see :meth:`validate_first_name`.
+        """
+        if not isinstance(display_name, str) or not display_name.strip():
+            raise cls.INVALID_FIRST_NAME(
+                f"Invalid full_name: {display_name!r}. Must be a non-empty string."
+            )
+        given, _, family = display_name.strip().partition(" ")
+        return (given, family.strip()) if family.strip() else ("", given)
+
+    @model_validator(mode="before")
+    def split_display_name(cls, values: JsonValue) -> JsonValue:
+        """Accept a single ``full_name`` and store it as two names.
+
+        Args:
+            values (JsonValue): The raw payload the account is built from.
+
+        Returns:
+            JsonValue: The payload, with ``first_name`` and ``last_name``
+            filled in when only a display name was supplied.
+
+        Notes:
+            - **An account collects one name, a person has two.** Every caller —
+             the sign-up form, the staff-account route, the seeder — has always
+             passed ``full_name="Claire Bernard"``, and there is no screen
+             anywhere that asks an account holder for their surname separately.
+             Rather than change all of them, the display name is split here and
+             recomposed by :meth:`~models.base.person.Person.full_name`.
+           - The split is on the **first** space, which makes the round trip
+             exact: ``"Jean Pierre de la Tour"`` stores ``"Jean"`` and
+             ``"Pierre de la Tour"`` and reads back identical. A name with no
+             space at all — a mononym, or a service account called ``root`` —
+             goes entirely into ``last_name``, which is why
+            :meth:`validate_first_name` below accepts an empty given name where
+            :class:`~models.base.person.Person` does not.
+           - Explicit ``first_name``/``last_name`` win, so nothing here gets in
+             the way of a caller that does know both.
+        """
+        if not isinstance(values, dict) or "full_name" not in values:
+            return values
+        if values.get("first_name") is not None or values.get("last_name") is not None:
+            return values
+        given, family = cls.name_parts(values["full_name"])
+        supplied = dict(values)
+        supplied["first_name"] = given
+        supplied["last_name"] = family
+        return supplied
+
+    @field_validator("first_name", mode="before")
+    def validate_first_name(cls, value: Optional[str]) -> str:
+        """Validates that ``first_name`` is a string, possibly empty.
+
+        Args:
+            value (Optional[str]): Raw ``first_name`` value.
+
+        Returns:
+            str: The stripped given name, or ``""``.
+
+        Raises:
+            MTUserInvalidFullName: If ``value`` is not a string.
+
+        Notes:
+            **Overrides** :meth:`~models.base.person.Person.validate_first_name`,
+            which requires a non-empty value. An account may be a mononym or a
+            service account, and :meth:`split_display_name` puts such a name
+            entirely in ``last_name`` — so an empty given name is a real state
+            here, unlike for an assistant or a customer, who are people the
+            agency has a form for.
         """
         if value is None:
-            return None
-        if not isinstance(value, str) or not value.strip():
-            raise MTUserInvalidId(
-                f"Invalid id: {value!r}. Must be a non-empty string or None."
+            return ""
+        if not isinstance(value, str):
+            raise cls.INVALID_FIRST_NAME(
+                f"Invalid first_name: {value!r}. Must be a string."
             )
         return value.strip()
 
     @field_validator("email", mode="before")
     def validate_email(cls, value: Optional[str]) -> str:
-        """Validates that ``email`` is a non-empty string.
+        """Validates that ``email`` is a non-empty string, and lower-cases it.
 
         Args:
             value (Optional[str]): Raw ``email`` value.
@@ -152,33 +255,76 @@ class User(BaseModel):
             MTUserInvalidEmail: If ``value`` is not a non-empty string.
 
         Notes:
-            The address is lower-cased so sign-in is case-insensitive and the
-            uniqueness index cannot be defeated by changing capitalisation.
+            **Overrides** :meth:`~models.base.person.Person.validate_email`,
+            which leaves the case alone because for most people the address is
+            contact information. This one is the *sign-in*, so it is lower-cased
+            to make sign-in case-insensitive and to stop the uniqueness index
+            being defeated by capitalisation.
         """
         if not isinstance(value, str) or not value.strip():
-            raise MTUserInvalidEmail(
+            raise cls.INVALID_EMAIL(
                 f"Invalid email: {value!r}. Must be a non-empty string."
             )
         return value.strip().lower()
 
-    @field_validator("full_name", mode="before")
-    def validate_full_name(cls, value: Optional[str]) -> str:
-        """Validates that ``full_name`` is a non-empty string.
+    @field_validator("phone_number", mode="before")
+    def validate_phone_number(cls, value: Optional[str]) -> Optional[str]:
+        """Validates that ``phone_number`` is absent or a non-empty string.
 
         Args:
-            value (Optional[str]): Raw ``full_name`` value.
+            value (Optional[str]): Raw ``phone_number`` value.
 
         Returns:
-            str: The stripped display name.
+            Optional[str]: The stripped number, or ``None``.
 
         Raises:
-            MTUserInvalidFullName: If ``value`` is not a non-empty string.
+            MTUserInvalidPhoneNumber: If ``value`` is present but not a
+                non-empty string.
+
+        Notes:
+            **Overrides** the base's, which requires one. An account is a
+            credential; the number of somebody the agency schedules is on their
+            assistant record.
         """
+        if value is None:
+            return None
         if not isinstance(value, str) or not value.strip():
-            raise MTUserInvalidFullName(
-                f"Invalid full_name: {value!r}. Must be a non-empty string."
+            raise cls.INVALID_PHONE_NUMBER(
+                f"Invalid phone_number: {value!r}. Must be a non-empty string or None."
             )
         return value.strip()
+
+    @field_validator("address", mode="before")
+    def validate_address(
+        cls, value: Union[PostalAddress, Dict[str, JsonValue], None]
+    ) -> Union[PostalAddress, Dict[str, JsonValue], None]:
+        """Validates that ``address`` is absent, an address or a mapping.
+
+        Args:
+            value (Union[PostalAddress, Dict[str, JsonValue], None]): Raw
+                ``address`` value.
+
+        Returns:
+            Union[PostalAddress, Dict[str, JsonValue], None]: The value handed
+            back for Pydantic to build, or ``None``.
+
+        Raises:
+            MTUserInvalidAddress: If ``value`` is present but is neither a
+                :class:`~models.geo.postal_address.PostalAddress` nor a
+                mapping.
+
+        Notes:
+            **Overrides** the base's, which requires one, for the same reason
+            as :meth:`validate_phone_number`.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, (PostalAddress, dict)):
+            raise cls.INVALID_ADDRESS(
+                f"Invalid address: {value!r}. "
+                f"Must be a PostalAddress, a mapping, or None."
+            )
+        return value
 
     @field_validator("hashed_password", mode="before")
     def validate_hashed_password(cls, value: Optional[str]) -> Optional[str]:
@@ -257,6 +403,41 @@ class User(BaseModel):
                 f"Invalid hca_id: {value!r}. Must be a non-empty string or None."
             )
         return value.strip()
+
+    @field_validator("language", mode="before")
+    def validate_language(cls, value: Union[str, Language, None]) -> Language:
+        """Validates that ``language`` is one the application speaks.
+
+        Args:
+            value (Union[str, Language, None]): Raw ``language`` value.
+
+        Returns:
+            Language: The coerced language.
+
+        Raises:
+            MTUserInvalidLanguage: If ``value`` is not a known language.
+
+        Notes:
+            ``None`` reads as the default rather than as an error: the
+            column arrived after the rows did, and an account nobody has
+            set a preference on is an ordinary account.
+
+            An *unknown* code is refused. A preference the holder set and
+            the server silently ignored is worse than one it rejected —
+            the screen would go on showing their choice while every
+            document came out in the other language.
+        """
+        if value is None:
+            return Language.FR
+        if isinstance(value, Language):
+            return value
+        try:
+            return Language(value)
+        except ValueError:
+            raise MTUserInvalidLanguage(
+                f"Invalid language: {value!r}. Must be one of: "
+                f"{', '.join(Language.values())}."
+            ) from None
 
     @field_validator("company_id", mode="before")
     def validate_company_id(cls, value: Optional[str]) -> str:
@@ -341,30 +522,6 @@ class User(BaseModel):
             )
         return value
 
-    @field_validator("created_at", "updated_at", "password_changed_at", mode="before")
-    def validate_date(
-        cls, value: Union[str, datetime, None]
-    ) -> Union[str, datetime, None]:
-        """Validates that a timestamp is a datetime, an ISO string or ``None``.
-
-        Args:
-            value (Union[str, datetime, None]): Raw timestamp value.
-
-        Returns:
-            Union[str, datetime, None]: The value handed back for Pydantic to
-            parse.
-
-        Raises:
-            MTUserInvalidDate: If ``value`` is neither ``None`` nor a
-                datetime-like value.
-        """
-        if value is None or isinstance(value, (str, datetime)):
-            return value
-        raise MTUserInvalidDate(
-            f"Invalid timestamp: {value!r}. "
-            f"Must be a datetime, an ISO-8601 string, or None."
-        )
-
     @model_validator(mode="after")
     def check_staff_account_must_change(self) -> User:
         """Ensure a staff-created account is made to choose its own password.
@@ -377,22 +534,20 @@ class User(BaseModel):
                 already carries a credential, and is not required to change it.
 
         Notes:
-            **The specification's "MANDATORY" is enforced here, at
-            construction.** An account whose password was typed by somebody
-            else is a credential two people know; requiring the change is what
-            ends that, and a flag that can be left off by whoever writes the
-            next admin screen is not a requirement.
-
-            The check applies only while the temporary password is still the
-            one in force. Once ``password_changed_at`` is set the holder has
-            chosen their own, so the flag is correctly off — without that
-            second condition an account could not be *read back* after changing
-            its password, which is a validator making a legitimate state
-            unrepresentable.
-
-            It also applies only once a credential exists: an account being
-            assembled before its temporary password is set has nothing to
-            change yet.
+            - **The specification's "MANDATORY" is enforced here, at
+              construction.** An account whose password was typed by somebody
+              else is a credential two people know; requiring the change is what
+              ends that, and a flag that can be left off by whoever writes the
+              next admin screen is not a requirement.
+            - The check applies only while the temporary password is still the
+              one in force. Once ``password_changed_at`` is set the holder has
+              chosen their own, so the flag is correctly off — without that
+              second condition an account could not be *read back* after changing
+              its password, which is a validator making a legitimate state
+              unrepresentable.
+            - It also applies only once a credential exists: an account being
+              assembled before its temporary password is set has nothing to
+              change yet.
         """
         if (
             self.account_origin is AccountOrigin.CREATED_BY_STAFF
@@ -432,18 +587,6 @@ class User(BaseModel):
             )
         return self
 
-    @field_serializer("created_at", "updated_at")
-    def serialize_date(self, value: Optional[datetime]) -> Optional[str]:
-        """Serialize a timestamp to an ISO-8601 string.
-
-        Args:
-            value (Optional[datetime]): The timestamp to serialize.
-
-        Returns:
-            Optional[str]: The ISO-8601 representation, or ``None``.
-        """
-        return value.isoformat() if value is not None else None
-
     ############################
     # Publicly Exposed Methods #
     ############################
@@ -459,7 +602,26 @@ class User(BaseModel):
             password hash is excluded here rather than at each call site, so a
             new endpoint cannot leak it by forgetting to.
         """
-        return self.model_dump(mode="json", exclude={"hashed_password"})
+        published = self.model_dump(mode="json", exclude={"hashed_password"})
+        published["full_name"] = self.full_name()
+        return published
+
+    def full_name(self) -> str:
+        """Return the account's display name.
+
+        Returns:
+            str: The two names joined, or just the one when there is only one.
+
+        Notes:
+            **Overrides** :meth:`~models.base.person.Person.full_name`, which
+            joins both halves unconditionally because for an assistant or a
+            customer both are required. An account may be a mononym or a
+            service account, whose whole name sits in ``last_name`` with an
+            empty given name — and the base's version would render that with a
+            leading space, which then reaches every screen and every email that
+            greets somebody by name.
+        """
+        return " ".join(part for part in (self.first_name, self.last_name) if part)
 
     def is_manager(self) -> bool:
         """Return whether the account has manager privileges or above.

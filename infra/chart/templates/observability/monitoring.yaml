@@ -1,0 +1,64 @@
+{{/*
+ServiceMonitors and the alert rules.
+
+The rules are read from infra/observability, which the compose overlay reads
+too — one file, both places. An alert that fires on a laptop and not in
+production teaches people the local ones do not mean anything.
+*/}}
+{{- if .Values.observability.serviceMonitors }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-api
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "simple-erp.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+---
+{{/*
+The workers serve no traffic, so they have no Service of their own — and a
+ServiceMonitor needs one to select. A PodMonitor selects pods directly, which
+is what these are.
+*/}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-workers
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [worker-planning, worker-notifications]
+      - key: app.kubernetes.io/instance
+        operator: In
+        values: [{{ .Release.Name }}]
+  podMetricsEndpoints:
+    - port: probes
+      path: /metrics
+      interval: 30s
+{{- end }}
+{{- if .Values.observability.prometheusRules }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "simple-erp.fullname" . }}
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+spec:
+  {{/*
+  Read from the shared file rather than written out here. Two copies of an
+  alert is two thresholds that drift, and the one that drifts is always the one
+  nobody is watching.
+  */}}
+  {{- (.Files.Get "rules/simple-erp.yaml" | fromYaml) | toYaml | nindent 2 }}
+{{- end }}

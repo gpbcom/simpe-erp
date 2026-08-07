@@ -1,0 +1,213 @@
+# The project name, pinned rather than derived from this directory.
+#
+# Compose names a project after the directory holding the first compose file,
+# so moving these under infra/compose would have renamed it from "rt-erp" to
+# "compose" — and every volume with it. The stores bake their credentials in
+# when they first initialise an empty volume, so the symptom is not an empty
+# database but an authentication failure naming the right user, which reads
+# exactly like a typo in the configuration. See docs/09.
+name: rt-erp
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: simple_erp
+      POSTGRES_USER: simple_erp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simple_erp -d simple_erp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [simple-erp]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-simple_erp_dev}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [simple-erp]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+    entrypoint: >
+      sh -c "
+        mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
+        mc mb --ignore-existing local/simple-erp &&
+        mc anonymous set download local/simple-erp &&
+        echo 'Bucket simple-erp is ready.'
+      "
+    networks: [simple-erp]
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: simple_erp
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-simple_erp_dev}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [simple-erp]
+
+  # Behind a profile, so an ordinary `docker compose up` does not start it.
+  #
+  # **It is here because the trap it guards is silent.** ``asyncpg`` uses
+  # server-side prepared statements and caches them per connection; under
+  # transaction pooling a "connection" is a different server backend from one
+  # transaction to the next, so a statement prepared on one and executed on
+  # another raises — intermittently, under load, naming a statement nobody
+  # wrote. The engine passes ``statement_cache_size=0`` unconditionally to
+  # prevent it, and this is what proves that setting still works.
+  #
+  #   docker compose --profile pooled up
+  #
+  # and point database.host at `pgbouncer` in conf/app.docker.yaml. Nothing
+  # else changes: that is the property being demonstrated.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p3
+    profiles: [pooled]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: simple_erp
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      DB_NAME: simple_erp
+      # Transaction pooling, which is the whole point. Session pooling holds a
+      # backend per client and saves nothing at the scale that matters.
+      POOL_MODE: transaction
+      # Deliberately smaller than the sum of what the application would open.
+      # A pool that is never the constraint proves nothing.
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+      AUTH_TYPE: scram-sha-256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [simple-erp]
+
+  # Runs once, to completion, before anything that reads the schema. This was
+  # the first half of the API's own start command, which meant every API
+  # replica ran it — fine with one, a race with two. It is the compose half of
+  # the same arrangement the Helm chart expresses as a pre-upgrade hook Job.
+  migrate:
+    build:
+      context: ../../backend
+    image: simple-erp-backend:local
+    environment:
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["migrate"]
+    restart: "no"
+    networks: [simple-erp]
+
+  backend:
+    build:
+      context: ../../backend
+    image: simple-erp-backend:local
+    environment:
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-any-real-deployment}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks: [simple-erp]
+
+  # Two deployments, one image. A solve is CPU-bound and pins its cores for a
+  # thirty-second budget; a notification fan-out is I/O-bound and finishes in
+  # milliseconds. Sharing a process means they scale together, and a manager
+  # waits half a minute for a badge because the pod is mid-solve.
+  worker-planning:
+    build:
+      context: ../../backend
+    image: simple-erp-backend:local
+    environment:
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    command: ["worker", "planning"]
+    # Longer than the solver's own budget, so a stop lets the in-flight solve
+    # finish and acknowledge instead of being killed and redelivered. The
+    # default is thirty seconds, which is exactly the budget.
+    stop_grace_period: 90s
+    networks: [simple-erp]
+
+  worker-notifications:
+    build:
+      context: ../../backend
+    image: simple-erp-backend:local
+    environment:
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    command: ["worker", "notifications"]
+    networks: [simple-erp]
+
+  frontend:
+    build:
+      context: ../../frontend
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [simple-erp]
+
+volumes:
+  postgres-data:
+  minio-data:
+  rabbitmq-data:
+
+networks:
+  simple-erp:
+    driver: bridge

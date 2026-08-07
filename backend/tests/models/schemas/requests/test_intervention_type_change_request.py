@@ -8,7 +8,7 @@ import pytest
 
 # First-party imports
 from models.schemas.exceptions import MTInterventionTypeChangeRequestInvalidTypeId
-from models.schemas.requests.intervention_type_change_request import (
+from models.schemas.requests.quoting.intervention_type_change_request import (
     InterventionTypeChangeRequest,
 )
 

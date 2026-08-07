@@ -17,9 +17,13 @@ import { ApiError } from '@/api/client';
 import {
   useCreateQuote,
   useCustomers,
+  useCertificationTypes,
+  useSkillTypes,
   useInterventionTypes,
   usePricingRules,
 } from '@/api/queries';
+import { LineCertifications } from './LineCertifications';
+import { LineSkills } from './LineSkills';
 import type { NewQuoteLine } from '@/api/types';
 
 interface NewQuoteDialogProps {
@@ -53,6 +57,10 @@ function emptyLine(): NewQuoteLine {
     earliest_start: '09:00:00',
     latest_end: '12:00:00',
     duration_minutes: 60,
+    // Null, not an empty array: the line inherits whatever the service
+    // requires until somebody decides otherwise for this customer.
+    required_certification_codes: null,
+    required_skill_codes: null,
   };
 }
 
@@ -75,6 +83,8 @@ export function NewQuoteDialog({ open, onClose }: NewQuoteDialogProps) {
   const { t, i18n } = useTranslation();
   const { data: customers } = useCustomers();
   const { data: types } = useInterventionTypes();
+  const { data: catalogue } = useCertificationTypes();
+  const { data: skillCatalogue } = useSkillTypes();
   const { data: rules } = usePricingRules();
 
   /**
@@ -124,6 +134,11 @@ export function NewQuoteDialog({ open, onClose }: NewQuoteDialogProps) {
       // they can still change it.
       service_category:
         chosen?.service_category ?? lines[index]?.service_category ?? 'necessity',
+      // Changing the service changes what it requires, so an override written
+      // against the old one is dropped rather than silently carried over onto
+      // work it was never about.
+      required_certification_codes: null,
+      required_skill_codes: null,
     });
   };
 
@@ -292,6 +307,34 @@ export function NewQuoteDialog({ open, onClose }: NewQuoteDialogProps) {
                 >
                   <DeleteIcon fontSize="small" />
                 </IconButton>
+              </Grid>
+              <Grid size={12}>
+                <LineCertifications
+                  index={index}
+                  value={line.required_certification_codes}
+                  inherited={
+                    (types ?? []).find(
+                      (entry) => entry.id === line.intervention_type_id,
+                    )?.required_certification_codes ?? []
+                  }
+                  catalogue={catalogue ?? []}
+                  onChange={(codes) =>
+                    setLine(index, { required_certification_codes: codes })
+                  }
+                />
+              </Grid>
+              <Grid size={12}>
+                <LineSkills
+                  index={index}
+                  value={line.required_skill_codes}
+                  inherited={
+                    (types ?? []).find(
+                      (entry) => entry.id === line.intervention_type_id,
+                    )?.required_skill_codes ?? []
+                  }
+                  catalogue={skillCatalogue ?? []}
+                  onChange={(codes) => setLine(index, { required_skill_codes: codes })}
+                />
               </Grid>
             </Grid>
           ))}

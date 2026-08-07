@@ -11,7 +11,9 @@ import Typography from '@mui/material/Typography';
 import {
   useCustomers,
   useQuotes,
+  useAcceptQuote,
   useRefuseQuote,
+  useRejectQuote,
   useSendQuote,
   useValidateQuote,
 } from '@/api/queries';
@@ -55,6 +57,8 @@ export function QuotesPage() {
   const validate = useValidateQuote();
   const refuse = useRefuseQuote();
   const send = useSendQuote();
+  const accept = useAcceptQuote();
+  const reject = useRejectQuote();
 
   const customerName = (customerId: string): string => {
     const found = (customers ?? []).find((entry) => entry.id === customerId);
@@ -161,6 +165,37 @@ export function QuotesPage() {
                 data-testid={`refuse-${params.row.reference}`}
               >
                 {t('quote.refuse')}
+              </Button>
+            </>
+          ) : null}
+          {/* The customer's answer to an offer already sent. Validation issues
+              the quote and leaves it here; only acceptance makes its lines
+              schedulable, so without these two buttons `sent` was a dead end —
+              a manager validated a fortnight of work, re-ran the planning, and
+              saw the same visit count with nothing explaining why. */}
+          {params.row.status === 'sent' ? (
+            <>
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                startIcon={<AppIcon name="quoteValidate" />}
+                onClick={() => accept.mutate(params.row.id ?? '')}
+                disabled={accept.isPending}
+                data-testid={`accept-${params.row.reference}`}
+              >
+                {t('quote.accept')}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                startIcon={<AppIcon name="quoteRefuse" />}
+                onClick={() => reject.mutate(params.row.id ?? '')}
+                disabled={reject.isPending}
+                data-testid={`reject-${params.row.reference}`}
+              >
+                {t('quote.reject')}
               </Button>
             </>
           ) : null}

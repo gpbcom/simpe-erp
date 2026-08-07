@@ -12,8 +12,8 @@ from service.customers.exceptions import (  # noqa: E501
     MTCustomerHasQuotes,
     MTCustomerNotFound,
 )
-from storage.repositories.customer import CustomerRepository
-from storage.repositories.quote import QuoteRepository
+from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.quoting.quote import QuoteRepository
 
 
 class CustomerService:
@@ -282,31 +282,58 @@ class CustomerService:
         return quotes
 
     async def delete(self, customer_id: str) -> None:
-        """Remove a customer who has never been quoted.
+        """Remove a customer, and every quote written for them.
 
         Args:
             customer_id (str): The customer to remove.
 
         Raises:
             MTCustomerNotFound: If no such customer exists.
-            MTCustomerHasQuotes: If any quote names them.
 
         Notes:
-            The check is here rather than left to the foreign key. The
-            constraint would raise an ``IntegrityError`` that reaches the
-            client as a 500; refusing explicitly answers 409 and says why.
+            - **The quotes go too.** They used to be a refusal: a customer with
+              any quote could not be deleted at all, and the message suggested
+              stopping them instead. Stopping is still the right answer for
+              somebody who was really served and has really left — it keeps
+              what was billed and who agreed to it — but it left no way at all
+              to remove a household entered by mistake, or the fixtures a test
+              campaign is obliged to clean up after itself. A quote names one
+              customer and means nothing without them, so it cannot outlive
+              them.
+            - **This is irreversible and it destroys billing history**, which
+              is why the count is logged at ``WARNING`` before anything is
+              removed and why the screen that offers it says how many quotes
+              and visits will go. A confirmation that does not say what it
+              costs is a confirmation nobody reads.
+            - The lines, the weekly aggregates and the scheduled visits follow
+              their quote through the database's own cascades. The visits going
+              is why a replan is queued afterwards, by the endpoint: the
+              assistants who were due to make them now have gaps that other
+              work can move into.
         """
         await self.get(customer_id)
         quotes = await self.quotes.list(customer_id=customer_id)
         if quotes:
             self.logger.warning(
-                "Refusing to delete customer %s: %d quote(s) name them.",
+                "Deleting customer %s also deletes %d quote(s) and everything "
+                "scheduled from them; this cannot be undone.",
                 customer_id,
                 len(quotes),
             )
-            raise MTCustomerHasQuotes(
-                f"Customer {customer_id!r} has {len(quotes)} quote(s) and "
-                f"cannot be deleted. Set their status to 'stopped' instead."
+            for quote in quotes:
+                if quote.id is None:
+                    self.logger.error(
+                        "A quote of customer %s carries no identifier and "
+                        "cannot be deleted; the customer stays.",
+                        customer_id,
+                    )
+                    raise MTCustomerHasQuotes(
+                        f"Customer {customer_id!r} has a quote that cannot be "
+                        f"identified, so it cannot be removed with them."
+                    )
+                await self.quotes.delete(quote.id)
+            self.logger.info(
+                "Deleted %d quote(s) of customer %s.", len(quotes), customer_id
             )
         removed = await self.customers.delete(customer_id)
         if not removed:

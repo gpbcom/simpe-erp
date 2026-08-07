@@ -16,10 +16,10 @@ from api.dependencies import (
 from models.auth.user import User
 from models.catalog.intervention_type import InterventionType
 from models.configuration.app_config import AppConfig
-from models.schemas.requests.intervention_type_update_request import (
+from models.schemas.requests.catalog.intervention_type_update_request import (
     InterventionTypeUpdateRequest,
 )
-from models.schemas.responses.pricing_rules_response import PricingRulesResponse
+from models.schemas.responses.catalog.pricing_rules_response import PricingRulesResponse
 from service.intervention_types.intervention_types import (
     InterventionTypeService,  # noqa: E501
 )
@@ -169,7 +169,7 @@ async def update_intervention_type(
 
         The identifier comes from the path, never the body, and ``code`` is not
         on the payload at all — see
-        :class:`~models.schemas.requests.intervention_type_update_request.InterventionTypeUpdateRequest`.
+        :class:`~models.schemas.requests.catalog.intervention_type_update_request.InterventionTypeUpdateRequest`.
     """
     existing = await service.get(type_id)
     changes = request.model_dump(exclude_unset=True)

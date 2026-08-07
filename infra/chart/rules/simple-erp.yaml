@@ -1,0 +1,111 @@
+groups:
+  - name: simple-erp-planning
+    rules:
+      - alert: VisitsUnplaceableForWantOfAQualification
+        expr: increase(planning_run_unplaced_total{reason="missing-certification"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Visits cannot be placed for want of a qualification"
+          description: >-
+            A service requires a certification nobody available holds. Check the
+            requirement on the intervention type, or on the quote line that
+            overrides it, against who actually holds the code.
+
+      - alert: PlanningRunsAreFailing
+        expr: |
+          sum(rate(planning_run_duration_seconds_count{outcome="failed"}[15m]))
+            /
+          sum(rate(planning_run_duration_seconds_count[15m])) > 0.25
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than a quarter of planning runs are failing"
+          description: >-
+            A failed run leaves the previous plan standing, so calendars are
+            correct but stale. The run record carries the reason.
+
+      - alert: PlanningRunsExceedTheirBudget
+        expr: |
+          histogram_quantile(
+            0.9, sum(rate(planning_run_duration_seconds_bucket[30m])) by (le)
+          ) > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Planning runs are taking far longer than their budget"
+          description: >-
+            Check planning.solver_workers against the CPU limit of the planning
+            worker. More threads than cores means the kernel throttles the whole
+            cgroup, and thirty seconds of budget takes a minute of real time.
+
+  - name: simple-erp-broker
+    rules:
+      - alert: MessagesAreBeingDeadLettered
+        expr: rabbitmq_queue_messages{queue=~".*\\.dlx"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.queue }} is holding dead-lettered messages"
+          description: >-
+            A handler raised, or a message was redelivered past the queue's
+            delivery limit. The messages are kept for inspection.
+
+      - alert: MessagesArriveOnATopicNothingHandles
+        expr: increase(worker_messages_total{outcome="unhandled"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.routing_key }} is bound to a queue nothing handles"
+          description: >-
+            The message is acknowledged and discarded, so the work is lost
+            without any failure being recorded. This is a topology mistake.
+
+      - alert: PlanningQueueIsNotDraining
+        expr: sum(rabbitmq_queue_messages{queue=~"planning-runs\\..*"}) > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Planning runs are queueing faster than they are solved"
+          description: >-
+            Either the planning workers are not scaling, or they are not ready.
+            Check their /ready endpoint before adding replicas.
+
+  - name: simple-erp-runs
+    rules:
+      - alert: PlanningRunsAreStuckPending
+        expr: |
+          sum(rabbitmq_queue_messages{queue=~"planning-runs\\..*"}) == 0
+            and
+          increase(planning_run_duration_seconds_count[30m]) == 0
+            and
+          increase(worker_messages_total{routing_key="planning.run.requested"}[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Planning runs may have been recorded but never queued"
+          description: >-
+            Nothing is queued and nothing is being solved. If runs are pending
+            in the database, the broker was unreachable when they were
+            requested; they can be re-queued.
+
+  - name: simple-erp-api
+    rules:
+      - alert: NoServerSentEventReadersAtAll
+        expr: sum(notification_stream_clients) == 0
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "No API instance is holding a notification stream"
+          description: >-
+            Expected outside working hours. During the day it usually means the
+            ingress is closing the stream path — check proxy buffering and the
+            read timeout.

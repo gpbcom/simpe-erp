@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Optional
+from typing import List, Optional
 from unittest.mock import AsyncMock
 
 # Third-party imports
@@ -56,6 +56,7 @@ def _quote() -> Quote:
         Quote: The quote.
     """
     return Quote(
+        company_id="company-1",
         id="quote-1",
         reference="Q-2026-0001",
         customer_id="customer-1",
@@ -206,7 +207,7 @@ class TestCustomerWrites:
 
 
 class TestCustomerDeletion:
-    """Tests for the rule protecting quoted customers."""
+    """Tests for removing a customer and everything written for them."""
 
     async def test_an_unquoted_customer_can_be_deleted(
         self, service: CustomerService, customers: AsyncMock
@@ -216,18 +217,62 @@ class TestCustomerDeletion:
 
         customers.delete.assert_awaited_once_with("customer-1")
 
-    async def test_a_quoted_customer_is_refused(
+    async def test_a_quoted_customer_takes_their_quotes_with_them(
         self, service: CustomerService, quotes: AsyncMock, customers: AsyncMock
     ) -> None:
-        """Deleting somebody named on a quote is refused, not attempted.
+        """Every quote written for somebody is removed along with them.
 
         Notes:
-            **Checked here rather than left to the foreign key.** The database
-            would raise an ``IntegrityError`` that reaches the client as an
-            opaque 500; refusing explicitly answers 409 and says to stop the
-            customer instead.
+            **This used to be a refusal**, and the change is deliberate.
+            Stopping a customer is still the right answer for one who was
+            really served and has really left — it keeps what was billed and
+            who agreed to it — but the refusal left no way at all to remove a
+            household entered by mistake, or the fixtures a test campaign is
+            obliged to clean up after itself. A quote names one customer and
+            means nothing without them, so it cannot outlive them.
         """
         quotes.list.return_value = [_quote()]
+
+        await service.delete("customer-1")
+
+        quotes.delete.assert_awaited_once_with("quote-1")
+        customers.delete.assert_awaited_once_with("customer-1")
+
+    async def test_the_quotes_go_before_the_customer(
+        self, service: CustomerService, quotes: AsyncMock, customers: AsyncMock
+    ) -> None:
+        """Ordering matters: a quote outliving its customer is unprintable.
+
+        Notes:
+            Both writes share one transaction, so a failure at either step
+            rolls the whole thing back. What this asserts is that the
+            in-transaction ordering never leaves a quote pointing at a customer
+            row the database has already dropped, which the foreign key would
+            refuse anyway — as a 500 rather than as anything a caller can read.
+        """
+        order: List[str] = []
+        quotes.list.return_value = [_quote()]
+        # ``append`` answers None, and the service reads a falsy delete as
+        # "nothing matched"; the ``or True`` is what keeps the double honest.
+        quotes.delete.side_effect = lambda quote_id: order.append("quote") or True
+        customers.delete.side_effect = (
+            lambda customer_id: order.append("customer") or True
+        )
+
+        await service.delete("customer-1")
+
+        assert order == ["quote", "customer"]
+
+    async def test_a_quote_with_no_identifier_stops_the_deletion(
+        self, service: CustomerService, quotes: AsyncMock, customers: AsyncMock
+    ) -> None:
+        """An unidentifiable quote is refused rather than skipped.
+
+        Notes:
+            Skipping it would delete the customer and leave the quote behind,
+            which is the orphan this whole cascade exists to avoid.
+        """
+        quotes.list.return_value = [_quote().model_copy(update={"id": None})]
 
         with pytest.raises(MTCustomerHasQuotes):
             await service.delete("customer-1")

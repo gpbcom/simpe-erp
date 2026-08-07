@@ -63,6 +63,7 @@ def _run(status: PlanningRunStatus = PlanningRunStatus.PENDING) -> PlanningRun:
         PlanningRun: The run.
     """
     return PlanningRun(
+        company_id="company-1",
         id="run-1",
         status=status,
         requested_by="user-admin",
@@ -87,6 +88,7 @@ def _planning(hca_id: str = "hca-1") -> HcaPlanning:
         period_end=date(2026, 8, 9),
         interventions=[
             Intervention(
+                company_id="company-1",
                 id="visit-1",
                 planning_run_id="run-1",
                 name="Toilette matin",

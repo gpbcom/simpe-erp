@@ -3,10 +3,10 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, datetime
 from decimal import Decimal
-from typing import ClassVar, List, Optional, Union
+from typing import ClassVar, Dict, List, Optional, Tuple, Union
 
 # Third-party imports
-from pydantic import (  # noqa: E501
+from pydantic import (
     BaseModel,
     Field,
     JsonValue,
@@ -39,6 +39,7 @@ class Quote(BaseModel):
         SCHEDULABLE_STATUSES (ClassVar[frozenset]): The statuses whose lines
             feed the planning computation.
         id (Optional[str]): Identifier, populated on read from the store.
+        company_id (str): The agency that offers the work.
         reference (str): Human-facing quote number.
         customer_id (str): The customer the offer is addressed to.
         status (QuoteStatus): Where the quote is in its lifecycle.
@@ -62,12 +63,10 @@ class Quote(BaseModel):
         - Only an **accepted** quote feeds the planner. A draft is still being
           composed and a rejected one was declined, so scheduling either would
           commit assistants to work nobody agreed to.
-
         - ``aggregates`` is derived from ``lines`` but stored alongside them.
           Recomputing on read would be cheap; the reason to store it is that a
           reprinted quote must show the figures it showed when it was issued,
           even after a type is renamed or repriced.
-
         - The four authorship fields exist because a quote is now written by one
           person and approved by another. ``authored_by`` is what scopes an
           assistant's own list; ``validated_by`` is the answer to "who agreed to
@@ -76,12 +75,13 @@ class Quote(BaseModel):
     """
 
     CENTS: ClassVar[Decimal] = Decimal("0.01")
-    SCHEDULABLE_STATUSES: ClassVar[frozenset] = frozenset({QuoteStatus.ACCEPTED})  # noqa: E501
+    SCHEDULABLE_STATUSES: ClassVar[frozenset] = frozenset({QuoteStatus.ACCEPTED})
 
     id: Optional[str] = Field(
         default=None,
         description="Identifier, populated on read from the store.",
     )
+    company_id: str = Field(description="The agency that offers the work.")
     reference: str = Field(description="Human-facing quote number.")
     customer_id: str = Field(description="The customer the offer is addressed to.")
     status: QuoteStatus = Field(
@@ -155,6 +155,37 @@ class Quote(BaseModel):
             )
         return value.strip()
 
+    @field_validator("company_id", mode="before")
+    def validate_company_id(cls, value: Optional[str]) -> str:
+        """Validates that ``company_id`` names the agency offering the work.
+
+        Args:
+            value (Optional[str]): Raw ``company_id`` value.
+
+        Returns:
+            str: The stripped identifier.
+
+        Raises:
+            MTQuoteInvalidId: If ``value`` is not a non-empty string.
+
+        Notes:
+            - **Required, where ``authored_by`` is not.** The agency was
+              previously reachable only through the author's account, which a
+              quote is allowed to lose — an author leaving must not take their
+              quotes with them. That left the planner unable to tell whose work a
+              quote was, and it selects the work it schedules by exactly this
+              field, so an unattributable quote would be scheduled by whichever
+              agency ran next.
+            - Denormalised rather than joined for the same reason: the join it
+              would replace passes through a nullable column.
+        """
+        if not isinstance(value, str) or not value.strip():
+            raise MTQuoteInvalidId(
+                f"Invalid company_id: {value!r}. Must be a non-empty string "
+                f"naming the agency that offers the work."
+            )
+        return value.strip()
+
     @field_validator("reference", mode="before")
     def validate_reference(cls, value: Optional[str]) -> str:
         """Validates that ``reference`` is a non-empty string.
@@ -194,7 +225,7 @@ class Quote(BaseModel):
         return value.strip()
 
     @field_validator("status", mode="before")
-    def validate_status(cls, value: Union[str, QuoteStatus, None]) -> QuoteStatus:  # noqa: E501
+    def validate_status(cls, value: Union[str, QuoteStatus, None]) -> QuoteStatus:
         """Validates that ``status`` is a known quote status.
 
         Args:
@@ -247,7 +278,8 @@ class Quote(BaseModel):
         for entry in value:
             if not isinstance(entry, (QuoteLine, dict)):
                 raise MTQuoteInvalidLines(
-                    f"Invalid lines entry: {entry!r}. Must be a QuoteLine or a mapping."
+                    f"Invalid lines entry: {entry!r}. "
+                    "Must be a QuoteLine or a mapping."
                 )
         return value
 
@@ -324,7 +356,8 @@ class Quote(BaseModel):
             return None
         if not isinstance(value, str) or not value.strip():
             raise MTQuoteInvalidId(
-                f"Invalid account identifier: {value!r}. Must be a non-empty "
+                f"Invalid account identifier: {value!r}. "
+                "Must be a non-empty "
                 f"string or None."
             )
         return value.strip()
@@ -356,7 +389,8 @@ class Quote(BaseModel):
         if isinstance(value, (str, datetime)):
             return value
         raise MTQuoteInvalidDate(
-            f"Invalid timestamp: {value!r}. Must be a datetime, an ISO string, or None."
+            f"Invalid timestamp: {value!r}. "
+            "Must be a datetime, an ISO string, or None."
         )
 
     @model_validator(mode="after")
@@ -392,14 +426,13 @@ class Quote(BaseModel):
                 was issued, or before the first service it sells.
 
         Notes:
-            An interruption before the first service would silence the whole
-            quote while leaving it accepted and priced — a quote that costs
-            nothing, delivers nothing and still reads as live. Deleting it or
-            rejecting it says that; an end date in the past does not.
-
-            An interruption *after* the last service is allowed and does
-            nothing. That is a real thing to record: an arrangement given a
-            closing date the work already happens to fit inside.
+            - An interruption before the first service would silence the whole
+              quote while leaving it accepted and priced — a quote that costs
+              nothing, delivers nothing and still reads as live. Deleting it or
+              rejecting it says that; an end date in the past does not.
+            - An interruption *after* the last service is allowed and does
+              nothing. That is a real thing to record: an arrangement given a
+              closing date the work already happens to fit inside.
         """
         if self.interrupted_on is None:
             return self
@@ -498,7 +531,8 @@ class Quote(BaseModel):
             them, whatever rounding happened along the way.
         """
         return sum(
-            (aggregate.total_ht for aggregate in self.aggregates), Decimal("0.00")
+            (aggregate.total_ht for aggregate in self.aggregates),
+            Decimal("0.00"),
         )
 
     def total_vat(self) -> Decimal:
@@ -508,7 +542,8 @@ class Quote(BaseModel):
             Decimal: The sum of the weekly aggregates, or zero.
         """
         return sum(
-            (aggregate.vat_amount for aggregate in self.aggregates), Decimal("0.00")
+            (aggregate.vat_amount for aggregate in self.aggregates),
+            Decimal("0.00"),
         )
 
     def total_ttc(self) -> Decimal:
@@ -518,8 +553,46 @@ class Quote(BaseModel):
             Decimal: The sum of the weekly aggregates, or zero.
         """
         return sum(
-            (aggregate.total_ttc for aggregate in self.aggregates), Decimal("0.00")
+            (aggregate.total_ttc for aggregate in self.aggregates),
+            Decimal("0.00"),
         )
+
+    def vat_by_rate(self) -> List[Tuple[Decimal, Decimal, Decimal]]:
+        """Return the tax broken down by the rate it was charged at.
+
+        Returns:
+            List[Tuple[Decimal, Decimal, Decimal]]: One ``(rate, base, tax)``
+            triple per distinct VAT rate, ordered by rate.
+
+        Notes:
+            **A quote must state its tax per rate, not as one figure.** Home
+            care is billed at two: 5.5% for a necessity service and 20% for a
+            comfort one, and a document showing a single "VAT" line gives a
+            customer no way to check either — nor an accountant any way to
+            post it.
+
+            The base is summed from the lines rather than recomputed from the
+            tax, because the rate is a property of the line's category and
+            dividing back out of a rounded tax amount reintroduces the cents
+            that rounding just removed.
+
+            An unpriced line contributes nothing. It has no amounts yet, and
+            counting it as zero would state a rate the customer is not being
+            charged at.
+        """
+        bases: Dict[Decimal, Decimal] = {}
+        taxes: Dict[Decimal, Decimal] = {}
+        for line in self.lines:
+            if not line.is_priced():
+                continue
+            rate = line.service_category.vat_rate()
+            bases[rate] = bases.get(rate, Decimal("0.00")) + (
+                line.total_ht or Decimal("0.00")
+            )
+            taxes[rate] = taxes.get(rate, Decimal("0.00")) + (
+                line.vat_amount or Decimal("0.00")
+            )
+        return [(rate, bases[rate], taxes[rate]) for rate in sorted(bases)]
 
     def sorted_aggregates(self) -> List[QuoteTypeWeekAggregate]:
         """Return the aggregates in display order.

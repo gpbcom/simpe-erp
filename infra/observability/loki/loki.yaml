@@ -1,0 +1,38 @@
+# Loki, single-binary and filesystem-backed. Enough to read a laptop's logs and
+# to prove the derived-field link from a log line to its trace; the cluster runs
+# the same component with object storage behind it.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # A development stack is bursty: a rebuild produces a few seconds of very
+  # loud output, and the default rate limit drops precisely the lines somebody
+  # is watching for.
+  ingestion_burst_size_mb: 32
+  ingestion_rate_mb: 16
+  reject_old_samples: false

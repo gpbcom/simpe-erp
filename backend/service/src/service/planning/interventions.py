@@ -15,8 +15,8 @@ from service.planning.exceptions import (
 )
 from service.quotes.exceptions import MTQuoteNotFound
 from service.quotes.quotes import QuoteService
-from storage.repositories.intervention import InterventionRepository
-from storage.repositories.intervention_type import InterventionTypeRepository
+from storage.repositories.planning.intervention import InterventionRepository
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository
 
 
 class InterventionService:
@@ -190,9 +190,7 @@ class InterventionService:
             )
             await self.quotes.delete(quote.id or "")
             return None
-        return await self.quotes.replace_lines(
-            quote.id or "", quote.model_copy(update={"lines": remaining})
-        )
+        return await self.quotes.replace_lines(quote.id or "", remaining)
 
     async def change_type(
         self, intervention_id: str, intervention_type_id: str
@@ -257,9 +255,7 @@ class InterventionService:
             updated if entry.id == intervention.quote_line_id else entry
             for entry in quote.lines
         ]
-        repriced = await self.quotes.replace_lines(
-            quote.id or "", quote.model_copy(update={"lines": lines})
-        )
+        repriced = await self.quotes.replace_lines(quote.id or "", lines)
         # The calendar is corrected in the same breath. Waiting for the next
         # planning run would leave the manager looking at the service they just
         # changed away from, and no reason to believe the change landed.

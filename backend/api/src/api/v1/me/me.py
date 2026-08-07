@@ -22,16 +22,24 @@ from models.auth.user import User
 from models.companies.company import Company
 from models.enums import EventRoutingKey
 from models.people.customer import Customer
+from models.people.hca.skill import Skill
 from models.quoting.quote import Quote
-from models.schemas.requests.account_update_request import AccountUpdateRequest
-from models.schemas.requests.company_profile_update_request import (
+from models.schemas.requests.quoting.quote_create_request import (
+    QuoteCreateRequest,
+)
+from models.schemas.requests.quoting.quote_lines_request import QuoteLinesRequest
+from models.schemas.requests.account.account_update_request import AccountUpdateRequest
+from models.schemas.requests.companies.company_profile_update_request import (
     CompanyProfileUpdateRequest,
 )
-from models.schemas.requests.hca_profile_update_request import (
+from models.schemas.requests.hca.skill_create_request import (
+    SkillCreateRequest,
+)
+from models.schemas.requests.hca.hca_profile_update_request import (
     HcaProfileUpdateRequest,
 )
-from models.schemas.responses.hca_response import HcaResponse
-from models.schemas.responses.user_response import UserResponse
+from models.schemas.responses.hca.hca_response import HcaResponse
+from models.schemas.responses.auth.user_response import UserResponse
 from service.auth.auth import AuthService
 from service.companies.companies import CompanyService
 from service.customers.customers import CustomerService
@@ -123,14 +131,13 @@ async def update_my_company(
         MTCompanyNotFound: If the agency has since been deleted; 404.
 
     Notes:
-        Administrator-only, not manager. A manager runs the agency's work; its
-        legal identity — trading name, SIRET, registered address — is not part
-        of running the week, and the one field with an outward effect
-        (``is_accepting_applications``) decides whether strangers can apply.
-
-        The existing agency is read before the write so the stored identifier
-        and timestamps survive: the payload carries none of them, and building
-        a fresh ``Company`` from it would blank whatever it does not mention.
+        - Administrator-only, not manager. A manager runs the agency's work; its
+          legal identity — trading name, SIRET, registered address — is not part
+          of running the week, and the one field with an outward effect
+          (``is_accepting_applications``) decides whether strangers can apply.
+        - The existing agency is read before the write so the stored identifier
+          and timestamps survive: the payload carries none of them, and building
+          a fresh ``Company`` from it would blank whatever it does not mention.
     """
     logger.info("Administrator %s is updating their own agency.", caller.email)
     existing = await service.get(caller.company_id)
@@ -140,6 +147,11 @@ async def update_my_company(
             update={
                 "name": request.name,
                 "registration_number": request.registration_number,
+                "legal_form": request.legal_form,
+                "share_capital": request.share_capital,
+                "rcs_number": request.rcs_number,
+                "vat_number": request.vat_number,
+                "phone_number": request.phone_number,
                 "contact_email": request.contact_email,
                 "address": request.address,
                 "is_accepting_applications": request.is_accepting_applications,
@@ -161,15 +173,14 @@ async def read_my_account(
         UserResponse: The account behind the credential, without its hash.
 
     Notes:
-        **Guarded by ``get_current_user`` and nothing else**, so every signed-in
-        account can read it — including a manager or an administrator, who have
-        no assistant record and for whom every other route in this file is a
-        403. Without it the account screen had nothing to show them: it was
-        built on ``GET /me/hca``, so it rendered an error to exactly the people
-        who could not fix it.
-
-        There is no ``user_id``. The account returned is the one the credential
-        names, so this route cannot be pointed at anybody else's.
+       -  **Guarded by ``get_current_user`` and nothing else**, so every signed-in
+          account can read it — including a manager or an administrator, who have
+          no assistant record and for whom every other route in this file is a
+          403. Without it the account screen had nothing to show them: it was
+          built on ``GET /me/hca``, so it rendered an error to exactly the people
+          who could not fix it.
+        - There is no ``user_id``. The account returned is the one the credential
+          names, so this route cannot be pointed at anybody else's.
     """
     logger.info("Account %s read its own details.", caller.email)
     return UserResponse.from_user(caller)
@@ -196,18 +207,93 @@ async def update_my_account(
             address; answered as a 409.
 
     Notes:
-        The payload carries a display name and an address and **nothing else**
-        — no role, no active flag, no company. That is the permission, written
-        as a shape rather than as a check: see ``AccountUpdateRequest``.
-
-        Changing the address changes what the holder signs in with. The token
-        they already hold keeps working, because it names the account rather
-        than the address, so the change does not sign them out mid-edit.
+        - The payload carries a display name and an address and **nothing else**
+          — no role, no active flag, no company. That is the permission, written
+          as a shape rather than as a check: see ``AccountUpdateRequest``.
+        - Changing the address changes what the holder signs in with. The token
+          they already hold keeps working, because it names the account rather
+          than the address, so the change does not sign them out mid-edit.
     """
     logger.info("Account %s is updating its own details.", caller.email)
     updated = await service.update_account(
-        caller, full_name=request.full_name, email=request.email
+        caller,
+        full_name=request.full_name,
+        email=request.email,
+        language=request.language,
     )
+    return UserResponse.from_user(updated)
+
+
+@router.put("/account/photo", response_model=UserResponse)
+async def replace_my_account_photo(
+    photo: UploadFile = File(...),
+    service: AuthService = Depends(get_auth_service),
+    caller: User = Depends(get_current_user),
+) -> UserResponse:
+    """Replace the caller's own portrait.
+
+    Args:
+        photo (UploadFile): The image to store.
+        service (AuthService): The authentication service.
+        caller (User): The authenticated caller.
+
+    Returns:
+        UserResponse: The updated account, carrying the new URL.
+
+    Raises:
+        MTAuthUnknownAccount: If the account has since been removed; answered
+            as a 404.
+        MTS3UnsupportedContentType: If the bytes are not a JPEG, PNG or WebP;
+            answered as a 415.
+        MTS3PayloadTooLarge: If the image exceeds the configured limit;
+            answered as a 413.
+
+    Notes:
+        - **Guarded by ``get_current_user`` and nothing else**, like
+          ``GET /me/account`` beside it. The portrait belongs to the credential,
+          so a manager and an administrator can set one too — which is the whole
+          reason this exists next to ``PUT /me/hca/photo``: that route is bound to
+          an assistant record, and the people who have none had nowhere to put a
+          face.
+        - An account bound to an assistant record has that record's portrait
+          written at the same time, so somebody who uploads a photograph here
+          also stops showing as initials on the manager's map. That happens in the
+          service, where the two writes share the request's transaction.
+    """
+    payload = await photo.read()
+    logger.info(
+        "Account %s is replacing its own portrait (%d bytes).",
+        caller.email,
+        len(payload),
+    )
+    updated = await service.set_photo(caller, payload)
+    return UserResponse.from_user(updated)
+
+
+@router.delete("/account/photo", response_model=UserResponse)
+async def remove_my_account_photo(
+    service: AuthService = Depends(get_auth_service),
+    caller: User = Depends(get_current_user),
+) -> UserResponse:
+    """Remove the caller's own portrait.
+
+    Args:
+        service (AuthService): The authentication service.
+        caller (User): The authenticated caller.
+
+    Returns:
+        UserResponse: The updated account, with no portrait.
+
+    Raises:
+        MTAuthUnknownAccount: If the account has since been removed; answered
+            as a 404.
+
+    Notes:
+        Every screen falls back to the holder's initials, so removing a portrait
+        leaves a legible avatar rather than a blank circle.
+    """
+    logger.info("Account %s is removing its own portrait.", caller.email)
+    updated = await service.clear_photo(caller)
     return UserResponse.from_user(updated)
 
 
@@ -283,6 +369,107 @@ async def update_my_profile(
     return HcaResponse.from_hca(updated)
 
 
+@router.post(
+    "/hca/skills", response_model=Skill, status_code=status.HTTP_201_CREATED
+)
+async def declare_my_skill(
+    request: SkillCreateRequest,
+    service: HcaService = Depends(get_hca_service),
+    publisher: EventPublisher = Depends(get_event_publisher),
+    caller: User = Depends(get_current_user),
+) -> Skill:
+    """Declare a skill about yourself.
+
+    Args:
+        request (SkillCreateRequest): The skill to declare.
+        service (HcaService): The assistant service.
+        publisher (EventPublisher): Announces the declaration.
+        caller (User): The authenticated caller.
+
+    Returns:
+        Skill: The stored skill, carrying its identifier.
+
+    Raises:
+        MTHcaForbidden: If the account is bound to no assistant record;
+            answered as a 403.
+        MTHcaNotFound: If the record has since been deleted; answered as a 404.
+        MTSkillCreateRequestInvalidName: If the payload names nothing;
+            answered as a 422.
+
+    Notes:
+        - **This is the one planner-visible thing an assistant may write about
+          themselves**, and the reason it is not the certifications beside it:
+          what somebody was *awarded* is a manager's record, what they *can do*
+          is their own. An assistant who could grant themselves a diploma could
+          be routed to work they are not trained for; an assistant who cannot
+          say they speak Portuguese is one the agency does not know it has.
+        - It takes effect immediately rather than waiting for approval. The
+          agency is told instead — every manager and administrator gets a
+          notification — and any of them can withdraw it through
+          ``DELETE /api/v1/hcas/{hca_id}/skills/{id}``. Approval-first would
+          leave somebody off the visit they are the right person for while a
+          form sat in a queue.
+        - **The announcement is published after the write, never before.** The
+          transaction middleware commits when this returns, so a message sent
+          from inside the service would fire on a write a later failure could
+          roll back — and tell three managers about a skill nobody holds.
+        - The owning assistant comes from the credential and the identifier
+          from the store, so there is nothing in the payload that could file a
+          declaration against a colleague.
+    """
+    hca_id = _own_hca_id(caller)
+    logger.info("Assistant %s is declaring a skill.", hca_id)
+    stored = await service.add_skill(hca_id, request.to_skill(), caller)
+    await publisher.publish(
+        EventRoutingKey.SKILL_ADDED,
+        caller.company_id,
+        {
+            "hca_id": hca_id,
+            "hca_name": caller.full_name(),
+            "skill_id": stored.id,
+            "skill_name": stored.name,
+            "skill_code": stored.code,
+            "company_id": caller.company_id,
+        },
+    )
+    return stored
+
+
+@router.delete("/hca/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def withdraw_my_skill(
+    skill_id: str,
+    service: HcaService = Depends(get_hca_service),
+    caller: User = Depends(get_current_user),
+) -> None:
+    """Withdraw a skill you declared about yourself.
+
+    Args:
+        skill_id (str): The skill to withdraw.
+        service (HcaService): The assistant service.
+        caller (User): The authenticated caller.
+
+    Raises:
+        MTHcaForbidden: If the account is bound to no assistant record;
+            answered as a 403.
+        MTSkillNotFound: If the skill is not one of the caller's; answered as
+            a 404.
+
+    Notes:
+        - The assistant identifier comes from the credential and is part of the
+          lookup, so knowing a skill identifier is not enough to strip a
+          colleague of one. The same 404 whether the skill is absent or simply
+          not theirs — distinguishing the two would let somebody discover which
+          identifiers are real by trying them.
+        - No notification is sent. The addition widens what somebody may be
+          sent to and is worth telling the agency about; a withdrawal only
+          narrows it, and a badge for every correction of a typed name would
+          train supervisors to ignore the ones that matter.
+    """
+    hca_id = _own_hca_id(caller)
+    logger.info("Assistant %s is withdrawing skill %s.", hca_id, skill_id)
+    await service.remove_skill(hca_id, skill_id, caller)
+
+
 @router.put("/hca/photo", response_model=HcaResponse)
 async def replace_my_photo(
     photo: UploadFile = File(...),
@@ -308,15 +495,14 @@ async def replace_my_photo(
             answered as a 413.
 
     Notes:
-        An assistant's portrait **is their pin on the manager's map**, so being
-        unable to set their own was a gap rather than a restriction: it left the
-        one piece of personal data with real operational weight in somebody
-        else's hands. The manager-gated route still exists, for the assistant
-        who cannot or will not upload one.
-
-        A photograph is uploaded as a **file**, never as a URL. Accepting a URL
-        would let an assistant point their portrait at any address on the
-        internet, which the map would then load on every pin.
+        - An assistant's portrait **is their pin on the manager's map**, so being
+          unable to set their own was a gap rather than a restriction: it left the
+          one piece of personal data with real operational weight in somebody
+          else's hands. The manager-gated route still exists, for the assistant
+          who cannot or will not upload one.
+        - A photograph is uploaded as a **file**, never as a URL. Accepting a URL
+          would let an assistant point their portrait at any address on the
+          internet, which the map would then load on every pin.
     """
     hca_id = _own_hca_id(caller)
     payload = await photo.read()
@@ -456,14 +642,14 @@ async def list_my_quotes(
 
 @router.post("/quotes", response_model=Quote, status_code=status.HTTP_201_CREATED)
 async def create_my_quote(
-    quote: Quote,
+    payload: QuoteCreateRequest,
     service: QuoteService = Depends(get_quote_service),
     caller: User = Depends(get_current_user),
 ) -> Quote:
     """Write a quote, as a draft the caller still owns.
 
     Args:
-        quote (Quote): The quote to create.
+        payload (QuoteCreateRequest): What the quote should offer.
         service (QuoteService): The quote service.
         caller (User): The authenticated caller.
 
@@ -480,13 +666,15 @@ async def create_my_quote(
         a visit while sitting with a family should be able to save it and check
         the figures before a manager is asked to look.
     """
-    return await service.create(quote, author_id=caller.id or caller.email)
+    return await service.create(
+        payload.to_quote(caller.company_id), author_id=caller.id or caller.email
+    )
 
 
 @router.put("/quotes/{quote_id}/lines", response_model=Quote)
 async def replace_my_quote_lines(
     quote_id: str,
-    quote: Quote,
+    payload: QuoteLinesRequest,
     service: QuoteService = Depends(get_quote_service),
     caller: User = Depends(get_current_user),
 ) -> Quote:
@@ -494,7 +682,8 @@ async def replace_my_quote_lines(
 
     Args:
         quote_id (str): The quote to change.
-        quote (Quote): A quote carrying the new lines.
+        payload (QuoteLinesRequest): The services that replace the stored
+            ones.
         service (QuoteService): The quote service.
         caller (User): The authenticated caller.
 
@@ -524,7 +713,7 @@ async def replace_my_quote_lines(
     """
     logger.info("Assistant %s is editing quote %s.", caller.email, quote_id)
     return await service.replace_lines(
-        quote_id, quote, author_id=caller.id or caller.email
+        quote_id, payload.lines, author_id=caller.id or caller.email
     )
 
 
@@ -555,9 +744,6 @@ async def submit_my_quote(
     submitted = await service.submit_for_validation(
         quote_id, author_id=caller.id or caller.email
     )
-    # Published after the quote is stored, never instead of storing it. The
-    # manager's queue is a database query on ``status=pending-validation``, so
-    # a lost message costs the push notification and nothing else.
     await publisher.publish(
         EventRoutingKey.QUOTE_SUBMITTED,
         caller.company_id,
@@ -565,7 +751,7 @@ async def submit_my_quote(
             "quote_id": submitted.id,
             "reference": submitted.reference,
             "author_id": caller.id,
-            "author_name": caller.full_name,
+            "author_name": caller.full_name(),
             "company_id": caller.company_id,
         },
     )

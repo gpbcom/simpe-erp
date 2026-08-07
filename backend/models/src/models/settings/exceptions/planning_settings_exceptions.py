@@ -14,6 +14,18 @@ class MTPlanningSettingsInvalidLunchBreak(MTInvalidPlanningSettingsException):
     """Exception raised when the lunch break is shorter than the legal floor."""
 
 
+class MTPlanningSettingsInvalidDayStart(MTInvalidPlanningSettingsException):
+    """Exception raised when the day does not start at a minute of day."""
+
+
+class MTPlanningSettingsInvalidDayEnd(MTInvalidPlanningSettingsException):
+    """Exception raised when the day does not end after it starts."""
+
+
+class MTPlanningSettingsInvalidLunchWindow(MTInvalidPlanningSettingsException):
+    """Exception raised when the lunch window cannot hold the break."""
+
+
 class MTPlanningSettingsInvalidUpdatedBy(MTInvalidPlanningSettingsException):
     """Exception raised when the editing account is not identified."""
 

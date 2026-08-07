@@ -12,9 +12,9 @@ from service.companies.exceptions import (
     MTCompanyNotEmpty,
     MTCompanyNotFound,
 )
-from storage.repositories.company import CompanyRepository
-from storage.repositories.hca import HcaRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.auth.user import UserRepository
 
 
 class CompanyService:

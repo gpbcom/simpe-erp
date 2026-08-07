@@ -52,6 +52,54 @@ next month.
 modules are the exception: a base `MTInvalid<Thing>Exception` and its subclasses
 live together.
 
+**A new entity gets a package, not a file.** Domain models live in
+`models/<domain>/<aggregate>/`, with the entity, anything that only exists as
+part of it, and an `exceptions/` package. Add the class to the aggregate's
+`__init__.py` so callers import `from models.people.hca import Hca` and never
+need to know which file it sits in — but import exceptions from the explicit
+`models.people.hca.exceptions`, because a model reaching for its own package is
+a cycle.
+
+**The storage tree mirrors the models tree.** A row goes in
+`storage/orm/<domain>/`, its mapper in `storage/mappers/<domain>/`, its
+repository in `storage/repositories/<domain>/`, under the same domain name the
+model uses. Changing an entity touches all three; finding them the same way each
+time is what stops the third being forgotten. Add the row to
+`storage/orm/__init__.py` as well — Alembic and the test schema builder read
+every table through it, and one that nothing imports is a table `create_all`
+silently omits. → [01](01-architecture.md)
+
+**Shared fields live on a base in `models/base/`, and the exception stays per
+model.** Every record describing a human extends `Person`; the two that carry a
+photograph also mix in `PortraitHolder`. A new people model inherits both rather
+than restating eight fields and seven validators — that is what the base is for,
+and four hand-copied versions of "an email must be a non-empty string" is what it
+replaced.
+
+The rule the base holds raises `cls.INVALID_*`, and each subclass declares which
+exception that is:
+
+```python
+class Customer(Person):
+    INVALID_EMAIL: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidEmail
+```
+
+Pydantic binds `cls` to the concrete subclass, so a `Customer` still raises
+`MTCustomerInvalidEmail` and an `Hca` still raises `MTHcaInvalidEmail`. **Do not
+collapse them into one shared exception**: `api/exception_handlers.py` is keyed
+on those classes, and one class would answer every model's malformed field with
+the same status. The base's `MTPerson*` defaults exist only so a model that has
+not declared its own still raises something typed rather than reaching the
+catch-all as a 500.
+
+A subclass that genuinely needs different behaviour **overrides the validator and
+says why in its `Notes`** — `HcaApplication` lower-cases the email because it
+becomes a sign-in; `User` does the same and relaxes `first_name` because a
+service account is a mononym. An override must reuse the base's **method name**:
+a differently-named validator on the same field stacks on top of the inherited
+one rather than replacing it, and the two then run in an order nobody reading
+either can predict.
+
 **One service per entity.** The planning service absorbed the settings service
 and the feasibility checker for this reason; the mapper package did the same.
 

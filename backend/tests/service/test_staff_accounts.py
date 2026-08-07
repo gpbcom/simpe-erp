@@ -10,7 +10,7 @@ import pytest
 # First-party imports
 from models.auth.user import User
 from models.configuration.auth_config import AuthConfig
-from models.enums import AccountOrigin, ContractType, UserRole
+from models.enums import AccountOrigin, Language, ContractType, UserRole
 from models.people.hca import Hca
 from service.auth.auth import AuthService
 from service.auth.exceptions import (
@@ -283,9 +283,10 @@ class TestAccountSelfUpdate:
             _staff_account(service),
             full_name="Luc Martin-Durand",
             email="luc.durand@simple-erp.fr",
+            language=Language.EN,
         )
 
-        assert updated.full_name == "Luc Martin-Durand"
+        assert updated.full_name() == "Luc Martin-Durand"
         assert updated.email == "luc.durand@simple-erp.fr"
 
     async def test_an_address_another_account_holds_is_refused(
@@ -306,7 +307,10 @@ class TestAccountSelfUpdate:
 
         with pytest.raises(MTAuthEmailAlreadyRegistered):
             await service.update_account(
-                account, full_name="Luc", email="taken@simple-erp.fr"
+                account,
+                full_name="Luc",
+                email="taken@simple-erp.fr",
+                language=Language.FR,
             )
 
     async def test_keeping_your_own_address_is_not_a_clash(
@@ -324,10 +328,13 @@ class TestAccountSelfUpdate:
         users.get_by_email.return_value = account
 
         updated = await service.update_account(
-            account, full_name="Luc Martin-Durand", email=account.email
+            account,
+            full_name="Luc Martin-Durand",
+            email=account.email,
+            language=Language.FR,
         )
 
-        assert updated.full_name == "Luc Martin-Durand"
+        assert updated.full_name() == "Luc Martin-Durand"
 
     async def test_the_role_is_untouched(
         self, service: AuthService, users: AsyncMock
@@ -344,7 +351,10 @@ class TestAccountSelfUpdate:
         account = _staff_account(service)
 
         updated = await service.update_account(
-            account, full_name="Luc", email="luc@simple-erp.fr"
+            account,
+            full_name="Luc",
+            email="luc@simple-erp.fr",
+            language=Language.FR,
         )
 
         assert updated.role == account.role
@@ -360,7 +370,10 @@ class TestAccountSelfUpdate:
         account = _staff_account(service)
 
         updated = await service.update_account(
-            account, full_name="Luc", email="luc@simple-erp.fr"
+            account,
+            full_name="Luc",
+            email="luc@simple-erp.fr",
+            language=Language.FR,
         )
 
         assert updated.hashed_password == account.hashed_password
@@ -375,7 +388,10 @@ class TestAccountSelfUpdate:
 
         with pytest.raises(MTAuthUnknownAccount):
             await service.update_account(
-                _staff_account(service), full_name="Luc", email="luc@simple-erp.fr"
+                _staff_account(service),
+                full_name="Luc",
+                email="luc@simple-erp.fr",
+                language=Language.FR,
             )
 
 

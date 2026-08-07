@@ -21,6 +21,7 @@
   <a href="#requirements">Requirements</a> ·
   <a href="#getting-it-running">Getting started</a> ·
   <a href="#docker">Docker</a> ·
+  <a href="#kubernetes">Kubernetes</a> ·
   <a href="docs/README.md">Documentation</a>
 </p>
 
@@ -52,29 +53,31 @@ and the workforce and customer records behind them.
 
 ## Overall architecture
 
-Three application processes and three stores. The API and the worker run the
-**same image** with different entry points — one image built two ways cannot
-drift the way two Dockerfiles do.
+Four application processes and three stores. The API, both workers and the
+migrator run the **same image** with different entry points — one image built
+four ways cannot drift the way four Dockerfiles do.
 
 ```
                      ┌──────────────┐
    browser ────────▶ │  React SPA   │ ─────────┐
                      └──────────────┘          │  REST + SSE
                                                ▼
-   ┌──────────┐  events  ┌──────────────┐  ┌────────┐
-   │  worker  │ ◀──────▶ │  RabbitMQ    │◀─│  API   │
-   │ solver + │          └──────────────┘  └────────┘
-   │ notifier │                                │
-   └──────────┘                                │
-        │                                      │
-        └──────────▶ PostgreSQL ◀──────────────┘
+   ┌────────────────┐        ┌──────────────┐  ┌────────┐
+   │ worker         │ ◀────▶ │  RabbitMQ    │◀─│  API   │
+   │  · planning    │ events └──────────────┘  └────────┘
+   │  · notifications│                             │
+   └────────────────┘                              │
+        │                                          │
+        └──────────▶ PostgreSQL ◀──────────────────┘
                      MinIO (photographs)
 ```
 
 | Process | Does |
 |---|---|
-| **api** | Serves HTTP, holds the SSE connections, runs the migrations on boot |
-| **worker** | Consumes the broker: runs the CP-SAT solves, writes notifications, sends email |
+| **migrate** | Runs Alembic to `head`, once, and exits. Everything else waits for it |
+| **api** | Serves HTTP and holds the SSE connections |
+| **worker-planning** | Consumes `planning-runs`: runs the CP-SAT solves |
+| **worker-notifications** | Consumes `quote-notifications`: writes notifications, sends email |
 | **frontend** | Vite dev server, or nginx serving a built bundle and proxying `/api` |
 
 ### Inside the backend
@@ -121,12 +124,12 @@ rather than a message.
 |---|---|
 | Docker Engine | 24 or newer |
 | Docker Compose | v2 (`docker compose`, not `docker-compose`) |
-| Memory | ~4 GB free — the solver and the broker are the hungry parts |
-| Ports | 5173, 8000, 5432, 5672, 15672, 9000, 9001, 1025, 8025 |
+| Memory | ~5 GB free — the solver and the broker are the hungry parts, and the observability chain adds about a gigabyte |
+| Ports | 5173, 8000, 5432, 5672, 15672, 9000, 9001, 1025, 8025, 9101, 9102, and 3000, 3100, 9090, 4317, 4318 for observability |
 
 The development overlay publishes every one of those ports so you can reach the
 database and the broker directly. If something already holds one, either stop it
-or drop that mapping from `docker-compose.dev.yaml`.
+or drop that mapping from `infra/compose/docker-compose.dev.yaml`.
 
 **To work on the code**, a toolchain per language — none of it needed if you
 only run the stack:
@@ -149,24 +152,66 @@ other is the image and package registries, at build time.
 ## Getting it running
 
 ```sh
-cp .env.example .env
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
+cp infra/compose/.env.example infra/compose/.env
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml up --build
 ```
 
-That brings up PostgreSQL, MinIO, RabbitMQ, the API, the worker, Mailpit and the
-Vite dev server, runs the migrations, and seeds a working agency — 12 assistants,
+That brings up PostgreSQL, MinIO, RabbitMQ, the API, both workers, Mailpit, the
+Vite dev server and the whole observability chain, runs the migrations once
+through the `migrate` service, and seeds a working agency — 12 assistants,
 40 customers, a service catalog and 54 quotes spread across every status.
 
-Wait for `Bucket SimpleERP is ready.` and the seeder's credential block; the first
+Wait for `Bucket simple-erp is ready.` and the seeder's credential block; the first
 build takes a few minutes, and afterwards a start is seconds.
 
 | | |
 |---|---|
 | Application | <http://localhost:5173> |
-| API and its docs | <http://localhost:8000> · <http://localhost:8000/docs> |
+| API and its docs | <http://localhost:8000> · <http://localhost:8000/docs> · <http://localhost:8000/redoc> |
 | Caught email | <http://localhost:8025> |
 | Broker management | <http://localhost:15672> — `simple_erp` / `simple_erp_dev` |
-| Object store console | <http://localhost:9001> |
+| Object store console | <http://localhost:9001> — `simple_erp_dev` / `simple_erp_dev_secret` |
+
+### Observability
+
+Every process serves the same three probes, on the same three paths. `/health`
+answers whether it is alive, `/ready` whether it can reach what it needs, and
+`/metrics` a Prometheus exposition. **A worker that is up but cannot reach the
+broker answers 200 on the first and 503 on the second**, which is the whole
+reason there are two.
+
+| Process | Liveness | Readiness | Metrics |
+|---|---|---|---|
+| API | <http://localhost:8000/health> | <http://localhost:8000/ready> | <http://localhost:8000/metrics> |
+| Planning worker | <http://localhost:9101/health> | <http://localhost:9101/ready> | <http://localhost:9101/metrics> |
+| Notification worker | <http://localhost:9102/health> | <http://localhost:9102/ready> | <http://localhost:9102/metrics> |
+
+The dashboards behind them come up with everything else — **the development
+stack always runs the full observability chain**, so a panel that has rotted is
+something you find on a Tuesday rather than the day you needed it. It costs five
+more containers and roughly a gigabyte of memory, which is the deliberate trade.
+
+| | |
+|---|---|
+| Grafana | <http://localhost:3000> — no sign-in, anonymous admin · <http://localhost:3000/explore> to query the logs |
+| Prometheus | <http://localhost:9090> · [targets](http://localhost:9090/targets) · [rules](http://localhost:9090/rules) · [alerts](http://localhost:9090/alerts) |
+| Loki | <http://localhost:3100/ready> · <http://localhost:3100/metrics> — an API, not a UI; read the logs in Grafana |
+| OTLP ingest | `localhost:4317` (gRPC) · `localhost:4318` (HTTP) — endpoints the collector accepts spans on, not pages |
+
+**Loki is published for `curl`, not for a browser** — it serves an API and no
+interface of its own, and logs are read in Grafana. What the port buys is the
+one question Grafana cannot answer. An empty Explore pane looks identical
+whether Alloy is shipping nothing, Loki is refusing it, or the query is simply
+wrong; `/ready` and `/metrics` separate those in one request each.
+
+**Tempo and Alloy still publish nothing, on purpose.** Grafana reaches Tempo
+over the compose network, and Alloy scrapes the container runtime's own logs
+rather than serving anything — so a port for either would be another way to
+look at data Grafana already shows, and another thing to remember is running.
+
+The Prometheus targets page is the one to open first when a panel is empty — an
+exporter that is down there explains a blank dashboard faster than the dashboard
+does. → [docs/14](docs/14-observability.md)
 
 Sign in with any of the seeded accounts, all sharing the password
 `simple-erp-demo-2026`:
@@ -175,9 +220,16 @@ Sign in with any of the seeded accounts, all sharing the password
 |---|---|---|
 | Administrator | `admin@simple-erp.fr` | The quote screen |
 | Manager | `manager@simple-erp.fr` | The quote screen |
+| Manager, on the rounds | `marc.dubois@simple-erp.fr` | The quote screen |
 | Assistant | `luc.martin@simple-erp.fr` | Their own planning |
 
 Every seeded assistant signs in as `firstname.lastname@simple-erp.fr`.
+
+Marc Dubois is a manager who still covers rounds — they hold both a manager's
+role and an assistant record. Sign in as them to see the employment section of
+**My account** in its editable form, where the contract type, the
+qualifications and *whether this person goes out on rounds* can be changed.
+The same section renders locked for Luc Martin, who holds the assistant role.
 
 ## Docker
 
@@ -186,14 +238,27 @@ application *is*, and an overlay says how you want to run it.
 
 | File | Adds |
 |---|---|
-| `docker-compose.yaml` | The services themselves: postgres, minio, minio-init, rabbitmq, backend, worker, frontend |
-| `docker-compose.dev.yaml` | Source bind-mounts, live reload, every port published, Mailpit, the seeder |
-| `docker-compose.prod.yaml` | Restart policies, resource limits, two workers, nginx, **mandatory secrets** |
+| `infra/compose/docker-compose.yaml` | The services themselves: postgres, minio, minio-init, rabbitmq, **migrate**, backend, **worker-planning**, **worker-notifications**, frontend — plus `pgbouncer` behind a `pooled` profile, which an ordinary `up` does not start |
+| `infra/compose/docker-compose.dev.yaml` | Source bind-mounts, live reload, every port published, Mailpit, the seeder, and the whole observability chain — Prometheus, Loki, Tempo, Grafana, Alloy and the OpenTelemetry Collector |
+| `infra/compose/docker-compose.prod.yaml` | Restart policies, per-role resource limits and replicas, nginx, **mandatory secrets** |
+
+`pgbouncer` is off by default because it is there to be exercised rather than
+needed: `asyncpg` caches server-side prepared statements per connection, and
+under transaction pooling a "connection" is a different backend from one
+transaction to the next. The engine passes `statement_cache_size=0`
+unconditionally to prevent that, and `--profile pooled` is what proves the
+setting still works. → [docs/13](docs/13-kubernetes.md)
+
+Observability is part of the dev overlay rather than an overlay of its own —
+see [Observability](#observability) above for the addresses. It reads the
+**same** alert rules the Helm chart ships (`infra/chart/rules/`), so an alert
+cannot fire on a laptop and not in the cluster.
+→ [docs/14](docs/14-observability.md)
 
 Because two `-f` flags on every command gets tedious, export them once per shell:
 
 ```sh
-export COMPOSE_FILE=docker-compose.yaml:docker-compose.dev.yaml
+export COMPOSE_FILE=infra/compose/docker-compose.yaml:infra/compose/docker-compose.dev.yaml
 ```
 
 Every command below assumes that. Without it, spell both files out.
@@ -205,7 +270,7 @@ docker compose up -d                  # start, in the background
 docker compose up --build             # rebuild first — after a dependency change
 docker compose ps                     # what is running, and is it healthy
 docker compose logs -f backend        # follow one service
-docker compose logs -f backend worker # …or several
+docker compose logs -f backend worker-planning # …or several
 docker compose stop                   # stop, keeping the data
 docker compose down                   # stop and remove the containers
 ```
@@ -228,7 +293,6 @@ docker compose up -d postgres rabbitmq   # the stores alone, to run the app on t
 ### Running things inside the stack
 
 ```sh
-docker compose exec backend uv run pytest          # the test suite
 docker compose exec backend alembic -c conf/alembic.ini current
 docker compose exec backend alembic -c conf/alembic.ini upgrade head
 docker compose exec backend bash                   # a shell in the API container
@@ -240,10 +304,20 @@ docker compose run --rm seed                       # re-run the seeder (idempote
 The seeder writes nothing on a second run — every identifier is derived from a
 natural key, so it upserts. Running it again is always safe.
 
+**The test suite is not among these**, and cannot be: the runtime image carries
+no `uv` and no test framework, and `backend/.dockerignore` keeps `tests/` out of
+the build context entirely. That is deliberate — the image that runs the suite
+would be the image that reaches production. The suite is hermetic, so it needs
+none of this stack anyway: run it on the host, which is also what CI does.
+
+```sh
+cd backend && uv run pytest
+```
+
 ### Starting over
 
 ```sh
-DEV="-f docker-compose.yaml -f docker-compose.dev.yaml"
+DEV="-f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml"
 docker compose $DEV down -v --remove-orphans   # containers AND volumes: a clean database
 docker compose $DEV up --build                 # rebuild and reseed from nothing
 ```
@@ -260,7 +334,7 @@ containers that are really the problem.
 ### Rebuilding one image
 
 ```sh
-docker compose build backend          # backend and worker share this image
+docker compose build backend          # the API, both workers and the migrator share this image
 docker compose build --no-cache frontend
 docker compose up -d --force-recreate backend
 ```
@@ -282,11 +356,36 @@ docker compose logs seed              # the credential block prints here
 |---|---|
 | `backend` restarts in a loop | Migrations could not run — read its logs; check `POSTGRES_PASSWORD` matches |
 | Photographs and map pins are broken | `minio-init` did not complete; re-run `docker compose up minio-init` |
-| No notifications arrive | `worker` is down, or RabbitMQ never went healthy — it takes ~20 s on a cold start |
+| No notifications arrive | `worker-notifications` is down, or RabbitMQ never went healthy — it takes ~20 s on a cold start |
 | Login rejects the seeded accounts | The seeder did not run: `docker compose run --rm seed` |
 | A port is already in use | Something else holds 5432, 8000 or 5173; stop it, or drop that port from the dev overlay |
 | `network <id> not found` on `up` | A previous `down` used a different `-f` set — see **Starting over** |
 | `password authentication failed for user "simple_erp"` | A volume from before the rename — see below |
+
+### After the compose files moved into `infra/compose`
+
+The base file declares `name: rt-erp`, so the project name — and every volume
+name with it — is unchanged by the move. If you have removed that line, or you
+run compose from somewhere that does not pick the base file up, the project is
+named after the directory instead and the stack comes up against three empty
+volumes.
+
+That does **not** look like an empty database. The stores bake their credentials
+in when they first initialise an empty volume, so what you get is the
+authentication failure below — naming the right user, which reads exactly like a
+typo in the configuration.
+
+```sh
+docker volume ls | grep rt-erp_   # postgres-data, minio-data, rabbitmq-data
+```
+
+If those exist and the stack is not using them, the data is fine and the project
+name is wrong. Put `name: rt-erp` back.
+
+Note also that `.env` now belongs **beside the compose files**, in
+`infra/compose/`. Compose reads it from the project directory, which is the
+directory of the first `-f` file; one left at the repository root is silently
+not read, and the stack comes up on the development defaults without saying so.
 
 ### Upgrading a stack created before the SimpleERP rename
 
@@ -308,9 +407,9 @@ For a development stack, throw the volumes away — the data is seeded, and
 reseeding takes seconds:
 
 ```sh
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml down -v --remove-orphans
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml down -v --remove-orphans
 docker network rm rt-erp_rt-erp                       # the network named after the old product
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml up --build
 ```
 
 **Tear down with the same `-f` files you brought it up with.** `mailpit` and
@@ -350,14 +449,16 @@ docker compose exec minio sh -c "\
 
 The seeder's identifiers are derived from a namespace that also carried the old
 name, so a database seeded before the rename will gain a **second** set of
-seeded rows rather than having the first updated in place. Run
-`docker compose run --rm seed --reset` after migrating, or accept the duplicates
-and clear them by hand.
+seeded rows rather than having the first updated in place. **The seeder takes no
+arguments** — its entry point accepts `argv` only so the console script matches
+the others, and ignores it — so there is no `--reset` to run. Either drop the
+volumes and reseed from nothing, which is the development answer, or clear the
+duplicate rows by hand.
 
 ### Production
 
 ```sh
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.prod.yaml up -d
 ```
 
 Different in ways that matter:
@@ -369,25 +470,26 @@ Different in ways that matter:
   on the compose network and nowhere else; administration goes through
   `docker compose exec`.
 - **The front-end is built and served by nginx**, which also proxies `/api` — so
-  the browser sees one origin. `VITE_API_BASE_URL` is a **build argument**, not a
-  runtime variable: Vite inlines it into the bundle, and setting it on a running
-  container does nothing.
-- **Two worker replicas**, no bind mounts, no reload, and CPU and memory limits.
+  the browser sees one origin. The API's address is **not** built into the
+  bundle: it is read at start-up from `/config.json`, which ships in the image
+  naming that same-origin `/api`. That is what makes one image promotable
+  dev → staging → production rather than one image per environment.
+- **Two planning workers and one notification worker**, sized separately: a
+  solve wants whole cores, a fan-out wants none. No bind mounts, no reload.
 - **The seeder is absent.** Production data is not fixture data.
 
 Verify a configuration before deploying it — this renders the merged file and
 fails on anything missing:
 
 ```sh
-docker compose -f docker-compose.yaml -f docker-compose.prod.yaml config --quiet
+docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.prod.yaml config --quiet
 ```
 
 ### Building the images on their own
 
 ```sh
 docker build -t simple-erp-backend ./backend
-docker build -t simple-erp-frontend --target production \
-  --build-arg VITE_API_BASE_URL=/api ./frontend
+docker build -t simple-erp-frontend --target production ./frontend
 ```
 
 The front-end Dockerfile has three targets: `development` (Vite), `build`, and
@@ -396,6 +498,36 @@ The front-end Dockerfile has three targets: `development` (Vite), `build`, and
 
 → [docs/09 — Running and deploying](docs/09-running-and-deploying.md) for what
 each service does and the order they come up in.
+
+## Kubernetes
+
+Compose is one description of the system; `infra/chart` is the other, and they
+are kept deliberately alike. The same five workloads, the same image built five
+ways, the same one-shot migrator ahead of everything else — expressed as a Helm
+`pre-install,pre-upgrade` hook Job rather than a `service_completed_successfully`
+dependency.
+
+```sh
+helm lint infra/chart --set global.image.tag=$(git rev-parse --short HEAD)
+helm template simple-erp infra/chart -f infra/chart/values-dev.yaml \
+  --set global.image.tag=$(git rev-parse --short HEAD)
+```
+
+What the chart does **not** contain is the part worth knowing: PostgreSQL,
+RabbitMQ, MinIO and PgBouncer are not in it. In compose they are services
+because a laptop has to run something; in a cluster they are operator-managed
+and installed by [`infra/bootstrap`](infra/bootstrap/README.md). They outlive
+any one release, and a chart that owned them would uninstall cert-manager on a
+failed rollback and take every certificate with it. Mailpit and the seeder have
+no cluster equivalent at all — one catches development email, the other writes
+fixture data.
+
+Argo CD reconciles it, one `Application` per environment in `infra/argocd`.
+Production syncs **manually**: the migration hook is irreversible, and a sync
+that ran on its own could migrate a schema nobody was watching.
+
+→ [docs/13 — Kubernetes](docs/13-kubernetes.md) ·
+[docs/14 — Observability](docs/14-observability.md)
 
 ## Repository layout
 
@@ -408,6 +540,12 @@ backend/          uv workspace — six members, strict dependency direction
   worker/           broker consumer: solves plannings, notifies  ← models, storage, service
   seed/             idempotent development data                  ← models, storage, service
 frontend/         React 19 + TypeScript + MUI, Vite
+infra/            everything that runs it
+  compose/          the four compose files, and .env
+  chart/            the Helm chart: five workloads, KEDA, alert rules
+  argocd/           one Application per environment
+  bootstrap/        the cluster add-ons the chart deliberately does not own
+  observability/    collector, Prometheus, Loki, Tempo, Grafana — shared with compose
 qa/               Robot Framework GUI campaign + coverage
 docs/             the documentation set — start at docs/README.md
 ```
@@ -418,7 +556,7 @@ docs/             the documentation set — start at docs/README.md
 # Backend
 cd backend
 uv sync
-uv run pytest                 # 938 test functions, hermetic
+uv run pytest                 # 1,866 test functions, hermetic
 uv run ruff check . && uv run ruff format --check .
 uv run ty check               # type checking — see docs/10-testing.md
 

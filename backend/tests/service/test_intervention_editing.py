@@ -84,6 +84,7 @@ def _quote(lines: List[QuoteLine]) -> Quote:
         Quote: The quote.
     """
     return Quote(
+        company_id="company-1",
         id="quote-1",
         reference="D-2601",
         customer_id="customer-1",
@@ -104,6 +105,7 @@ def _intervention(
         Intervention: The visit.
     """
     return Intervention(
+        company_id="company-1",
         id="visit-1",
         planning_run_id="run-1",
         name=name,
@@ -149,7 +151,7 @@ def quotes() -> AsyncMock:
     """
     service = AsyncMock()
     service.get_by_line.return_value = _quote([_line("line-1"), _line("line-2")])
-    service.replace_lines.side_effect = lambda quote_id, quote: quote
+    service.replace_lines.side_effect = lambda quote_id, lines: _quote(lines)
     return service
 
 
@@ -209,7 +211,7 @@ class TestCancellingAVisit:
         """
         await service.delete("visit-1")
         _, sent = quotes.replace_lines.await_args.args
-        assert [line.id for line in sent.lines] == ["line-2"]
+        assert [line.id for line in sent] == ["line-2"]
 
     @pytest.mark.asyncio
     async def test_the_quote_is_repriced(
@@ -258,7 +260,7 @@ class TestSellingAVisitAsSomethingElse:
         """The quote is what actually changes."""
         await service.change_type("visit-1", COMFORT)
         _, sent = quotes.replace_lines.await_args.args
-        changed = next(line for line in sent.lines if line.id == "line-1")
+        changed = next(line for line in sent if line.id == "line-1")
         assert changed.intervention_type_id == COMFORT
 
     @pytest.mark.asyncio
@@ -268,7 +270,7 @@ class TestSellingAVisitAsSomethingElse:
         """Which is what makes the repricing change the tax, not only the rate."""
         await service.change_type("visit-1", COMFORT)
         _, sent = quotes.replace_lines.await_args.args
-        changed = next(line for line in sent.lines if line.id == "line-1")
+        changed = next(line for line in sent if line.id == "line-1")
         assert changed.service_category is ServiceCategory.COMFORT
 
     @pytest.mark.asyncio
@@ -278,7 +280,7 @@ class TestSellingAVisitAsSomethingElse:
         """One visit was re-classified, not the whole quote."""
         await service.change_type("visit-1", COMFORT)
         _, sent = quotes.replace_lines.await_args.args
-        untouched = next(line for line in sent.lines if line.id == "line-2")
+        untouched = next(line for line in sent if line.id == "line-2")
         assert untouched.intervention_type_id == NECESSITY
 
     @pytest.mark.asyncio
@@ -288,7 +290,7 @@ class TestSellingAVisitAsSomethingElse:
         """A line still carrying the catalogue wording gets the new wording."""
         await service.change_type("visit-1", COMFORT)
         _, sent = quotes.replace_lines.await_args.args
-        changed = next(line for line in sent.lines if line.id == "line-1")
+        changed = next(line for line in sent if line.id == "line-1")
         assert changed.name == "Compagnie"
 
     @pytest.mark.asyncio
@@ -301,7 +303,7 @@ class TestSellingAVisitAsSomethingElse:
         )
         await service.change_type("visit-1", COMFORT)
         _, sent = quotes.replace_lines.await_args.args
-        changed = next(line for line in sent.lines if line.id == "line-1")
+        changed = next(line for line in sent if line.id == "line-1")
         assert changed.name == "Toilette - etage"
 
     @pytest.mark.asyncio

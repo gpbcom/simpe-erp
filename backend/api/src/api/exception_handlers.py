@@ -9,11 +9,16 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 # First-party imports
+from models.base.exceptions import MTInvalidPersonException
 from models.auth.exceptions import (
     MTInvalidAccessTokenException,
     MTInvalidUserException,
 )
-from models.catalog.exceptions import MTInvalidInterventionTypeException
+from models.catalog.exceptions import (
+    MTInvalidCertificationTypeException,
+    MTInvalidSkillTypeException,
+    MTInvalidInterventionTypeException,
+)
 from models.companies.exceptions import MTInvalidCompanyException
 from models.configuration.exceptions import (
     MTInvalidAppConfigException,
@@ -22,6 +27,7 @@ from models.configuration.exceptions import (
     MTInvalidEmailConfigException,
     MTInvalidGeocodingConfigException,
     MTInvalidHolidaySurchargeException,
+    MTInvalidObservabilityConfigException,
     MTInvalidPlanningConfigException,
     MTInvalidPricingConfigException,
     MTInvalidRabbitMqConfigException,
@@ -36,18 +42,21 @@ from models.geo.exceptions import (
 )
 from models.messaging.exceptions import MTInvalidEventEnvelopeException
 from models.notifications.exceptions import MTInvalidNotificationException
-from models.people.exceptions import (
+from models.people.customer.exceptions import MTInvalidCustomerException
+from models.people.hca.exceptions import (
     MTInvalidAvailabilitySlotException,
     MTInvalidCertificationException,
-    MTInvalidCustomerException,
     MTInvalidDrivingLicenseException,
-    MTInvalidHcaApplicationException,
     MTInvalidHcaException,
+    MTInvalidSkillException,
 )
-from models.planning.exceptions import (
-    MTInvalidHcaPlanningException,
+from models.people.hca_application.exceptions import MTInvalidHcaApplicationException
+from models.planning.hca_planning.exceptions import MTInvalidHcaPlanningException
+from models.planning.intervention.exceptions import (
     MTInvalidInterventionException,
     MTInvalidInterventionRequirementException,
+)
+from models.planning.planning_run.exceptions import (
     MTInvalidPlanningRunException,
     MTInvalidUnplacedRequirementException,
 )
@@ -57,11 +66,16 @@ from models.quoting.exceptions import (
     MTInvalidQuoteTypeWeekAggregateException,
 )
 from models.schemas.exceptions import (
+    MTInvalidCertificationTypeUpdateRequestException,
+    MTInvalidSkillCreateRequestException,
+    MTInvalidSkillTypeUpdateRequestException,
     MTInvalidAccountUpdateRequestException,
     MTInvalidCompanyProfileUpdateRequestException,
     MTInvalidInterventionTypeChangeRequestException,
     MTInvalidInterventionTypeUpdateRequestException,
+    MTInvalidQuoteCreateRequestException,
     MTInvalidQuoteInterruptionRequestException,
+    MTInvalidQuoteLinesRequestException,
     MTInvalidActiveUpdateRequestException,
     MTInvalidApplicationDecisionRequestException,
     MTInvalidCompanyRegistrationRequestException,
@@ -71,6 +85,7 @@ from models.schemas.exceptions import (
     MTInvalidHcaApplicationRequestException,
     MTInvalidHcaProfileUpdateRequestException,
     MTInvalidHcaResponseException,
+    MTInvalidWorkingDaysRequestException,
     MTInvalidHealthResponseException,
     MTInvalidLoginRequestException,
     MTInvalidPasswordChangeRequestException,
@@ -108,6 +123,20 @@ from service.companies.exceptions import (
     MTCompanyRegistrationDisabled,
     MTInvalidCompanyServiceException,
 )
+from service.certifications.exceptions import (
+    MTCertificationTypeAlreadyExists,
+    MTCertificationTypeInUse,
+    MTCertificationTypeNotFound,
+    MTCertificationTypeUnknownCode,
+    MTInvalidCertificationCatalogException,
+)
+from service.skills.exceptions import (
+    MTInvalidSkillCatalogException,
+    MTSkillTypeAlreadyExists,
+    MTSkillTypeInUse,
+    MTSkillTypeNotFound,
+    MTSkillTypeUnknownCode,
+)
 from service.customers.exceptions import (
     MTCustomerHasQuotes,
     MTCustomerNotFound,
@@ -124,6 +153,7 @@ from service.hcas.exceptions import (
     MTApplicationForbidden,
     MTApplicationNotFound,
     MTAvailabilitySlotNotFound,
+    MTSkillNotFound,
     MTDuplicateApplication,
     MTHcaForbidden,
     MTHcaHasAccount,
@@ -224,9 +254,20 @@ class ExceptionHandlers:
         MTInvalidInterventionTypeUpdateRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidCertificationTypeUpdateRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidCertificationTypeException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidSkillTypeUpdateRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidSkillCreateRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidSkillTypeException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidQuoteInterruptionRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidQuoteCreateRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidQuoteLinesRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         # A 500, not a 422. This family guards a *response* built from the
         # running configuration, so a caller cannot cause one and has nothing
         # to correct: it fires only when the deployment's own pricing rules
@@ -245,6 +286,7 @@ class ExceptionHandlers:
         MTInvalidPlanningSettingsRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidWorkingDaysRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidInterventionTypeChangeRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
@@ -261,6 +303,7 @@ class ExceptionHandlers:
         # People
         MTHcaNotFound: status.HTTP_404_NOT_FOUND,
         MTAvailabilitySlotNotFound: status.HTTP_404_NOT_FOUND,
+        MTSkillNotFound: status.HTTP_404_NOT_FOUND,
         MTCustomerNotFound: status.HTTP_404_NOT_FOUND,
         MTCustomerHasQuotes: status.HTTP_409_CONFLICT,
         MTHcaForbidden: status.HTTP_403_FORBIDDEN,
@@ -282,6 +325,19 @@ class ExceptionHandlers:
         # Intervention-type catalog
         MTInterventionTypeNotFound: status.HTTP_404_NOT_FOUND,
         MTInterventionTypeAlreadyExists: status.HTTP_409_CONFLICT,
+        # Certification catalogue
+        MTCertificationTypeNotFound: status.HTTP_404_NOT_FOUND,
+        MTCertificationTypeAlreadyExists: status.HTTP_409_CONFLICT,
+        MTCertificationTypeInUse: status.HTTP_409_CONFLICT,
+        # A 422, not a 404: the request named a code that does not exist, but
+        # the resource being addressed is the service or the quote line, and
+        # that one is there. A 404 would read as "no such service".
+        MTCertificationTypeUnknownCode: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # Skill catalogue, answering exactly as its certification twin does.
+        MTSkillTypeNotFound: status.HTTP_404_NOT_FOUND,
+        MTSkillTypeAlreadyExists: status.HTTP_409_CONFLICT,
+        MTSkillTypeInUse: status.HTTP_409_CONFLICT,
+        MTSkillTypeUnknownCode: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # Quotes and pricing
         MTQuoteNotFound: status.HTTP_404_NOT_FOUND,
         MTQuoteNotEditable: status.HTTP_409_CONFLICT,
@@ -323,6 +379,13 @@ class ExceptionHandlers:
         MTInvalidEnumException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidUserException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidAccessTokenException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # The root the three people families share. Registered as well as
+        # them, not instead of them: the lookup walks the MRO and takes the
+        # first match, so a customer's own class is still what answers a
+        # customer's failure. This row covers the generic ``MTPerson*``
+        # exceptions, which are what a people model raises before somebody
+        # gives it one of its own.
+        MTInvalidPersonException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidCustomerException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidHcaException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidHcaApplicationException: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -333,6 +396,7 @@ class ExceptionHandlers:
         # answering an opaque 500 if one ever surfaces through an endpoint.
         MTInvalidEventEnvelopeException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidCertificationException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidSkillException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidDrivingLicenseException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidCompanyException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidInterventionTypeException: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -359,6 +423,8 @@ class ExceptionHandlers:
         MTInvalidCustomerServiceException: status.HTTP_400_BAD_REQUEST,
         MTInvalidCompanyServiceException: status.HTTP_400_BAD_REQUEST,
         MTInvalidInterventionTypeCatalogException: status.HTTP_400_BAD_REQUEST,
+        MTInvalidCertificationCatalogException: status.HTTP_400_BAD_REQUEST,
+        MTInvalidSkillCatalogException: status.HTTP_400_BAD_REQUEST,
         MTInvalidPricingException: status.HTTP_400_BAD_REQUEST,
         MTInvalidPlanningException: status.HTTP_400_BAD_REQUEST,
         # A response model that will not build is **our** bug: the caller asked
@@ -384,6 +450,9 @@ class ExceptionHandlers:
         MTInvalidEmailConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidWebhookConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidGeocodingConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTInvalidObservabilityConfigException: (
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        ),
         MTInvalidPlanningConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidPricingConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHolidaySurchargeException: status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -66,3 +66,7 @@ class MTInvalidQuoteInterruptionRequestException(Exception):
 
 class MTQuoteInterruptionRequestInvalidDay(MTInvalidQuoteInterruptionRequestException):
     """Exception raised when the last day is missing or unreadable."""
+
+
+class MTAccountUpdateRequestInvalidLanguage(MTInvalidAccountUpdateRequestException):
+    """Exception raised when the language is not one the application speaks."""

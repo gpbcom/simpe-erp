@@ -15,7 +15,7 @@ from service.auth.auth import AuthService
 from service.auth.exceptions import MTAuthLastAdmin, MTAuthUnknownAccount
 from service.companies.companies import CompanyService
 from service.companies.exceptions import MTCompanyNotEmpty
-from storage.repositories.company import CompanyRepository
+from storage.repositories.companies.company import CompanyRepository
 
 COMPANY_ID = "company-1"
 

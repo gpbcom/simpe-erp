@@ -36,3 +36,23 @@ class MTQuoteLineInvalidAmount(MTInvalidQuoteLineException):
 
 class MTQuoteLineWindowTooShort(MTInvalidQuoteLineException):
     """Exception raised when the window cannot contain the duration."""
+
+
+class MTQuoteLineInvalidRequiredSkills(MTInvalidQuoteLineException):
+    """Exception raised when an invalid ``required_skill_codes`` is given.
+
+    Notes:
+        ``None`` on a line inherits the catalogue and an empty list overrides
+        it to nothing, exactly as for the certification override beside it.
+    """
+
+
+class MTQuoteLineInvalidRequiredCertifications(MTInvalidQuoteLineException):
+    """Exception raised when an invalid ``required_certification_codes`` is given.
+
+    Notes:
+        Distinct from the intervention type's own exception even though the
+        rule is the same, because the two fields do not mean the same thing:
+        ``None`` on a line inherits the catalogue, while the catalogue itself
+        has no such state.
+    """

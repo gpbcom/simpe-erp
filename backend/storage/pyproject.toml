@@ -13,6 +13,13 @@ dependencies = [
     "boto3>=1.43.0",
 ]
 
+# One image, four commands: the API serves, ``worker`` consumes, ``seed`` fills
+# a development database, and this migrates. Migrating is an entry point rather
+# than a prefix on the API's command so that exactly one process does it — see
+# ``storage.migrate.main``.
+[project.scripts]
+migrate = "storage.migrate:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

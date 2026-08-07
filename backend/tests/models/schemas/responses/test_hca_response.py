@@ -10,9 +10,9 @@ import pytest
 # First-party imports
 from models.enums import AvailabilityKind, ContractType
 from models.geo.postal_address import PostalAddress
-from models.people.availability_slot import AvailabilitySlot
-from models.people.certification import Certification
-from models.people.driving_license import DrivingLicense
+from models.people.hca.availability_slot import AvailabilitySlot
+from models.people.hca.certification import Certification
+from models.people.hca.driving_license import DrivingLicense
 from models.people.hca import Hca
 from models.schemas.exceptions import (
     MTHcaResponseInvalidContractType,
@@ -21,7 +21,7 @@ from models.schemas.exceptions import (
     MTHcaResponseInvalidName,
     MTInvalidHcaResponseException,
 )
-from models.schemas.responses.hca_response import HcaResponse
+from models.schemas.responses.hca.hca_response import HcaResponse
 
 
 @pytest.fixture

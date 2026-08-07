@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, time
-from typing import Union
+from typing import Optional, Union
 
 # Third-party imports
 from pydantic import ValidationError
@@ -51,11 +51,11 @@ class TestQuoteLineServiceCategory:
         assert _line("comfort").service_category is ServiceCategory.COMFORT
 
     @pytest.mark.parametrize("value", [None, "", "luxury", 5, True])
-    def test_an_unknown_category_is_refused(self, value: Union[str, None]) -> None:
+    def test_an_unknown_category_is_refused(self, value: Optional[str]) -> None:
         """A line cannot exist without one.
 
         Args:
-            value (Union[str, None]): The rejected category.
+            value (Optional[str]): The rejected category.
         """
         with pytest.raises(MTQuoteLineInvalidServiceCategory):
             _line(value)

@@ -9,8 +9,8 @@ import pytest
 
 # First-party imports
 from models.enums import AvailabilityKind
-from models.people.availability_slot import AvailabilitySlot
-from models.people.exceptions import (
+from models.people.hca.availability_slot import AvailabilitySlot
+from models.people.hca.exceptions import (
     MTAvailabilitySlotInvalidEndDate,
     MTAvailabilitySlotInvalidEndTime,
     MTAvailabilitySlotInvalidHcaId,

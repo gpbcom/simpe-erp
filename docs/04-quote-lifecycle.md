@@ -65,6 +65,25 @@ from there. `QuoteService.vat_rate_for` takes the *line*; if it ever takes an
 `InterventionType` again, two customers buying the same service could no longer
 be taxed differently, which is the case the field exists for.
 
+**The qualification a line needs follows the same shape, with one state more.**
+`required_certification_codes` is `null` by default, meaning "whatever the
+catalog entry requires" — unlike the VAT category, most lines have no reason to
+disagree with the catalogue, so inheriting is the sensible default rather than
+an omission. A list overrides it, and an **empty** list means "this hour needs
+no qualification at all", which is a real answer when the catalogue's default is
+wrong for one customer.
+
+That third state is why the field is nullable. Collapsing `[]` into `null`
+would silently reinstate a requirement the person writing the quote had
+deliberately removed, and neither the screen nor the stored row would show that
+it had happened. `QuoteLine.effective_certification_codes` resolves the
+fallback in one place, and the requirement builder calls it once per line so the
+solver never has to know the rule exists.
+
+A code the catalogue does not offer is a **422** on the way in, naming the code.
+Leaving it to the planner would fail every run touching that line with a
+message reading as a staffing problem when it was a typo.
+
 ## Ending an arrangement early
 
 `interrupted_on` is the last day a quote is delivered. It is **inclusive**: a
@@ -226,6 +245,96 @@ like.
 **A refusal stamps nothing.** It sends the quote back to its author, and putting
 an issue date on an offer that was never made would date a document the customer
 never received.
+
+## The document the customer receives
+
+An accepted quote is emailed as an `.xlsx` workbook by the planning-completed
+webhook, built by `Formatter.format_quote`. It carries four blocks, and each of
+them answers a question the customer would otherwise have to ask:
+
+| Block | Holds |
+|---|---|
+| Issuer | Trading name **and legal form**, address, SIRET, RCS entry, intra-community VAT number, share capital, telephone and contact address |
+| Recipient | The customer's full name and their address |
+| Summary | The period the care runs over, how many interventions, the total duration, and the total including VAT |
+| Table | One row per intervention: date, service, **quantity in hours**, unit price excl. VAT, **VAT rate**, amount excl. VAT, VAT, amount incl. VAT |
+| Totals | Untaxed amount, **one line per VAT rate**, then the grand total |
+| Terms | Validity, payment terms, late-payment penalties, the acceptance mention and a signature block |
+
+**The quantity is hours, not minutes.** The unit price beside it is an hourly
+rate, so a customer checking quantity × price against the amount has to be able
+to reach the amount — minutes would make the arithmetic on the page wrong by a
+factor of sixty.
+
+**The tax is stated per rate, and that is a legal requirement rather than a
+courtesy.** Home care is billed at 5.5% for a necessity service and 20% for a
+comfort one. A single "VAT" figure gives the customer no way to check either and
+an accountant no way to post it, so `Quote.vat_by_rate()` groups the priced lines
+by the rate their category carries.
+
+**The totals are summed from the lines the document prints**, not from the
+quote's aggregates. The two agree on a priced quote, but the aggregates are
+computed by the pricing service and a quote reaching the renderer without them
+would print zero under a column of real amounts — and look correct doing it. On
+a document somebody is asked to sign, a total that disagrees with its own column
+is the worst failure available.
+
+## What makes it a quote rather than a price list
+
+French law is specific about what a commercial offer must carry, and the footer
+is where the rest of it goes:
+
+- how long the offer stands — omitted when the quote has no `valid_until`, because an offer promising to stand "until None" is worse than one promising nothing;
+- when payment falls due, quoting the reference;
+- what happens if it does not — three times the statutory rate plus the fixed 40 € recovery charge (Commercial Code art. L441-10);
+- «&nbsp;Devis reçu avant exécution des travaux&nbsp;», and a dated signature block.
+
+The wording is translated but **the obligations are not**: the agency is French
+and so is the contract, so the English document carries the same mentions in
+English. The language decides the words, not the law.
+
+**The issuer used to be missing entirely**, and that was the serious gap. A
+quote naming only its recipient is a document the recipient cannot act on: they
+have no way to tell who is offering, under what registered number, or where to
+reply — nor whether it is genuine. The agency comes from the **account that
+issued it**, because neither a customer nor a quote carries a `company_id` of
+its own; the webhook resolves it from the account that requested the planning
+run, and answers 409 rather than sending a quote with no issuer.
+
+The summary's period comes from the **lines**, not from `issued_on` and
+`valid_until`. Those two describe the offer; a customer asking "when does the
+care run from and to" is asking about the work.
+
+Amounts are written as numbers with a currency format, never as pre-formatted
+strings — the first thing anybody does with a quote is add up a column. An
+unpriced line gets **empty** amount cells rather than zeroes: a zero reads as
+"free", an empty cell reads as "not priced yet", which is what it is.
+
+## The language it is written in
+
+The document and its covering email come out in the language stored on the
+account that requested the planning run — one catalogue, so the note and the
+attachment always agree. Even the filename is translated (`devis-…xlsx` /
+`quote-…xlsx`): it is the first thing the recipient sees, and often the only
+thing they see before deciding whether to open it.
+
+**The preference is stored on the account rather than read from a header**, and
+that is forced by where the documents are built. The planning-completed webhook
+runs in the background with no browser attached and no request to read
+`Accept-Language` from. Until migration 0015 the choice lived only in the
+front-end's `localStorage`, so the quotes went out in French whatever the
+operator had selected and nothing on screen said so.
+
+The interface writes the preference through `PATCH /api/v1/me/account` when the
+language is switched, and adopts the stored value on sign-in. Adopting it back
+is what keeps the two ends honest: signing in on a colleague's laptop should not
+leave the screen in their language while every document goes out in yours.
+
+French is the default everywhere. This is a French agency, and a quote reaching
+a customer in English because nobody set a preference is the wrong failure to
+default into. An **unknown** code is refused rather than falling back — a
+preference the holder set and the server quietly ignored is worse than one it
+rejected, because the screen would go on showing their choice.
 
 ## Pricing and the seed
 

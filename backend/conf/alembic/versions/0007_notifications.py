@@ -23,14 +23,14 @@ Notes:
 from __future__ import annotations
 
 # Standard library imports
-from typing import Sequence, Union
+from typing import Optional, Sequence, Union
 
 # Third-party imports
 from alembic import op
 import sqlalchemy as sa
 
 revision: str = "0007"
-down_revision: Union[str, None] = "0006"
+down_revision: Optional[str] = "0006"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

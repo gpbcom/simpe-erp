@@ -15,6 +15,7 @@ from pydantic import JsonValue
 from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.enums import EventRoutingKey
 from models.messaging.event_envelope import EventEnvelope
+from service.observability.trace_context import TraceContext
 
 
 class EventPublisher:
@@ -57,6 +58,7 @@ class EventPublisher:
         self.connection: Optional[aio_pika.abc.AbstractRobustConnection] = None
         self.exchange: Optional[aio_pika.abc.AbstractExchange] = None
         self.lock = asyncio.Lock()
+        self.traces = TraceContext(logger=self.logger)
         self.logger.debug("EventPublisher created.")
 
     ############################
@@ -160,6 +162,10 @@ class EventPublisher:
             routing_key=routing_key.value,
             payload=payload or {},
             occurred_at=datetime.now(UTC),
+            # Carried so the solve this queues traces back to the request that
+            # asked for it. ``None`` when nothing is being traced, which is what
+            # makes the field nullable rather than merely optional.
+            traceparent=self.traces.current(),
         )
         body = json.dumps(envelope.model_dump(mode="json")).encode("utf-8")
         try:

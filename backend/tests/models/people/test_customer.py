@@ -12,7 +12,7 @@ import pytest
 from models.enums import RegistrationStatus
 from models.geo.postal_address import PostalAddress
 from models.people.customer import Customer
-from models.people.exceptions import (
+from models.people.customer.exceptions import (
     MTCustomerInvalidAddress,
     MTCustomerInvalidDate,
     MTCustomerInvalidEmail,

@@ -17,9 +17,9 @@ from models.people.customer import Customer
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
-from storage.repositories.customer import CustomerRepository
-from storage.repositories.intervention_type import InterventionTypeRepository
-from storage.repositories.quote import QuoteRepository
+from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository
+from storage.repositories.quoting.quote import QuoteRepository
 
 TUESDAY = date(2026, 8, 4)
 NEXT_WEEK = date(2026, 8, 11)
@@ -122,6 +122,7 @@ def _quote(
     aggregates: List[QuoteTypeWeekAggregate],
     reference: str = "Q-2026-001",
     status: QuoteStatus = QuoteStatus.DRAFT,
+    company_id: str = "company-1",
 ) -> Quote:
     """Build a quote around its lines and aggregates.
 
@@ -131,11 +132,13 @@ def _quote(
         aggregates (List[QuoteTypeWeekAggregate]): Its weekly totals.
         reference (str): The quote number.
         status (QuoteStatus): Its lifecycle status.
+        company_id (str): The agency offering the work.
 
     Returns:
         Quote: The quote.
     """
     return Quote(
+        company_id=company_id,
         reference=reference,
         customer_id=customer_id,
         status=status,
@@ -437,9 +440,92 @@ class TestQuoteRepository:
             )
         )
         schedulable = await repository.list_schedulable(
-            date(2026, 8, 1), date(2026, 8, 31)
+            "company-1", date(2026, 8, 1), date(2026, 8, 31)
         )
         assert [quote.id for quote in schedulable] == [accepted.id]
+
+    async def test_only_the_asking_agencys_work_is_schedulable(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """Another agency's accepted quote is not this agency's workload.
+
+        Notes:
+            **This is the input half of the scoping change**, and it matters as
+            much as the output half. Unscoped, a run would build one agency's
+            week out of every agency's accepted work — handing those visits to
+            its own assistants, who have never met the customers and are not
+            insured to attend them — and then write the result over everybody's
+            calendar.
+        """
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+        ours = await repository.create(
+            _quote(
+                customer_id,
+                [_line(type_id)],
+                [_aggregate(type_id)],
+                reference="Q-OURS",
+                status=QuoteStatus.ACCEPTED,
+            )
+        )
+        await repository.create(
+            _quote(
+                customer_id,
+                [_line(type_id)],
+                [_aggregate(type_id)],
+                reference="Q-THEIRS",
+                status=QuoteStatus.ACCEPTED,
+                company_id="company-2",
+            )
+        )
+
+        schedulable = await repository.list_schedulable(
+            "company-1", date(2026, 8, 1), date(2026, 8, 31)
+        )
+
+        assert [quote.id for quote in schedulable] == [ours.id]
+
+    async def test_an_agency_with_no_accepted_work_schedules_nothing(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """A quiet agency reads as quiet, however busy its neighbours are."""
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+        await repository.create(
+            _quote(
+                customer_id,
+                [_line(type_id)],
+                [_aggregate(type_id)],
+                reference="Q-THEIRS",
+                status=QuoteStatus.ACCEPTED,
+                company_id="company-2",
+            )
+        )
+
+        assert (
+            await repository.list_schedulable(
+                "company-7", date(2026, 8, 1), date(2026, 8, 31)
+            )
+            == []
+        )
+
+    async def test_the_agency_survives_the_round_trip(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """A stored quote still knows which agency offered the work."""
+        customer_id = await _customer(session, customer_kwargs)
+        type_id = await _intervention_type(session)
+        repository = QuoteRepository(session)
+        stored = await repository.create(
+            _quote(customer_id, [_line(type_id)], [_aggregate(type_id)])
+        )
+
+        loaded = await repository.get(stored.id)
+
+        assert loaded is not None
+        assert loaded.company_id == "company-1"
 
     async def test_the_window_filters_on_line_dates(
         self, session: AsyncSession, customer_kwargs: Dict[str, Any]
@@ -464,10 +550,17 @@ class TestQuoteRepository:
             )
         )
         assert (
-            await repository.list_schedulable(date(2026, 8, 1), date(2026, 8, 7)) == []
+            await repository.list_schedulable(
+                "company-1", date(2026, 8, 1), date(2026, 8, 7)
+            )
+            == []
         )
         assert (
-            len(await repository.list_schedulable(date(2026, 8, 10), date(2026, 8, 14)))
+            len(
+                await repository.list_schedulable(
+                    "company-1", date(2026, 8, 10), date(2026, 8, 14)
+                )
+            )
             == 1
         )
 
@@ -489,7 +582,11 @@ class TestQuoteRepository:
             )
         )
         assert (
-            len(await repository.list_schedulable(date(2026, 8, 1), date(2026, 8, 31)))
+            len(
+                await repository.list_schedulable(
+                    "company-1", date(2026, 8, 1), date(2026, 8, 31)
+                )
+            )
             == 1
         )
 
@@ -497,7 +594,7 @@ class TestQuoteRepository:
         """No accepted work is an empty list, not an error."""
         assert (
             await QuoteRepository(session).list_schedulable(
-                date(2026, 8, 1), date(2026, 8, 31)
+                "company-1", date(2026, 8, 1), date(2026, 8, 31)
             )
             == []
         )
@@ -559,7 +656,7 @@ class TestQuoteRepository:
         from sqlalchemy import delete
 
         # First-party imports
-        from storage.orm.intervention_type_row import InterventionTypeRow
+        from storage.orm.catalog.intervention_type_row import InterventionTypeRow
 
         with pytest.raises(IntegrityError):
             await session.execute(

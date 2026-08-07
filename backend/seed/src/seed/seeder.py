@@ -11,27 +11,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.auth.user import User
+from models.catalog.certification_type import CertificationType
 from models.catalog.intervention_type import InterventionType
+from models.catalog.skill_type import SkillType
 from models.companies.company import Company
 from models.enums import AccountOrigin, QuoteStatus, UserRole
 from models.geo.postal_address import PostalAddress
 from models.people.customer import Customer
 from models.people.hca import Hca
+from models.people.hca.certification import Certification
+from models.people.hca.skill import Skill
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
+
 from seed.dataset import Dataset  # isort: skip
-from storage.orm.company_row import CompanyRow
-from storage.orm.intervention_type_row import InterventionTypeRow
-from storage.orm.quote_row import QuoteRow
-from storage.orm.user_row import UserRow
-from storage.repositories.company import CompanyRepository
-from storage.repositories.customer import CustomerRepository
-from storage.repositories.hca import HcaRepository
-from storage.repositories.intervention_type import InterventionTypeRepository
-from storage.repositories.quote import QuoteRepository
-from storage.repositories.user import UserRepository
 from models.configuration.pricing_config import PricingConfig
 from service.quotes.quotes import QuoteService
+from storage.orm.auth.user_row import UserRow
+from storage.orm.catalog.certification_type_row import CertificationTypeRow
+from storage.orm.catalog.intervention_type_row import InterventionTypeRow
+from storage.orm.catalog.skill_type_row import SkillTypeRow
+from storage.orm.companies.company_row import CompanyRow
+from storage.orm.quoting.quote_row import QuoteRow
+from storage.repositories.auth.user import UserRepository
+from storage.repositories.catalog.certification_type import (
+    CertificationTypeRepository,  # noqa: E501
+)
+from storage.repositories.catalog.intervention_type import (
+    InterventionTypeRepository,  # noqa: E501
+)
+from storage.repositories.catalog.skill_type import SkillTypeRepository
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.quoting.quote import QuoteRepository
 
 
 class Seeder:
@@ -93,11 +106,9 @@ class Seeder:
         self.hcas = HcaRepository(session=session)
         self.customers = CustomerRepository(session=session)
         self.types = InterventionTypeRepository(session=session)
+        self.certifications = CertificationTypeRepository(session=session)
+        self.skills = SkillTypeRepository(session=session)
         self.quotes = QuoteRepository(session=session)
-        # Borrowed from the application, like the hasher above: seeded
-        # amounts are computed by the same code an operator's quote goes
-        # through, so a seeded quote and a real one cannot disagree about
-        # what an hour of care costs.
         self.pricer = QuoteService(
             quotes=self.quotes,
             types=self.types,
@@ -243,6 +254,7 @@ class Seeder:
     def _quote(
         self,
         quote_id: str,
+        company_id: str,
         reference: str,
         customer: Customer,
         status: QuoteStatus,
@@ -253,6 +265,7 @@ class Seeder:
 
         Args:
             quote_id (str): The derived identifier.
+            company_id (str): The agency offering the work.
             reference (str): The human-facing quote number.
             customer (Customer): Who it is addressed to.
             status (QuoteStatus): Where it sits in its lifecycle.
@@ -266,17 +279,18 @@ class Seeder:
         submitted = now if status is QuoteStatus.PENDING_VALIDATION else None
         validated = (
             now
-            if status in (QuoteStatus.SENT, QuoteStatus.ACCEPTED, QuoteStatus.REJECTED)
+            if status in (QuoteStatus.SENT, QuoteStatus.ACCEPTED, QuoteStatus.REJECTED)  # noqa: E501
             else None
         )
         return Quote(
             id=quote_id,
+            company_id=company_id,
             reference=reference,
             customer_id=customer.id,
             status=status,
             lines=lines,
             issued_on=self._today() if validated else None,
-            valid_until=self._today() + timedelta(days=30) if validated else None,
+            valid_until=self._today() + timedelta(days=30) if validated else None,  # noqa: E501
             authored_by=author_id,
             submitted_at=submitted,
             validated_by=author_id if validated else None,
@@ -319,11 +333,6 @@ class Seeder:
                 QuoteLine(
                     name=entry.name,
                     intervention_type_id=entry.id,
-                    # Seeded from the catalog entry's own category, which is
-                    # what the operator writing the quote would most often
-                    # pick. It is a starting point on the line, not a rule:
-                    # the same service is necessity care for one customer and
-                    # comfort care for another.
                     service_category=entry.service_category,
                     service_date=days[position],
                     earliest_start=start,
@@ -332,6 +341,59 @@ class Seeder:
                 )
             )
         return lines
+
+    def _certifications_of(self, full_name: str) -> List[Certification]:
+        """Return the qualifications a seeded assistant holds.
+
+        Args:
+            full_name (str): The assistant's ``"First Last"`` name.
+
+        Returns:
+            List[Certification]: Their qualifications, each carrying the
+            catalogue code so the planner can match it.
+
+        Notes:
+            No expiry is set. A seeded certificate that lapsed would make the
+            planner's behaviour depend on the date the stack was started, and a
+            fixture whose meaning changes overnight is one nobody can debug.
+        """
+        return [
+            Certification(
+                name=label,
+                code=code,
+                issuer="Ministere du Travail",
+            )
+            for holder, code in self.data.ASSISTANT_CERTIFICATIONS
+            if holder == full_name
+            for entry_code, label in self.data.CERTIFICATIONS
+            if entry_code == code
+        ]
+
+    def _skills_of(self, full_name: str) -> List[Skill]:
+        """Return the skills a seeded assistant has declared.
+
+        Args:
+            full_name (str): The assistant's ``"First Last"`` name.
+
+        Returns:
+            List[Skill]: Their declarations, each carrying the catalogue code
+            so the planner can match it.
+
+        Notes:
+            - No identifier is set. The store mints one, exactly as it would
+              for a declaration made through the account screen, so a seeded
+              skill is deletable through the same route as a real one.
+            - No expiry, and no ``issuer``: a skill is self-declared, so there
+              is usually nobody who attested it, and a seeded expiry would make
+              the planner's behaviour depend on the date the stack was started.
+        """
+        return [
+            Skill(name=label, code=code)
+            for holder, code in self.data.ASSISTANT_SKILLS
+            if holder == full_name
+            for entry_code, label in self.data.SKILLS
+            if entry_code == code
+        ]
 
     ############################
     # Publicly Exposed Methods #
@@ -392,6 +454,72 @@ class Seeder:
         self.logger.info("Catalog holds %d entries.", len(stored))
         return stored
 
+    async def seed_certifications(self) -> List[CertificationType]:
+        """Create the catalogue of qualifications the agency recognises.
+
+        Returns:
+            List[CertificationType]: Every entry, seeded or existing.
+
+        Notes:
+            Seeded before the workforce, because an assistant's qualification
+            names a code and a code that resolves to nothing shows on screen as
+            a chip with no label.
+        """
+        stored: List[CertificationType] = []
+        for code, label in self.data.CERTIFICATIONS:
+            type_id = self.data.identifier("certification-type", code)
+            if await self._exists(CertificationTypeRow, type_id):
+                existing = await self.certifications.get(type_id)
+                if existing is not None:
+                    stored.append(existing)
+                continue
+            stored.append(
+                await self.certifications.create(
+                    CertificationType(
+                        id=type_id,
+                        code=code,
+                        label=label,
+                        description=f"{label}, reconnu par l'agence.",
+                        is_active=True,
+                    )
+                )
+            )
+        self.logger.info("Certification catalogue holds %d entries.", len(stored))  # noqa: E501
+        return stored
+
+    async def seed_skill_types(self) -> List[SkillType]:
+        """Create the catalogue of skills the agency recognises.
+
+        Returns:
+            List[SkillType]: Every entry, seeded or existing.
+
+        Notes:
+            Seeded before the workforce, for the same reason the certification
+            catalogue is: a declared skill names a code, and a code that
+            resolves to nothing shows on screen as a chip with no label.
+        """
+        stored: List[SkillType] = []
+        for code, label in self.data.SKILLS:
+            type_id = self.data.identifier("skill-type", code)
+            if await self._exists(SkillTypeRow, type_id):
+                existing = await self.skills.get(type_id)
+                if existing is not None:
+                    stored.append(existing)
+                continue
+            stored.append(
+                await self.skills.create(
+                    SkillType(
+                        id=type_id,
+                        code=code,
+                        label=label,
+                        description=f"{label}, reconnu par l'agence.",
+                        is_active=True,
+                    )
+                )
+            )
+        self.logger.info("Skill catalogue holds %d entries.", len(stored))
+        return stored
+
     async def seed_assistants(self, company_id: str) -> List[Hca]:
         """Create the workforce.
 
@@ -421,10 +549,12 @@ class Seeder:
                         company_id=company_id,
                         contract_type=contract,
                         driving_license=(
-                            {"categories": ["B"], "number": f"FR{len(stored):08d}"}
+                            {"categories": ["B"], "number": f"FR{len(stored):08d}"}  # noqa: E501
                             if drives
                             else None
                         ),
+                        certifications=self._certifications_of(f"{first} {last}"),  # noqa: E501
+                        skills=self._skills_of(f"{first} {last}"),
                     )
                 )
             )
@@ -438,7 +568,7 @@ class Seeder:
             List[Customer]: Every customer, seeded or existing.
         """
         stored: List[Customer] = []
-        for first, last, street, postcode, city, lat, lon in self.data.CUSTOMERS:
+        for first, last, street, postcode, city, lat, lon in self.data.CUSTOMERS:  # noqa: E501
             customer_id = self.data.identifier("customer", f"{first} {last}")
             existing = await self.customers.get(customer_id)
             if existing is not None:
@@ -450,7 +580,7 @@ class Seeder:
                         id=customer_id,
                         first_name=first,
                         last_name=last,
-                        phone_number=f"+3361000{len(stored):04d}",
+                        phone_number=f"+3361000{len(stored):04d}",  # noqa: E501
                         email=f"{first.lower()}.{last.lower()}@example.fr",
                         address=self._address(street, postcode, city, lat, lon),
                     )
@@ -470,17 +600,27 @@ class Seeder:
             List[str]: The addresses that were created, for the printed summary.
 
         Notes:
-            Every account gets the same, known password, and
-            ``must_change_password`` is left **false**. A demonstration stack
-            whose accounts all demand a password change before showing a single
-            screen is a demonstration nobody gets through; the production path
-            for a staff-created account still sets the flag.
+            - Every account gets the same, known password, and
+              ``must_change_password`` is left **false**. A demonstration stack
+              whose accounts all demand a password change before showing a single
+              screen is a demonstration nobody gets through; the production path
+              for a staff-created account still sets the flag.
+            - One assistant is seeded **as a manager rather than as an
+              assistant** — see
+              :attr:`~seed.dataset.Dataset.ASSISTANT_MANAGERS`. The three staff
+              accounts hold no assistant record, which is right for a back-office
+              manager but left the employment section of the account page
+              unreachable in its editable form: it renders from an assistant
+              record and unlocks on a manager's role, and no seeded account had
+              both. Promoting an existing assistant rather than adding a fourth
+              staff account keeps one account per person, so the workforce screen
+              still finds exactly one sign-in for them.
         """
         created: List[str] = []
         staff = (
             ("admin@simple-erp.fr", "Camille Fournier", UserRole.ADMIN, None),
-            ("manager@simple-erp.fr", "Nathalie Blanchard", UserRole.MANAGER, None),
-            ("manager2@simple-erp.fr", "Olivier Lefevre", UserRole.MANAGER, None),
+            ("manager@simple-erp.fr", "Nathalie Blanchard", UserRole.MANAGER, None),  # noqa: E501
+            ("manager2@simple-erp.fr", "Olivier Lefevre", UserRole.MANAGER, None),  # noqa: E501
         )
         for email, full_name, role, hca_id in staff:
             user_id = self.data.identifier("user", email)
@@ -503,22 +643,29 @@ class Seeder:
             user_id = self.data.identifier("user", email)
             if await self._exists(UserRow, user_id):
                 continue
+            name = assistant.full_name()
+            promoted = name in self.data.ASSISTANT_MANAGERS
             await self.users.create(
                 self._account(
                     user_id=user_id,
                     email=email,
-                    full_name=assistant.full_name(),
-                    role=UserRole.HCA,
+                    full_name=name,
+                    role=UserRole.MANAGER if promoted else UserRole.HCA,
                     hca_id=assistant.id,
                     company_id=company_id,
                 )
             )
+            if promoted:
+                self.logger.info(
+                    "Seeded %s as a manager who still covers rounds.", email
+                )
             created.append(email)
         self.logger.info("Seeded %d new account(s).", len(created))
         return created
 
     async def seed_quotes(
         self,
+        company_id: str,
         customers: List[Customer],
         catalog: List[InterventionType],
         author_ids: List[str],
@@ -526,6 +673,7 @@ class Seeder:
         """Create quotes spread across every status.
 
         Args:
+            company_id (str): The agency offering the work.
             customers (List[Customer]): The people to quote for.
             catalog (List[InterventionType]): The services to offer.
             author_ids (List[str]): The accounts to attribute quotes to.
@@ -553,6 +701,7 @@ class Seeder:
                 priced = await self._priced(
                     self._quote(
                         quote_id=quote_id,
+                        company_id=company_id,
                         reference=reference,
                         customer=customer,
                         status=status,
@@ -609,11 +758,6 @@ class Seeder:
             "  Every seeded assistant signs in with firstname.lastname@simple-erp.fr."
         )
         print()
-        # Printed because the development stack turns it on and nothing else
-        # says so. A developer who does not know the route exists cannot find
-        # it: the sign-in card is the only screen that mentions it, and the
-        # configuration that opens it is a line in a file they have no reason
-        # to read.
         print("  You can also found your own agency from the sign-in card, and")
         print("  be its administrator. Enabled here by")
         print("  auth.allow_company_registration; off in app.yaml.")

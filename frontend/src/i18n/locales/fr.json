@@ -22,7 +22,9 @@
     "teamPlanning": "Plannings des intervenants",
     "operations": "Exploitation",
     "administration": "Administration",
-    "company": "Mon agence"
+    "company": "Mon agence",
+    "certifications": "Certifications",
+    "skills": "Compétences"
   },
   "auth": {
     "signIn": "Se connecter",
@@ -53,8 +55,8 @@
     "validate": "Valider",
     "refuse": "Renvoyer à l'auteur",
     "send": "Envoyer au bénéficiaire",
-    "accept": "Accepté par le bénéficiaire",
-    "reject": "Refusé par le bénéficiaire",
+    "accept": "Accepter",
+    "reject": "Refuser",
     "validationQueue": "Devis à valider",
     "emptyQueue": "Aucun devis n'attend de validation.",
     "status_draft": "Brouillon",
@@ -145,7 +147,10 @@
     "promote": "Promouvoir manager",
     "promoteTitle": "Promouvoir en manager",
     "promoteExplain": "{{name}} pourra valider les devis et gérer les intervenants. Cette action est réversible par un administrateur.",
-    "record": "Fiche"
+    "record": "Fiche",
+    "workingDays": "Jours travaillés",
+    "workingDaysHint": "Les jours de la semaine où vous travaillez. Un jour non coché n'est pas une absence : c'est un accord permanent, et le planificateur ne vous y affecte jamais.",
+    "workingDaysEmpty": "Sélectionnez au moins un jour. Une semaine sans jour travaillé ne peut pas être enregistrée."
   },
   "customer": {
     "registrationStatus": "Statut",
@@ -165,7 +170,17 @@
     "ongoingQuotes": "Prestations en cours",
     "pastQuotes": "Historique",
     "noOngoingQuote": "Aucune prestation en cours.",
-    "addressNotResolved": "L'adresse n'a pas pu être localisée : ce domicile ne sera desservi par aucun calcul de planning tant qu'elle n'est pas corrigée."
+    "addressNotResolved": "L'adresse n'a pas pu être localisée : ce domicile ne sera desservi par aucun calcul de planning tant qu'elle n'est pas corrigée.",
+    "add": "Ajouter un bénéficiaire",
+    "identity": "Identité",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "address": "Adresse",
+    "street": "Rue",
+    "postalCode": "Code postal",
+    "city": "Ville",
+    "country": "Pays",
+    "addressIsRouted": "C'est le lieu où les interventions sont réalisées, et l'adresse vers laquelle chaque calcul de planning achemine les intervenants."
   },
   "planning": {
     "week": "Semaine",
@@ -197,7 +212,29 @@
     "deleteVisitTitle": "Supprimer cette intervention ?",
     "deleteVisitExplain": "« {{name}} » du {{day}} sera retirée du planning et de la prestation facturée. Le devis est recalculé et le planning relancé.",
     "everybody": "Tous les intervenants",
-    "assistant": "Intervenant"
+    "assistant": "Intervenant",
+    "settingsTitle": "Règles de planification",
+    "settingsSubtitle": "La journée de travail, la pause déjeuner et la distance maximale d'intervention.",
+    "settingsAppliesNextRun": "Les modifications s'appliquent au prochain calcul de planning. Les plannings déjà calculés restent inchangés.",
+    "workingDayTitle": "Journée de travail",
+    "workingDayHint": "Aucune intervention ne commence avant, aucune ne se termine après.",
+    "dayStart": "Début de journée",
+    "dayEnd": "Fin de journée",
+    "lunchTitle": "Pause déjeuner",
+    "lunchHint": "Une pause ininterrompue accordée à chaque intervenant les jours travaillés.",
+    "lunchMinutes": "Durée de la pause (minutes)",
+    "lunchWindowStart": "Pause possible à partir de",
+    "lunchWindowEnd": "Pause terminée avant",
+    "radiusTitle": "Rayon d'intervention",
+    "radiusHint": "Distance maximale entre le domicile de l'intervenant et l'intervention.",
+    "radiusKm": "Rayon (km)",
+    "settingsIncomplete": "Tous les champs sont obligatoires.",
+    "settingsRadiusInvalid": "Le rayon doit être supérieur à zéro.",
+    "settingsLunchTooShort": "La pause doit durer au moins 60 minutes.",
+    "settingsDayInverted": "La journée doit se terminer après son début.",
+    "settingsLunchInverted": "La plage de pause doit se terminer après son début.",
+    "settingsLunchOutsideDay": "La plage de pause doit être comprise dans la journée de travail.",
+    "settingsLunchWindowTooNarrow": "La plage de pause est trop courte pour contenir la pause."
   },
   "notification": {
     "title": "Notifications",
@@ -224,7 +261,24 @@
     "remove": "Supprimer",
     "yes": "Oui",
     "no": "Non",
-    "edit": "Modifier"
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "saveFailed": "Enregistrement impossible. Veuillez réessayer.",
+    "weekday_monday": "Lundi",
+    "weekday_tuesday": "Mardi",
+    "weekday_wednesday": "Mercredi",
+    "weekday_thursday": "Jeudi",
+    "weekday_friday": "Vendredi",
+    "weekday_saturday": "Samedi",
+    "weekday_sunday": "Dimanche",
+    "weekdayShort_monday": "Lu",
+    "weekdayShort_tuesday": "Ma",
+    "weekdayShort_wednesday": "Me",
+    "weekdayShort_thursday": "Je",
+    "weekdayShort_friday": "Ve",
+    "weekdayShort_saturday": "Sa",
+    "weekdayShort_sunday": "Di",
+    "add": "Ajouter"
   },
   "company": {
     "registerPrompt": "Créer un compte agence",
@@ -249,7 +303,16 @@
     "applications": "Candidatures",
     "acceptingApplications": "Accepter les candidatures spontanées",
     "acceptingApplicationsHint": "Décide si l'agence apparaît dans la liste que voit un candidat. Fermer ne supprime pas les candidatures déjà déposées : une personne qui a postulé hier attend toujours une réponse.",
-    "administratorOnly": "Seul un administrateur peut consulter et modifier les informations de l'agence."
+    "administratorOnly": "Seul un administrateur peut consulter et modifier les informations de l'agence.",
+    "legalIdentity": "Identité légale",
+    "legalIdentityHint": "Ce qu'un devis doit indiquer sur l'agence qui émet l'offre. Laissé vide, le champ n'apparaît simplement pas sur le document.",
+    "legalForm": "Forme juridique",
+    "legalFormHint": "SARL, SAS, Association, etc.",
+    "shareCapital": "Capital social (€)",
+    "rcsNumber": "RCS",
+    "vatNumber": "N° TVA intracommunautaire",
+    "vatNumberHint": "Par exemple FR12345678901.",
+    "phoneNumber": "Téléphone"
   },
   "role": {
     "hca": "Intervenant",
@@ -280,7 +343,9 @@
     "passwordMismatch": "Les deux saisies diffèrent.",
     "changePassword": "Changer le mot de passe",
     "passwordChanged": "Mot de passe modifié.",
-    "noAssistantRecordExplained": "Ce compte n'est rattaché à aucune fiche intervenant : il n'a donc ni planning, ni portefeuille de clients, ni photo de tournée. Les informations ci-dessus sont l'intégralité de ce que le système conserve à votre sujet."
+    "noAssistantRecordExplained": "Ce compte n'est rattaché à aucune fiche intervenant : il n'a donc ni planning, ni portefeuille de bénéficiaires. Les informations ci-dessus — votre photo, vos coordonnées et votre mot de passe — sont l'intégralité de ce que le système conserve à votre sujet.",
+    "changePhoto": "Changer la photo",
+    "photoExplained": "Votre photo est affichée à côté de votre nom pour vos collègues. JPEG, PNG ou WebP."
   },
   "catalog": {
     "title": "Catalogue et tarifs",
@@ -316,5 +381,67 @@
     "day_friday": "vendredi",
     "day_saturday": "samedi",
     "day_sunday": "dimanche"
+  },
+  "certifications": {
+    "title": "Certifications",
+    "add": "Ajouter une certification",
+    "edit": "Modifier la certification",
+    "code": "Code",
+    "label": "Intitule",
+    "description": "Description",
+    "status": "Statut",
+    "active": "En vigueur",
+    "retired": "Retiree",
+    "codeHint": "Lettres, chiffres, - et _ ; sans accent.",
+    "codeIsFixed": "Le code ne peut pas etre modifie.",
+    "retiredExplained": "Une certification retiree reste acquise par ceux qui la detiennent, mais ne peut plus etre exigee d'une nouvelle prestation.",
+    "whatThisIs": "Les certifications que l'agence reconnait. Une prestation peut en exiger une : seuls les intervenants qui la detiennent, non expiree le jour de la visite, pourront etre planifies dessus.",
+    "requiredBy": "Certifications requises",
+    "requiredHint": "Aucune par defaut. Seuls les intervenants detenant toutes les certifications choisies pourront etre planifies.",
+    "inheritsFromService": "Herite de la prestation",
+    "overrideForThisLine": "Exiger autre chose pour cette ligne",
+    "none": "Aucune"
+  },
+  "skills": {
+    "title": "Catalogue des compétences",
+    "add": "Ajouter une compétence",
+    "edit": "Modifier la compétence",
+    "code": "Code",
+    "label": "Nom",
+    "description": "Description",
+    "status": "Statut",
+    "active": "En usage",
+    "retired": "Retirée",
+    "codeHint": "Lettres, chiffres, - et _ uniquement. Non modifiable ensuite.",
+    "codeIsFixed": "Figé : toute compétence déclarée et toute exigence s'y réfèrent.",
+    "retiredExplained": "Une compétence retirée ne peut plus être exigée ni déclarée. Celles déjà déclarées sont conservées.",
+    "whatThisIs": "Les compétences reconnues par l'agence. Les intervenants déclarent les leurs depuis leur compte, et une prestation peut en exiger une — le planning n'affectera alors que quelqu'un qui l'a déclarée.",
+    "requiredBy": "Compétences exigées",
+    "requiredHint": "Maintenez Ctrl (ou Cmd) pour en sélectionner plusieurs. Seule une personne les ayant toutes déclarées peut recevoir cette prestation.",
+    "inheritsFromService": "Utiliser les compétences exigées par la prestation",
+    "none": "Aucune compétence exigée",
+    "mine": "Mes compétences",
+    "mineExplained": "Vous les déclarez vous-même et elles prennent effet immédiatement. Vos responsables sont notifiés de chaque ajout et peuvent la retirer.",
+    "noneDeclared": "Vous n'avez encore déclaré aucune compétence.",
+    "declare": "Déclarer une compétence",
+    "withdraw": "Retirer cette compétence"
+  },
+  "hcas": {
+    "fieldEmployee": "Sur le terrain",
+    "fieldEmployeeHint": "Decoche, cette personne n'est plus planifiee sur les interventions. Son dossier, ses devis et son compte restent inchanges.",
+    "notFieldEmployee": "Bureau",
+    "delete": "Supprimer l'intervenant",
+    "deleteTitle": "Supprimer {{name}} ?",
+    "deleteWarning": "Le dossier et le compte de connexion associe sont supprimes definitivement. Les interventions a venir seront replanifiees.",
+    "deleteReplanned": "Replanification lancee.",
+    "editWorkingDays": "Modifier les jours travaillés",
+    "workingDaysManagerHint": "Les jours de la semaine où cette personne travaille — un jour non coché est une organisation permanente, pas une absence. Le samedi et le dimanche peuvent être sélectionnés comme n'importe quel autre jour."
+  },
+  "customers": {
+    "delete": "Supprimer le client",
+    "deleteTitle": "Supprimer {{name}} ?",
+    "deleteWarning": "Le client et l'ensemble de ses devis sont supprimes definitivement, ainsi que les interventions qui en decoulent. Cette action est irreversible : pour un client qui cesse le service, utilisez plutot le statut « arrete ».",
+    "deleteCounts": "{{quotes}} devis seront supprimes.",
+    "deleteReplanned": "Replanification lancee."
   }
 }

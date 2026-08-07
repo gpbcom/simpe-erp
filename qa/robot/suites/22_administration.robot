@@ -368,6 +368,81 @@ An Assistant Cannot Reach The Catalogue At All
     ...    headers=${headers}    expected_status=403
 
 
+The Agency Can Declare Its Legal Identity
+    [Documentation]    **What a quote must say about who is making the offer.**
+    ...
+    ...    A commercial offer has to identify the legal person behind it: the
+    ...    form, the capital, the trade-register entry and the VAT number. None
+    ...    of it was stored, so the emitted quote could name the agency and
+    ...    nothing else — a document the recipient had no way to verify.
+    ...
+    ...    Asserted against the API rather than the form, because a screen that
+    ...    keeps a typed value and never sends it looks identical to one that
+    ...    works.
+    [Tags]    smoke    company    legal-identity
+    Sign In As    ${ADMIN_EMAIL}
+    Navigate To    /company
+    Wait For Elements State    [data-testid="company-legal-form"]    visible
+    Fill Text    [data-testid="company-legal-form"]      SARL
+    Fill Text    [data-testid="company-share-capital"]   10000
+    Fill Text    [data-testid="company-rcs-number"]      RCS Paris B 123 456 789
+    Fill Text    [data-testid="company-vat-number"]      FR12345678901
+    Click    [data-testid="save-company"]
+    Wait For Elements State    [data-testid="company-saved"]    visible
+
+    ${stored}=    Agency As Stored
+    Should Be Equal    ${stored}[legal_form]    SARL
+    Should Be Equal    ${stored}[rcs_number]    RCS Paris B 123 456 789
+    Should Be Equal    ${stored}[vat_number]    FR12345678901
+    [Teardown]    Restore The Agency And Sign Out
+
+A Malformed VAT Number Is Refused
+    [Documentation]    It appears on every quote, so it is checked not stored.
+    ...
+    ...    A number with a digit missing is the kind of error nobody notices
+    ...    until an accountant does. Sent by hand, because the form has no way
+    ...    to report a 422 field by field.
+    [Tags]    smoke    company    legal-identity
+    ${agency}=    Agency As Stored
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    name=${agency}[name]
+    ...    vat_number=FR123
+    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${headers}    expected_status=422
+
+A Share Capital Of Zero Is Refused
+    [Documentation]    A company with no capital declares nothing, not zero.
+    ...
+    ...    "Capital social 0,00 €" on a quote is a false declaration rather
+    ...    than an empty field.
+    [Tags]    company    legal-identity
+    ${agency}=    Agency As Stored
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    name=${agency}[name]
+    ...    share_capital=${0}
+    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${headers}    expected_status=422
+
+A Manager Cannot Change The Agency's Legal Identity
+    [Documentation]    Running the week is not declaring who the agency is.
+    ...
+    ...    The same administrator gate the rest of this screen has. Sent by
+    ...    hand, because a manager has no navigation entry to it.
+    [Tags]    smoke    company    legal-identity    access
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary    name=Smuggled    legal_form=SAS
+    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${headers}    expected_status=403
+
+
 *** Keywords ***
 Snapshot The Agency And Open
     [Documentation]    Record the agency as found, then open the browser.
@@ -420,6 +495,11 @@ Restore The Agency
     ...    contact_email=${ORIGINAL_AGENCY}[contact_email]
     ...    address=${ORIGINAL_AGENCY}[address]
     ...    is_accepting_applications=${ORIGINAL_AGENCY}[is_accepting_applications]
+    ...    legal_form=${ORIGINAL_AGENCY}[legal_form]
+    ...    share_capital=${ORIGINAL_AGENCY}[share_capital]
+    ...    rcs_number=${ORIGINAL_AGENCY}[rcs_number]
+    ...    vat_number=${ORIGINAL_AGENCY}[vat_number]
+    ...    phone_number=${ORIGINAL_AGENCY}[phone_number]
     PUT
     ...    ${API_URL}/api/v1/me/company
     ...    json=${body}    headers=${headers}    expected_status=200

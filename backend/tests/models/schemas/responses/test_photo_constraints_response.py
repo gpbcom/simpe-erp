@@ -12,7 +12,7 @@ from models.schemas.exceptions import (
     MTPhotoConstraintsResponseInvalidContentTypes,
     MTPhotoConstraintsResponseInvalidMaxUploadBytes,
 )
-from models.schemas.responses.photo_constraints_response import (
+from models.schemas.responses.hca.photo_constraints_response import (
     PhotoConstraintsResponse,
 )
 

@@ -1,0 +1,53 @@
+# Logging for a process running in a container, where stdout is the log.
+#
+# Two differences from conf/logger.yaml, and both of them matter:
+#
+#   * **No file handler.** The rotating file is invisible from outside the
+#     container, is lost when the pod is replaced, and writes to a layer that
+#     is not sized for it. The container runtime is what collects logs here;
+#     writing them anywhere else means writing them twice and reading them
+#     never.
+#   * **JSON, not colour.** A log pipeline indexes fields. Anything a caller
+#     attached with ``extra=`` — company_id, routing_key, run_id — becomes a
+#     queryable field rather than something to grep a sentence for, and a
+#     traceback stays one record instead of becoming eight.
+#
+# Selected with SIMPLE_ERP_LOGGER. The per-library levels below are the same
+# ones the development configuration sets, deliberately: which libraries are
+# too chatty does not depend on where the process is running.
+version: 1
+disable_existing_loggers: false
+formatters:
+  json:
+    "()": "service.observability.json_formatter.JsonLogFormatter"
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: json
+    stream: ext://sys.stdout
+loggers:
+  sqlalchemy.engine:
+    level: WARNING
+  asyncpg:
+    level: WARNING
+  alembic:
+    level: INFO
+  uvicorn.access:
+    level: WARNING
+  botocore:
+    level: ERROR
+  s3transfer:
+    level: ERROR
+  boto3:
+    level: ERROR
+  urllib3:
+    level: ERROR
+  asyncio:
+    level: ERROR
+root:
+  # INFO, where the development configuration is DEBUG. A pod's log is charged
+  # for and searched; the DEBUG lines that are useful beside a running solve
+  # are noise once there are forty of them a second across twelve replicas.
+  level: INFO
+  handlers: [console]

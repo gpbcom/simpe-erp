@@ -1,0 +1,43 @@
+# The prod environment.
+#
+# Image tags are absent on purpose: CI sets `global.image.tag` to the git SHA
+# with `--set` at sync time. Writing a tag here would make this file the thing
+# that has to be committed for every deploy, and a rollback would be a revert of
+# a file rather than a sync to a previous revision.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: simple-erp-prod
+  namespace: argocd
+  finalizers:
+    # So deleting the Application removes what it created rather than orphaning
+    # it. Without this an uninstall leaves the workloads running and nothing
+    # managing them.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/simple-erp/simple-erp.git
+    targetRevision: HEAD
+    path: infra/chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: simple-erp-prod
+  syncPolicy:
+    # No automated sync. A production deploy is a decision somebody makes, and
+    # the chart's migration hook is irreversible — a sync that ran on its own
+    # could migrate a schema nobody was watching.
+    syncOptions:
+      - CreateNamespace=true
+      # The migration Job is a Helm hook, and Argo runs hooks as sync waves.
+      # Without this it would be pruned as an orphan the moment it completed.
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        maxDuration: 5m

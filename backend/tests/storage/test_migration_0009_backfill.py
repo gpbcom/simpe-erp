@@ -5,12 +5,11 @@ from pathlib import Path
 from typing import List, Tuple
 
 # Third-party imports
-from alembic.config import Config
-from alembic.operations import Operations
-from alembic.runtime.migration import MigrationContext
-from alembic.script import ScriptDirectory
 import pytest
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, text
+
+# First-party imports
+from migration_templates import MigrationTemplates
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,39 +34,6 @@ class TestMigration0009Backfill:
         promise this migration rests on, and it is asserted here against real
         rows.
     """
-
-    def _engine_upgraded_to(self, database_path: Path, stop_after: str) -> Engine:
-        """Migrate a scratch database up to and including one revision.
-
-        Args:
-            database_path (Path): Where to create the database.
-            stop_after (str): The last revision to apply.
-
-        Returns:
-            Engine: An engine pointing at the migrated database.
-
-        Notes:
-            Revisions are driven directly rather than through
-            ``command.upgrade`` so this needs no application configuration, no
-            PostgreSQL URL and no password — the same approach the schema
-            tests take.
-        """
-        config = Config()
-        config.set_main_option(
-            "script_location", str(BACKEND_ROOT / "conf" / "alembic")
-        )
-        script = ScriptDirectory.from_config(config)
-        engine = create_engine(f"sqlite:///{database_path}")
-        with engine.begin() as connection:
-            context = MigrationContext.configure(connection)
-            with Operations.context(context):
-                for revision in reversed(
-                    list(script.walk_revisions(base="base", head="heads"))
-                ):
-                    revision.module.upgrade()
-                    if revision.revision == stop_after:
-                        break
-        return engine
 
     def _seed_a_quote_line(
         self, engine: Engine, catalog_category: str, line_id: str = "line-1"
@@ -146,35 +112,15 @@ class TestMigration0009Backfill:
                 )
             ]
 
-    def _run_0009(self, engine: Engine) -> None:
-        """Apply revision 0009 to an already-migrated database.
-
-        Args:
-            engine (Engine): The database to upgrade.
-        """
-        config = Config()
-        config.set_main_option(
-            "script_location", str(BACKEND_ROOT / "conf" / "alembic")
-        )
-        script = ScriptDirectory.from_config(config)
-        revision = next(
-            entry
-            for entry in script.walk_revisions(base="base", head="heads")
-            if entry.revision == "0009"
-        )
-        with engine.begin() as connection:
-            context = MigrationContext.configure(connection)
-            with Operations.context(context):
-                revision.module.upgrade()
-
     @pytest.mark.parametrize("category", ["necessity", "comfort"])
     def test_a_line_keeps_the_tax_it_was_quoted_at(
-        self, tmp_path: Path, category: str
+        self, tmp_path: Path, category: str, migrations: MigrationTemplates
     ) -> None:
         """**The promise: no issued quote changes its total.**
 
         Args:
             tmp_path (Path): Scratch directory.
+            migrations (MigrationTemplates): The shared template cache.
             category (str): The category on the catalog entry.
 
         Notes:
@@ -183,14 +129,16 @@ class TestMigration0009Backfill:
             quote issued at 20% would be re-read at 5.5% — the agency would
             owe the difference, and nothing on screen would say so.
         """
-        engine = self._engine_upgraded_to(tmp_path / "before.db", stop_after="0008")
+        engine = migrations.copy_to(tmp_path / "before.db", stop_after="0008")
         self._seed_a_quote_line(engine, catalog_category=category)
 
-        self._run_0009(engine)
+        migrations.apply(engine, "0009")
 
         assert self._categories(engine) == [("line-1", category)]
 
-    def test_each_line_follows_its_own_catalog_entry(self, tmp_path: Path) -> None:
+    def test_each_line_follows_its_own_catalog_entry(
+        self, tmp_path: Path, migrations: MigrationTemplates
+    ) -> None:
         """Two lines, two entries, two different rates.
 
         Notes:
@@ -199,7 +147,7 @@ class TestMigration0009Backfill:
             pick. This one only passes if the update correlates each line with
             the entry it actually sells.
         """
-        engine = self._engine_upgraded_to(tmp_path / "before.db", stop_after="0008")
+        engine = migrations.copy_to(tmp_path / "before.db", stop_after="0008")
         with engine.begin() as connection:
             connection.execute(
                 text(
@@ -237,14 +185,16 @@ class TestMigration0009Backfill:
                     )
                 )
 
-        self._run_0009(engine)
+        migrations.apply(engine, "0009")
 
         assert self._categories(engine) == [
             ("line-0", "necessity"),
             ("line-1", "comfort"),
         ]
 
-    def test_the_column_is_required_afterwards(self, tmp_path: Path) -> None:
+    def test_the_column_is_required_afterwards(
+        self, tmp_path: Path, migrations: MigrationTemplates
+    ) -> None:
         """A line written after the migration must state its own category.
 
         Notes:
@@ -253,9 +203,9 @@ class TestMigration0009Backfill:
             table holding rows, and this one holds every quote line the agency
             has ever written.
         """
-        engine = self._engine_upgraded_to(tmp_path / "before.db", stop_after="0008")
+        engine = migrations.copy_to(tmp_path / "before.db", stop_after="0008")
         self._seed_a_quote_line(engine, catalog_category="comfort")
-        self._run_0009(engine)
+        migrations.apply(engine, "0009")
 
         with pytest.raises(Exception):
             with engine.begin() as connection:
@@ -269,10 +219,12 @@ class TestMigration0009Backfill:
                     )
                 )
 
-    def test_an_empty_table_migrates_cleanly(self, tmp_path: Path) -> None:
+    def test_an_empty_table_migrates_cleanly(
+        self, tmp_path: Path, migrations: MigrationTemplates
+    ) -> None:
         """A fresh install has nothing to backfill and must not fail on it."""
-        engine = self._engine_upgraded_to(tmp_path / "before.db", stop_after="0008")
+        engine = migrations.copy_to(tmp_path / "before.db", stop_after="0008")
 
-        self._run_0009(engine)
+        migrations.apply(engine, "0009")
 
         assert self._categories(engine) == []

@@ -20,6 +20,17 @@ class MTHcaForbidden(MTInvalidHcaServiceException):
     """
 
 
+class MTSkillNotFound(MTInvalidHcaServiceException):
+    """Exception raised when the named skill is not that assistant's.
+
+    Notes:
+        The same exception whether the skill does not exist at all or belongs
+        to somebody else. Distinguishing the two would let a caller discover
+        which identifiers are real by trying them, and neither answer is one
+        the caller can act on differently.
+    """
+
+
 class MTAvailabilitySlotNotFound(MTInvalidHcaServiceException):
     """Exception raised when the named absence does not belong to the assistant."""
 

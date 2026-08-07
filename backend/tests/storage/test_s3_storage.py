@@ -317,3 +317,67 @@ class TestPublicUrlConstruction:
         assert config.build_public_url("hca-photos/x.jpg") == (
             "https://simple-erp.s3.eu-west-3.amazonaws.com/hca-photos/x.jpg"
         )
+
+
+class TestTheShippedConfigurationsServeTheirPhotos:
+    """Tests that the URL each shipped configuration builds is fetchable.
+
+    Notes:
+        **These are tests of the configuration, not of the code**, and they
+        exist because the code was right and the configuration was not.
+        ``build_public_url`` appends the key straight onto ``public_base_url``
+        — the CDN case it was written for is a host mapped at the bucket's
+        root — while ``app.dev.yaml`` and ``app.docker.yaml`` both named the
+        MinIO host alone. MinIO serves buckets path-style, so it read the key's
+        first segment as the bucket and answered ``403 AccessDenied`` for a
+        bucket called ``hca-photos``.
+
+        Nothing caught it: the unit tests above assert the builder's three
+        branches and pass, the upload succeeds, the row stores a URL, and the
+        API returns 200. The only symptom is an avatar that renders as
+        initials, which is also exactly what an account with no photograph
+        looks like.
+    """
+
+    @pytest.mark.parametrize("path", ["conf/app.dev.yaml", "conf/app.docker.yaml"])
+    def test_a_compose_configuration_names_the_bucket(self, path: str) -> None:
+        """The browser-facing URL must address the bucket MinIO serves.
+
+        Args:
+            path (str): The shipped configuration to read.
+        """
+        # First-party imports
+        from models.configuration.app_config import AppConfig
+
+        config = AppConfig.load(path).s3
+        built = config.build_public_url(f"{config.photo_key_prefix}person/x.jpg")
+
+        assert f"/{config.bucket}/" in built, (
+            f"{path} builds {built!r}, which names no bucket. MinIO will read "
+            f"the key's first segment as one and refuse the object."
+        )
+
+    @pytest.mark.parametrize("path", ["conf/app.dev.yaml", "conf/app.docker.yaml"])
+    def test_a_compose_configuration_is_reachable_from_a_browser(
+        self, path: str
+    ) -> None:
+        """The host must be one a browser can resolve, not a compose alias.
+
+        Args:
+            path (str): The shipped configuration to read.
+
+        Notes:
+            The write endpoint is ``http://minio:9000``, which resolves only on
+            the compose network. A stored URL naming it is a broken image on
+            every screen that shows a face.
+        """
+        # First-party imports
+        from models.configuration.app_config import AppConfig
+
+        config = AppConfig.load(path).s3
+        built = config.build_public_url("hca-photos/person/x.jpg")
+
+        assert "//minio:" not in built, (
+            f"{path} builds {built!r}, naming the in-network endpoint. A "
+            f"browser cannot resolve 'minio'."
+        )

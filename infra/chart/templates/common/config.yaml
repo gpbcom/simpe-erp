@@ -1,0 +1,129 @@
+{{/*
+The application's configuration, as a ConfigMap.
+
+The same YAML the compose stack reads from backend/conf, with the three
+addresses a cluster differs on. It is rendered here rather than baked into the
+image so that changing a rate does not need a rebuild — and so that the
+checksum annotation below can restart the pods that read it.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-config
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+data:
+  app.k8s.yaml: |
+    server:
+      host: 0.0.0.0
+      port: 8000
+      # Named explicitly rather than "*": the API answers credentialed
+      # requests, so a wildcard origin would let any site drive it with a
+      # signed-in user's token.
+      cors_origins:
+        - https://{{ .Values.ingress.host }}
+
+    database:
+      # PgBouncer, not PostgreSQL directly. Every pod opens up to
+      # pool_size + max_overflow connections, and at the replica counts above
+      # that is more backends than PostgreSQL's default max_connections.
+      host: {{ .Values.database.host | quote }}
+      port: {{ .Values.database.port }}
+      database: {{ .Values.database.name | quote }}
+      username: {{ .Values.database.username | quote }}
+      password_env: POSTGRES_PASSWORD
+      # Small, because there is a pooler in front. A large pool per replica
+      # behind a pooler is the pooler's queue moved into the application, where
+      # nothing can see it.
+      pool_size: 3
+      max_overflow: 2
+      pool_timeout_seconds: 30.0
+      echo_sql: false
+
+    auth:
+      jwt_secret_env: JWT_SECRET_KEY
+      jwt_algorithm: HS256
+      access_token_expire_minutes: 720
+      # Off. It grants its unauthenticated caller the administrator role, and a
+      # company is not yet a tenancy boundary.
+      allow_company_registration: false
+
+    pricing:
+      base_hourly_rate_ht: {{ .Values.pricing.baseHourlyRateHt }}
+      weekday_surcharges:
+        sunday: 0.25
+      holiday_surcharges:
+        - {month: 12, day: 25, surcharge: 0.50, label: Christmas Day}
+        - {month: 1, day: 1, surcharge: 0.50, label: New Year's Day}
+
+    planning:
+      day_start_minute: 540
+      day_end_minute: 1200
+      lunch_break_minutes: 60
+      lunch_window_start_minute: 690
+      lunch_window_end_minute: 870
+      max_intervention_radius_km: 30.0
+      average_speed_kmh: 30.0
+      average_speed_without_license_kmh: 12.0
+      solver_time_limit_seconds: 30.0
+      # Equal to the planning worker's CPU limit. The budget above is
+      # wall-clock, so more threads than cores means the kernel throttles the
+      # cgroup and thirty seconds takes a minute. The check in
+      # templates/tests/ fails the render if the two disagree.
+      solver_workers: {{ .Values.workerPlanning.solverWorkers }}
+      travel_weight: 1
+      unassigned_penalty: 100000
+
+    geocoding:
+      base_url: {{ .Values.geocoding.baseUrl | quote }}
+      user_agent: {{ .Values.geocoding.userAgent | quote }}
+      timeout_seconds: 10.0
+      country_codes: [fr]
+
+    s3:
+      bucket: {{ .Values.s3.bucket | quote }}
+      region: {{ .Values.s3.region | quote }}
+      endpoint_url: {{ .Values.s3.endpointUrl | quote }}
+      # What a *browser* fetches, which is not what the backend writes through.
+      # A pin loaded from an in-cluster address is a broken image.
+      public_base_url: {{ .Values.s3.publicBaseUrl | quote }}
+      access_key_env: S3_ACCESS_KEY
+      secret_key_env: S3_SECRET_KEY
+      photo_key_prefix: hca-photos/
+      max_upload_bytes: 5242880
+
+    rabbitmq:
+      enabled: true
+      host: {{ .Values.rabbitmq.host | quote }}
+      port: {{ .Values.rabbitmq.port }}
+      virtual_host: /
+      username: {{ .Values.rabbitmq.username | quote }}
+      password_env: RABBITMQ_PASSWORD
+      exchange: simple-erp
+      publish_timeout_seconds: 5.0
+      # One at a time. The heaviest consumer pins its cores for a thirty-second
+      # budget; taking a second message would not make the first finish sooner.
+      prefetch: 1
+
+    email:
+      enabled: {{ .Values.email.enabled }}
+      host: {{ .Values.email.host | quote }}
+      port: {{ .Values.email.port }}
+      use_tls: true
+      sender: {{ .Values.email.sender | quote }}
+      username_env: SMTP_USERNAME
+      password_env: SMTP_PASSWORD
+
+    webhook:
+      enabled: {{ .Values.webhook.enabled }}
+      url: http://{{ include "simple-erp.fullname" . }}-api:8000/api/v1/webhooks/planning-completed
+      token_env: PLANNING_WEBHOOK_TOKEN
+      timeout_seconds: 30.0
+
+    observability:
+      service_name: simple-erp
+      metrics_enabled: true
+      metrics_port: 9100
+      tracing_enabled: {{ .Values.observability.tracingEnabled }}
+      otlp_endpoint: {{ .Values.observability.otlpEndpoint | quote }}
+      export_timeout_seconds: 10.0

@@ -21,6 +21,10 @@ ${ADMIN_EMAIL}          admin@simple-erp.fr
 ${MANAGER_EMAIL}        manager@simple-erp.fr
 ${ASSISTANT_EMAIL}      luc.martin@simple-erp.fr
 ${OTHER_ASSISTANT}      amina.benali@simple-erp.fr
+# A manager who still covers rounds: the only seeded account holding both a
+# manager's role and an assistant record, and therefore the only one whose
+# account page shows the employment section in its editable form.
+${MANAGER_HCA_EMAIL}    marc.dubois@simple-erp.fr
 
 # Headless by default. A developer watching a failure runs with
 # ``--variable HEADLESS:False`` and sees the browser.

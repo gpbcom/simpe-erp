@@ -15,6 +15,7 @@ from models.configuration.exceptions import (
     MTPlanningConfigInvalidLunchWindow,
     MTPlanningConfigInvalidPenalty,
     MTPlanningConfigInvalidSolverTimeLimit,
+    MTPlanningConfigInvalidSolverWorkers,
     MTPlanningConfigInvalidSpeed,
 )
 
@@ -41,6 +42,8 @@ class PlanningConfig(BaseModel):
             for an assistant who does not. Defaults to ``12.0``.
         solver_time_limit_seconds (float): Wall-clock budget handed to the
             solver. Defaults to ``30.0``.
+        solver_workers (int): How many search threads the solver may run.
+            Defaults to ``8``.
         travel_weight (int): Objective weight applied to a minute of travel.
         unassigned_penalty (int): Objective penalty applied to a requirement
             left unassigned.
@@ -88,8 +91,20 @@ class PlanningConfig(BaseModel):
         description="Average travel speed without a driving licence, in km/h.",
     )
     solver_time_limit_seconds: float = Field(
-        default=30.0,
+        default=600.0,
         description="Wall-clock budget handed to the solver, in seconds.",
+    )
+    solver_workers: int = Field(
+        default=1,
+        description="How many parallel search threads the solver may run.",
+    )
+    solver_seed: int = Field(
+        default=0,
+        description="Random seed fixing the solver's tie-breaking.",
+    )
+    solver_deterministic_budget: float = Field(
+        default=20.0,
+        description="Reproducible search budget, in solver time units.",
     )
     travel_weight: int = Field(
         default=1,
@@ -168,7 +183,7 @@ class PlanningConfig(BaseModel):
             )
         if value <= 0:
             raise MTPlanningConfigInvalidLunchBreak(
-                f"Invalid lunch_break_minutes: {value!r}. Must be strictly positive."
+                f"Invalid lunch_break_minutes: {value!r}. Must be strictly positive."  # noqa: E501
             )
         if value > cls.MINUTES_PER_DAY:
             raise MTPlanningConfigInvalidLunchBreak(
@@ -208,16 +223,21 @@ class PlanningConfig(BaseModel):
         coerced = float(value)
         if coerced <= 0:
             raise MTPlanningConfigInvalidSpeed(
-                f"Invalid average speed: {coerced!r}. Must be strictly positive."
+                f"Invalid average speed: {coerced!r}. "  # noqa: E501
+                "Must be strictly positive."
             )
         return coerced
 
-    @field_validator("solver_time_limit_seconds", mode="before")
-    def validate_solver_time_limit_seconds(cls, value: Union[int, float, str]) -> float:  # noqa: E501
-        """Validates that ``solver_time_limit_seconds`` is strictly positive.
+    @field_validator(
+        "solver_time_limit_seconds", "solver_deterministic_budget", mode="before"
+    )
+    def validate_solver_budget(cls, value: Union[int, float, str]) -> float:
+        """Validates that a solver budget is strictly positive.
 
         Args:
-            value (Union[int, float, str]): Raw time budget, in seconds.
+            value (Union[int, float, str]): Raw budget. Seconds for the
+                wall-clock limit; solver time units for the deterministic
+                one, which are a measure of work rather than of time.
 
         Returns:
             float: The validated budget.
@@ -239,6 +259,86 @@ class PlanningConfig(BaseModel):
             )
         return coerced
 
+    @field_validator("solver_workers", mode="before")
+    def validate_solver_workers(cls, value: Union[int, str]) -> int:
+        """Validates that ``solver_workers`` is a strictly positive count.
+
+        Args:
+            value (Union[int, str]): Raw thread count.
+
+        Returns:
+            int: The validated count.
+
+        Raises:
+            MTPlanningConfigInvalidSolverWorkers: If ``value`` is not a strictly
+                positive integer.
+
+        Notes:
+            - **This has to match the CPU the process is actually given.** The
+              solver's budget is wall-clock, not CPU-time, so more threads than
+              cores does not merely fail to help — under a container CPU *limit*
+              the kernel throttles the whole cgroup, and a thirty-second budget
+              becomes a minute or more of real time while the run reports as
+              having used its budget. It was hard-coded at ``8`` against a
+              two-core container, which is exactly that shape.
+            - Zero is refused rather than read as "decide for me": CP-SAT takes it
+              as a request for no search, returns immediately, and the run fails
+              looking like an infeasible plan.
+            - **Defaults to one, and that is about reproducibility rather
+              than about cores.** Parallel workers race each other to the
+              incumbent solution, so the answer depends on which one got
+              there first — re-planning an unchanged week returned 404
+              minutes of travel, then 371, then 355. Raising this trades
+              that determinism for speed, deliberately and per deployment.
+        """
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise MTPlanningConfigInvalidSolverWorkers(
+                f"Invalid solver_workers: {value!r}. "
+                f"Must be a strictly positive whole number of threads."
+            )
+        if value <= 0:
+            raise MTPlanningConfigInvalidSolverWorkers(
+                f"Invalid solver_workers: {value!r}. "  # noqa: E501
+                "Must be strictly positive."
+            )
+        return value
+
+    @field_validator("solver_seed", mode="before")
+    def validate_solver_seed(cls, value: Union[int, str]) -> int:
+        """Validates that ``solver_seed`` is a non-negative integer.
+
+        Args:
+            value (Union[int, str]): Raw seed.
+
+        Returns:
+            int: The validated seed.
+
+        Raises:
+            MTPlanningConfigInvalidSolverWorkers: If ``value`` is not a
+                non-negative integer.
+
+        Notes:
+            Zero is a perfectly good seed and is the default. What matters
+            is that it is *fixed*: an unseeded search breaks ties on
+            whatever the run happens to do first, so the same week plans
+            differently every time and a manager cannot tell an improvement
+            from noise.
+
+            It shares ``MTPlanningConfigInvalidSolverWorkers`` rather than
+            gaining an exception of its own: both are the solver's own
+            knobs, and the API maps that family to one status.
+        """
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise MTPlanningConfigInvalidSolverWorkers(
+                f"Invalid solver_seed: {value!r}. "
+                f"Must be a non-negative whole number."
+            )
+        if value < 0:
+            raise MTPlanningConfigInvalidSolverWorkers(
+                f"Invalid solver_seed: {value!r}. Must be non-negative."
+            )
+        return value
+
     @field_validator("travel_weight", "unassigned_penalty", mode="before")
     def validate_objective_term(cls, value: Union[int, str]) -> int:
         """Validates that an objective weight is a non-negative integer.
@@ -259,11 +359,13 @@ class PlanningConfig(BaseModel):
         """
         if isinstance(value, bool) or not isinstance(value, int):
             raise MTPlanningConfigInvalidPenalty(
-                f"Invalid objective term: {value!r}. Must be a non-negative integer."
+                f"Invalid objective term: {value!r}. "  # noqa: E501
+                "Must be a non-negative integer."
             )
         if value < 0:
             raise MTPlanningConfigInvalidPenalty(
-                f"Invalid objective term: {value!r}. Must be non-negative."
+                f"Invalid objective term: {value!r}. "  # noqa: E501
+                "Must be non-negative."
             )
         return value
 

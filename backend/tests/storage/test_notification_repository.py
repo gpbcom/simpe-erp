@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.auth.user import User
 from models.enums import NotificationKind, UserRole
 from models.notifications.notification import Notification
-from storage.repositories.notification import NotificationRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.notifications.notification import NotificationRepository
+from storage.repositories.auth.user import UserRepository
 
 
 @pytest_asyncio.fixture

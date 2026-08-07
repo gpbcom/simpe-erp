@@ -72,16 +72,69 @@ Three fields are taken from the credential and never from the request body:
 | the assistant record | every `/me/*` route | An assistant reads or edits a colleague's |
 | `role` | `POST /companies/registration` | Same as above, through a newer door |
 | `company_id` | `POST /companies/registration` | Founding an agency becomes taking over somebody else's |
+| `company_id` | quote creation | A quote written into another agency, whose assistants are then sent out to deliver it |
+| `status`, `validated_by` | quote creation | A caller accepts their own quote, in somebody else's name, without a manager ever seeing it |
+| the lines alone | `PUT /quotes/{id}/lines` | A repricing that could also reassign the quote, or move it between agencies |
 
-`RegisterRequest`, `CompanyRegistrationRequest` and `HcaProfileUpdateRequest`
+`RegisterRequest`, `CompanyRegistrationRequest`, `HcaProfileUpdateRequest`,
+`QuoteCreateRequest` and `QuoteLinesRequest`
 achieve this **structurally**:
 the fields do not exist on the model. A field that is not there cannot be
 honoured by an endpoint that forgets to ignore it, or re-added by a refactor
 that stops excluding it.
 
-`HcaProfileUpdateRequest` has no `certifications` and no `contract_type` for
-that reason. An assistant who could grant themselves a qualification could be
-routed to work they are not trained for.
+`HcaProfileUpdateRequest` has no `certifications`, no `contract_type` and no
+`field_employee` for that reason. An assistant who could grant themselves a
+qualification could be routed to work they are not trained for; one who could
+clear their own `field_employee` could take themselves off every round without
+telling anybody, and the workforce would shrink with nothing on any screen
+saying why.
+
+**`SkillCreateRequest` is the one place that rule is deliberately inverted**,
+and it is inverted the same way: structurally. It carries no `hca_id` and no
+`id`, so the owning assistant comes from the credential and the identifier from
+the store — a payload cannot file a declaration against a colleague or
+overwrite an existing row by naming one. What it *does* let its sender do is
+change who the planner may assign them to, which nothing else on the
+self-service surface does.
+
+That is a considered trade rather than a gap. A certification is a claim about
+what somebody was **awarded**, so an assistant granting themselves one could be
+routed to work they are not trained for. A skill is a claim about what they
+**can do**, and an assistant who cannot say they speak Portuguese is one the
+agency does not know it has. The safeguard is not a form in a queue — it is
+that every manager and administrator is notified of every declaration, and any
+of them can withdraw it through `DELETE /hcas/{id}/skills/{id}` before the next
+planning run acts on it. There is deliberately no route by which a supervisor
+*declares* one for somebody else.
+
+All three live on the manager-gated `EmploymentUpdateRequest` instead, which a
+manager or an administrator reaches **for anybody, including themselves** —
+the route takes an identifier and they hold the role. That is deliberate: a
+manager who covers rounds is ordinary, and needing a second person to record it
+would be friction with no security behind it. What no assistant can reach is
+the payload at all.
+
+Suite 26 asserts this from both sides: the screen shows the flag as a locked
+chip, and the request the form will not make is sent by hand against the
+manager route *and* against the self-service one. A form that merely omits a
+control is not the control.
+
+### The two quote payloads
+
+Both routes used to accept a whole `Quote` and read some of it. That made every
+guarantee a matter of the service remembering not to look — and `PUT
+/quotes/{id}/lines` said so in prose: "only the lines are taken from the body".
+
+The prose was true and the type was not. `QuoteCreateRequest` carries a
+reference, a customer and lines; `QuoteLinesRequest` carries lines. Neither can
+name an agency, a status or a validator.
+
+That stopped being cosmetic the moment a quote carried its agency. The agency
+decides whose accepted work a planning run schedules and whose calendar it
+rewrites, so a body wide enough to hold one was a way to have another agency's
+assistants deliver work they had never agreed to.
+→ [02](02-domain-model.md)
 
 ## Founding an agency
 
@@ -173,7 +226,38 @@ being load-bearing.
 
 Content type is detected from **magic bytes**, never the `Content-Type` header.
 JPEG, PNG and WebP only, 5 MiB, with the key freshly generated per upload so a
-CDN never serves a stale portrait. It is the only upload endpoint in the API.
+CDN never serves a stale portrait. The account's own portrait
+(`PUT /api/v1/me/account/photo`) goes through the same store and the same
+checks; those are the only upload endpoints in the API.
+
+## Three endpoints that answer without a credential
+
+`/health`, `/ready` and `/metrics` are exempt from the bearer-token middleware,
+because a kubelet and a scraper have no account to sign in with.
+
+What makes `/metrics` defensible is what it carries: counts and durations, with
+every label drawn from an enum. **No label identifies a person** — no `hca_id`,
+no `customer_id`, no `company_id` — which is a property `ApplicationMetrics` is
+responsible for and has a test for. It is also absent from the OpenAPI document,
+and the ingress does not route it: it is served for a scraper inside the
+cluster. → [14](14-observability.md)
+
+## Secrets in the cluster
+
+The `*_env` pattern is unchanged — a YAML key names an environment variable, the
+value is read at connection time, and no password is ever written into a
+configuration file.
+
+What changes is where the variable comes from. In compose it is `.env`; in the
+cluster it is a Secret written by **External Secrets** from the cluster's own
+store, which the chart declares as an `ExternalSecret` and never as a value.
+Rotating one is a change in that store and a pod restart — never a rebuild, and
+never a value in git.
+
+**PgBouncer sits between the application and PostgreSQL**, which is a connection
+change rather than a security one, but worth knowing when reading a connection
+log: the backend PostgreSQL sees is the pooler's, not the pod's.
+→ [13](13-kubernetes.md)
 
 ## Known gaps
 

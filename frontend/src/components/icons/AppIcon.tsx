@@ -41,6 +41,9 @@ const PATHS = {
   /** A rosette: the certification. */
   certification:
     'M12 3a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z M9 13.5 8 21l4-2 4 2-1-7.5 M12 6.5l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6L8.2 9.3l2.6-.4Z',
+  /** A hand holding a spark: the skill somebody declares about themselves. */
+  skill:
+    'M6.5 20.5v-6.5a2 2 0 0 1 2-2h5.5a2 2 0 0 1 0 4h-2.5 M4 20.5h2.5 M17 3.5l1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1Z',
   /** A crossed-out day: an absence. */
   availability:
     'M4 6.5h16v14H4z M4 10.5h16 M8 3.5v4 M16 3.5v4 M9.5 14.5l5 5 M14.5 14.5l-5 5',

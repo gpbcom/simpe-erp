@@ -11,7 +11,7 @@ from models.schemas.exceptions import (
     MTCompanyRegistrationRequestInvalidPassword,
     MTCompanyRegistrationRequestInvalidRegistrationNumber,
 )
-from models.schemas.requests.company_registration_request import (
+from models.schemas.requests.companies.company_registration_request import (
     CompanyRegistrationRequest,
 )
 

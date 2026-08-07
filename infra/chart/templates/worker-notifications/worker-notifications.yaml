@@ -1,0 +1,120 @@
+{{/*
+The notifications worker: Deployment, KEDA ScaledObject, PDB.
+
+**Its own deployment**, because the two workers are unlike each other in the way
+that matters to a scheduler: a solve is CPU-bound and pins its cores for a
+thirty-second budget, a notification fan-out is I/O-bound and finishes in
+milliseconds. Together they scale together, and a manager waits half a minute
+for a badge because the pod is mid-solve.
+
+It serves no traffic and therefore has no Service — only the ServiceMonitor's
+scrape and the kubelet's probes reach its port, both by pod IP.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-worker-notifications
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-notifications
+spec:
+  {{- if not .Values.workerNotifications.scaling.enabled }}
+  replicas: {{ .Values.workerNotifications.scaling.minReplicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "simple-erp.selectorLabels" (dict "root" . "component" "worker-notifications") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "simple-erp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker-notifications
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/common/config.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.workerNotifications.terminationGracePeriodSeconds }}
+      {{- with .Values.workerNotifications.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workerNotifications.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "simple-erp.image" . }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command: ["worker", "notifications"]
+          ports:
+            - name: probes
+              containerPort: 9100
+          env:
+            {{- include "simple-erp.backendEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+          livenessProbe:
+            httpGet: {path: /health, port: probes}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /ready, port: probes}
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /app/conf/app.k8s.yaml
+              subPath: app.k8s.yaml
+          resources:
+            {{- toYaml .Values.workerNotifications.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "simple-erp.fullname" . }}-config
+{{- if .Values.workerNotifications.scaling.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-worker-notifications
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-notifications
+spec:
+  scaleTargetRef:
+    name: {{ include "simple-erp.fullname" . }}-worker-notifications
+  minReplicaCount: {{ .Values.workerNotifications.scaling.minReplicas }}
+  maxReplicaCount: {{ .Values.workerNotifications.scaling.maxReplicas }}
+  pollingInterval: {{ .Values.workerNotifications.scaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.workerNotifications.scaling.cooldownPeriod }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.workerNotifications.scaling.scaleDownStabilizationSeconds }}
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: http
+        mode: QueueLength
+        queueName: {{ .Values.workerNotifications.scaling.queuePattern | quote }}
+        useRegex: "true"
+        operation: {{ .Values.workerNotifications.scaling.operation | quote }}
+        value: {{ .Values.workerNotifications.scaling.messagesPerReplica | quote }}
+      authenticationRef:
+        name: {{ include "simple-erp.fullname" . }}-rabbitmq
+{{- end }}
+{{- if .Values.workerNotifications.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-worker-notifications
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-notifications
+spec:
+  maxUnavailable: {{ .Values.workerNotifications.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "simple-erp.selectorLabels" (dict "root" . "component" "worker-notifications") | nindent 6 }}
+{{- end }}

@@ -9,25 +9,50 @@ import pytest
 
 # First-party imports
 from models.configuration.app_config import AppConfig
+from models.enums import WorkerRole
 from models.messaging.event_envelope import EventEnvelope
 from worker.runner import WorkerRunner
 
 
-@pytest.fixture
-def runner() -> WorkerRunner:
-    """Return a worker that has been constructed but never connected.
+@pytest.fixture(params=list(WorkerRole), ids=lambda role: role.value)
+def runner(request: pytest.FixtureRequest) -> WorkerRunner:
+    """Return a worker of each role, constructed but never connected.
+
+    Args:
+        request (pytest.FixtureRequest): Carries the role being exercised.
 
     Returns:
         WorkerRunner: A runner over the default configuration, whose broker is
         disabled and whose consumers hold no connection.
 
     Notes:
+        **Parametrised over both roles**, so every ordering and shutdown rule
+        below is asserted for each of them. The two are separate deployments
+        that share one image, and a start-up ordering that only held for the
+        planning worker would be a bug nobody saw until a notification queue
+        started dead-lettering.
+
         Nothing in ``__init__`` reaches the network: the publisher connects
         lazily, the consumers connect in ``start()``, and the pool connects when
         the first session is asked for. That is what makes the wiring testable
         without a broker or a database.
     """
-    return WorkerRunner(config=AppConfig())
+    return WorkerRunner(config=AppConfig(), role=request.param)
+
+
+@pytest.fixture
+def consumer_name(runner: WorkerRunner) -> str:
+    """Return the attribute name of the consumer this role actually starts.
+
+    Args:
+        runner (WorkerRunner): The worker under test.
+
+    Returns:
+        str: ``"planning"`` or ``"notifications"``.
+    """
+    return (
+        "planning" if runner.role is WorkerRole.PLANNING else "notifications"
+    )
 
 
 @pytest.fixture
@@ -84,9 +109,7 @@ def calls(monkeypatch: pytest.MonkeyPatch, runner: WorkerRunner) -> List[str]:
 class TestHandlerRegistration:
     """Tests for which coroutine answers which topic."""
 
-    def test_every_topic_is_bound_to_the_coroutine_that_answers_it(
-        self, runner: WorkerRunner
-    ) -> None:
+    def test_the_planning_role_answers_only_planning_runs(self) -> None:
         """The wiring a queue's traffic depends on.
 
         Notes:
@@ -95,11 +118,21 @@ class TestHandlerRegistration:
             it quietly does the wrong work, or none at all, which looks exactly
             like a quiet system.
         """
+        runner = WorkerRunner(config=AppConfig(), role=WorkerRole.PLANNING)
+
         runner._register_handlers()
 
         assert {
             key: handler.__name__ for key, handler in runner.planning.handlers.items()
         } == {"planning.run.requested": "run_planning"}
+        assert runner.notifications.handlers == {}
+
+    def test_the_notifications_role_answers_only_notifications(self) -> None:
+        """And nothing at all on the planning queue."""
+        runner = WorkerRunner(config=AppConfig(), role=WorkerRole.NOTIFICATIONS)
+
+        runner._register_handlers()
+
         assert {
             key: handler.__name__
             for key, handler in runner.notifications.handlers.items()
@@ -108,15 +141,29 @@ class TestHandlerRegistration:
             "quote.validated": "quote_validated",
             "quote.refused": "quote_refused",
             "planning.run.completed": "planning_completed",
+            "skill.added": "skill_added",
         }
+        assert runner.planning.handlers == {}
+
+    def test_both_roles_hear_a_new_agency(self, runner: WorkerRunner) -> None:
+        """**Neither role owns the control plane.**
+
+        Notes:
+            Each has queues of its own to declare when an agency is founded, so
+            each binds the announcement on an exclusive queue. Making it a third
+            deployment would hand each announcement to one process and leave the
+            other serving every agency but the new one.
+        """
+        runner._register_handlers()
+
         assert {
             key: handler.__name__ for key, handler in runner.lifecycle.handlers.items()
         } == {"company.created": "company_created"}
 
-    def test_the_notification_queue_binds_every_key_it_handles(
-        self, runner: WorkerRunner
-    ) -> None:
+    def test_the_notification_queue_binds_every_key_it_handles(self) -> None:
         """A handled topic nothing binds is a handler that never runs."""
+        runner = WorkerRunner(config=AppConfig(), role=WorkerRole.NOTIFICATIONS)
+
         runner._register_handlers()
 
         bound = {key.value for key in runner.NOTIFICATION_KEYS}
@@ -128,15 +175,30 @@ class TestStartup:
     """Tests for the order a worker brings itself up in."""
 
     async def test_the_pool_is_connected_before_any_consumer_starts(
-        self, runner: WorkerRunner, calls: List[str]
+        self, runner: WorkerRunner, calls: List[str], consumer_name: str
     ) -> None:
         """Otherwise every message is handled with no database behind it."""
         await runner.start()
 
         assert calls[0] == "manager.connect"
-        assert calls.index("manager.connect") < calls.index("planning.start")
-        assert calls.index("manager.connect") < calls.index("notifications.start")
+        assert calls.index("manager.connect") < calls.index(f"{consumer_name}.start")
         assert calls.index("manager.connect") < calls.index("lifecycle.start")
+
+    async def test_only_this_roles_consumer_is_started(
+        self, runner: WorkerRunner, calls: List[str], consumer_name: str
+    ) -> None:
+        """**The other queue belongs to the other deployment.**
+
+        Notes:
+            A process that also started the consumer it has no handler for would
+            take messages off that queue and acknowledge them unanswered — the
+            work would vanish, and the queue would look healthy doing it.
+        """
+        await runner.start()
+
+        other = "notifications" if consumer_name == "planning" else "planning"
+        assert f"{consumer_name}.start" in calls
+        assert f"{other}.start" not in calls
 
     async def test_the_announcement_queue_is_bound_before_agencies_are_enumerated(
         self, runner: WorkerRunner, calls: List[str]
@@ -152,14 +214,22 @@ class TestStartup:
         assert calls.index("lifecycle.consume_every_company") < calls.index("companies")
 
     async def test_every_stored_agency_is_served(
-        self, runner: WorkerRunner, calls: List[str]
+        self, runner: WorkerRunner, calls: List[str], consumer_name: str
     ) -> None:
         """A worker that was down while agencies were founded catches up."""
         served = await runner.start()
 
         assert served == ["company-1"]
-        assert "planning.consume_for_company" in calls
-        assert "notifications.consume_for_company" in calls
+        assert f"{consumer_name}.consume_for_company" in calls
+
+    async def test_only_this_roles_queue_is_bound(
+        self, runner: WorkerRunner, calls: List[str], consumer_name: str
+    ) -> None:
+        """Binding the other role's queue would consume work it cannot do."""
+        await runner.start()
+
+        other = "notifications" if consumer_name == "planning" else "planning"
+        assert f"{other}.consume_for_company" not in calls
 
 
 class TestShutdown:

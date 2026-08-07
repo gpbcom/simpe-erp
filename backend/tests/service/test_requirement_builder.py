@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 # First-party imports
+from models.catalog.intervention_type import InterventionType
 from models.configuration.planning_config import PlanningConfig
 from models.enums import QuoteStatus
 from models.people.customer import Customer
@@ -72,6 +73,7 @@ def _quote(
         whatever its status.
     """
     return Quote(
+        company_id="company-1",
         id="quote-1",
         reference="Q-2026-0001",
         customer_id=customer_id,
@@ -108,9 +110,31 @@ def builder() -> PlanningService:
         quotes=MagicMock(),
         customers=MagicMock(),
         hcas=MagicMock(),
+        types=MagicMock(),
         settings=MagicMock(),
         config=PlanningConfig(),
     )
+
+
+@pytest.fixture
+def catalog() -> Dict[str, InterventionType]:
+    """Return the catalogue the quotes' lines sell, keyed by identifier.
+
+    Returns:
+        Dict[str, InterventionType]: One entry, requiring no qualification.
+
+    Notes:
+        Requiring nothing is the default state of a catalogue entry, so these
+        tests exercise the same path every existing quote takes.
+    """
+    return {
+        "type-1": InterventionType(
+            id="type-1",
+            name="Toilette matin",
+            code="TOILETTE",
+            service_category="necessity",
+        )
+    }
 
 
 @pytest.fixture
@@ -131,16 +155,22 @@ class TestPlanningService:
     # ------------------------------------------------------------------ #
 
     def test_an_accepted_line_becomes_a_requirement(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """One accepted line yields one piece of work."""
-        requirements = builder.build([_quote()], customers, MONDAY, PERIOD_END)
+        requirements = builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END)
 
         assert len(requirements) == 1
         assert requirements[0].quote_line_id == "line-1"
 
     def test_the_name_and_type_ride_through_untouched(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """What was sold is what gets planned.
 
@@ -149,26 +179,32 @@ class TestPlanningService:
             lost here, a scheduled slot would arrive at the assistant's phone
             with no indication of what to do.
         """
-        requirements = builder.build([_quote()], customers, MONDAY, PERIOD_END)
+        requirements = builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END)
 
         assert requirements[0].name == "Toilette matin"
         assert requirements[0].intervention_type_id == "type-1"
 
     def test_the_window_is_converted_to_minutes(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """09:00–13:00 becomes 540–780, the solver's unit."""
-        requirements = builder.build([_quote()], customers, MONDAY, PERIOD_END)
+        requirements = builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END)
 
         assert requirements[0].window_start_minute == 540
         assert requirements[0].window_end_minute == 780
         assert requirements[0].duration_minutes == 120
 
     def test_the_customers_coordinate_is_attached(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """Work carries where it happens, so it can be routed to."""
-        requirements = builder.build([_quote()], customers, MONDAY, PERIOD_END)
+        requirements = builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END)
 
         assert requirements[0].location.latitude == pytest.approx(48.8566)
         assert requirements[0].location.longitude == pytest.approx(2.3522)
@@ -205,19 +241,28 @@ class TestPlanningService:
             would put an assistant in a stranger's home.
         """
         assert (
-            builder.build([_quote(status=status)], customers, MONDAY, PERIOD_END) == []
+            builder.build(
+                [_quote(status=status)], customers, catalog, MONDAY, PERIOD_END
+            )
+            == []
         )
 
     def test_work_outside_the_period_is_left_alone(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """A line next week is not pulled into this week's plan."""
         quote = _quote(service_date=NEXT_MONDAY)
 
-        assert builder.build([quote], customers, MONDAY, PERIOD_END) == []
+        assert builder.build([quote], customers, catalog, MONDAY, PERIOD_END) == []
 
     def test_an_interrupted_quote_stops_producing_work(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """**An arrangement ended early is not planned past its last day.**
 
@@ -248,10 +293,13 @@ class TestPlanningService:
         )
 
         # Planning the week that starts after the end date finds nothing left.
-        assert builder.build([both], customers, NEXT_MONDAY, NEXT_MONDAY) == []
+        assert builder.build([both], customers, catalog, NEXT_MONDAY, NEXT_MONDAY) == []
 
     def test_the_days_before_an_interruption_are_still_planned(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """**The interruption cuts the quote in half, not out.**
 
@@ -265,20 +313,23 @@ class TestPlanningService:
             update={"interrupted_on": MONDAY}
         )
 
-        requirements = builder.build([quote], customers, MONDAY, PERIOD_END)
+        requirements = builder.build([quote], customers, catalog, MONDAY, PERIOD_END)
 
         assert len(requirements) == 1
         assert requirements[0].day == MONDAY
 
     def test_the_last_day_of_an_arrangement_is_planned(
-        self, builder: PlanningService, customers: Dict[str, Customer]
+        self,
+        builder: PlanningService,
+        customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
     ) -> None:
         """Inclusive here too, or the final visit silently disappears."""
         quote = _quote(service_date=MONDAY).model_copy(
             update={"interrupted_on": MONDAY}
         )
 
-        assert len(builder.build([quote], customers, MONDAY, PERIOD_END)) == 1
+        assert len(builder.build([quote], customers, catalog, MONDAY, PERIOD_END)) == 1
 
     def test_an_unresolved_address_is_dropped_rather_than_guessed(
         self, builder: PlanningService
@@ -293,13 +344,13 @@ class TestPlanningService:
         """
         customers = {"customer-1": _customer(latitude=None, longitude=None)}
 
-        assert builder.build([_quote()], customers, MONDAY, PERIOD_END) == []
+        assert builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END) == []
 
     def test_a_quote_for_an_unknown_customer_is_dropped(
         self, builder: PlanningService
     ) -> None:
         """A quote whose customer is missing yields nothing, not a crash."""
-        assert builder.build([_quote()], {}, MONDAY, PERIOD_END) == []
+        assert builder.build([_quote()], {}, catalog, MONDAY, PERIOD_END) == []
 
     # ------------------------------------------------------------------ #
     #  Boundaries
@@ -316,6 +367,7 @@ class TestPlanningService:
         self,
         builder: PlanningService,
         customers: Dict[str, Customer],
+        catalog: Dict[str, InterventionType],
         service_date: date,
     ) -> None:
         """Both ends of the requested window are planned.
@@ -327,10 +379,10 @@ class TestPlanningService:
         """
         quote = _quote(service_date=service_date)
 
-        assert len(builder.build([quote], customers, MONDAY, PERIOD_END)) == 1
+        assert len(builder.build([quote], customers, catalog, MONDAY, PERIOD_END)) == 1
 
     def test_several_quotes_are_gathered_into_one_list(
-        self, builder: PlanningService
+        self, builder: PlanningService, catalog: Dict[str, InterventionType]
     ) -> None:
         """Work for every customer lands in a single plan."""
         customers = {"customer-1": _customer(), "customer-2": _customer("customer-2")}
@@ -339,7 +391,7 @@ class TestPlanningService:
             _quote(customer_id="customer-2", name="Second"),
         ]
 
-        requirements = builder.build(quotes, customers, MONDAY, PERIOD_END)
+        requirements = builder.build(quotes, customers, catalog, MONDAY, PERIOD_END)
         assert sorted(requirement.name for requirement in requirements) == [
             "First",
             "Second",
@@ -349,4 +401,4 @@ class TestPlanningService:
         self, builder: PlanningService
     ) -> None:
         """No accepted work is a warning, not an error."""
-        assert builder.build([], {}, MONDAY, PERIOD_END) == []
+        assert builder.build([], {}, catalog, MONDAY, PERIOD_END) == []

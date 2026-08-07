@@ -21,6 +21,11 @@ class Dataset:
             with.
         HOURLY_RATE_HT (ClassVar[str]): The rate every seeded service bills at.
         INTERVENTION_TYPES (ClassVar[Tuple]): The service catalog.
+        CERTIFICATIONS (ClassVar[Tuple]): The qualification catalogue.
+        SKILLS (ClassVar[Tuple]): The skill catalogue.
+        ASSISTANT_SKILLS (ClassVar[Tuple]): Who has declared which skill.
+        ASSISTANT_CERTIFICATIONS (ClassVar[Tuple]): Who holds which
+            qualification.
         ASSISTANTS (ClassVar[Tuple]): The workforce.
         CUSTOMERS (ClassVar[Tuple]): The people served.
         QUOTE_PLAN (ClassVar[Tuple]): How many quotes to write in each status.
@@ -75,6 +80,88 @@ class Dataset:
         ("COM", "Compagnie et stimulation", ServiceCategory.COMFORT),
         ("NUI", "Garde de nuit", ServiceCategory.NECESSITY),
     )
+
+    #: The qualifications the agency recognises, as ``(code, label)``.
+    #:
+    #: Seeded so the catalogue screen has something in it and an assistant's
+    #: qualifications resolve to a readable label on a fresh install.
+    #:
+    #: **No seeded service requires any of them.** A requirement no seeded
+    #: assistant satisfies fails every seeded planning run, with a diagnosis
+    #: that reads as a staffing problem — which is exactly the shape of the
+    #: 08:00-window bug that made every run fail before
+    #: ``tests/seed/test_seeded_windows.py`` was written. The feature is made
+    #: visible by giving some assistants a qualification, not by gating work
+    #: behind one.
+    CERTIFICATIONS: ClassVar[Tuple[Tuple[str, str], ...]] = (
+        ("DEAES", "Diplome d'Etat d'Accompagnant Educatif et Social"),
+        ("DEAVS", "Diplome d'Etat d'Auxiliaire de Vie Sociale"),
+        ("ADVF", "Titre professionnel Assistant De Vie aux Familles"),
+        ("AS", "Diplome d'Etat d'Aide-Soignant"),
+        ("SST", "Sauveteur Secouriste du Travail"),
+    )
+
+    #: The skill catalogue an assistant picks from on their own account screen.
+    #:
+    #: **No seeded service requires any of them either**, for the reason set
+    #: out above the certification catalogue: a requirement no seeded assistant
+    #: satisfies fails every seeded planning run with a diagnosis that reads as
+    #: a staffing problem. What makes the feature visible is the declarations
+    #: below, not a gate.
+    SKILLS: ClassVar[Tuple[Tuple[str, str], ...]] = (
+        ("LEVE-PERSONNE", "Manipulation d'un leve-personne"),
+        ("TOILETTE", "Toilette et aide a l'habillage"),
+        ("CUISINE", "Preparation de repas adaptes"),
+        ("PORTUGAIS", "Portugais parle"),
+        ("ARABE", "Arabe parle"),
+        ("ALZHEIMER", "Accompagnement de troubles cognitifs"),
+    )
+
+    #: Which seeded assistants have declared which skill, by ``"First Last"``.
+    #:
+    #: Deliberately partial and deliberately *different* from who holds which
+    #: certification: an assistant with a diploma and no declared skill, and one
+    #: with a declared skill and no diploma, are both ordinary — and the two
+    #: unplaced reasons only look distinct in seeded data where the two lists
+    #: do not coincide.
+    ASSISTANT_SKILLS: ClassVar[Tuple[Tuple[str, str], ...]] = (
+        ("Luc Martin", "LEVE-PERSONNE"),
+        ("Luc Martin", "CUISINE"),
+        ("Sophie Bernard", "TOILETTE"),
+        ("Sophie Bernard", "ALZHEIMER"),
+        ("Nadia Bouzid", "ARABE"),
+        ("Nadia Bouzid", "TOILETTE"),
+    )
+
+    #: Which seeded assistants hold which qualification, by ``"First Last"``.
+    #:
+    #: Deliberately partial: a workforce where everybody holds everything would
+    #: make the certification constraint impossible to see working, and one
+    #: where nobody holds anything would make the catalogue look unused.
+    ASSISTANT_CERTIFICATIONS: ClassVar[Tuple[Tuple[str, str], ...]] = (
+        ("Luc Martin", "DEAES"),
+        ("Luc Martin", "SST"),
+        ("Sophie Bernard", "DEAVS"),
+        ("Nadia Bouzid", "ADVF"),
+    )
+
+    #: Which seeded assistants also hold a manager's account, by ``"First Last"``.
+    #:
+    #: A manager who still covers rounds is an ordinary arrangement in a small
+    #: agency, and it is the *only* arrangement in which the employment section
+    #: of the account page is both visible and editable: the section renders
+    #: from an assistant record, and it unlocks on a manager's role. With every
+    #: seeded manager holding no assistant record, that combination existed
+    #: nowhere, so the editable half of the screen could not be reached — and
+    #: neither could ``field_employee``, which lives on it.
+    #:
+    #: Not Luc Martin: the field-employee suite signs in as him precisely to
+    #: assert the *locked* half, and promoting him would make both halves
+    #: unreachable instead of one. Not Amina Benali either, who is the QA
+    #: campaign's ``${OTHER_ASSISTANT}`` — the colleague an assistant is
+    #: refused permission to edit. That check would still pass with her
+    #: promoted, but for a reason it does not mean to be testing.
+    ASSISTANT_MANAGERS: ClassVar[Tuple[str, ...]] = ("Marc Dubois",)
 
     # (first name, last name, contract, street, postcode, city, lat, lon, drives)
     ASSISTANTS: ClassVar[Tuple[Tuple, ...]] = (

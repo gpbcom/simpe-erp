@@ -21,7 +21,7 @@ from models.schemas.exceptions import (
     MTUserResponseInvalidIsActive,
     MTUserResponseInvalidRole,
 )
-from models.schemas.responses.user_response import UserResponse
+from models.schemas.responses.auth.user_response import UserResponse
 
 
 @pytest.fixture
@@ -275,9 +275,11 @@ class TestUserResponse:
             "email": "hca@example.com",
             "full_name": "Assistant Account",
             "role": "hca",
+            "language": "fr",
             "is_active": True,
             "hca_id": "hca-1",
             "company_id": "company-1",
+            "photo_url": None,
             "must_change_password": False,
             "created_at": "2026-08-05T12:00:00+00:00",
             "updated_at": "2026-08-05T13:00:00+00:00",

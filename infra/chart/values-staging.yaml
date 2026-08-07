@@ -1,0 +1,19 @@
+# The staging environment's overrides. Everything else comes from values.yaml.
+ingress:
+  host: staging.simple-erp.local
+
+
+api:
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 8
+
+workerPlanning:
+  scaling:
+    minReplicas: 1
+    maxReplicas: 10
+
+
+observability:
+  # The collector fans out to Tempo, and later to Langfuse.
+  tracingEnabled: true

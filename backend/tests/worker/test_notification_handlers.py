@@ -501,3 +501,147 @@ class TestPlanningCompleted:
         assert stores.asked_for == []
         assert stores.written == []
         assert published == []
+
+
+class TestSkillAdded:
+    """Tests for telling the supervisors that an assistant declared a skill."""
+
+    async def test_every_supervisor_is_told(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        runner: WorkerRunner,
+    ) -> None:
+        """**This is what makes a declaration needing no approval safe.**
+
+        Notes:
+            A skill takes effect the moment its owner enters it, which is what
+            stops the agency losing track of who can do what. The safeguard is
+            that every manager and administrator is told, and any of them can
+            withdraw it before the next planning run acts on it.
+        """
+        stores = RecordingRepositories(
+            {"company-1": [supervisor("manager-1"), supervisor("admin-1")]}
+        )
+        stores.install(monkeypatch)
+
+        await runner.skill_added(
+            EventEnvelope(
+                routing_key="skill.added",
+                payload={
+                    "hca_id": "hca-1",
+                    "hca_name": "Luc Martin",
+                    "skill_name": "Leve-personne",
+                    "skill_code": "LEVE-PERSONNE",
+                    "company_id": "company-1",
+                },
+            )
+        )
+
+        assert [written.recipient_id for written in stores.written] == [
+            "manager-1",
+            "admin-1",
+        ]
+        assert stores.written[0].kind is NotificationKind.SKILL_ADDED
+        assert "Luc Martin" in stores.written[0].title
+
+    async def test_the_body_names_the_code_as_well_as_the_label(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        runner: WorkerRunner,
+    ) -> None:
+        """The code is what a requirement is matched on.
+
+        Notes:
+            A supervisor deciding whether somebody has over-claimed needs to
+            know which requirement the declaration just satisfied, and the
+            free-text name does not say.
+        """
+        stores = RecordingRepositories({"company-1": [supervisor("manager-1")]})
+        stores.install(monkeypatch)
+
+        await runner.skill_added(
+            EventEnvelope(
+                routing_key="skill.added",
+                payload={
+                    "hca_name": "Luc Martin",
+                    "skill_name": "Leve-personne",
+                    "skill_code": "LEVE-PERSONNE",
+                    "company_id": "company-1",
+                },
+            )
+        )
+
+        assert "LEVE-PERSONNE" in (stores.written[0].body or "")
+
+    async def test_the_notification_points_at_no_quote(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        runner: WorkerRunner,
+    ) -> None:
+        """There is no quote, so the row renders as text rather than a link.
+
+        Notes:
+            This is why ``concerns_a_quote`` had to stop being written as "not
+            the planning one": a skill notification rendered as a link would be
+            a dead one.
+        """
+        stores = RecordingRepositories({"company-1": [supervisor("manager-1")]})
+        stores.install(monkeypatch)
+
+        await runner.skill_added(
+            EventEnvelope(
+                routing_key="skill.added",
+                payload={"skill_name": "x", "company_id": "company-1"},
+            )
+        )
+
+        assert stores.written[0].quote_id is None
+        assert stores.written[0].is_actionable() is False
+
+    async def test_the_recipients_are_announced_to_the_api(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        runner: WorkerRunner,
+        published: List[Tuple[EventRoutingKey, str, dict]],
+    ) -> None:
+        """The badge lights the same way it does for a submitted quote."""
+        stores = RecordingRepositories({"company-1": [supervisor("manager-1")]})
+        stores.install(monkeypatch)
+
+        await runner.skill_added(
+            EventEnvelope(
+                routing_key="skill.added",
+                payload={"skill_name": "x", "company_id": "company-1"},
+            )
+        )
+
+        assert published == [
+            (
+                EventRoutingKey.NOTIFICATION_CREATED,
+                "company-1",
+                {"recipient_ids": ["manager-1"]},
+            )
+        ]
+
+    async def test_a_message_with_no_agency_writes_nothing(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        runner: WorkerRunner,
+        published: List[Tuple[EventRoutingKey, str, dict]],
+    ) -> None:
+        """There is no notification worth sending to every agency at once.
+
+        Notes:
+            The account store reads a missing agency as "every supervisor of
+            every agency", which would put a badge on every manager on the
+            platform naming somebody they have no access to.
+        """
+        stores = RecordingRepositories({"company-1": [supervisor("manager-1")]})
+        stores.install(monkeypatch)
+
+        await runner.skill_added(
+            EventEnvelope(routing_key="skill.added", payload={"skill_name": "x"})
+        )
+
+        assert stores.written == []
+        assert published == []

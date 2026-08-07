@@ -20,6 +20,7 @@ from models.configuration.exceptions import (
     MTAppConfigInvalidPlanning,
     MTAppConfigInvalidPricing,
     MTAppConfigInvalidRabbitMq,
+    MTAppConfigInvalidObservability,
     MTAppConfigInvalidS3,
     MTAppConfigInvalidServer,
     MTAppConfigNotFound,
@@ -28,6 +29,7 @@ from models.configuration.exceptions import (
 from models.configuration.geocoding_config import GeocodingConfig
 from models.configuration.planning_config import PlanningConfig
 from models.configuration.pricing_config import PricingConfig
+from models.configuration.observability_config import ObservabilityConfig
 from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.configuration.s3_config import S3Config
 from models.configuration.server_config import ServerConfig
@@ -101,6 +103,10 @@ class AppConfig(BaseModel):
     s3: S3Config = Field(
         default_factory=S3Config,
         description="Object-store settings for assistant photographs.",
+    )
+    observability: ObservabilityConfig = Field(
+        default_factory=ObservabilityConfig,
+        description="What the process reports about itself.",
     )
 
     @field_validator("server", mode="before")
@@ -274,6 +280,34 @@ class AppConfig(BaseModel):
         if not isinstance(value, (S3Config, dict)):
             raise MTAppConfigInvalidS3(
                 f"Invalid s3 section: {value!r}. Must be a mapping."
+            )
+        return value
+
+    @field_validator("observability", mode="before")
+    def validate_observability(cls, value: JsonValue) -> JsonValue:
+        """Validates that ``observability`` is a mapping or a built section.
+
+        Args:
+            value (JsonValue): Raw ``observability`` payload.
+
+        Returns:
+            JsonValue: The payload handed back for Pydantic to build.
+
+        Raises:
+            MTAppConfigInvalidObservability: If ``value`` is neither a mapping
+                nor an
+                :class:`~models.configuration.observability_config.ObservabilityConfig`.
+
+        Notes:
+            An absent section builds the defaults rather than failing. A
+            configuration written before this section existed must still load —
+            it describes a process that reports nothing, which is what it did.
+        """
+        if value is None:
+            return {}
+        if not isinstance(value, (ObservabilityConfig, dict)):
+            raise MTAppConfigInvalidObservability(
+                f"Invalid observability section: {value!r}. Must be a mapping."
             )
         return value
 

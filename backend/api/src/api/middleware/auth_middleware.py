@@ -60,6 +60,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/webhooks/",
         "/health",
         "/ready",
+        # A scraper has no account to sign in with. The endpoint exposes
+        # counts and durations and no identifier of any person, and the
+        # ingress does not route it from outside the cluster.
+        "/metrics",
         "/docs",
         "/redoc",
         "/openapi.json",

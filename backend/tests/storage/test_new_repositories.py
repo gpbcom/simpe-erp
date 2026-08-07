@@ -16,10 +16,10 @@ from models.companies.company import Company
 from models.enums import AccountOrigin, HcaApplicationStatus, UserRole
 from models.people.hca_application import HcaApplication
 from models.settings.planning_settings import PlanningSettings
-from storage.repositories.company import CompanyRepository
-from storage.repositories.hca_application import HcaApplicationRepository
-from storage.repositories.planning_settings import PlanningSettingsRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.people.hca_application import HcaApplicationRepository
+from storage.repositories.planning.planning_settings import PlanningSettingsRepository
+from storage.repositories.auth.user import UserRepository
 
 HASH = "$2b$12$" + "a" * 53
 
@@ -331,6 +331,61 @@ class TestPlanningSettingsRepository:
             )
             is None
         )
+
+    async def test_the_working_day_survives_the_round_trip(
+        self, session: AsyncSession
+    ) -> None:
+        """All four new columns are written and read back.
+
+        Notes:
+            A mapper that dropped one of them would leave the solver planning
+            on a default the manager never chose — and the read would look
+            successful, because the field would simply carry its default.
+        """
+        repository = PlanningSettingsRepository(session)
+        await repository.seed(
+            PlanningSettings(
+                max_intervention_radius_km=25.0,
+                day_start_minute=8 * 60,
+                day_end_minute=19 * 60,
+                lunch_break_minutes=75,
+                lunch_window_start_minute=12 * 60,
+                lunch_window_end_minute=14 * 60,
+            )
+        )
+
+        loaded = await repository.get()
+        assert loaded is not None
+        assert loaded.day_start_minute == 8 * 60
+        assert loaded.day_end_minute == 19 * 60
+        assert loaded.lunch_break_minutes == 75
+        assert loaded.lunch_window_start_minute == 12 * 60
+        assert loaded.lunch_window_end_minute == 14 * 60
+
+    async def test_updating_moves_the_working_day(
+        self, session: AsyncSession
+    ) -> None:
+        """A manager's new hours reach the row, not just the radius."""
+        repository = PlanningSettingsRepository(session)
+        await repository.seed(PlanningSettings(max_intervention_radius_km=25.0))
+
+        updated = await repository.update(
+            PlanningSettings(
+                max_intervention_radius_km=25.0,
+                day_start_minute=7 * 60,
+                day_end_minute=21 * 60,
+                lunch_window_start_minute=11 * 60,
+                lunch_window_end_minute=15 * 60,
+                updated_by="user-1",
+                updated_at=datetime.now(UTC),
+            )
+        )
+
+        assert updated is not None
+        assert updated.day_start_minute == 7 * 60
+        assert updated.day_end_minute == 21 * 60
+        assert updated.lunch_window_start_minute == 11 * 60
+        assert updated.lunch_window_end_minute == 15 * 60
 
 
 class TestAccountColumns:

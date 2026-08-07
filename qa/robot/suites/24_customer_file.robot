@@ -30,6 +30,7 @@ Test Teardown    Take A Screenshot On Failure
 
 *** Variables ***
 @{CREATED_QUOTE_IDS}
+@{CREATED_CUSTOMER_IDS}
 ${CUSTOMER_ID}        ${EMPTY}
 ${CUSTOMER_NAME}      ${EMPTY}
 
@@ -71,6 +72,64 @@ The Book Can Be Searched
     Should Be True    ${after} <= ${before}
     Should Be True    ${after} > 0
     [Teardown]    Clear The Search
+
+A Beneficiary Can Be Registered From The Book
+    [Documentation]    **The requirement: a way to add a beneficiary.**
+    ...
+    ...    The screen listed forty households and offered no way to record a
+    ...    forty-first, so a manager taking a telephone enquiry had to leave the
+    ...    application. The control sits beside the search on purpose: looking
+    ...    the family up is what proves they are not already on file.
+    ...
+    ...    Asserted on the server rather than on the grid. A row that appears
+    ...    because the dialog put it there optimistically and a record that was
+    ...    never written is the failure worth catching.
+    ...
+    ...    Idempotent: the customer is named with this run's suffix and deleted
+    ...    by identifier in the teardown. It is quoted for nothing, so the
+    ...    delete is accepted.
+    [Tags]    smoke    customers
+    ${suffix}=    Unique Suffix
+    ${surname}=    Set Variable    Qatest-${suffix}
+    Click    [data-testid="add-customer"]
+    Wait For Elements State    [data-testid="customer-dialog"]    visible
+
+    Fill Text    [data-testid="customer-first-name"]     Camille
+    Fill Text    [data-testid="customer-last-name"]      ${surname}
+    Fill Text    [data-testid="customer-phone-number"]   +33600000199
+    Fill Text    [data-testid="customer-email"]          ${suffix}@qa.simple-erp.fr
+    Fill Text    [data-testid="customer-street"]         12 rue de Rivoli
+    Fill Text    [data-testid="customer-postal-code"]    75004
+    Fill Text    [data-testid="customer-city"]           Paris
+    Click    [data-testid="save-customer"]
+    Wait For Elements State    [data-testid="customer-dialog"]    detached
+
+    ${stored}=    Wait Until Keyword Succeeds    10s    1s
+    ...    Customer Stored Under    ${surname}
+    Append To List    ${CREATED_CUSTOMER_IDS}    ${stored}[id]
+    Should Be Equal    ${stored}[registration_status]    active
+    Should Be Equal    ${stored}[address][city]    Paris
+    [Teardown]    Clear The Search
+
+An Assistant Cannot Register A Beneficiary
+    [Documentation]    The agency's book is a manager's to add to.
+    ...
+    ...    Sent by hand rather than asserted on a hidden button: the control is
+    ...    absent from an assistant's screen because the whole entry is, and a
+    ...    missing button proves nothing about what the API accepts.
+    [Tags]    smoke    customers    access
+    ${token}=    Sign In Through The API    ${ASSISTANT_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Catenate    SEPARATOR=
+    ...    {"first_name": "Camille", "last_name": "Refuse",
+    ...    "phone_number": "+33600000199", "email": "refuse@qa.simple-erp.fr",
+    ...    "address": {"street": "12 rue de Rivoli", "postal_code": "75004",
+    ...    "city": "Paris", "country": "France"}}
+    POST
+    ...    ${API_URL}/api/v1/customers
+    ...    data=${body}
+    ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
+    ...    expected_status=403
 
 A Search That Matches Nobody Says So
     [Documentation]    A sentence, not an empty grid.
@@ -273,14 +332,42 @@ Build The Fixture Arrangement
     ...    headers=${headers}    expected_status=200
 
 Remove The Arrangements And Close
-    [Documentation]    Delete this run's quotes, including any renewal wrote.
+    [Documentation]    Delete this run's quotes and customers.
     ...
     ...    Successors are found by asking for them rather than assumed absent:
     ...    if a renewal ever did fire, the quote it wrote is this run's to
     ...    clean up too.
+    ...
+    ...    The customers go after the quotes, because a customer any quote names
+    ...    is refused a delete — which is the right rule, and the wrong order
+    ...    here would leave a fixture household in the book for ever.
     Run Keyword And Ignore Error    Collect Any Successors
     Remove The Quotes Created By This Run    @{CREATED_QUOTE_IDS}
+    Run Keyword And Ignore Error    Remove The Customers Created By This Run
     Close The Application
+
+Remove The Customers Created By This Run
+    [Documentation]    Delete every customer this run registered.
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    FOR    ${customer_id}    IN    @{CREATED_CUSTOMER_IDS}
+        DELETE
+        ...    ${API_URL}/api/v1/customers/${customer_id}
+        ...    headers=${headers}    expected_status=any
+    END
+
+Customer Stored Under
+    [Documentation]    Return the customer the server holds under a surname.
+    [Arguments]    ${surname}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${params}=    Create Dictionary    search=${surname}    size=5
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/customers
+    ...    params=${params}    headers=${headers}    expected_status=200
+    Length Should Be    ${response.json()}    1
+    ...    msg=The dialog reported success but stored no such customer.
+    RETURN    ${response.json()}[0]
 
 Collect Any Successors
     [Documentation]    Add any renewal of this run's quotes to the teardown list.

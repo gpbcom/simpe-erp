@@ -1,0 +1,47 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "simple-erp.fullname" . }}
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+  annotations:
+    {{- if .Values.ingress.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.tls.issuer }}
+    {{- end }}
+    # **Buffering off, and a long read timeout.** The notification stream is
+    # server-sent events: buffered, every frame is held until the connection
+    # closes, which turns a live feed into one long silence. The front-end's own
+    # nginx already does this internally — the ingress has to as well, or the
+    # setting only applies to the hop nobody was worried about.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ include "simple-erp.fullname" . }}-tls
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # The API first: /api is a prefix of / and the ingress matches the
+          # longest, but writing it first keeps the intent readable.
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "simple-erp.fullname" . }}-api
+                port: {name: http}
+          # Deliberately absent: /metrics. It is served by the API for a
+          # scraper inside the cluster, and routing it here would publish it.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "simple-erp.fullname" . }}-frontend
+                port: {name: http}
+{{- end }}

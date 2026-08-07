@@ -6,6 +6,7 @@ import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import { App } from './App';
+import { loadRuntimeConfig } from './api/client';
 import './i18n';
 
 const client = new QueryClient({
@@ -21,12 +22,18 @@ const client = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={client}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+// Awaited before the first render, so no request can be made against the
+// origin the bundle was *built* for rather than the one it is *deployed* to.
+// It is a single same-origin fetch of a file nginx already has open; the cost
+// is invisible beside loading the bundle itself.
+void loadRuntimeConfig().then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

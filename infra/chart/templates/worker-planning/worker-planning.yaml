@@ -1,0 +1,120 @@
+{{/*
+The planning worker: Deployment, KEDA ScaledObject, PDB.
+
+**Its own deployment**, because the two workers are unlike each other in the way
+that matters to a scheduler: a solve is CPU-bound and pins its cores for a
+thirty-second budget, a notification fan-out is I/O-bound and finishes in
+milliseconds. Together they scale together, and a manager waits half a minute
+for a badge because the pod is mid-solve.
+
+It serves no traffic and therefore has no Service — only the ServiceMonitor's
+scrape and the kubelet's probes reach its port, both by pod IP.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-worker-planning
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-planning
+spec:
+  {{- if not .Values.workerPlanning.scaling.enabled }}
+  replicas: {{ .Values.workerPlanning.scaling.minReplicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "simple-erp.selectorLabels" (dict "root" . "component" "worker-planning") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "simple-erp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker-planning
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/common/config.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.workerPlanning.terminationGracePeriodSeconds }}
+      {{- with .Values.workerPlanning.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workerPlanning.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "simple-erp.image" . }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          command: ["worker", "planning"]
+          ports:
+            - name: probes
+              containerPort: 9100
+          env:
+            {{- include "simple-erp.backendEnv" . | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+          livenessProbe:
+            httpGet: {path: /health, port: probes}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /ready, port: probes}
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /app/conf/app.k8s.yaml
+              subPath: app.k8s.yaml
+          resources:
+            {{- toYaml .Values.workerPlanning.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "simple-erp.fullname" . }}-config
+{{- if .Values.workerPlanning.scaling.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-worker-planning
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-planning
+spec:
+  scaleTargetRef:
+    name: {{ include "simple-erp.fullname" . }}-worker-planning
+  minReplicaCount: {{ .Values.workerPlanning.scaling.minReplicas }}
+  maxReplicaCount: {{ .Values.workerPlanning.scaling.maxReplicas }}
+  pollingInterval: {{ .Values.workerPlanning.scaling.pollingInterval }}
+  cooldownPeriod: {{ .Values.workerPlanning.scaling.cooldownPeriod }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ .Values.workerPlanning.scaling.scaleDownStabilizationSeconds }}
+  triggers:
+    - type: rabbitmq
+      metadata:
+        protocol: http
+        mode: QueueLength
+        queueName: {{ .Values.workerPlanning.scaling.queuePattern | quote }}
+        useRegex: "true"
+        operation: {{ .Values.workerPlanning.scaling.operation | quote }}
+        value: {{ .Values.workerPlanning.scaling.messagesPerReplica | quote }}
+      authenticationRef:
+        name: {{ include "simple-erp.fullname" . }}-rabbitmq
+{{- end }}
+{{- if .Values.workerPlanning.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-worker-planning
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-planning
+spec:
+  maxUnavailable: {{ .Values.workerPlanning.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "simple-erp.selectorLabels" (dict "root" . "component" "worker-planning") | nindent 6 }}
+{{- end }}

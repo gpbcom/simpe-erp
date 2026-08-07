@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Union
+from typing import Optional
 
 # Third-party imports
 from pydantic import ValidationError
@@ -12,7 +12,7 @@ from models.schemas.exceptions import (
     MTCompanyProfileUpdateRequestInvalidName,
     MTCompanyProfileUpdateRequestInvalidRegistrationNumber,
 )
-from models.schemas.requests.company_profile_update_request import (
+from models.schemas.requests.companies.company_profile_update_request import (
     CompanyProfileUpdateRequest,
 )
 
@@ -43,11 +43,11 @@ class TestCompanyProfileUpdateRequest:
         assert request.name == "Aide Domicile"
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_a_missing_or_blank_name_is_refused(self, value: Union[str, None]) -> None:
+    def test_a_missing_or_blank_name_is_refused(self, value: Optional[str]) -> None:
         """**The one field nothing else can work around.**
 
         Args:
-            value (Union[str, None]): The rejected ``name``.
+            value (Optional[str]): The rejected ``name``.
 
         Notes:
             The trading name heads every quote the agency prints and is what an
@@ -130,8 +130,15 @@ class TestCompanyProfileUpdateRequest:
 
         assert not hasattr(request, field)
 
-    def test_only_the_five_owned_fields_are_serialised(self) -> None:
-        """What the route is handed, and nothing else."""
+    def test_only_the_owned_fields_are_serialised(self) -> None:
+        """What the route is handed, and nothing else.
+
+        Notes:
+            The five legal-identity fields joined the original five when a
+            quote had to carry them. They belong on this payload — the
+            administrator-gated one — because the agency's legal identity
+            is not part of running the week.
+        """
         request = CompanyProfileUpdateRequest(name="Agency")
 
         assert set(request.model_dump()) == {
@@ -140,4 +147,9 @@ class TestCompanyProfileUpdateRequest:
             "contact_email",
             "address",
             "is_accepting_applications",
+            "legal_form",
+            "share_capital",
+            "rcs_number",
+            "vat_number",
+            "phone_number",
         }

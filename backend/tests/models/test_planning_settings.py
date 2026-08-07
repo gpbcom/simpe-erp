@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 # Standard library imports
-from datetime import UTC, datetime
-from typing import Union
+from datetime import UTC, datetime, time
+from typing import Dict, Union
 
 # Third-party imports
+from pydantic import JsonValue
 import pytest
 
 # First-party imports
 from models.settings.exceptions import (
     MTInvalidPlanningSettingsException,
     MTPlanningSettingsInvalidDate,
+    MTPlanningSettingsInvalidDayEnd,
+    MTPlanningSettingsInvalidDayStart,
     MTPlanningSettingsInvalidId,
     MTPlanningSettingsInvalidLunchBreak,
+    MTPlanningSettingsInvalidLunchWindow,
     MTPlanningSettingsInvalidRadius,
     MTPlanningSettingsInvalidUpdatedBy,
 )
@@ -209,6 +213,135 @@ class TestPlanningSettings:
         assert settings.covers(distance) is expected
 
     # ------------------------------------------------------------------ #
+    #  Working day and lunch window
+    # ------------------------------------------------------------------ #
+
+    def test_the_working_day_defaults_to_nine_to_eight(self) -> None:
+        """A caller who names only a radius gets the shipped working day."""
+        settings = PlanningSettings(max_intervention_radius_km=30)
+
+        assert settings.day_start_minute == 9 * 60
+        assert settings.day_end_minute == 20 * 60
+        assert settings.lunch_window_start_minute == 11 * 60 + 30
+        assert settings.lunch_window_end_minute == 14 * 60 + 30
+
+    def test_the_working_day_is_configurable(self) -> None:
+        """A manager may move the day, which is the point of storing it.
+
+        Notes:
+            The whole feature is this assertion: before these fields existed
+            the day came from ``app.yaml`` and moving it needed a deployment.
+        """
+        settings = PlanningSettings(
+            max_intervention_radius_km=30,
+            day_start_minute=8 * 60,
+            day_end_minute=19 * 60 + 30,
+            lunch_window_start_minute=12 * 60,
+            lunch_window_end_minute=13 * 60 + 30,
+        )
+
+        assert settings.day_start_time() == time(8, 0)
+        assert settings.day_end_time() == time(19, 30)
+        assert settings.describe_working_day() == "08:00–19:30"
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param(None, id="Invalid - missing"),
+            pytest.param(True, id="Invalid - a bool masquerading as an int"),
+            pytest.param("morning", id="Invalid - not a number"),
+            pytest.param(-1, id="Invalid - before midnight"),
+            pytest.param(24 * 60 + 1, id="Invalid - past the end of the day"),
+        ],
+    )
+    def test_a_minute_outside_the_day_is_refused(self, value: JsonValue) -> None:
+        """A minute of day must actually name a minute of the day.
+
+        Args:
+            value (JsonValue): The rejected minute.
+
+        Notes:
+            ``True`` is included deliberately. It is an ``int`` in Python, and
+            a validator that only checked the range would store it as one
+            minute past midnight.
+        """
+        with pytest.raises(MTPlanningSettingsInvalidDayStart):
+            PlanningSettings(max_intervention_radius_km=30, day_start_minute=value)
+
+    def test_a_day_that_ends_before_it_starts_is_refused(self) -> None:
+        """Two individually valid minutes can still be a day nobody works."""
+        with pytest.raises(MTPlanningSettingsInvalidDayEnd):
+            PlanningSettings(
+                max_intervention_radius_km=30,
+                day_start_minute=20 * 60,
+                day_end_minute=9 * 60,
+            )
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            pytest.param(
+                {
+                    "lunch_window_start_minute": 14 * 60,
+                    "lunch_window_end_minute": 12 * 60,
+                },
+                id="Invalid - the window ends before it starts",
+            ),
+            pytest.param(
+                {
+                    "day_start_minute": 10 * 60,
+                    "lunch_window_start_minute": 9 * 60,
+                    "lunch_window_end_minute": 12 * 60,
+                },
+                id="Invalid - lunch starts before the day does",
+            ),
+            pytest.param(
+                {
+                    "day_end_minute": 13 * 60,
+                    "lunch_window_start_minute": 11 * 60 + 30,
+                    "lunch_window_end_minute": 14 * 60,
+                },
+                id="Invalid - lunch ends after the day does",
+            ),
+            pytest.param(
+                {
+                    "lunch_break_minutes": 120,
+                    "lunch_window_start_minute": 12 * 60,
+                    "lunch_window_end_minute": 13 * 60,
+                },
+                id="Invalid - the window cannot hold the break",
+            ),
+        ],
+    )
+    def test_an_unworkable_lunch_window_is_refused(
+        self, overrides: Dict[str, int]
+    ) -> None:
+        """The window has to sit inside the day and hold the break.
+
+        Args:
+            overrides (Dict[str, int]): The fields making it unworkable.
+
+        Notes:
+            Every one of these is a pair of values that are individually
+            plausible. Caught here it is a 422 naming the conflict; caught by
+            the solver it is a planning run that fails against every visit with
+            "no feasible slot", which names nothing.
+        """
+        with pytest.raises(MTPlanningSettingsInvalidLunchWindow):
+            PlanningSettings(max_intervention_radius_km=30, **overrides)
+
+    def test_a_lunch_window_exactly_as_wide_as_the_break_is_accepted(self) -> None:
+        """The width check is inclusive; a break that just fits, fits."""
+        settings = PlanningSettings(
+            max_intervention_radius_km=30,
+            lunch_break_minutes=60,
+            lunch_window_start_minute=12 * 60,
+            lunch_window_end_minute=13 * 60,
+        )
+
+        assert settings.lunch_window_end_minute == 13 * 60
+
+    # ------------------------------------------------------------------ #
     #  Exception hierarchy
     # ------------------------------------------------------------------ #
 
@@ -220,6 +353,9 @@ class TestPlanningSettings:
             pytest.param(MTPlanningSettingsInvalidLunchBreak, id="lunch break"),
             pytest.param(MTPlanningSettingsInvalidUpdatedBy, id="updated by"),
             pytest.param(MTPlanningSettingsInvalidDate, id="date"),
+            pytest.param(MTPlanningSettingsInvalidDayStart, id="day start"),
+            pytest.param(MTPlanningSettingsInvalidDayEnd, id="day end"),
+            pytest.param(MTPlanningSettingsInvalidLunchWindow, id="lunch window"),
         ],
     )
     def test_every_leaf_shares_one_base(self, exception: type) -> None:

@@ -4,10 +4,16 @@ from __future__ import annotations
 from typing import Iterator
 
 # Third-party imports
+import bcrypt
 import pytest
 
 # First-party imports
 from models.geo.postal_address import PostalAddress
+
+#: The bcrypt cost the suite hashes at. Production uses the library default of
+#: 12, which is a deliberate ~250 ms per hash — the whole point of the algorithm.
+#: Four is the library minimum and is roughly two hundred times cheaper.
+TEST_BCRYPT_ROUNDS = 4
 
 
 def _no_geocoding(self: PostalAddress) -> None:
@@ -59,4 +65,47 @@ def suppress_geocoding(
         yield
         return
     monkeypatch.setattr(PostalAddress, "_geocode", _no_geocoding)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def cheap_password_hashing(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Hash at bcrypt's minimum cost for the duration of a test.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Used to lower the cost factor.
+
+    Yields:
+        None: While hashing is cheap.
+
+    Notes:
+        **Only the cost changes. Real bcrypt still runs.** ``gensalt`` is asked
+        for four rounds instead of the library default of twelve, and
+        ``hashpw``/``checkpw`` are untouched — so every test that hashes a
+        password, verifies one, or asserts that a wrong one is refused still
+        exercises the real algorithm end to end. What it no longer pays is the
+        ~250 ms per hash that makes bcrypt worth using.
+
+        That cost is the *point* in production and is deliberately not
+        configurable: :meth:`~service.auth.auth.AuthService.hash` calls
+        ``bcrypt.gensalt()`` with no argument, so there is no setting a
+        deployment could get wrong. Which is precisely why this is a **test**
+        fixture patching the library rather than a knob on ``AuthConfig``: a
+        production cost factor that can be lowered is one that eventually is.
+
+        Autouse, because four service modules build a real ``AuthService`` and
+        it is not obvious from a test's name which ones hash. Measured: the
+        four together fell from 7.5 s to well under two.
+
+        The cost factor lives in the *hash*, so ``checkpw`` reads it back from
+        whatever it is verifying — including
+        :attr:`~service.auth.auth.AuthService.DUMMY_HASH`, which is a stored
+        cost-12 string and keeps verifying correctly under this fixture.
+    """
+    original = bcrypt.gensalt
+    monkeypatch.setattr(
+        bcrypt,
+        "gensalt",
+        lambda rounds=TEST_BCRYPT_ROUNDS, prefix=b"2b": original(rounds, prefix),
+    )
     yield

@@ -15,7 +15,15 @@ from models.auth.user import User
 
 # First-party imports
 from models.configuration.email_config import EmailConfig
-from models.enums import ContractType, InterventionStatus, QuoteStatus, UserRole
+from models.enums import (
+    ServiceCategory,
+    ContractType,
+    InterventionStatus,
+    Language,
+    QuoteStatus,
+    UserRole,
+)
+from models.companies.company import Company
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.planning.hca_planning import HcaPlanning
@@ -98,6 +106,7 @@ def _planning(interventions: int = 2) -> HcaPlanning:
             Intervention(
                 name=f"Toilette {index}",
                 intervention_type_id="type-1",
+                company_id="company-1",
                 service_category="necessity",
                 quote_line_id=f"line-{index}",
                 hca_id="hca-1",
@@ -142,6 +151,7 @@ def _quote() -> Quote:
         id="quote-1",
         reference="Q-2026-0001",
         customer_id="customer-1",
+        company_id="company-1",
         status=QuoteStatus.ACCEPTED,
         lines=[
             QuoteLine(
@@ -177,6 +187,61 @@ def _quote() -> Quote:
     )
 
 
+def _company() -> Company:
+    """Build the agency issuing a quote.
+
+    Returns:
+        Company: The issuer named on the document.
+    """
+    return Company(
+        id="company-1",
+        name="Aide et Presence Paris",
+        legal_form="SARL",
+        share_capital=Decimal("10000"),
+        registration_number="123456789",
+        rcs_number="RCS Paris B 123 456 789",
+        vat_number="FR12345678901",
+        phone_number="01 23 45 67 89",
+        contact_email="contact@simple-erp.fr",
+        address={
+            "street": "12 rue de Rivoli",
+            "postal_code": "75004",
+            "city": "Paris",
+        },
+    )
+
+
+def _total_row(sheet, label: str) -> int:
+    """Return the row a totals label was written on.
+
+    Args:
+        sheet: The rendered quote sheet.
+        label (str): The label to find, such as "Total TTC".
+
+    Returns:
+        int: The row number.
+
+    Notes:
+        Searched rather than computed. The totals stack sits below a variable
+        number of lines and one row per distinct VAT rate, so a literal row
+        number in a test is a number that moves whenever a fixture gains a
+        line — and fails describing the wrong thing when it does.
+
+        The **last** match, not the first. The summary block above the table
+        states the total including VAT as well, under the same word in
+        French, and the first match is that one.
+    """
+    found = [
+        cell.row
+        for row in sheet.iter_rows()
+        for cell in row
+        if cell.value == label
+    ]
+    if not found:
+        raise AssertionError(f"No totals row labelled {label!r} was written.")
+    return found[-1]
+
+
 class TestFormatter:
     """Tests for the Excel documents."""
 
@@ -208,12 +273,17 @@ class TestFormatter:
     def test_a_quote_renders_its_lines_and_total(self) -> None:
         """Every line and the total reach the sheet."""
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(_quote(), _customer()))
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
-        assert sheet["A1"].value == "Quote Q-2026-0001"
-        assert sheet["A2"].value == "Marie Durand"
-        assert sheet.cell(row=8, column=2).value == "Toilette matin"
-        assert sheet.cell(row=10, column=9).value == pytest.approx(67.33)
+        assert sheet["A1"].value == "Devis Q-2026-0001"
+        assert "Aide et Presence Paris" in sheet["A2"].value
+        assert "Marie Durand" in sheet["A5"].value
+        assert (
+            sheet.cell(row=Formatter.QUOTE_HEADER_ROW + 1, column=2).value
+            == "Toilette matin"
+        )
+        total = _total_row(sheet, "Total TTC")
+        assert sheet.cell(row=total, column=8).value == pytest.approx(67.33)
 
     def test_an_unpriced_line_leaves_its_cells_empty(self) -> None:
         """Empty reads as "not priced yet"; a zero would read as "free"."""
@@ -221,17 +291,17 @@ class TestFormatter:
         quote.lines[0].total_ht = None
         quote.lines[0].total_ttc = None
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(quote, _customer()))
+            BytesIO(Formatter.format_quote(quote, _customer(), _company()))
         ).active
-        assert sheet.cell(row=8, column=7).value is None
-        assert sheet.cell(row=8, column=9).value is None
+        assert sheet.cell(row=Formatter.QUOTE_HEADER_ROW + 1, column=6).value is None
+        assert sheet.cell(row=Formatter.QUOTE_HEADER_ROW + 1, column=8).value is None
 
     def test_amounts_are_numbers_not_strings(self) -> None:
         """A column of amounts must be summable by whoever opens it."""
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(_quote(), _customer()))
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
-        cell = sheet.cell(row=8, column=7)
+        cell = sheet.cell(row=Formatter.QUOTE_HEADER_ROW + 1, column=6)
         assert isinstance(cell.value, float)
         assert "€" in cell.number_format
 
@@ -294,7 +364,7 @@ class TestEmailService:
         self, service: EmailService, sent: List[EmailMessage]
     ) -> None:
         """The customer's own stored address receives their quote."""
-        await service.send_quote(_quote(), _customer())
+        await service.send_quote(_quote(), _customer(), _company())
         assert sent[0]["To"] == "customer-1@example.com"
         assert "Q-2026-0001" in sent[0]["Subject"]
 
@@ -315,7 +385,7 @@ class TestEmailService:
         monkeypatch.delenv("SMTP_PASSWORD", raising=False)
         service = EmailService(config=EmailConfig(enabled=True))
         with pytest.raises(MTEmailNotConfigured):
-            await service.send_quote(_quote(), _customer())
+            await service.send_quote(_quote(), _customer(), _company())
 
     async def test_an_smtp_failure_is_reported(
         self, service: EmailService, monkeypatch: pytest.MonkeyPatch
@@ -367,7 +437,9 @@ class TestEmailService:
     ) -> None:
         """Each quote goes to the customer it names, and no other."""
         delivered = await service.send_quotes(
-            [_quote()], [_customer("customer-9"), _customer("customer-1")]
+            [_quote()],
+            [_customer("customer-9"), _customer("customer-1")],
+            _company(),
         )
         assert delivered == 1
         assert sent[0]["To"] == "customer-1@example.com"
@@ -691,30 +763,479 @@ class TestWorkbookStyling:
     def test_the_quote_status_is_a_colour_coded_pill(self) -> None:
         """Accepted, rejected and expired must be tellable apart at a glance."""
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(_quote(), _customer()))
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
-        assert sheet["A4"].value == "Status: accepted"
-        assert sheet["A4"].fill.fgColor.rgb == "FFE2EFDA"
+        assert sheet["A7"].value == "Statut: accepté"
+        assert sheet["A7"].fill.fgColor.rgb == "FFE2EFDA"
 
     def test_the_quote_status_pill_is_wide_enough_to_read(self) -> None:
         """Written into the date column alone it is clipped to "tatus: acce"."""
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(_quote(), _customer()))
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
-        assert "A4:C4" in {str(cells) for cells in sheet.merged_cells.ranges}
+        assert "A7:C7" in {str(cells) for cells in sheet.merged_cells.ranges}
 
     def test_amounts_are_right_aligned(self) -> None:
         """A column of money that does not line up cannot be scanned."""
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(_quote(), _customer()))
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
-        assert sheet.cell(row=8, column=9).alignment.horizontal == "right"
+        assert (
+            sheet.cell(
+                row=Formatter.QUOTE_HEADER_ROW + 1, column=8
+            ).alignment.horizontal
+            == "right"
+        )
 
     def test_the_quote_total_is_emphasised(self) -> None:
         """The figure the customer is being asked to pay is the point."""
         sheet = load_workbook(
-            BytesIO(Formatter.format_quote(_quote(), _customer()))
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
-        total = sheet.cell(row=10, column=9)
+        total = sheet.cell(row=_total_row(sheet, "Total TTC"), column=8)
         assert total.font.bold is True
         assert total.fill.fgColor.rgb == Formatter.TOTAL_FILL
+
+
+class TestQuoteLanguage:
+    """Tests for the language a quote and its covering note are written in."""
+
+    def test_french_is_the_default(self) -> None:
+        """A caller that names no language gets French.
+
+        Notes:
+            French rather than the caller's browser: this is a French agency,
+            and a quote reaching a customer in English because nobody set a
+            preference is the wrong failure to default into.
+        """
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+
+        assert sheet["A1"].value.startswith("Devis")
+        assert sheet.title == "Devis"
+
+    @pytest.mark.parametrize(
+        ("language", "title", "service_header"),
+        [
+            pytest.param(Language.FR, "Devis", "Prestation", id="French"),
+            pytest.param(Language.EN, "Quote", "Service", id="English"),
+        ],
+    )
+    def test_the_whole_document_follows_the_language(
+        self, language: Language, title: str, service_header: str
+    ) -> None:
+        """Title, sheet name and column headings all move together.
+
+        Args:
+            language (Language): The language asked for.
+            title (str): The word the title should start with.
+            service_header (str): The heading over the service column.
+
+        Notes:
+            Asserted across three places rather than one. A catalogue wired
+            into the title and forgotten in the headers produces a document
+            that is half-translated, which reads worse than one that is not
+            translated at all.
+        """
+        sheet = load_workbook(
+            BytesIO(
+                Formatter.format_quote(_quote(), _customer(), _company(), language)
+            )
+        ).active
+
+        assert sheet["A1"].value.startswith(title)
+        assert sheet.title == title
+        assert (
+            sheet.cell(row=Formatter.QUOTE_HEADER_ROW, column=2).value
+            == service_header
+        )
+
+    def test_the_status_word_is_translated(self) -> None:
+        """The pill carries a word, so the word has to be in the language."""
+        french = load_workbook(
+            BytesIO(
+                Formatter.format_quote(
+                    _quote(), _customer(), _company(), Language.FR
+                )
+            )
+        ).active
+        english = load_workbook(
+            BytesIO(
+                Formatter.format_quote(
+                    _quote(), _customer(), _company(), Language.EN
+                )
+            )
+        ).active
+
+        assert french["A7"].value == "Statut: accepté"
+        assert english["A7"].value == "Status: accepted"
+
+    @pytest.mark.parametrize(
+        ("language", "expected"),
+        [
+            pytest.param(Language.FR, "2 h 00", id="French"),
+            pytest.param(Language.EN, "2h 00m", id="English"),
+        ],
+    )
+    def test_a_duration_is_written_out_not_left_in_minutes(
+        self, language: Language, expected: str
+    ) -> None:
+        """"1110" is the solver's unit, not an answer for a customer.
+
+        Args:
+            language (Language): The language asked for.
+            expected (str): How the duration should read.
+        """
+        assert Formatter.format_duration(120, language) == expected
+
+
+class TestQuoteParties:
+    """Tests for the two parties a quote has to name."""
+
+    def test_the_issuing_agency_is_named(self) -> None:
+        """**A quote naming only the recipient cannot be acted on.**
+
+        Notes:
+            The customer needs to know who is offering, under what registered
+            number, and where to reply. None of that was on the document
+            before: a customer carries no company and neither does a quote, so
+            the agency comes from the account that issued it.
+        """
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+
+        assert "Aide et Presence Paris" in sheet["A2"].value
+        details = sheet["A3"].value
+        assert "12 rue de Rivoli" in details
+        assert "123456789" in details
+        assert "contact@simple-erp.fr" in details
+
+    def test_the_customer_is_named_with_their_address(self) -> None:
+        """The recipient, and where the care is delivered."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+
+        assert "Marie Durand" in sheet["A5"].value
+        assert "rue" in sheet["A6"].value.lower()
+
+    def test_an_agency_with_no_registration_number_prints_no_label(self) -> None:
+        """An optional field left unset is not a data error to display.
+
+        Notes:
+            Joining only what is set. "SIRET None" beside a real address reads
+            as a fault on a document somebody is being asked to sign.
+        """
+        bare = Company(id="company-1", name="Petite Agence")
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), bare))
+        ).active
+
+        assert not sheet["A3"].value
+        assert "Petite Agence" in sheet["A2"].value
+
+
+class TestQuoteSummary:
+    """Tests for the four figures asked of a quote before its price."""
+
+    def test_the_period_and_duration_are_stated(self) -> None:
+        """When does this start, when does it end, and how much care is it."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        row = Formatter.QUOTE_SUMMARY_ROW
+
+        assert sheet.cell(row=row, column=1).value == "Période"
+        assert "2026-08-03" in str(sheet.cell(row=row, column=3).value)
+        assert sheet.cell(row=row, column=6).value == "Interventions"
+        assert sheet.cell(row=row, column=7).value == 1
+        assert sheet.cell(row=row + 1, column=1).value == "Durée totale"
+        assert sheet.cell(row=row + 1, column=3).value == "2 h 00"
+
+    def test_the_summary_total_matches_the_table_total(self) -> None:
+        """Two figures for one number is one figure too many.
+
+        Notes:
+            The summary states the total incl. VAT and so does the table's last
+            row. They are computed from the same method, and this is what says
+            so — a summary carrying a stale figure is worse than no summary.
+        """
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        summary = sheet.cell(row=Formatter.QUOTE_SUMMARY_ROW + 1, column=7).value
+        table = sheet.cell(row=_total_row(sheet, "Total TTC"), column=8).value
+
+        assert summary == pytest.approx(table)
+
+    def test_the_summary_is_translated(self) -> None:
+        """Its labels come from the same catalogue as everything else."""
+        sheet = load_workbook(
+            BytesIO(
+                Formatter.format_quote(
+                    _quote(), _customer(), _company(), Language.EN
+                )
+            )
+        ).active
+        row = Formatter.QUOTE_SUMMARY_ROW
+
+        assert sheet.cell(row=row, column=1).value == "Period"
+        assert sheet.cell(row=row + 1, column=1).value == "Total duration"
+
+    def test_every_line_carries_its_duration_and_both_prices(self) -> None:
+        """Duration, price excluding VAT and price including it, per line."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        row = Formatter.QUOTE_HEADER_ROW + 1
+
+        assert sheet.cell(row=row, column=3).value == pytest.approx(2.0)
+        assert sheet.cell(row=row, column=4).value == pytest.approx(31.91)
+        assert sheet.cell(row=row, column=6).value == pytest.approx(63.82)
+        assert sheet.cell(row=row, column=8).value == pytest.approx(67.33)
+
+
+class TestQuoteLegalForm:
+    """Tests for the mentions a quote must carry to be a quote at all."""
+
+    def test_the_issuer_is_named_with_its_legal_form(self) -> None:
+        """**"Aide et Presence Paris" is a trading name, not a legal person.**
+
+        Notes:
+            The customer is contracting with the SARL, and the legal form is
+            part of how a French company must identify itself on a commercial
+            document.
+        """
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+
+        assert "Aide et Presence Paris SARL" in sheet["A2"].value
+
+    def test_an_agency_with_no_legal_form_prints_its_name_alone(self) -> None:
+        """A field not filled in yet must not take the quote away.
+
+        Notes:
+            Every legal column is nullable, because none has a safe default.
+            An agency fills them in on its own screen; until it does, the
+            document says what it can.
+        """
+        bare = Company(id="company-1", name="Petite Agence")
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), bare))
+        ).active
+
+        assert "Petite Agence" in sheet["A2"].value
+        assert "None" not in sheet["A2"].value
+
+    def test_the_issuer_line_carries_every_legal_identifier(self) -> None:
+        """SIRET, RCS, VAT number, capital, phone and email."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        details = sheet["A3"].value
+
+        for fragment in (
+            "12 rue de Rivoli",
+            "123456789",
+            "RCS Paris B 123 456 789",
+            "FR12345678901",
+            "01 23 45 67 89",
+            "contact@simple-erp.fr",
+        ):
+            assert fragment in details, f"{fragment!r} is missing from the issuer."
+
+    def test_the_capital_is_labelled_and_carries_its_currency(self) -> None:
+        """"Capital social 10 000,00 €", not a bare number."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+
+        assert "Capital social" in sheet["A3"].value
+        assert "€" in sheet["A3"].value
+
+
+class TestQuoteTotalsBlock:
+    """Tests for the untaxed / tax / total stack the document ends on."""
+
+    def test_the_totals_are_summed_from_the_lines_printed_above(self) -> None:
+        """**A total that disagrees with its own column is the worst failure.**
+
+        Notes:
+            The quote's own ``total_ht`` sums the *aggregates*, which the
+            pricing service computes. A quote reaching the renderer without
+            them would print zero under a column of real amounts — and look
+            correct doing it.
+        """
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        untaxed = sheet.cell(row=_total_row(sheet, "Total HT"), column=8).value
+        total = sheet.cell(row=_total_row(sheet, "Total TTC"), column=8).value
+
+        assert untaxed == pytest.approx(63.82)
+        assert total == pytest.approx(67.33)
+
+    def test_the_tax_is_broken_down_per_rate(self) -> None:
+        """Two rates, two lines — not one "VAT" figure.
+
+        Notes:
+            Home care is billed at 5.5% for a necessity and 20% for a comfort
+            service. A single tax line gives the customer no way to check
+            either, and an accountant no way to post it.
+        """
+        quote = _quote()
+        comfort = quote.lines[0].model_copy(
+            update={
+                "id": "line-2",
+                "service_category": ServiceCategory.COMFORT,
+                "total_ht": Decimal("200.00"),
+                "vat_amount": Decimal("40.00"),
+                "total_ttc": Decimal("240.00"),
+            }
+        )
+        quote.lines.append(comfort)
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(quote, _customer(), _company()))
+        ).active
+
+        assert sheet.cell(row=_total_row(sheet, "TVA 5.5%"), column=8).value == (
+            pytest.approx(3.51)
+        )
+        assert sheet.cell(row=_total_row(sheet, "TVA 20%"), column=8).value == (
+            pytest.approx(40.00)
+        )
+
+    @pytest.mark.parametrize(
+        ("rate", "expected"),
+        [
+            pytest.param(Decimal("0.055"), "5.5%", id="a fractional rate"),
+            pytest.param(Decimal("0.20"), "20%", id="a whole rate"),
+            pytest.param(Decimal("0.2"), "20%", id="the same, written shorter"),
+        ],
+    )
+    def test_a_rate_drops_its_trailing_zeros(
+        self, rate: Decimal, expected: str
+    ) -> None:
+        """"TVA 5.500%" reads as a rate somebody mistyped.
+
+        Args:
+            rate (Decimal): The rate as a fraction.
+            expected (str): How it should read.
+        """
+        assert Formatter.format_rate(rate) == expected
+
+    def test_the_line_quantity_is_hours_not_minutes(self) -> None:
+        """**Otherwise the arithmetic on the page is wrong by sixty.**
+
+        Notes:
+            The unit price beside it is an hourly rate, so a customer checking
+            quantity × price against the amount has to be able to get the
+            amount.
+        """
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        row = Formatter.QUOTE_HEADER_ROW + 1
+        quantity = sheet.cell(row=row, column=3).value
+        unit = sheet.cell(row=row, column=4).value
+        amount = sheet.cell(row=row, column=6).value
+
+        assert quantity == pytest.approx(2.0)
+        assert quantity * unit == pytest.approx(amount, abs=0.01)
+
+
+class TestQuoteLegalTerms:
+    """Tests for the footer that makes the document an offer."""
+
+    @pytest.mark.parametrize(
+        ("language", "fragment"),
+        [
+            pytest.param(Language.FR, "Bon pour accord", id="French"),
+            pytest.param(Language.EN, "Bon pour accord", id="English"),
+        ],
+    )
+    def test_the_acceptance_mention_is_present(
+        self, language: Language, fragment: str
+    ) -> None:
+        """**A quote without it is a price list, not an offer.**
+
+        Args:
+            language (Language): The language asked for.
+            fragment (str): The wording that must appear.
+
+        Notes:
+            French law requires a commercial offer to be returned signed before
+            the work begins. The obligation is French whatever language the
+            reader chose, so the mention appears in both — the language decides
+            the words, not the law.
+        """
+        sheet = load_workbook(
+            BytesIO(
+                Formatter.format_quote(
+                    _quote(), _customer(), _company(), language
+                )
+            )
+        ).active
+        text = " ".join(
+            str(cell.value)
+            for row in sheet.iter_rows()
+            for cell in row
+            if cell.value
+        )
+
+        assert fragment in text
+
+    def test_the_terms_state_payment_and_penalties(self) -> None:
+        """When payment falls due, and what happens if it does not."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        text = " ".join(
+            str(cell.value)
+            for row in sheet.iter_rows()
+            for cell in row
+            if cell.value
+        )
+
+        assert "30 jours" in text
+        assert "L441-10" in text
+        assert _quote().reference in text
+
+    def test_a_quote_with_no_expiry_states_no_validity(self) -> None:
+        """An offer promising to stand "until None" is worse than none.
+
+        Notes:
+            A draft carries no ``valid_until`` yet. The sentence is omitted
+            rather than printed with a blank in it.
+        """
+        quote = _quote()
+        quote.valid_until = None
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(quote, _customer(), _company()))
+        ).active
+        text = " ".join(
+            str(cell.value)
+            for row in sheet.iter_rows()
+            for cell in row
+            if cell.value
+        )
+
+        assert "valable" not in text.lower()
+        assert "None" not in text
+
+    def test_the_customer_gets_somewhere_to_sign(self) -> None:
+        """The signature block is what turns it into an agreement."""
+        sheet = load_workbook(
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
+        ).active
+        text = " ".join(
+            str(cell.value)
+            for row in sheet.iter_rows()
+            for cell in row
+            if cell.value
+        )
+
+        assert "signature du client" in text.lower()

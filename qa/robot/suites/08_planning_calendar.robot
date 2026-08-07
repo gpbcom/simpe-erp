@@ -143,6 +143,13 @@ The Detail Drawer Names The Address And The Time
 
 *** Keywords ***
 Open The Calendar
+    [Documentation]    Sign in as an assistant and open their week.
+    ...
+    ...    The planning is a *precondition*, not something this suite creates.
+    ...    Robot runs a directory's suites in name order, so 08 always sorts
+    ...    before the suite that presses *compute* — asking for it here is what
+    ...    makes this suite runnable on its own, and in any shard.
+    Ensure A Planning Has Been Computed
     Open The Application
     Sign In As    ${ASSISTANT_EMAIL}
     Navigate To    /me/planning

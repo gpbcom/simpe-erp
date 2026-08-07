@@ -12,23 +12,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.configuration.app_config import AppConfig
-from models.enums import EventRoutingKey, NotificationKind, PlanningRunStatus
+from models.enums import (
+    EventRoutingKey,
+    NotificationKind,
+    PlanningRunStatus,
+    WorkerRole,
+)
 from models.messaging.event_envelope import EventEnvelope
 from models.notifications.notification import Notification
 from service.messaging.consumer import EventConsumer
 from service.messaging.publisher import EventPublisher
+from service.observability.metrics import ApplicationMetrics
+from service.observability.probe_server import ProbeServer
 from service.planning.plannings import PlanningService
 from service.planning.webhook import PlanningWebhook
 from storage.db.connection_manager import DatabaseConnectionManager
-from storage.repositories.company import CompanyRepository
-from storage.repositories.customer import CustomerRepository
-from storage.repositories.hca import HcaRepository
-from storage.repositories.intervention import InterventionRepository
-from storage.repositories.notification import NotificationRepository
-from storage.repositories.planning_run import PlanningRunRepository
-from storage.repositories.planning_settings import PlanningSettingsRepository
-from storage.repositories.quote import QuoteRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.auth.user import UserRepository
+from storage.repositories.catalog.intervention_type import (
+    InterventionTypeRepository,  # noqa: E501
+)
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.notifications.notification import (
+    NotificationRepository,  # noqa: E501
+)
+from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.planning.intervention import InterventionRepository
+from storage.repositories.planning.planning_run import PlanningRunRepository
+from storage.repositories.planning.planning_settings import (
+    PlanningSettingsRepository,  # noqa: E501
+)
+from storage.repositories.quoting.quote import QuoteRepository
 
 
 class WorkerRunner:
@@ -79,6 +93,11 @@ class WorkerRunner:
           record that no longer exists, which is logged and acknowledged: a
           quote deleted between submission and handling is not an error, and
           retrying it for ever would never succeed.
+        - The notification worker also answers ``skill.added``, which is the
+          one topic here raised by a *subordinate* rather than by the quote
+          workflow or the solver. A skill is declared without approval and
+          takes effect at once, so telling the supervisors is what makes that
+          safe — see :meth:`skill_added`.
         - **Recipients are resolved here, from roles, rather than named by the
           message.** The thing publishing an event knows that a quote was
           submitted; it does not know who in the agency is allowed to rule on
@@ -103,42 +122,91 @@ class WorkerRunner:
         EventRoutingKey.QUOTE_VALIDATED,
         EventRoutingKey.QUOTE_REFUSED,
         EventRoutingKey.PLANNING_RUN_COMPLETED,
+        EventRoutingKey.SKILL_ADDED,
     )
 
-    def __init__(self, config: AppConfig, logger: Optional[Logger] = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        role: WorkerRole = WorkerRole.PLANNING,
+        logger: Optional[Logger] = None,
+    ) -> None:
         """Initialize the runner.
 
         Args:
             config (AppConfig): The application configuration.
+            role (WorkerRole): What this process consumes. Defaults to
+                :attr:`~models.enums.WorkerRole.PLANNING`.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
+
+        Notes:
+            Both consumers are constructed whatever the role, and only the one
+            this process serves is ever started. Building them conditionally
+            would put a ``None`` behind every attribute and a check in front of
+            every use; an unstarted consumer holds no connection and costs
+            nothing.
         """
         self.config = config
+        self.role = role
         self.logger = logger if logger else getLogger(__name__)
         self.publisher = EventPublisher(config=config.rabbitmq)
         self.webhook = PlanningWebhook(config=config.webhook)
-        self.manager = DatabaseConnectionManager(
-            config=config.database, logger=self.logger
+        self.manager = DatabaseConnectionManager(config=config.database)
+        self.metrics = ApplicationMetrics(logger=self.logger)
+        self.planning = EventConsumer(
+            config=config.rabbitmq,
+            metrics=self.metrics,
+            role=role.value,
+            logger=self.logger,
         )
-        self.planning = EventConsumer(config=config.rabbitmq, logger=self.logger)
-        self.notifications = EventConsumer(config=config.rabbitmq, logger=self.logger)
-        self.lifecycle = EventConsumer(config=config.rabbitmq, logger=self.logger)
-        self.logger.debug("WorkerRunner created.")
+        self.notifications = EventConsumer(
+            config=config.rabbitmq,
+            metrics=self.metrics,
+            role=role.value,
+            logger=self.logger,
+        )
+        self.lifecycle = EventConsumer(
+            config=config.rabbitmq,
+            metrics=self.metrics,
+            role="lifecycle",
+            logger=self.logger,
+        )
+        self.probes = ProbeServer(
+            config=config.observability.named(f"worker-{role.value}"),
+            metrics=self.metrics,
+            is_ready=self.is_ready,
+            logger=self.logger,
+        )
+        self.logger.debug("WorkerRunner created for the %s role.", role.value)
 
     ############################
     # Internal Helpers Methods #
     ############################
 
     def _register_handlers(self) -> None:
-        """Wire each topic to the coroutine that answers it."""
-        self.planning.on(EventRoutingKey.PLANNING_RUN_REQUESTED, self.run_planning)
-        self.notifications.on(EventRoutingKey.QUOTE_SUBMITTED, self.quote_submitted)
-        self.notifications.on(EventRoutingKey.QUOTE_VALIDATED, self.quote_validated)
-        self.notifications.on(EventRoutingKey.QUOTE_REFUSED, self.quote_refused)
-        self.notifications.on(
-            EventRoutingKey.PLANNING_RUN_COMPLETED, self.planning_completed
-        )
-        self.lifecycle.on(EventRoutingKey.COMPANY_CREATED, self.company_created)
+        """Wire this role's topics to the coroutines that answer them.
+
+        Notes:
+            - Only this role's handlers are registered. A consumer with no handler
+              for a routing key logs and acknowledges the message rather than
+              answering it, so registering both roles' handlers on a process that
+              consumes one queue would be harmless — but it would also make the
+              code read as though either process might do either job.
+            - ``company.created`` is registered whatever the role. Both roles have
+              queues of their own to declare when an agency is founded.
+        """
+        if self.role is WorkerRole.PLANNING:
+            self.planning.on(EventRoutingKey.PLANNING_RUN_REQUESTED, self.run_planning)  # noqa: E501
+        else:
+            self.notifications.on(EventRoutingKey.QUOTE_SUBMITTED, self.quote_submitted)  # noqa: E501
+            self.notifications.on(EventRoutingKey.QUOTE_VALIDATED, self.quote_validated)  # noqa: E501
+            self.notifications.on(EventRoutingKey.QUOTE_REFUSED, self.quote_refused)
+            self.notifications.on(
+                EventRoutingKey.PLANNING_RUN_COMPLETED, self.planning_completed
+            )
+            self.notifications.on(EventRoutingKey.SKILL_ADDED, self.skill_added)
+        self.lifecycle.on(EventRoutingKey.COMPANY_CREATED, self.company_created)  # noqa: E501
 
     async def _wait_for_a_signal(self) -> None:
         """Block until the process is asked to stop.
@@ -205,7 +273,7 @@ class WorkerRunner:
                 title,
             )
             return []
-        users = UserRepository(session=session, logger=self.logger)
+        users = UserRepository(session=session)
         supervisors = await users.list_supervisors(company_id)
         if not supervisors:
             self.logger.error(
@@ -228,7 +296,7 @@ class WorkerRunner:
             for supervisor in supervisors
             if supervisor.id is not None
         ]
-        repository = NotificationRepository(session=session, logger=self.logger)
+        repository = NotificationRepository(session=session)
         written = await repository.create_many(pending)
         self.logger.info(
             "Notified %d supervisor(s) of company %s: %s.",
@@ -268,9 +336,9 @@ class WorkerRunner:
             assistant's problem to be told about.
         """
         if not recipient_id:
-            self.logger.warning("Cannot deliver %r: no recipient was named.", title)
+            self.logger.warning("Cannot deliver %r: no recipient was named.", title)  # noqa: E501
             return []
-        repository = NotificationRepository(session=session, logger=self.logger)
+        repository = NotificationRepository(session=session)  # noqa: E501
         written = await repository.create(
             Notification(
                 recipient_id=recipient_id,
@@ -284,7 +352,7 @@ class WorkerRunner:
         self.logger.info("Notified %s: %s.", recipient_id, title)
         return [written.recipient_id]
 
-    async def _announce(self, company_id: Optional[str], recipients: List[str]) -> None:
+    async def _announce(self, company_id: Optional[str], recipients: List[str]) -> None:  # noqa: E501
         """Tell the API which accounts have something new to read.
 
         Args:
@@ -389,17 +457,15 @@ class WorkerRunner:
         self.logger.info("Solving planning run %s.", run_id)
         async with self.manager.session() as session:
             service = PlanningService(
-                runs=PlanningRunRepository(session=session, logger=self.logger),
-                interventions=InterventionRepository(
-                    session=session, logger=self.logger
-                ),
-                quotes=QuoteRepository(session=session, logger=self.logger),
-                customers=CustomerRepository(session=session, logger=self.logger),  # noqa: E501
-                hcas=HcaRepository(session=session, logger=self.logger),
-                settings=PlanningSettingsRepository(
-                    session=session, logger=self.logger
-                ),
+                runs=PlanningRunRepository(session=session),
+                interventions=InterventionRepository(session=session),
+                quotes=QuoteRepository(session=session),
+                customers=CustomerRepository(session=session),  # noqa: E501
+                hcas=HcaRepository(session=session),
+                types=InterventionTypeRepository(session=session),
+                settings=PlanningSettingsRepository(session=session),
                 config=self.config.planning,
+                metrics=self.metrics,
                 logger=self.logger,
             )
             run = await service.execute_run(run_id)
@@ -415,7 +481,7 @@ class WorkerRunner:
         await self.publisher.publish(
             EventRoutingKey.PLANNING_RUN_COMPLETED,
             company_id,
-            {"run_id": run_id, "status": run.status.value, "company_id": company_id},
+            {"run_id": run_id, "status": run.status.value, "company_id": company_id},  # noqa: E501
         )
 
     async def quote_submitted(self, envelope: EventEnvelope) -> None:
@@ -522,6 +588,55 @@ class WorkerRunner:
             )
         await self._announce(company_id, recipients)
 
+    async def skill_added(self, envelope: EventEnvelope) -> None:
+        """Tell the agency's supervisors that an assistant declared a skill.
+
+        Args:
+            envelope (EventEnvelope): The message, carrying ``hca_id``,
+                ``hca_name``, ``skill_name``, ``skill_code`` and ``company_id``.
+
+        Notes:
+            - **This is the whole reason a declaration needs no approval.** A
+              skill takes effect the moment its owner enters it, which is what
+              stops the agency losing track of who can do what; the safeguard
+              is that every manager and administrator is told, and any of them
+              can withdraw it before the next planning run acts on it.
+            - The notification carries no ``quote_id`` — there is no quote — so
+              :meth:`~models.notifications.Notification.is_actionable` reports
+              it as plain text rather than a link. That is why
+              :meth:`~models.enums.NotificationKind.concerns_a_quote` had to
+              stop being written as "not the planning one": a skill
+              notification rendered as a link would be a dead one.
+            - The body names the code as well as the label, because the code is
+              what a requirement is matched on. A supervisor deciding whether
+              somebody has over-claimed needs to know which requirement the
+              declaration just satisfied, and the free-text name does not say.
+        """
+        hca_name = envelope.string_field("hca_name") or "un intervenant"
+        skill_name = envelope.string_field("skill_name") or "une compétence"
+        skill_code = envelope.string_field("skill_code")
+        company_id = envelope.string_field("company_id")
+        described = f"{skill_name} ({skill_code})" if skill_code else skill_name
+        if skill_code is None:
+            self.logger.warning(
+                "%s declared %r with no catalogue code; no requirement can "
+                "match it.",
+                hca_name,
+                skill_name,
+            )
+        async with self.manager.session() as session:
+            recipients = await self._notify_supervisors(
+                session,
+                company_id=company_id,
+                kind=NotificationKind.SKILL_ADDED,
+                title=f"Nouvelle compétence déclarée par {hca_name}",
+                body=(
+                    f"{hca_name} a déclaré la compétence {described}. Elle sera "
+                    f"prise en compte au prochain calcul de planning."
+                ),
+            )
+        await self._announce(company_id, recipients)
+
     async def company_created(self, envelope: EventEnvelope) -> None:
         """Bind the queues of an agency that has just been founded.
 
@@ -539,7 +654,7 @@ class WorkerRunner:
         if not company_id:
             self.logger.error("A company.created message named no agency.")
             return
-        self.logger.info("Agency %s was founded; binding its queues.", company_id)
+        self.logger.info("Agency %s was founded; binding its queues.", company_id)  # noqa: E501
         await self.serve(company_id)
 
     async def companies(self) -> List[str]:
@@ -554,7 +669,7 @@ class WorkerRunner:
             queue be exclusive and non-durable.
         """
         async with self.manager.session() as session:
-            repository = CompanyRepository(session=session, logger=self.logger)
+            repository = CompanyRepository(session=session)
             stored = await repository.list(size=None)
         identifiers = [company.id for company in stored if company.id]
         self.logger.info("Worker will serve %d agency/agencies.", len(identifiers))  # noqa: E501
@@ -567,21 +682,49 @@ class WorkerRunner:
             company_id (str): The agency to serve.
 
         Notes:
-            Idempotent, because declaring a queue that already exists is. That
-            matters: a restart racing a ``company.created`` announcement can
-            reach the same agency twice, and the safe ordering below relies on
-            being able to.
+            - Idempotent, because declaring a queue that already exists is. That
+              matters: a restart racing a ``company.created`` announcement can
+              reach the same agency twice, and the safe ordering below relies on
+              being able to.
+            - **Only this role's queue is bound.** The other one is declared by
+              the other deployment, and a process that bound both would consume
+              from a queue it has no handler for — quietly acknowledging every
+              message on it and dropping the work.
         """
-        await self.planning.consume_for_company(
-            self.PLANNING_QUEUE,
-            [EventRoutingKey.PLANNING_RUN_REQUESTED],
-            company_id,
-        )
+        if self.role is WorkerRole.PLANNING:
+            await self.planning.consume_for_company(
+                self.PLANNING_QUEUE,
+                [EventRoutingKey.PLANNING_RUN_REQUESTED],
+                company_id,
+            )
+            return
         await self.notifications.consume_for_company(
             self.NOTIFICATION_QUEUE,
             list(self.NOTIFICATION_KEYS),
             company_id,
         )
+
+    def is_ready(self) -> bool:
+        """Return whether this worker can currently do its job.
+
+        Returns:
+            bool: ``True`` when its own consumer holds an open connection.
+
+        Notes:
+            - **The broker, not the process.** A worker whose process is running
+              but whose connection has gone consumes nothing; reporting it Ready
+              is what lets a rolling update replace the last working replica with
+              one that cannot consume, and nothing surfaces until a queue stops
+              draining.
+            - The role's own consumer is the one asked. The other holds no
+              connection by design, so checking both would report every worker
+              unready for ever.
+        """
+        consumer = (
+            self.planning if self.role is WorkerRole.PLANNING else self.notifications  # noqa: E501
+        )
+        connection = consumer.connection
+        return connection is not None and not connection.is_closed
 
     async def start(self) -> List[str]:
         """Connect, bind every agency, and begin consuming.
@@ -607,15 +750,22 @@ class WorkerRunner:
         await self.manager.connect()
         self.logger.info("The worker is connected to the database.")
         self._register_handlers()
-        await self.planning.start()
-        await self.notifications.start()
+        if self.role is WorkerRole.PLANNING:
+            await self.planning.start()
+        else:
+            await self.notifications.start()
         await self.lifecycle.start()
 
-        await self.lifecycle.consume_every_company([EventRoutingKey.COMPANY_CREATED])
+        await self.lifecycle.consume_every_company([EventRoutingKey.COMPANY_CREATED])  # noqa: E501
         served = await self.companies()
         for company_id in served:
             await self.serve(company_id)
-        self.logger.info("Worker is consuming; waiting for messages.")
+        await self.probes.start()
+        self.logger.info(
+            "The %s worker is consuming %d agency/agencies; waiting for messages.",
+            self.role.value,
+            len(served),
+        )
         return served
 
     async def run(self) -> None:
@@ -627,6 +777,7 @@ class WorkerRunner:
 
     async def close(self) -> None:
         """Release every broker connection and the database pool."""
+        await self.probes.close()
         await self.lifecycle.close()
         await self.planning.close()
         await self.notifications.close()

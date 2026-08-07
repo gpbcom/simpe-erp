@@ -16,16 +16,17 @@ from api.dependencies import (
     get_hca_service,
     get_planning_service,
     get_quote_service,
+    get_company_repository,
     get_user_repository,
 )
 from models.auth.user import User
 from models.enums import QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.quoting.quote import Quote
-from models.schemas.requests.planning_completed_request import (
+from models.schemas.requests.planning.planning_completed_request import (
     PlanningCompletedRequest,  # noqa: E501
 )
-from models.schemas.responses.email_dispatch_response import (
+from models.schemas.responses.messaging.email_dispatch_response import (
     EmailDispatchResponse,  # noqa: E501
 )
 from service.customers.customers import CustomerService
@@ -33,7 +34,8 @@ from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
 from service.planning.plannings import PlanningService
 from service.quotes.quotes import QuoteService
-from storage.repositories.user import UserRepository
+from storage.repositories.auth.user import UserRepository
+from storage.repositories.companies.company import CompanyRepository
 
 logger: Logger = getLogger(__name__)
 
@@ -50,6 +52,7 @@ async def planning_completed(
     quotes: QuoteService = Depends(get_quote_service),
     customers: CustomerService = Depends(get_customer_service),
     users: UserRepository = Depends(get_user_repository),
+    companies: CompanyRepository = Depends(get_company_repository),
 ) -> EmailDispatchResponse:
     """Email a finished planning to its assistants and its quotes to customers.
 
@@ -61,6 +64,8 @@ async def planning_completed(
         hcas (HcaService): Supplies the assistants' addresses.
         quotes (QuoteService): Supplies the accepted quotes of the period.
         customers (CustomerService): Supplies the customers' addresses.
+        companies (CompanyRepository): Resolves the agency named on every
+            quote, from the account that requested the run.
         users (UserRepository): Supplies the manager and administrator
             accounts that receive the consolidated copy.
 
@@ -145,13 +150,35 @@ async def planning_completed(
         page=1, size=500, status=QuoteStatus.ACCEPTED
     )
     recipients: List[Customer] = await customers.list(page=1, size=500)
-    quotes_sent = await emails.send_quotes(accepted, recipients)
+    # The agency named on every quote, and the language it is written in,
+    # both come from the account that asked for the run. Neither a customer
+    # nor a quote carries a company, and there is no request here to read an
+    # Accept-Language header from — which is exactly why the preference is
+    # stored on the account rather than left in the browser.
+    issuer = await companies.get(requester.company_id)
+    if issuer is None:
+        logger.error(
+            "Planning run %s belongs to agency %s, which no longer exists; "
+            "its quotes have no issuer to name.",
+            run.id,
+            requester.company_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The agency that requested this run no longer exists.",
+        )
+    quotes_sent = await emails.send_quotes(
+        accepted, recipients, issuer, requester.language
+    )
 
     logger.info(
-        "Planning run %s dispatched: %d planning(s), %d quote(s).",
+        "Planning run %s dispatched: %d planning(s), %d quote(s) in %s, "
+        "issued by %s.",
         run.id,
         plannings_sent,
         quotes_sent,
+        requester.language.value,
+        issuer.name,
     )
     return EmailDispatchResponse(
         run_id=run.id,

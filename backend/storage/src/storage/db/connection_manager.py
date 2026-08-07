@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from logging import Logger, getLogger
-from typing import AsyncIterator, ClassVar, Optional
+from typing import AsyncIterator, ClassVar, Dict, Optional
 
 # Third-party imports
 from sqlalchemy import text  # noqa: E501
@@ -31,6 +31,8 @@ class DatabaseConnectionManager:
         CONNECT_MAX_ATTEMPTS (ClassVar[int]): How many times ``connect`` retries
             before giving up.
         CONNECT_RETRY_DELAY_SECONDS (ClassVar[float]): Pause between attempts.
+        CONNECT_ARGS (ClassVar[Dict[str, int]]): Driver arguments that make
+            the engine safe behind a transaction-pooling PgBouncer.
         config (DatabaseConfig): The connection settings.
         logger (Logger): Logger for connection operations.
         engine (Optional[AsyncEngine]): The engine, once connected.
@@ -48,8 +50,12 @@ class DatabaseConnectionManager:
 
     CONNECT_MAX_ATTEMPTS: ClassVar[int] = 5
     CONNECT_RETRY_DELAY_SECONDS: ClassVar[float] = 2.0
+    CONNECT_ARGS: ClassVar[Dict[str, int]] = {
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    }
 
-    def __init__(self, config: DatabaseConfig, logger: Optional[Logger] = None) -> None:
+    def __init__(self, config: DatabaseConfig, logger: Optional[Logger] = None) -> None:  # noqa: E501
         """Initialize the manager without opening a connection.
 
         Args:
@@ -87,9 +93,12 @@ class DatabaseConnectionManager:
         """
         async with self.connect_lock:
             if self.engine is not None:
-                self.logger.debug("Already connected; reusing the existing engine.")
+                self.logger.debug(
+                    "Already connected. "  # noqa: E501
+                    "Reusing the existing engine."
+                )
                 return
-            self.logger.info("Connecting to %s.", self.config.dsn_without_password)
+            self.logger.info("Connecting to %s.", self.config.dsn_without_password)  # noqa: E501
             last_error: Optional[Exception] = None
             for attempt in range(1, self.CONNECT_MAX_ATTEMPTS + 1):
                 try:
@@ -100,6 +109,7 @@ class DatabaseConnectionManager:
                         max_overflow=self.config.max_overflow,
                         pool_timeout=self.config.pool_timeout_seconds,
                         pool_pre_ping=True,
+                        connect_args=self.CONNECT_ARGS,
                     )
                     async with engine.connect() as connection:
                         await connection.execute(text("SELECT 1"))

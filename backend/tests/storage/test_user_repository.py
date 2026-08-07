@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.auth.user import User
 from models.enums import UserRole
 from models.people.hca import Hca
-from storage.repositories.hca import HcaRepository
-from storage.repositories.user import UserRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.auth.user import UserRepository
 
 
 @pytest.fixture
@@ -74,7 +74,7 @@ class TestUserRepository:
         await repository.create(manager)
         found = await repository.get_by_email("claire.bernard@example.com")
         assert found is not None
-        assert found.full_name == "Claire Bernard"
+        assert found.full_name() == "Claire Bernard"
 
     async def test_get_by_email_is_case_insensitive(
         self, session: AsyncSession, manager: User
@@ -215,7 +215,7 @@ class TestUserRepository:
         stored = await repository.create(manager)
         promoted = await repository.set_role(stored.id, UserRole.ADMIN)
         assert promoted is not None
-        assert promoted.full_name == "Claire Bernard"
+        assert promoted.full_name() == "Claire Bernard"
         assert promoted.hashed_password == "$2b$12$notarealhash"
 
     async def test_set_role_of_an_unknown_account_returns_none(
@@ -254,16 +254,20 @@ class TestUserRepository:
         """
         repository = UserRepository(session)
         stored = await repository.create(manager)
+        # The two halves, not ``full_name``: that is a *method* on an account
+        # now, and ``model_copy`` does not validate — assigning to it would
+        # shadow the method with a string rather than rename anybody.
         edited = stored.model_copy(
             update={
-                "full_name": "Claire B.",
+                "first_name": "Claire",
+                "last_name": "B.",
                 "company_id": "company-1",
                 "hashed_password": None,
             }
         )
         updated = await repository.update(edited)
         assert updated is not None
-        assert updated.full_name == "Claire B."
+        assert updated.full_name() == "Claire B."
         assert updated.hashed_password == "$2b$12$notarealhash"
 
     async def test_update_replaces_the_hash_when_one_is_supplied(
@@ -318,6 +322,72 @@ class TestUserRepository:
             )
         )
         assert await repository.count_admins() == 1
+
+    # ------------------------------------------------------------------ #
+    #  Portrait
+    # ------------------------------------------------------------------ #
+
+    async def test_set_photo_url_round_trips(
+        self, session: AsyncSession, manager: User
+    ) -> None:
+        """A portrait written on the account reads back on the account."""
+        repository = UserRepository(session)
+        stored = await repository.create(manager)
+        url = "https://cdn.example.com/hca-photos/portrait/abc.jpg"
+
+        updated = await repository.set_photo_url(stored.id, url)
+
+        assert updated is not None
+        assert str(updated.photo_url) == url
+        loaded = await repository.get(stored.id)
+        assert str(loaded.photo_url) == url
+
+    async def test_set_photo_url_keeps_the_credential(
+        self, session: AsyncSession, manager: User
+    ) -> None:
+        """Uploading a photograph must not disturb the password.
+
+        Notes:
+            This is why the repository has a narrow method rather than routing
+            the change through :meth:`update`: an account read back through a
+            public view carries no hash, and saving that would lock the holder
+            out of their own account.
+        """
+        repository = UserRepository(session)
+        stored = await repository.create(manager)
+
+        await repository.set_photo_url(
+            stored.id, "https://cdn.example.com/hca-photos/portrait/abc.jpg"
+        )
+
+        signed_in = await repository.get_by_email(manager.email)
+        assert signed_in.hashed_password == "$2b$12$notarealhash"
+
+    async def test_clearing_a_portrait_leaves_none(
+        self, session: AsyncSession, manager: User
+    ) -> None:
+        """Removing a photograph empties the column rather than blanking it."""
+        repository = UserRepository(session)
+        stored = await repository.create(manager)
+        await repository.set_photo_url(
+            stored.id, "https://cdn.example.com/hca-photos/portrait/abc.jpg"
+        )
+
+        cleared = await repository.set_photo_url(stored.id, None)
+
+        assert cleared is not None
+        assert cleared.photo_url is None
+
+    async def test_set_photo_url_of_an_absent_account_reads_none(
+        self, session: AsyncSession
+    ) -> None:
+        """An account that is not there cannot be given a portrait."""
+        assert (
+            await UserRepository(session).set_photo_url(
+                "no-such-id", "https://cdn.example.com/hca-photos/x/a.jpg"
+            )
+            is None
+        )
 
     # ------------------------------------------------------------------ #
     #  Delete

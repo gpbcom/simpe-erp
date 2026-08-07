@@ -79,6 +79,7 @@ async def start_planning_run(
         )
     run = await service.request_run(
         requested_by=caller.id or caller.email,
+        company_id=caller.company_id,
         period_start=period_start,
         period_end=period_end,
     )

@@ -149,6 +149,14 @@ The Map Can Be Zoomed
 
 *** Keywords ***
 Open The Map
+    [Documentation]    Sign in as a manager and open the map on the planned week.
+    ...
+    ...    **This suite needs the precondition more than its neighbours do.**
+    ...    08 and 17 carry ``Skip If`` on an empty window; every pin assertion
+    ...    below is a bare ``Should Be True ${pins} > 0``, so with no planning
+    ...    computed this suite does not skip — it fails, and the message is
+    ...    about pins rather than about the empty database behind them.
+    Ensure A Planning Has Been Computed
     Open The Application
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /map

@@ -8,8 +8,9 @@ from typing import Any
 import pytest
 
 # First-party imports
-from models.people.certification import Certification
-from models.people.exceptions import (
+from models.people.hca.certification import Certification
+from models.people.hca.exceptions import (
+    MTCertificationInvalidCode,
     MTCertificationInvalidExpiresOn,
     MTCertificationInvalidIssuer,
     MTCertificationInvalidName,
@@ -181,12 +182,97 @@ class TestCertification:
         assert certification.is_expired_on(date(2026, 8, 5)) is False
 
     # ------------------------------------------------------------------ #
+    #  code validation
+    # ------------------------------------------------------------------ #
+
+    def test_a_qualification_carries_no_code_by_default(self) -> None:
+        """A free-text record is still a record; the catalogue link is optional."""
+        assert Certification(name="DEAVS").code is None
+
+    def test_a_code_is_upper_cased(self) -> None:
+        """Matching is a plain equality test, so the case is fixed on the way in."""
+        assert Certification(name="DEAVS", code=" deavs ").code == "DEAVS"
+
+    def test_a_blank_code_reads_as_absent(self) -> None:
+        """An empty select must still save.
+
+        Notes:
+            A form that submits an empty string means "not from the
+            catalogue", which is the same state as never having chosen one.
+        """
+        assert Certification(name="DEAVS", code="   ").code is None
+
+    @pytest.mark.parametrize(
+        "invalid_code",
+        [
+            pytest.param("DE AVS", id="Invalid - space"),
+            pytest.param("DEAVS!", id="Invalid - punctuation"),
+            pytest.param("DÉAVS", id="Invalid - accent"),
+            pytest.param("X" * 33, id="Invalid - too long"),
+            pytest.param(7, id="Invalid - int"),
+        ],
+    )
+    def test_invalid_code_raises(self, invalid_code: Any) -> None:
+        """A code that could not be matched is refused rather than stored."""
+        with pytest.raises(MTCertificationInvalidCode):
+            Certification(name="DEAVS", code=invalid_code)
+
+    def test_hyphens_and_underscores_are_accepted(self) -> None:
+        """A code stays usable as a stable key in an export or a URL."""
+        assert Certification(name="x", code="SST_1-A").code == "SST_1-A"
+
+    # ------------------------------------------------------------------ #
+    #  satisfies
+    # ------------------------------------------------------------------ #
+
+    def test_satisfies_its_own_code(self) -> None:
+        """A held qualification meets a requirement naming its code."""
+        held = Certification(name="DEAVS", code="DEAVS")
+        assert held.satisfies("DEAVS", date(2026, 8, 5)) is True
+
+    def test_does_not_satisfy_another_code(self) -> None:
+        """A different qualification is not a substitute."""
+        held = Certification(name="DEAVS", code="DEAVS")
+        assert held.satisfies("SST", date(2026, 8, 5)) is False
+
+    def test_an_untyped_qualification_satisfies_nothing(self) -> None:
+        """A free-text name is a record, not a claim that can be matched.
+
+        Notes:
+            Matching on the name would let a spelling decide who is qualified.
+        """
+        assert Certification(name="DEAVS").satisfies("DEAVS", date(2026, 8, 5)) is False
+
+    def test_a_lapsed_qualification_does_not_satisfy(self) -> None:
+        """Expiry is tested against the day of the visit, not against today."""
+        held = Certification(name="SST", code="SST", expires_on=date(2026, 8, 4))
+        assert held.satisfies("SST", date(2026, 8, 5)) is False
+
+    def test_it_still_satisfies_on_its_last_day(self) -> None:
+        """A certificate is valid up to and including the day it lapses."""
+        held = Certification(name="SST", code="SST", expires_on=date(2026, 8, 5))
+        assert held.satisfies("SST", date(2026, 8, 5)) is True
+
+    def test_the_same_holder_qualifies_for_one_day_and_not_the_next(self) -> None:
+        """The visit's own date decides, which is what a plan made ahead needs.
+
+        Notes:
+            This is the case a check against "now" would get wrong: the
+            certificate is valid when the solver runs and lapsed by the time
+            somebody is due at the door.
+        """
+        held = Certification(name="SST", code="SST", expires_on=date(2026, 8, 5))
+        assert held.satisfies("SST", date(2026, 8, 5)) is True
+        assert held.satisfies("SST", date(2026, 8, 6)) is False
+
+    # ------------------------------------------------------------------ #
     #  Exception hierarchy
     # ------------------------------------------------------------------ #
 
     @pytest.mark.parametrize(
         "exception_class",
         [
+            MTCertificationInvalidCode,
             MTCertificationInvalidExpiresOn,
             MTCertificationInvalidIssuer,
             MTCertificationInvalidName,

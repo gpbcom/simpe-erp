@@ -9,11 +9,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
-from models.enums import AvailabilityKind, ContractType
-from models.people.availability_slot import AvailabilitySlot
-from models.people.certification import Certification
+from models.enums import AvailabilityKind, ContractType, Weekday
+from models.people.hca.availability_slot import AvailabilitySlot
+from models.people.hca.certification import Certification
 from models.people.hca import Hca
-from storage.repositories.hca import HcaRepository
+from storage.repositories.people.hca import HcaRepository
 
 
 def _slot(
@@ -182,13 +182,14 @@ class TestHcaRepository:
     async def test_set_employment_changes_contract_and_certifications(
         self, session: AsyncSession, hca: Hca
     ) -> None:
-        """A manager may change exactly these two fields."""
+        """A manager may change exactly these three fields."""
         repository = HcaRepository(session)
         stored = await repository.create(hca)
         updated = await repository.set_employment(
             stored.id,
             ContractType.CDD,
             [Certification(name="DEAVS")],
+            field_employee=True,
         )
         assert updated is not None
         assert updated.contract_type is ContractType.CDD
@@ -200,9 +201,10 @@ class TestHcaRepository:
         """Contact details, address and licence are left alone.
 
         Notes:
-            This is the enforcement of "a manager may modify only the contract
-            type and the certifications". A general update would let a stale
-            payload clobber the rest of the record.
+            This is the enforcement of "a manager may modify only the
+            contract type, the certifications and whether this person goes out
+            on rounds". A general update would let a stale payload clobber the
+            rest of the record.
         """
         repository = HcaRepository(session)
         stored = await repository.create(
@@ -211,7 +213,9 @@ class TestHcaRepository:
                 **{**hca_kwargs, "driving_license": {"categories": ["B"]}},
             )
         )
-        await repository.set_employment(stored.id, ContractType.INTERIM, [])
+        await repository.set_employment(
+            stored.id, ContractType.INTERIM, [], field_employee=True
+        )
         reloaded = await repository.get(stored.id)
         assert reloaded is not None
         assert reloaded.email == "luc.martin@example.com"
@@ -231,10 +235,79 @@ class TestHcaRepository:
             )
         )
         updated = await repository.set_employment(
-            stored.id, ContractType.CDI, [Certification(name="New")]
+            stored.id, ContractType.CDI, [Certification(name="New")], field_employee=True
         )
         assert updated is not None
         assert [entry.name for entry in updated.certifications] == ["New"]
+
+    async def test_set_employment_takes_somebody_off_the_rounds(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """**The write that never happened.**
+
+        Notes:
+            ``field_employee`` carried a default of ``True`` here while the
+            service did not forward the value it was sent, so this write was
+            unreachable: a manager switching somebody off got a 200 and a row
+            that still said ``True``. The argument is required now, and this
+            asserts the value actually lands.
+        """
+        repository = HcaRepository(session)
+        stored = await repository.create(hca)
+
+        updated = await repository.set_employment(
+            stored.id, ContractType.CDI, [], field_employee=False
+        )
+
+        assert updated is not None
+        assert updated.field_employee is False
+        reloaded = await repository.get(stored.id)
+        assert reloaded is not None
+        assert reloaded.field_employee is False
+
+    async def test_set_employment_puts_somebody_back_on_the_rounds(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """The flag travels in both directions."""
+        repository = HcaRepository(session)
+        stored = await repository.create(hca)
+        await repository.set_employment(
+            stored.id, ContractType.CDI, [], field_employee=False
+        )
+
+        updated = await repository.set_employment(
+            stored.id, ContractType.CDI, [], field_employee=True
+        )
+
+        assert updated is not None
+        assert updated.field_employee is True
+
+    async def test_an_unrelated_employment_edit_does_not_restore_the_rounds_flag(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """The second half of the same bug, and the nastier half.
+
+        Notes:
+            Because the value was never forwarded, the repository's own default
+            of ``True`` was applied on **every** save — so a manager changing
+            only somebody's contract silently put them back on the rounds. It
+            is worse than the first half: nobody involved was thinking about
+            the flag, and the next planning run simply scheduled them.
+        """
+        repository = HcaRepository(session)
+        stored = await repository.create(hca)
+        await repository.set_employment(
+            stored.id, ContractType.CDI, [], field_employee=False
+        )
+
+        await repository.set_employment(
+            stored.id, ContractType.INTERIM, [], field_employee=False
+        )
+
+        reloaded = await repository.get(stored.id)
+        assert reloaded is not None
+        assert reloaded.contract_type is ContractType.INTERIM
+        assert reloaded.field_employee is False
 
     async def test_set_employment_of_an_unknown_assistant_returns_none(
         self, session: AsyncSession
@@ -242,7 +315,10 @@ class TestHcaRepository:
         """Changing an absent assistant reports rather than raising."""
         repository = HcaRepository(session)
         assert (
-            await repository.set_employment("no-such-id", ContractType.CDI, []) is None
+            await repository.set_employment(
+                "no-such-id", ContractType.CDI, [], field_employee=True
+            )
+            is None
         )
 
     # ------------------------------------------------------------------ #
@@ -486,3 +562,129 @@ class TestHcaRepository:
     ) -> None:
         """Deleting an absent assistant is a no-op."""
         assert await HcaRepository(session).delete("no-such-id") is False
+
+    # ------------------------------------------------------------------ #
+    #  Working week
+    # ------------------------------------------------------------------ #
+
+    async def test_a_new_assistant_stores_the_standard_week(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """The model's default reaches the column on insert.
+
+        Args:
+            session (AsyncSession): The database session.
+            hca (Hca): The assistant fixture.
+        """
+        stored = await HcaRepository(session).create(hca)
+
+        assert stored.working_weekdays == [
+            Weekday.MONDAY,
+            Weekday.TUESDAY,
+            Weekday.WEDNESDAY,
+            Weekday.THURSDAY,
+            Weekday.FRIDAY,
+        ]
+
+    async def test_a_working_week_survives_the_round_trip(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """The delimited column rebuilds the same list it was written from.
+
+        Args:
+            session (AsyncSession): The database session.
+            hca (Hca): The assistant fixture.
+        """
+        repository = HcaRepository(session)
+        stored = await repository.create(
+            hca.model_copy(
+                update={"working_weekdays": [Weekday.TUESDAY, Weekday.SATURDAY]}
+            )
+        )
+
+        loaded = await repository.get(stored.id or "")
+        assert loaded is not None
+        assert loaded.working_weekdays == [Weekday.TUESDAY, Weekday.SATURDAY]
+
+    async def test_set_working_weekdays_replaces_the_week(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """The whole week is replaced, not merged with the stored one.
+
+        Args:
+            session (AsyncSession): The database session.
+            hca (Hca): The assistant fixture.
+        """
+        repository = HcaRepository(session)
+        stored = await repository.create(hca)
+
+        updated = await repository.set_working_weekdays(
+            stored.id or "", [Weekday.SATURDAY, Weekday.SUNDAY]
+        )
+
+        assert updated is not None
+        assert updated.working_weekdays == [Weekday.SATURDAY, Weekday.SUNDAY]
+
+    async def test_set_working_weekdays_touches_nothing_else(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """A narrow mutation stays narrow.
+
+        Args:
+            session (AsyncSession): The database session.
+            hca (Hca): The assistant fixture.
+
+        Notes:
+            The working week is the assistant's own to set. If this method also
+            rewrote the address, an assistant editing their rota could move
+            their own routing depot.
+        """
+        repository = HcaRepository(session)
+        stored = await repository.create(hca)
+
+        updated = await repository.set_working_weekdays(
+            stored.id or "", [Weekday.MONDAY]
+        )
+
+        assert updated is not None
+        assert updated.email == stored.email
+        assert updated.address.street == stored.address.street
+        assert updated.contract_type is stored.contract_type
+        assert updated.field_employee is stored.field_employee
+
+    async def test_set_working_weekdays_is_order_insensitive(
+        self, session: AsyncSession, hca: Hca
+    ) -> None:
+        """Two spellings of one week produce one stored value.
+
+        Args:
+            session (AsyncSession): The database session.
+            hca (Hca): The assistant fixture.
+        """
+        repository = HcaRepository(session)
+        stored = await repository.create(hca)
+
+        shuffled = await repository.set_working_weekdays(
+            stored.id or "", [Weekday.FRIDAY, Weekday.MONDAY]
+        )
+        ordered = await repository.set_working_weekdays(
+            stored.id or "", [Weekday.MONDAY, Weekday.FRIDAY]
+        )
+
+        assert shuffled is not None and ordered is not None
+        assert shuffled.working_weekdays == ordered.working_weekdays
+
+    async def test_set_working_weekdays_of_an_unknown_assistant_returns_none(
+        self, session: AsyncSession
+    ) -> None:
+        """A week set on nobody reports rather than inventing a record.
+
+        Args:
+            session (AsyncSession): The database session.
+        """
+        assert (
+            await HcaRepository(session).set_working_weekdays(
+                "ghost", [Weekday.MONDAY]
+            )
+            is None
+        )

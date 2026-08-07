@@ -185,6 +185,12 @@ An Assistant Cannot Reach The Screen
 *** Keywords ***
 Open The Team Planning
     [Documentation]    Sign in as a manager and open the screen.
+    ...
+    ...    The planning is a precondition here too. This suite degrades to
+    ...    ``Skip If`` on an empty window, which is honest but useless: a
+    ...    campaign where 17 silently skips proves nothing about the screen it
+    ...    exists to cover.
+    Ensure A Planning Has Been Computed
     Open The Application Without Coverage
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /plannings

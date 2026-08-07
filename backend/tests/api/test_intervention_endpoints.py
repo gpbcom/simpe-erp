@@ -61,6 +61,7 @@ def _run() -> PlanningRun:
         PlanningRun: The run.
     """
     return PlanningRun(
+        company_id="company-1",
         id="run-1",
         status=PlanningRunStatus.PENDING,
         requested_by="user-manager",
@@ -76,6 +77,7 @@ def _quote() -> Quote:
         Quote: The quote.
     """
     return Quote(
+        company_id="company-1",
         id="quote-1",
         reference="D-2601",
         customer_id="customer-1",

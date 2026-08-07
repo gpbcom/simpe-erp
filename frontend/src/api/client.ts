@@ -5,9 +5,65 @@ import type {
   User,
 } from './types';
 
-/** Where the API lives. Inlined by Vite at build time. */
-const BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string) ?? 'http://localhost:8000';
+/**
+ * Where the API lives.
+ *
+ * @remarks
+ * **Read at runtime, not inlined at build time.** `VITE_API_BASE_URL` is a Vite
+ * build argument, so a bundle built for staging carries staging's URL in its
+ * JavaScript — which meant one image per environment and no way to promote the
+ * digest that was actually tested. `/config.json` is a file nginx serves from
+ * the same origin, replaced by a ConfigMap in the cluster and by a bind mount
+ * in compose, so the *same* image is promoted dev → staging → production.
+ *
+ * The build argument is still honoured, and takes precedence, so `npm run dev`
+ * and anything already setting it keep working.
+ */
+const BUILD_TIME_BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined;
+
+let BASE_URL = BUILD_TIME_BASE_URL ?? '/api';
+
+/** The shape of `/config.json`. */
+interface RuntimeConfig {
+  /** Where the API lives, as an absolute URL or a same-origin path. */
+  api_base_url?: string;
+}
+
+/**
+ * Read `/config.json` and point the client at whatever it names.
+ *
+ * @returns Nothing; the module-level base URL is replaced.
+ *
+ * @remarks
+ * Awaited once before the app renders, so no request can be made against the
+ * wrong origin. A missing or unreadable file leaves the build-time value
+ * standing rather than failing to start: an application that refused to boot
+ * because a *configuration* file was absent would be a worse failure than one
+ * that fell back to the origin it was built for.
+ *
+ * **A build argument, when one was given, wins.** The production image ships no
+ * `VITE_API_BASE_URL` at all — that is the whole point of reading the address at
+ * runtime — so this file decides there and nothing is lost. Development is the
+ * other way round: the compose overlay sets the variable to
+ * `http://localhost:8000`, and the `/config.json` that ships in `public/` says
+ * `/api`, which is right for nginx and wrong for Vite. Letting the file win
+ * there pointed every request at the dev server, which has no `/api` and
+ * answers 404 — a sign-in that failed with "an error occurred" because the
+ * response was not the 401 the page knows how to describe.
+ */
+export async function loadRuntimeConfig(): Promise<void> {
+  if (BUILD_TIME_BASE_URL) return;
+  try {
+    const response = await fetch('/config.json', { cache: 'no-store' });
+    if (!response.ok) return;
+    const config = (await response.json()) as RuntimeConfig;
+    if (typeof config.api_base_url === 'string' && config.api_base_url.length > 0) {
+      BASE_URL = config.api_base_url;
+    }
+  } catch {
+    // Left as it was. See the remarks above: this must not stop the app.
+  }
+}
 
 /** Where the session token is kept between page loads. */
 const TOKEN_KEY = 'simple-erp.token';

@@ -59,6 +59,11 @@ pricing:
       label: New Year's Day
 
 planning:
+  # The six values below all SEED the stored planning settings the first time
+  # they are read. After that a manager owns them through
+  # PUT /api/v1/planning/settings, and this file is not consulted again —
+  # editing it here will not move a running deployment.
+  #
   # Minutes from midnight: 540 = 09:00, 1200 = 20:00.
   day_start_minute: 540
   day_end_minute: 1200
@@ -66,14 +71,35 @@ planning:
   lunch_break_minutes: 60
   lunch_window_start_minute: 690   # 11:30
   lunch_window_end_minute: 870     # 14:30
+  max_intervention_radius_km: 30.0
   # Average speeds used to turn a straight-line distance into a duration.
+  # Not seeded: these are a property of the road network, not an agency rule.
   average_speed_kmh: 30.0
   average_speed_without_license_kmh: 12.0
-  # Seeds the stored planning settings the first time they are read. After
-  # that a manager owns the value through the API, and this is not consulted
-  # again — editing it here will not move a running deployment.
-  max_intervention_radius_km: 30.0
-  solver_time_limit_seconds: 30.0
+  solver_time_limit_seconds: 600.0
+  # Must not exceed the CPU the process is actually given. The budget above is
+  # wall-clock, so under a container CPU limit more threads than cores means the
+  # kernel throttles the whole cgroup and thirty seconds of budget takes a minute
+  # of real time. Keep this equal to the deployment's CPU limit.
+  # One worker, and a fixed seed, so the same week plans the same way
+  # twice. Parallel workers race to the incumbent, so re-planning an
+  # unchanged week returned 404 minutes of travel, then 371, then 355 —
+  # three numbers a manager cannot tell apart from a real improvement.
+  # Raise the worker count to trade that back for speed.
+  solver_workers: 1
+  solver_seed: 0
+  # The budget that actually stops the search, measured in work rather
+  # than in seconds. solver_time_limit_seconds is only a safety net: if
+  # it fires, the run logs a WARNING and is no longer reproducible.
+  #
+  # Sized by measurement on a seeded-agency instance — 12 assistants,
+  # 77 visits, one worker:
+  #     4.0 ->  12s, 0 of 77 placed (UNKNOWN: it never finds one)
+  #    15.0 ->  89s, 77 of 77, 1070 travel minutes
+  #    40.0 -> 233s, 77 of 77, 1070 travel minutes
+  # Above 15 buys nothing but time, and below it the run fails outright,
+  # so 20 is the smallest value with margin over the cliff.
+  solver_deterministic_budget: 20.0
   travel_weight: 1
   # Must dominate any realistic travel cost, so leaving a requirement
   # unassigned stays a last resort rather than a cheap way to avoid a drive.
@@ -100,8 +126,15 @@ s3:
   endpoint_url: http://minio:9000
   # Set public_base_url when the URL a browser fetches differs from the
   # endpoint the backend writes through (a CDN, or an in-cluster address).
-  # A browser cannot resolve 'minio', so links are built against localhost.
-  public_base_url: http://localhost:9000
+  #
+  # **It replaces the endpoint *and* the bucket, not the endpoint alone.**
+  # ``build_public_url`` appends the key straight onto it — the CDN case it
+  # exists for is a host mapped at the bucket's root — so a value naming only
+  # the host makes MinIO read the key's first segment as the bucket name and
+  # answer 403 AccessDenied for a bucket called 'hca-photos'. A browser cannot
+  # resolve 'minio', so the host is localhost; the '/simple-erp' is the bucket
+  # MinIO serves path-style, and leaving it off is what breaks every avatar.
+  public_base_url: http://localhost:9000/simple-erp
   access_key_env: S3_ACCESS_KEY
   secret_key_env: S3_SECRET_KEY
   photo_key_prefix: hca-photos/
@@ -156,3 +189,16 @@ webhook:
   url: http://backend:8000/api/v1/webhooks/planning-completed
   token_env: PLANNING_WEBHOOK_TOKEN
   timeout_seconds: 30.0
+
+observability:
+  service_name: simple-erp
+  metrics_enabled: true
+  metrics_port: 9100
+  # On, because the development stack always brings a collector up now. It
+  # was off while observability was an overlay somebody had to remember: an
+  # enabled exporter with no collector is a connection refused on every
+  # publish. The overlay was folded into the dev stack precisely so this
+  # could be true — a Tempo with no traces in it is a dashboard that lies.
+  tracing_enabled: true
+  otlp_endpoint: http://otel-collector:4317
+  export_timeout_seconds: 10.0

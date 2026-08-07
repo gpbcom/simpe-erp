@@ -53,6 +53,11 @@ pricing:
       label: New Year's Day
 
 planning:
+  # The six values below all SEED the stored planning settings the first time
+  # they are read. After that a manager owns them through
+  # PUT /api/v1/planning/settings, and this file is not consulted again —
+  # editing it here will not move a running deployment.
+  #
   # Minutes from midnight: 540 = 09:00, 1200 = 20:00.
   day_start_minute: 540
   day_end_minute: 1200
@@ -60,14 +65,35 @@ planning:
   lunch_break_minutes: 60
   lunch_window_start_minute: 690   # 11:30
   lunch_window_end_minute: 870     # 14:30
+  max_intervention_radius_km: 30.0
   # Average speeds used to turn a straight-line distance into a duration.
+  # Not seeded: these are a property of the road network, not an agency rule.
   average_speed_kmh: 30.0
   average_speed_without_license_kmh: 12.0
-  # Seeds the stored planning settings the first time they are read. After
-  # that a manager owns the value through the API, and this is not consulted
-  # again — editing it here will not move a running deployment.
-  max_intervention_radius_km: 30.0
-  solver_time_limit_seconds: 30.0
+  solver_time_limit_seconds: 600.0
+  # Must not exceed the CPU the process is actually given. The budget above is
+  # wall-clock, so under a container CPU limit more threads than cores means the
+  # kernel throttles the whole cgroup and thirty seconds of budget takes a minute
+  # of real time. Keep this equal to the deployment's CPU limit.
+  # One worker, and a fixed seed, so the same week plans the same way
+  # twice. Parallel workers race to the incumbent, so re-planning an
+  # unchanged week returned 404 minutes of travel, then 371, then 355 —
+  # three numbers a manager cannot tell apart from a real improvement.
+  # Raise the worker count to trade that back for speed.
+  solver_workers: 1
+  solver_seed: 0
+  # The budget that actually stops the search, measured in work rather
+  # than in seconds. solver_time_limit_seconds is only a safety net: if
+  # it fires, the run logs a WARNING and is no longer reproducible.
+  #
+  # Sized by measurement on a seeded-agency instance — 12 assistants,
+  # 77 visits, one worker:
+  #     4.0 ->  12s, 0 of 77 placed (UNKNOWN: it never finds one)
+  #    15.0 ->  89s, 77 of 77, 1070 travel minutes
+  #    40.0 -> 233s, 77 of 77, 1070 travel minutes
+  # Above 15 buys nothing but time, and below it the run fails outright,
+  # so 20 is the smallest value with margin over the cliff.
+  solver_deterministic_budget: 20.0
   travel_weight: 1
   # Must dominate any realistic travel cost, so leaving a requirement
   # unassigned stays a last resort rather than a cheap way to avoid a drive.
@@ -140,3 +166,20 @@ rabbitmq:
   # core for its whole budget. Taking a second message while the first solves
   # would only delay acknowledging both.
   prefetch: 1
+
+observability:
+  # What this process is called in metrics, logs and traces. Each entry point
+  # adds what it is — "-api", "-worker-planning" — so four processes sharing
+  # one image and one file do not share one series.
+  service_name: simple-erp
+  metrics_enabled: true
+  # The worker's own port. The API serves /metrics on the port it already
+  # listens on; the worker had no port at all, and therefore no readiness
+  # probe either.
+  metrics_port: 9100
+  # Off on a host: there is no collector to export to, and a process pointed at
+  # one that is not there pays a failed connection on every request. The
+  # endpoint is still checked, so turning this on is one flag.
+  tracing_enabled: false
+  otlp_endpoint: http://localhost:4317
+  export_timeout_seconds: 10.0

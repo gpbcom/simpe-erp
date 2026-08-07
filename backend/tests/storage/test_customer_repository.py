@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # First-party imports
 from models.enums import RegistrationStatus
 from models.people.customer import Customer
-from storage.repositories.customer import CustomerRepository
+from storage.repositories.people.customer import CustomerRepository
 
 
 class TestCustomerRepository:

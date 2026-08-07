@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Union
+from typing import Optional
 
 # Third-party imports
 from pydantic import ValidationError
@@ -12,7 +12,7 @@ from models.schemas.exceptions import (
     MTAccountUpdateRequestInvalidEmail,
     MTAccountUpdateRequestInvalidFullName,
 )
-from models.schemas.requests.account_update_request import AccountUpdateRequest
+from models.schemas.requests.account.account_update_request import AccountUpdateRequest
 
 
 class TestAccountUpdateRequest:
@@ -52,23 +52,21 @@ class TestAccountUpdateRequest:
         assert request.email == "luc.martin@simple-erp.fr"
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_a_missing_or_blank_name_is_refused(self, value: Union[str, None]) -> None:
+    def test_a_missing_or_blank_name_is_refused(self, value: Optional[str]) -> None:
         """A name of spaces is not a name.
 
         Args:
-            value (Union[str, None]): The rejected ``full_name``.
+            value (Optional[str]): The rejected ``full_name``.
         """
         with pytest.raises(MTAccountUpdateRequestInvalidFullName):
             AccountUpdateRequest(full_name=value, email="luc@simple-erp.fr")
 
     @pytest.mark.parametrize("value", ["", "   ", None])
-    def test_a_missing_or_blank_address_is_refused(
-        self, value: Union[str, None]
-    ) -> None:
+    def test_a_missing_or_blank_address_is_refused(self, value: Optional[str]) -> None:
         """An account with no sign-in address could not sign in.
 
         Args:
-            value (Union[str, None]): The rejected ``email``.
+            value (Optional[str]): The rejected ``email``.
         """
         with pytest.raises(MTAccountUpdateRequestInvalidEmail):
             AccountUpdateRequest(full_name="Luc", email=value)
@@ -137,8 +135,14 @@ class TestAccountUpdateRequest:
 
         assert not hasattr(request, field)
 
-    def test_only_two_fields_are_serialised(self) -> None:
-        """What the service is handed is a name and an address, and nothing else."""
+    def test_only_three_fields_are_serialised(self) -> None:
+        """A name, an address and a language — and nothing else.
+
+        Notes:
+            The language joined them when the emailed documents had to come
+            out in it. It is the account holder's own preference, which is
+            why it belongs on this payload and not on a manager-gated one.
+        """
         request = AccountUpdateRequest(full_name="Luc", email="luc@simple-erp.fr")
 
-        assert set(request.model_dump()) == {"full_name", "email"}
+        assert set(request.model_dump()) == {"full_name", "email", "language"}

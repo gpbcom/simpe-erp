@@ -1,5 +1,17 @@
-class MTInvalidUserException(Exception):
-    """Exception raised when an invalid User field is provided."""
+# First-party imports
+from models.base.exceptions import MTInvalidPersonException
+
+
+class MTInvalidUserException(MTInvalidPersonException):
+    """Exception raised when an invalid User field is provided.
+
+    Notes:
+        Descends from :class:`MTInvalidPersonException` because an account
+        *is* a person here — :class:`~models.auth.user.User` extends
+        :class:`~models.base.person.Person`. The API's status map still has a
+        row of its own for this class, and the handler walks the ancestry
+        outwards, so an account's failure is answered as an account's.
+    """
 
 
 class MTUserInvalidId(MTInvalidUserException):
@@ -46,6 +58,19 @@ class MTUserInvalidCompanyId(MTInvalidUserException):
     """Exception raised when the company identifier is not a string."""
 
 
+class MTUserInvalidPhotoUrl(MTInvalidUserException):
+    """Exception raised when the portrait URL was not issued by this store.
+
+    Notes:
+        An account's portrait is uploaded through the API and written under a
+        fixed key prefix, so a value that does not carry that prefix is a URL
+        somebody supplied rather than one this application stored. Accepting
+        one would make every screen showing an avatar fetch a remote image the
+        agency does not control, disclosing each viewer's address to whoever
+        hosts it.
+    """
+
+
 class MTUserStaffAccountNeedsChange(MTInvalidUserException):
     """Exception raised when a staff-created account waives its password change.
 
@@ -54,4 +79,34 @@ class MTUserStaffAccountNeedsChange(MTInvalidUserException):
         has never seen chosen. Building one that is not required to change it
         would leave a credential a second person knows, which is the whole
         thing the mandatory change exists to end.
+    """
+
+
+class MTUserInvalidPhoneNumber(MTInvalidUserException):
+    """Exception raised when an invalid ``phone_number`` value is provided.
+
+    Notes:
+        An account's number is optional — the contact details of somebody the
+        agency schedules live on their assistant record, not on the credential
+        — so this is raised only for a value that is present and unusable.
+    """
+
+
+class MTUserInvalidAddress(MTInvalidUserException):
+    """Exception raised when an invalid ``address`` value is provided.
+
+    Notes:
+        Optional for the same reason as
+        :class:`MTUserInvalidPhoneNumber`.
+    """
+
+
+class MTUserInvalidLanguage(MTInvalidUserException):
+    """Exception raised when an invalid ``language`` value is provided.
+
+    Notes:
+        An unknown code is refused rather than falling back to French. A
+        preference the account holder set and the server quietly ignored is
+        worse than one it rejected: the screen would go on showing their
+        choice while every document came out in the other language.
     """

@@ -1,0 +1,17 @@
+{
+  "01_auth": 5.098387,
+  "02_hca_account": 4.294739,
+  "03_hca_workspace": 4.454179,
+  "04_manager_views": 8.845212,
+  "05_quote_validation_journey": 36.542235,
+  "06_app_shell": 0.0071,
+  "07_notifications": 0.010104,
+  "08_planning_calendar": 0.006203,
+  "09_intervention_map": 0.006241,
+  "10_quote_grids": 0.005454,
+  "11_hca_certifications": 0.006113,
+  "12_routing_and_access": 0.006103,
+  "13_customer_portfolio": 0.005085,
+  "14_account_form": 0.005303,
+  "99_coverage_report": 0.001465
+}

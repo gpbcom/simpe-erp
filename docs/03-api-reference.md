@@ -1,6 +1,6 @@
 # 03 — API reference
 
-**58 paths, 76 operations.** The live schema is at `/openapi.json`, rendered at
+**74 paths, 100 operations.** The live schema is at `/openapi.json`, rendered at
 `/docs`, and a copy is committed at the repository root so CI can fail on drift.
 
 Base URL: `http://localhost:8000` in development; `/api` behind nginx in
@@ -42,6 +42,8 @@ credential; no path parameter names it.
 |---|---|---|---|
 | GET | `/hca` | own | The caller's own assistant record |
 | PATCH | `/hca` | own | Contact details and address. **No `contract_type`, no `certifications`** — the payload has no such fields |
+| POST | `/hca/skills` | own | Declares a skill about yourself. 201, and every supervisor is notified |
+| DELETE | `/hca/skills/{id}` | own | Withdraws one of your own. 404 whether absent or not yours |
 | GET | `/customers` | own | The caller's portfolio: customers they have a visit with, ∪ customers of quotes they wrote |
 | GET | `/customers/{id}` | own | 404 whether absent or not theirs |
 | GET | `/quotes` | current | Quotes the caller authored |
@@ -50,6 +52,8 @@ credential; no path parameter names it.
 
 | GET | `/account` | The caller's own **account**. Needs no assistant record |
 | PATCH | `/account` | Display name and sign-in address. Nothing else exists on the payload |
+| PUT | `/account/photo` | The caller's own portrait, as a **file**. Needs no assistant record |
+| DELETE | `/account/photo` | Removes it; the screen falls back to the holder's initials |
 | GET | `/company` | The caller's own agency. **Administrator only** |
 | PUT | `/company` | Its name, SIRET, contact address, registered address and whether it accepts applications |
 
@@ -58,6 +62,20 @@ caller can reach it — including a manager and an administrator. That is the
 point of it: the account screen used to be built on `GET /me/hca`, which refuses
 any account with no assistant record, so it rendered an error page to exactly
 the people who could not fix it.
+
+`/account/photo` is guarded the same way, and for the same reason. The portrait
+belongs to the *credential*, so a manager and an administrator can set one —
+`PUT /me/hca/photo` is bound to an assistant record and answers `403` for them,
+which left them with no photograph at all rather than a locked one. When the
+account **is** bound to a record, the service writes the same URL there too, in
+the same transaction: an assistant's portrait is their pin on the manager's map,
+and it is the same photograph of the same person.
+
+It is uploaded as a file, never named as a URL. Accepting a URL would let
+somebody point their avatar at any address on the internet, which every screen
+showing them would then load — and the model refuses any value that does not
+carry the object store's own key prefix, so a hand-written request cannot store
+one either.
 
 `AccountUpdateRequest` carries a display name and an address and **no other
 field**. Role, active flag, agency, assistant binding and password hash are all
@@ -136,6 +154,82 @@ It is what the line's VAT is computed from, and it has no default — a payload
 omitting it is answered 422 rather than quietly taxed at one of the two rates.
 The catalogue entry named by `intervention_type_id` still fixes the hourly rate.
 
+## Certifications — `/api/v1/certifications`
+
+| Method | Path | Guard | |
+|---|---|---|---|
+| GET | `` | current | The catalogue, ordered by label. `include_inactive` shows retired entries |
+| POST | `` | manager | Adds one. 409 if the code is taken |
+| PATCH | `/{id}` | manager | Label, description and `is_active`. **Carries no `code`** |
+| DELETE | `/{id}` | manager | 409 while anything refers to it, naming both counts |
+
+**Readable by any signed-in caller**, unlike the writes. An assistant's own
+account screen names the qualifications they hold, and a screen that could not
+read this would have to print `DEAES` at somebody and hope.
+
+**`code` is absent from the edit payload**, so no request can rename it. It is
+what every stored qualification and every service requirement is matched on;
+renaming it would leave a workforce holding certifications for a code that no
+longer exists and disqualify all of them on the next planning run. The screen
+locks the input, but a locked input is a courtesy — the absent field is the
+control.
+
+The delete refusal is the referential integrity the database cannot provide.
+The references live in a JSON array and in a nullable column with no constraint
+on either, so nothing at that level would stop a delete leaving a requirement
+pointing at nothing. The 409 names how many assistants hold the code and how
+many services require it, and says to retire the entry instead — "cannot
+delete" with no reason is a message somebody works around by deleting the
+assistant's qualification.
+
+A requirement naming an unknown or retired code is a **422** wherever it is
+written — on a catalogue entry or on a quote line — naming the offending code
+and listing what the catalogue does offer. 422 and not 404: the resource being
+addressed is the service or the line, and that one is there.
+
+## Skills — `/api/v1/skills`
+
+| Method | Path | Guard | |
+|---|---|---|---|
+| GET | `` | current | The catalogue, ordered by label. `include_inactive` shows retired entries |
+| POST | `` | manager | Adds one. 409 if the code is taken |
+| PATCH | `/{id}` | manager | Label, description and `is_active`. **Carries no `code`** |
+| DELETE | `/{id}` | manager | 409 while anything refers to it, naming both counts |
+
+Character for character the certification catalogue above, with the same
+locked code, the same 409 offering retirement, and the same 422 for a
+requirement naming an unknown code.
+
+**The read matters more here.** An assistant declares their own skills from
+their own account screen, so this is the list they pick from — a screen that
+could not read it would leave them typing a code from memory and matching
+nothing. The *catalogue* stays a manager's: a workforce able to invent entries
+would produce a list nobody could require anything from.
+
+### Declaring one — the asymmetry with certifications
+
+| | Add | Remove |
+|---|---|---|
+| Certification | `PATCH /hcas/{id}/employment`, manager, whole list | same call, by omission |
+| Skill | `POST /me/hca/skills`, **the owner only** | `DELETE /me/hca/skills/{id}` (owner) or `DELETE /hcas/{id}/skills/{id}` (manager) |
+
+There is **no route by which a manager declares a skill for somebody else**,
+and that is a routing decision rather than an oversight. A skill is a claim
+about what somebody can do; a supervisor may withdraw one they believe is
+wrong, but nothing lets them put a claim in another person's mouth.
+
+`POST /me/hca/skills` takes an owner from the credential and mints the
+identifier itself, so the payload carries neither — the two absences are the
+permission. It answers **201** and publishes `skill.added`, which is what turns
+into a notification for every manager and administrator of the agency. The
+publish happens **after** the write, in the route rather than the service: a
+message sent from inside would fire on a write a later failure could roll back,
+and tell three managers about a skill nobody holds.
+
+A withdrawal announces nothing. An addition widens what somebody may be sent
+to; a removal only narrows it, and a badge for every correction of a typed name
+would train supervisors to ignore the ones that matter.
+
 ## Notifications — `/api/v1/notifications`
 
 | Method | Path | Guard | |
@@ -152,13 +246,30 @@ middleware and refuses a session token. → [11](11-security.md)
 ## People and workforce
 
 **Customers** — `/api/v1/customers`, all `manager`: full CRUD, plus
-`PATCH /{id}/status` and `GET /{id}/quotes`. Deleting a quoted customer is a
-409: erasing commercial history is a deliberate decision, not a side effect.
+`PATCH /{id}/status` and `GET /{id}/quotes`. `DELETE` answers **202** with the
+replan it queued, or **204** when the customer had no future visit — and it
+takes **every quote written for them** with it. Erasing commercial history is
+irreversible, so the screen counts the quotes before it asks; stopping the
+customer remains the reversible answer for one who was really served.
 
 **Assistants** — `/api/v1/hcas`, all `manager`: `POST`, `GET` (with `search`,
 `contract_type`), `GET /{id}`, `DELETE`, and
 `PATCH /{id}/employment` — the **only** manager-reachable mutation, carrying
-contract type and certifications.
+contract type, certifications and `field_employee`.
+
+`DELETE` answers **202** with the replan it queued, or **204** when they had no
+future visit, and it removes the **sign-in account bound to them** in the same
+transaction. An account whose `hca_id` names nothing cannot pass the row-level
+planning check and cannot be repaired from any screen, so it cannot be left
+behind — which is what the `RESTRICT` foreign key used to enforce by refusing
+the whole deletion. `AuthService`'s own refusals still apply: never the
+caller's own account, never the last administrator, both 409.
+
+**The shape of `EmploymentUpdateRequest` is the permission.** A manager may
+change three things about an assistant and nothing else, for anybody including
+themselves; an assistant reaches no route that carries any of the three. That
+rule lives in the payload rather than in a check somewhere that could be
+forgotten.
 
 **Photographs** — `PUT`/`DELETE /api/v1/hcas/{id}/photo` (multipart), and
 `GET /api/v1/hcas/photo-constraints`. The content type is detected from magic
@@ -169,6 +280,22 @@ the bucket, which is why the compose stack sets a public read policy.
 row-level ownership check, so an assistant files their own absences and a
 manager files anybody's.
 
+**Language** — carried on `PATCH /api/v1/me/account` alongside the display
+name and the sign-in address, and published on every `UserResponse`. It is
+the account holder's own preference, which is why it sits on that
+self-service payload and not on a manager-gated one. An unknown code is a
+422 rather than a silent fallback. → [04](04-quote-lifecycle.md)
+
+**Working days** — `PUT /api/v1/hcas/{id}/working-days`, the same guard and
+the same ownership check. This is the *recurring* pattern — "never
+Wednesdays" — as opposed to the dated absences above; the two are separate
+because only one of them ends when somebody comes back from leave. The
+payload carries the whole week and no assistant identifier: the owner is
+the one the path addresses, so there is nothing for a caller to put a
+colleague's identifier into. A week naming no day is a 422 — clearing every
+box is a statement, and its two readings are opposites. Answers the whole
+`HcaResponse`, so a client need not re-read to redisplay.
+
 **Applications** — `/api/v1/hca-applications`. `POST` is public; the queue and
 the approve/reject decisions are `manager`.
 
@@ -178,12 +305,17 @@ the approve/reject decisions are `manager`.
 |---|---|---|---|
 | POST | `/runs` | admin | **202.** Records the run, publishes it, returns the identifier to poll |
 | GET | `/runs` · `/runs/{id}` | admin | Poll until `status.is_terminal()` |
-| GET | `/settings` · PUT | manager | Radius and lunch break |
+| GET | `/settings` · PUT | manager | Radius, working day, lunch break and its window |
 | GET | `/hcas` | current | Every diary. An assistant gets a one-element list of their own |
 | GET | `/hcas/{id}` | current | One diary, with a row-level ownership check |
 
 If the broker is unreachable the run stays `pending` rather than vanishing — the
 identifier the caller polls is real either way.
+
+`DELETE /api/v1/planning/interventions/{id}` answers 202 the same way, taking
+the period from the caller's own screen; the two person deletions derive theirs
+from the days that person was due to work. All four record the run before
+publishing it, so a 202 always hands back an identifier that already exists.
 
 ## Other
 

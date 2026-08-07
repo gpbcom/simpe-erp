@@ -87,7 +87,7 @@ def _parent(**overrides: object) -> Quote:
         "lines": [_line(FIRST_SERVICE), _line(LAST_SERVICE)],
     }
     fields.update(overrides)
-    return Quote(**fields)
+    return Quote(company_id="company-1", **fields)
 
 
 @pytest.fixture

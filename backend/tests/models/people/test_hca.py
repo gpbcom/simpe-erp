@@ -8,10 +8,10 @@ from typing import Any, Dict
 import pytest
 
 # First-party imports
-from models.enums import ContractType
-from models.people.certification import Certification
-from models.people.driving_license import DrivingLicense
-from models.people.exceptions import (
+from models.enums import ContractType, Weekday
+from models.people.hca.certification import Certification
+from models.people.hca.driving_license import DrivingLicense
+from models.people.hca.exceptions import (
     MTHcaInvalidAddress,
     MTHcaInvalidAvailability,
     MTHcaInvalidCertifications,
@@ -19,11 +19,13 @@ from models.people.exceptions import (
     MTHcaInvalidDate,
     MTHcaInvalidDrivingLicense,
     MTHcaInvalidEmail,
+    MTHcaInvalidFieldEmployee,
     MTHcaInvalidFirstName,
     MTHcaInvalidId,
     MTHcaInvalidLastName,
     MTHcaInvalidPhoneNumber,
     MTHcaInvalidPhotoUrl,
+    MTHcaInvalidWorkingWeekdays,
     MTInvalidHcaException,
 )
 from models.people.hca import Hca
@@ -348,6 +350,273 @@ class TestHca:
         assert hca.blocking_slots_on(date(2026, 8, 13)) == []
 
     # ------------------------------------------------------------------ #
+    #  working_weekdays
+    # ------------------------------------------------------------------ #
+
+    def test_a_new_assistant_works_the_standard_week(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Monday to Friday is what a full-time hire means by default."""
+        hca = Hca(company_id="company-1", **valid_hca_kwargs)
+
+        assert hca.working_weekdays == [
+            Weekday.MONDAY,
+            Weekday.TUESDAY,
+            Weekday.WEDNESDAY,
+            Weekday.THURSDAY,
+            Weekday.FRIDAY,
+        ]
+
+    def test_the_working_week_is_sorted_and_deduplicated(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Two spellings of the same week must not compare differently.
+
+        Notes:
+            The set is stored as a delimited string, so ``["friday",
+            "monday"]`` and ``["monday", "friday"]`` would otherwise produce
+            two different column values for one working week.
+        """
+        hca = Hca(
+            company_id="company-1",
+            **{
+                **valid_hca_kwargs,
+                "working_weekdays": ["friday", "monday", "friday"],
+            },
+        )
+
+        assert hca.working_weekdays == [Weekday.MONDAY, Weekday.FRIDAY]
+
+    @pytest.mark.parametrize(
+        ("day", "expected"),
+        [
+            pytest.param(date(2026, 8, 10), True, id="a Monday they work"),
+            pytest.param(date(2026, 8, 12), False, id="a Wednesday they do not"),
+            pytest.param(date(2026, 8, 15), False, id="a Saturday nobody works"),
+        ],
+    )
+    def test_a_day_off_in_the_week_is_not_worked(
+        self, valid_hca_kwargs: Dict[str, Any], day: date, expected: bool
+    ) -> None:
+        """The recurring pattern answers per weekday, not per date.
+
+        Args:
+            valid_hca_kwargs (Dict[str, Any]): Base constructor arguments.
+            day (date): The day to test.
+            expected (bool): Whether it should be worked.
+        """
+        hca = Hca(
+            company_id="company-1",
+            **{
+                **valid_hca_kwargs,
+                "working_weekdays": ["monday", "tuesday", "thursday", "friday"],
+            },
+        )
+
+        assert hca.works_on_weekday(day) is expected
+
+    def test_a_day_off_is_not_an_absence(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """The two questions stay separate, and only one of them is dated.
+
+        Notes:
+            This is what lets the unplaced-work report tell a manager whether
+            to hire cover for a Wednesday or to wait for somebody to come back
+            from leave. Folding the two together would report the second when
+            the first is true.
+        """
+        hca = Hca(
+            company_id="company-1",
+            **{**valid_hca_kwargs, "working_weekdays": ["monday", "tuesday"]},
+        )
+        wednesday = date(2026, 8, 12)
+
+        assert hca.works_on_weekday(wednesday) is False
+        assert hca.is_available_on(wednesday) is True
+        assert hca.is_schedulable_on(wednesday) is False
+
+    def test_an_absence_on_a_working_day_still_blocks_it(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Both halves have to hold for the solver to offer work."""
+        hca = Hca(
+            company_id="company-1",
+            **{
+                **valid_hca_kwargs,
+                "working_weekdays": ["monday", "tuesday", "wednesday"],
+                "availability": [
+                    {
+                        "hca_id": "hca-1",
+                        "start_date": date(2026, 8, 12),
+                        "end_date": date(2026, 8, 12),
+                        "kind": "sick-leave",
+                    }
+                ],
+            },
+        )
+        wednesday = date(2026, 8, 12)
+
+        assert hca.works_on_weekday(wednesday) is True
+        assert hca.is_available_on(wednesday) is False
+        assert hca.is_schedulable_on(wednesday) is False
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param([], id="Invalid - works no day at all"),
+            pytest.param(["funday"], id="Invalid - not a weekday"),
+            pytest.param(["monday", "mondee"], id="Invalid - one bad entry"),
+            pytest.param("monday", id="Invalid - a bare string, not a list"),
+            pytest.param(7, id="Invalid - not a collection"),
+        ],
+    )
+    def test_an_unusable_working_week_is_refused(
+        self, valid_hca_kwargs: Dict[str, Any], value: Any
+    ) -> None:
+        """An empty week is a statement, not a request for the default.
+
+        Args:
+            valid_hca_kwargs (Dict[str, Any]): Base constructor arguments.
+            value (Any): The rejected working week.
+
+        Notes:
+            Silently restoring Monday-to-Friday for an empty list would put
+            somebody back on rounds they had just declined.
+        """
+        with pytest.raises(MTHcaInvalidWorkingWeekdays):
+            Hca(
+                company_id="company-1",
+                **{**valid_hca_kwargs, "working_weekdays": value},
+            )
+
+    def test_the_working_week_exception_shares_the_model_base(self) -> None:
+        """One except clause still catches everything this model raises."""
+        assert issubclass(MTHcaInvalidWorkingWeekdays, MTInvalidHcaException)
+
+    # ------------------------------------------------------------------ #
+    #  field_employee
+    # ------------------------------------------------------------------ #
+
+    def test_an_assistant_goes_out_on_rounds_by_default(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """The default is what every record that predates the field already was.
+
+        Notes:
+            Defaulting to False would have emptied the workforce on the
+            deployment that introduced the field and failed every planning run
+            until somebody ticked a box they had not been told about.
+        """
+        assert Hca(company_id="company-1", **valid_hca_kwargs).field_employee is True
+
+    def test_field_employee_can_be_cleared(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Somebody on office duties is held back from the planning."""
+        assistant = Hca(
+            company_id="company-1", **valid_hca_kwargs, field_employee=False
+        )
+        assert assistant.field_employee is False
+
+    def test_a_none_flag_falls_back_to_going_out(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A row written before the column existed reads back as schedulable."""
+        assert (
+            Hca(
+                company_id="company-1", **valid_hca_kwargs, field_employee=None
+            ).field_employee
+            is True
+        )
+
+    @pytest.mark.parametrize(
+        "invalid_flag",
+        [
+            pytest.param("false", id="Invalid - string false"),
+            pytest.param("true", id="Invalid - string true"),
+            pytest.param(0, id="Invalid - int"),
+            pytest.param([], id="Invalid - list"),
+        ],
+    )
+    def test_invalid_field_employee_raises(
+        self, valid_hca_kwargs: Dict[str, Any], invalid_flag: Any
+    ) -> None:
+        """The flag is a boolean, never a truthy string.
+
+        Notes:
+            ``"false"`` is truthy in Python. Coercing it would put somebody who
+            does not go out on the road back onto a round, and coercing the
+            reverse would withdraw an assistant from the workforce with nothing
+            on any screen to say why.
+        """
+        with pytest.raises(MTHcaInvalidFieldEmployee):
+            Hca(company_id="company-1", **valid_hca_kwargs, field_employee=invalid_flag)
+
+    # ------------------------------------------------------------------ #
+    #  holds_certifications
+    # ------------------------------------------------------------------ #
+
+    def test_work_requiring_nothing_is_satisfied_by_everybody(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """An assistant with no qualifications can still do unqualified work."""
+        assistant = Hca(company_id="company-1", **valid_hca_kwargs)
+        assert assistant.holds_certifications([], date(2026, 8, 5)) is True
+
+    def test_a_held_code_qualifies(self, valid_hca_kwargs: Dict[str, Any]) -> None:
+        """A matching, unlapsed qualification meets the requirement."""
+        assistant = Hca(
+            company_id="company-1",
+            **valid_hca_kwargs,
+            certifications=[Certification(name="DEAES", code="DEAES")],
+        )
+        assert assistant.holds_certifications(["DEAES"], date(2026, 8, 5)) is True
+
+    def test_every_code_is_needed_not_just_one(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A requirement listing two diplomas means the person needs both.
+
+        Notes:
+            Reading it as "one of these" would send somebody to a visit half
+            qualified, which is the failure the whole field exists to prevent.
+        """
+        assistant = Hca(
+            company_id="company-1",
+            **valid_hca_kwargs,
+            certifications=[Certification(name="DEAES", code="DEAES")],
+        )
+        assert (
+            assistant.holds_certifications(["DEAES", "SST"], date(2026, 8, 5)) is False
+        )
+
+    def test_a_lapsed_qualification_does_not_count(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """Expiry is measured against the day of the visit."""
+        assistant = Hca(
+            company_id="company-1",
+            **valid_hca_kwargs,
+            certifications=[
+                Certification(name="SST", code="SST", expires_on=date(2026, 8, 4))
+            ],
+        )
+        assert assistant.holds_certifications(["SST"], date(2026, 8, 5)) is False
+        assert assistant.holds_certifications(["SST"], date(2026, 8, 4)) is True
+
+    def test_an_untyped_qualification_does_not_count(
+        self, valid_hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A free-text name is not a claim the agency can match against."""
+        assistant = Hca(
+            company_id="company-1",
+            **valid_hca_kwargs,
+            certifications=[Certification(name="DEAES")],
+        )
+        assert assistant.holds_certifications(["DEAES"], date(2026, 8, 5)) is False
+
+    # ------------------------------------------------------------------ #
     #  Exception hierarchy
     # ------------------------------------------------------------------ #
 
@@ -361,6 +630,7 @@ class TestHca:
             MTHcaInvalidDate,
             MTHcaInvalidDrivingLicense,
             MTHcaInvalidEmail,
+            MTHcaInvalidFieldEmployee,
             MTHcaInvalidFirstName,
             MTHcaInvalidId,
             MTHcaInvalidLastName,

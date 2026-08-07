@@ -13,7 +13,12 @@ import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useCreateInterventionType, useUpdateInterventionType } from '@/api/queries';
+import {
+  useCertificationTypes,
+  useSkillTypes,
+  useCreateInterventionType,
+  useUpdateInterventionType,
+} from '@/api/queries';
 import type { InterventionType } from '@/api/types';
 
 /** Everything the form edits, flattened for the inputs. */
@@ -24,6 +29,8 @@ interface TypeForm {
   service_category: 'necessity' | 'comfort';
   base_hourly_rate_ht: string;
   is_active: boolean;
+  required_certification_codes: string[];
+  required_skill_codes: string[];
 }
 
 const EMPTY: TypeForm = {
@@ -33,6 +40,10 @@ const EMPTY: TypeForm = {
   service_category: 'necessity',
   base_hourly_rate_ht: '',
   is_active: true,
+  // Empty, so a new service requires nothing until somebody says otherwise.
+  // A default that required something would gate work nobody is qualified for.
+  required_certification_codes: [],
+  required_skill_codes: [],
 };
 
 interface InterventionTypeDialogProps {
@@ -78,6 +89,8 @@ export function InterventionTypeDialog({
   const { t } = useTranslation();
   const update = useUpdateInterventionType();
   const create = useCreateInterventionType();
+  const { data: catalogue } = useCertificationTypes();
+  const { data: skillCatalogue } = useSkillTypes();
   const [form, setForm] = useState<TypeForm>(EMPTY);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,6 +108,8 @@ export function InterventionTypeDialog({
             service_category: entry.service_category,
             base_hourly_rate_ht: entry.base_hourly_rate_ht ?? '',
             is_active: entry.is_active,
+            required_certification_codes: [...entry.required_certification_codes],
+            required_skill_codes: [...entry.required_skill_codes],
           }
         : { ...EMPTY },
     );
@@ -114,6 +129,8 @@ export function InterventionTypeDialog({
       // Sending "0" instead would price every line of this service at nothing.
       base_hourly_rate_ht: rate === '' ? null : rate,
       is_active: form.is_active,
+      required_certification_codes: form.required_certification_codes,
+      required_skill_codes: form.required_skill_codes,
     };
     const onError = (cause: unknown) =>
       setError(cause instanceof Error ? cause.message : t('common.error'));
@@ -216,6 +233,64 @@ export function InterventionTypeDialog({
               />
             </Grid>
           </Grid>
+
+          <TextField
+            select
+            label={t('certifications.requiredBy')}
+            value={form.required_certification_codes}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                // A native multiple select hands the whole selection back on
+                // the element rather than on the event's value.
+                required_certification_codes: Array.from(
+                  (event.target as unknown as HTMLSelectElement).selectedOptions,
+                  (option) => option.value,
+                ),
+              })
+            }
+            helperText={t('certifications.requiredHint')}
+            slotProps={{
+              select: { native: true, multiple: true },
+              inputLabel: { shrink: true },
+              htmlInput: { 'data-testid': 'type-certifications' },
+            }}
+          >
+            {(catalogue ?? []).map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </TextField>
+
+          <TextField
+            select
+            label={t('skills.requiredBy')}
+            value={form.required_skill_codes}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                // A native multiple select hands the whole selection back on
+                // the element rather than on the event's value.
+                required_skill_codes: Array.from(
+                  (event.target as unknown as HTMLSelectElement).selectedOptions,
+                  (option) => option.value,
+                ),
+              })
+            }
+            helperText={t('skills.requiredHint')}
+            slotProps={{
+              select: { native: true, multiple: true },
+              inputLabel: { shrink: true },
+              htmlInput: { 'data-testid': 'type-skills' },
+            }}
+          >
+            {(skillCatalogue ?? []).map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </TextField>
 
           <FormControlLabel
             control={

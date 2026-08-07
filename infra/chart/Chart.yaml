@@ -1,0 +1,17 @@
+apiVersion: v2
+name: simple-erp
+description: Quoting, workforce and intervention planning for a home-care agency
+type: application
+
+# The chart's own version, bumped when the templates change.
+version: 0.1.0
+
+# What it deploys by default. Overridden per environment by
+# `--set global.image.tag=<git sha>` from CI, so a release is a digest that was
+# built and tested rather than a tag that moved.
+appVersion: "1.0.0"
+
+# Deliberately no dependencies. Postgres, RabbitMQ, the metrics stack and the
+# ingress controller are installed by infra/bootstrap: they outlive any one
+# release of this application, and a chart that owned them would uninstall them
+# on a failed rollback.

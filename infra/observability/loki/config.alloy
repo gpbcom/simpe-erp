@@ -1,0 +1,88 @@
+// Grafana Alloy: collect the container runtime's logs and ship them to Loki.
+//
+// Reads Docker's own log stream rather than a file the application writes,
+// which is the whole reason conf/logger.k8s.yaml exists. A rotating file inside
+// a container is invisible from outside it, unbounded on a layer nobody sized
+// for it, and gone when the container is replaced.
+//
+// The cluster runs the same component reading the kubelet's logs instead. What
+// is identical is everything below the source: the same JSON parsing, the same
+// promoted labels.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "simple_erp" {
+  targets = discovery.docker.containers.targets
+
+  // The compose service name, which is what somebody actually searches by.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  // Only this stack's containers. Whatever else is running on the machine is
+  // not what anybody opened Grafana to read.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "rt-erp"
+    action        = "keep"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.simple_erp.output
+  labels     = {platform = "compose"}
+  forward_to = [loki.process.simple_erp.receiver]
+}
+
+loki.process "simple_erp" {
+  forward_to = [loki.write.default.receiver]
+
+  // The application writes one JSON object per line under logger.k8s.yaml.
+  // A line that is not JSON — a library writing straight to stdout, or the
+  // colourised formatter if the wrong config was selected — passes through
+  // unparsed rather than being dropped: an unreadable log line is still a log
+  // line, and dropping it would hide exactly the misconfiguration that caused
+  // it.
+  stage.json {
+    expressions = {
+      level    = "level",
+      logger   = "logger",
+      trace_id = "trace_id",
+      company  = "company_id",
+    }
+  }
+
+  // Promoted to labels because they are what a query filters on. Deliberately
+  // *not* company_id: a label whose values grow with the number of agencies is
+  // a new stream per agency, and Loki charges for cardinality the same way
+  // Prometheus does. It stays a field, which is still queryable.
+  stage.labels {
+    values = {
+      level    = "",
+      trace_id = "",
+    }
+  }
+
+  // Grafana's derived field links a log line to its trace on this.
+  stage.structured_metadata {
+    values = {
+      trace_id = "",
+    }
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

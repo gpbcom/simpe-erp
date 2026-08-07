@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-# Standard library imports
+# Standard Library Imports.
 from datetime import date, datetime, time
 from decimal import Decimal, InvalidOperation
-from typing import ClassVar, Optional, Tuple, Union
+from typing import ClassVar, List, Optional, Tuple, Union
 
 # Third-party imports
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
 # First-party imports
 from models.enums import ServiceCategory
@@ -16,6 +22,8 @@ from models.quoting.exceptions import (
     MTQuoteLineInvalidId,
     MTQuoteLineInvalidInterventionTypeId,
     MTQuoteLineInvalidName,
+    MTQuoteLineInvalidRequiredCertifications,
+    MTQuoteLineInvalidRequiredSkills,
     MTQuoteLineInvalidServiceCategory,
     MTQuoteLineInvalidServiceDate,
     MTQuoteLineInvalidWindow,
@@ -45,6 +53,12 @@ class QuoteLine(BaseModel):
         total_ht (Optional[Decimal]): Line total excluding tax.
         vat_amount (Optional[Decimal]): Tax on the line.
         total_ttc (Optional[Decimal]): Line total including tax.
+        required_certification_codes (Optional[List[str]]): Certification codes
+            the assistant delivering this line must hold, or ``None`` to
+            inherit whatever the catalog entry requires.
+        required_skill_codes (Optional[List[str]]): Skill codes the assistant
+            delivering this line must declare, or ``None`` to inherit whatever
+            the catalog entry requires.
 
     Notes:
         - The line carries a **window** and a **duration**, not a fixed start.
@@ -60,6 +74,18 @@ class QuoteLine(BaseModel):
           the quote is written, by the person who knows which the customer is,
           and it is stored on the line so the quote reprints identically
           afterwards.
+        - **``required_certification_codes`` distinguishes three states**, and
+          the third is why it is nullable rather than a plain list. ``None``
+          means "whatever the catalog entry requires"; a list means "these,
+          instead of the catalog's"; and an **empty list** means "this hour
+          needs no qualification at all", which is a real answer somebody has
+          to be able to give when the catalog's default is wrong for one
+          customer. Collapsing ``None`` and ``[]`` would silently reinstate a
+          requirement the person writing the quote had deliberately removed.
+        - ``required_skill_codes`` carries the same three states, overridden
+          independently. A line that needs the catalog's certifications but no
+          skill at all is an ordinary thing to want, and one nullable field
+          covering both would make it inexpressible.
         - The four money fields are ``None`` until the quote is priced, and are
           **stored** once computed rather than recalculated on read. An issued
           quote must reprint identically even after the intervention type is
@@ -101,6 +127,14 @@ class QuoteLine(BaseModel):
     total_ttc: Optional[Decimal] = Field(
         default=None,
         description="Line total including tax.",
+    )
+    required_certification_codes: Optional[List[str]] = Field(
+        default=None,
+        description="Codes this line requires, or None to inherit the catalog.",
+    )
+    required_skill_codes: Optional[List[str]] = Field(
+        default=None,
+        description="Skills this line requires, or None to inherit the catalog.",
     )
 
     @field_validator("id", mode="before")
@@ -315,6 +349,86 @@ class QuoteLine(BaseModel):
             )
         return coerced
 
+    @field_validator("required_certification_codes", mode="before")
+    def validate_required_certification_codes(
+        cls, value: JsonValue
+    ) -> Optional[List[str]]:
+        """Validates the per-line certification override.
+
+        Args:
+            value (JsonValue): Raw ``required_certification_codes`` value.
+
+        Returns:
+            Optional[List[str]]: The upper-cased codes, de-duplicated, or
+            ``None`` when the line inherits the catalog entry's requirement.
+
+        Raises:
+            MTQuoteLineInvalidRequiredCertifications: If ``value`` is neither
+                ``None`` nor a list of non-empty strings.
+
+        Notes:
+            ``None`` is passed through rather than normalised to ``[]``. The
+            two mean different things — inherit, against require nothing — and
+            an empty list arriving from the wire must survive as one.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise MTQuoteLineInvalidRequiredCertifications(
+                f"Invalid required_certification_codes: {value!r}. "
+                f"Must be a list of certification codes, or None to inherit."
+            )
+        codes: List[str] = []
+        for entry in value:
+            if not isinstance(entry, str) or not entry.strip():
+                raise MTQuoteLineInvalidRequiredCertifications(
+                    f"Invalid certification code: {entry!r}. "
+                    f"Must be a non-empty string."
+                )
+            normalized = entry.strip().upper()
+            if normalized not in codes:
+                codes.append(normalized)
+        return codes
+
+    @field_validator("required_skill_codes", mode="before")
+    def validate_required_skill_codes(cls, value: JsonValue) -> Optional[List[str]]:
+        """Validates the per-line skill override.
+
+        Args:
+            value (JsonValue): Raw ``required_skill_codes`` value.
+
+        Returns:
+            Optional[List[str]]: The upper-cased codes, de-duplicated, or
+            ``None`` when the line inherits the catalog entry's requirement.
+
+        Raises:
+            MTQuoteLineInvalidRequiredSkills: If ``value`` is neither ``None``
+                nor a list of non-empty strings.
+
+        Notes:
+            ``None`` is passed through rather than normalised to ``[]``, for
+            the same reason as the certification override: inherit and require
+            nothing are different answers, and an empty list arriving from the
+            wire must survive as one.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise MTQuoteLineInvalidRequiredSkills(
+                f"Invalid required_skill_codes: {value!r}. "
+                f"Must be a list of skill codes, or None to inherit."
+            )
+        codes: List[str] = []
+        for entry in value:
+            if not isinstance(entry, str) or not entry.strip():
+                raise MTQuoteLineInvalidRequiredSkills(
+                    f"Invalid skill code: {entry!r}. Must be a non-empty string."
+                )
+            normalized = entry.strip().upper()
+            if normalized not in codes:
+                codes.append(normalized)
+        return codes
+
     @model_validator(mode="after")
     def check_window(self) -> QuoteLine:
         """Ensure the window can actually contain the service.
@@ -384,3 +498,49 @@ class QuoteLine(BaseModel):
             but ``50 / 60`` is not, and the error would reach the invoice.
         """
         return Decimal(self.duration_minutes) / Decimal(60)
+
+    def effective_certification_codes(self, catalog_codes: List[str]) -> List[str]:
+        """Return the codes an assistant must hold to deliver this line.
+
+        Args:
+            catalog_codes (List[str]): What the line's intervention type
+                requires, used when the line overrides nothing.
+
+        Returns:
+            List[str]: This line's own codes when it names any, and the
+            catalog's otherwise.
+
+        Notes:
+            - Resolving the fallback here rather than at each call site is what
+              makes "no override means the catalog's" a property of the line
+              instead of something the requirement builder, the pricing service
+              and every future caller each have to remember — the same reasoning
+              behind :meth:`InterventionType.effective_hourly_rate_ht`.
+            - An **empty** override is honoured, not treated as absent. The
+              distinction is the whole reason the field is nullable.
+        """
+        if self.required_certification_codes is None:
+            return list(catalog_codes)
+        return list(self.required_certification_codes)
+
+    def effective_skill_codes(self, catalog_codes: List[str]) -> List[str]:
+        """Return the skills an assistant must declare to deliver this line.
+
+        Args:
+            catalog_codes (List[str]): What the line's intervention type
+                requires, used when the line overrides nothing.
+
+        Returns:
+            List[str]: This line's own codes when it names any, and the
+            catalog's otherwise.
+
+        Notes:
+            The twin of :meth:`effective_certification_codes`, resolved the
+            same way and for the same reason: "no override means the catalog's"
+            is a property of the line rather than something the requirement
+            builder and every future caller each have to remember. An **empty**
+            override is honoured, not treated as absent.
+        """
+        if self.required_skill_codes is None:
+            return list(catalog_codes)
+        return list(self.required_skill_codes)

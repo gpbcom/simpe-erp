@@ -18,7 +18,7 @@ from models.auth.user import User
 from models.enums import EventRoutingKey
 from models.planning.planning_run import PlanningRun
 from models.quoting.quote import Quote
-from models.schemas.requests.intervention_type_change_request import (
+from models.schemas.requests.quoting.intervention_type_change_request import (
     InterventionTypeChangeRequest,
 )
 from service.messaging.publisher import EventPublisher
@@ -99,6 +99,7 @@ async def delete_intervention(
     )
     run = await plannings.request_run(
         requested_by=caller.id or caller.email,
+        company_id=caller.company_id,
         period_start=period_start,
         period_end=period_end,
     )

@@ -71,6 +71,44 @@ export function formatTime(value: string): string {
 }
 
 /**
+ * Format a minute of the day as an `HH:MM` clock time.
+ *
+ * @param minute - Minutes from midnight, as the planning API publishes them.
+ * @returns The clock time, zero-padded.
+ *
+ * @remarks
+ * The planning rules are held in minutes because that is the unit the
+ * constraint solver works in. A `<input type="time">` speaks `HH:MM`, so the
+ * conversion happens here, once, at the edge — rather than in each form.
+ */
+export function minutesToTime(minute: number): string {
+  const hours = Math.floor(minute / 60);
+  const minutes = minute % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/**
+ * Parse an `HH:MM` clock time into a minute of the day.
+ *
+ * @param value - The clock time from a time input.
+ * @returns Minutes from midnight, or `null` when the value is not a time.
+ *
+ * @remarks
+ * Returns `null` rather than `NaN` or `0` for an unparseable value. A cleared
+ * time input reads as an empty string, and `0` would silently save it as
+ * midnight — a working day starting at 00:00 is a plausible-looking number
+ * that nobody chose.
+ */
+export function timeToMinutes(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+/**
  * Return somebody's initials, for a photograph that will not load.
  *
  * @param fullName - The person's full name.

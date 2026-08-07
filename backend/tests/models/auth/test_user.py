@@ -11,17 +11,22 @@ import pytest
 # First-party imports
 from models.auth.exceptions import (
     MTInvalidUserException,
+    MTUserInvalidLanguage,
+    MTUserInvalidAddress,
     MTUserInvalidDate,
     MTUserInvalidEmail,
     MTUserInvalidFullName,
     MTUserInvalidHashedPassword,
     MTUserInvalidHcaId,
     MTUserInvalidId,
+    MTUserInvalidPhoneNumber,
+    MTUserInvalidPhotoUrl,
     MTUserInvalidRole,
     MTUserRoleHcaRequiresHcaId,
 )
 from models.auth.user import User
-from models.enums import UserRole
+from models.base.person import Person
+from models.enums import Language, UserRole
 
 
 @pytest.fixture
@@ -302,6 +307,252 @@ class TestUser:
         assert user.owns_hca("hca-2") is True
 
     # ------------------------------------------------------------------ #
+    #  An account is a Person
+    # ------------------------------------------------------------------ #
+
+    def test_an_account_is_a_person(self) -> None:
+        """The account shares the person record rather than restating it."""
+        assert issubclass(User, Person)
+
+    @pytest.mark.parametrize(
+        ("display_name", "given", "family"),
+        [
+            pytest.param("Claire Bernard", "Claire", "Bernard", id="two names"),
+            pytest.param(
+                "Jean Pierre de la Tour",
+                "Jean",
+                "Pierre de la Tour",
+                id="split on the first space, not the last",
+            ),
+            pytest.param("Root", "", "Root", id="a mononym is all family name"),
+            pytest.param("  Ana  Lopez  ", "Ana", "Lopez", id="trimmed"),
+        ],
+    )
+    def test_a_display_name_is_stored_as_two_names(
+        self,
+        valid_manager_kwargs: Dict[str, Any],
+        display_name: str,
+        given: str,
+        family: str,
+    ) -> None:
+        """**The compatibility shim the whole rebase rests on.**
+
+        Args:
+            valid_manager_kwargs (Dict[str, Any]): A valid account.
+            display_name (str): What the caller passes.
+            given (str): The given name expected.
+            family (str): The family name expected.
+
+        Notes:
+            Every caller — the sign-up form, the staff-account route, the
+            seeder — has always passed one ``full_name``, and no screen asks an
+            account holder for their surname separately. Splitting here is what
+            let ``User`` become a ``Person`` without touching any of them.
+        """
+        user = User(**{**valid_manager_kwargs, "full_name": display_name})
+
+        assert (user.first_name, user.last_name) == (given, family)
+
+    @pytest.mark.parametrize(
+        "display_name",
+        [
+            pytest.param("Claire Bernard", id="two names"),
+            pytest.param("Jean Pierre de la Tour", id="a long family name"),
+            pytest.param("Root", id="a mononym"),
+        ],
+    )
+    def test_the_display_name_round_trips_exactly(
+        self, valid_manager_kwargs: Dict[str, Any], display_name: str
+    ) -> None:
+        """What went in comes back out.
+
+        Args:
+            valid_manager_kwargs (Dict[str, Any]): A valid account.
+            display_name (str): The name to round-trip.
+
+        Notes:
+            This is why the split is on the *first* space. Splitting on the
+            last would read back identically for two-part names and file
+            "Jean Pierre de la Tour" under the surname "Tour" — and it is the
+            round trip that lets the stored column be replaced without anybody
+            noticing.
+        """
+        user = User(**{**valid_manager_kwargs, "full_name": display_name})
+
+        assert user.full_name() == display_name
+
+    def test_explicit_names_win_over_a_display_name(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """A caller that knows both names is not second-guessed."""
+        user = User(
+            **{
+                **valid_manager_kwargs,
+                "full_name": "Ignored Entirely",
+                "first_name": "Claire",
+                "last_name": "Bernard",
+            }
+        )
+
+        assert user.full_name() == "Claire Bernard"
+
+    def test_a_mononym_renders_without_a_leading_space(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """An empty given name must not reach a screen as " Root".
+
+        Notes:
+            The base joins both halves unconditionally, which is right for a
+            person the agency has a form for. An account overrides it because
+            a service account has one name, and the greeting on every email
+            would otherwise start with a space.
+        """
+        user = User(**{**valid_manager_kwargs, "full_name": "Root"})
+
+        assert user.full_name() == "Root"
+
+    def test_a_missing_display_name_raises_the_models_exception(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """A blank name is refused as a name, not as a missing field.
+
+        Notes:
+            Without this the shim would pass the payload through untouched and
+            Pydantic would report "first_name: Field required" — a message
+            about a field no caller has ever heard of.
+        """
+        with pytest.raises(MTUserInvalidFullName):
+            User(**{**valid_manager_kwargs, "full_name": "   "})
+
+    def test_the_public_view_still_carries_the_display_name(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """**The API surface did not move.**
+
+        Notes:
+            The two halves are published as well, so nothing is hidden, but
+            ``full_name`` is what the account screen, the emails and the
+            front-end read — and it is derived rather than stored, so it cannot
+            disagree with them.
+        """
+        published = User(**valid_manager_kwargs).to_public_dict()
+
+        assert published["full_name"] == "Claire Bernard"
+        assert published["first_name"] == "Claire"
+        assert published["last_name"] == "Bernard"
+
+    @pytest.mark.parametrize("field", ["phone_number", "address"])
+    def test_the_contact_fields_are_optional_on_an_account(
+        self, valid_manager_kwargs: Dict[str, Any], field: str
+    ) -> None:
+        """An account is a credential, not a contact record.
+
+        Args:
+            valid_manager_kwargs (Dict[str, Any]): A valid account.
+            field (str): The field expected to default to None.
+
+        Notes:
+            Required on ``Person``, because an assistant's address is a routing
+            depot and a customer's is where the care happens. A manager has
+            neither, and there is no screen that asks them for one — so the
+            account widens the two rather than storing blanks.
+        """
+        assert getattr(User(**valid_manager_kwargs), field) is None
+
+    def test_a_supplied_telephone_number_is_still_checked(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """Optional means absent or usable, never present and blank."""
+        with pytest.raises(MTUserInvalidPhoneNumber):
+            User(**{**valid_manager_kwargs, "phone_number": "   "})
+
+    def test_a_supplied_address_is_still_checked(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """Same rule as the telephone number."""
+        with pytest.raises(MTUserInvalidAddress):
+            User(**{**valid_manager_kwargs, "address": "12 rue de Rivoli"})
+
+    def test_the_sign_in_address_is_lower_cased(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """The account overrides the base, which leaves case alone.
+
+        Notes:
+            For an assistant and a customer the address is contact
+            information. Here it is the sign-in, so lower-casing is what makes
+            sign-in case-insensitive and stops the uniqueness index being
+            defeated by capitalisation.
+        """
+        user = User(**{**valid_manager_kwargs, "email": "Claire.BERNARD@Example.com"})
+
+        assert user.email == "claire.bernard@example.com"
+
+    # ------------------------------------------------------------------ #
+    #  Portrait
+    # ------------------------------------------------------------------ #
+
+    def test_an_account_has_no_portrait_until_one_is_uploaded(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """A manager's account is valid with no photograph at all."""
+        assert User(**valid_manager_kwargs).photo_url is None
+
+    def test_a_portrait_the_object_store_issued_is_accepted(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """A URL under the photo prefix is what an upload hands back."""
+        user = User(
+            **{
+                **valid_manager_kwargs,
+                "photo_url": "https://cdn.example.com/hca-photos/user-1/abc.jpg",
+            }
+        )
+        assert str(user.photo_url).endswith("/hca-photos/user-1/abc.jpg")
+
+    def test_a_blank_portrait_reads_as_none(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """An empty form field means "no photo", not "invalid photo"."""
+        user = User(**{**valid_manager_kwargs, "photo_url": "   "})
+        assert user.photo_url is None
+
+    @pytest.mark.parametrize(
+        "photo_url",
+        [
+            "https://evil.example.com/tracker.png",
+            "ftp://cdn.example.com/hca-photos/user-1/abc.jpg",
+            "/hca-photos/user-1/abc.jpg",
+            42,
+        ],
+    )
+    def test_a_portrait_this_application_did_not_store_is_refused(
+        self, valid_manager_kwargs: Dict[str, Any], photo_url: Any
+    ) -> None:
+        """Only a URL under the photo prefix may be stored.
+
+        Notes:
+            The avatar is rendered wherever the account is shown, so a remote
+            one would report every viewer to whoever hosts it.
+        """
+        with pytest.raises(MTUserInvalidPhotoUrl):
+            User(**{**valid_manager_kwargs, "photo_url": photo_url})
+
+    def test_a_portrait_serializes_as_plain_text(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """The store column is text, so a dump must not carry a URL object."""
+        user = User(
+            **{
+                **valid_manager_kwargs,
+                "photo_url": "https://cdn.example.com/hca-photos/user-1/abc.jpg",
+            }
+        )
+        assert user.model_dump()["photo_url"] == (
+            "https://cdn.example.com/hca-photos/user-1/abc.jpg"
+        )
+
+    # ------------------------------------------------------------------ #
     #  Exception hierarchy
     # ------------------------------------------------------------------ #
 
@@ -314,6 +565,8 @@ class TestUser:
             MTUserInvalidHashedPassword,
             MTUserInvalidHcaId,
             MTUserInvalidId,
+            MTUserInvalidPhoneNumber,
+            MTUserInvalidPhotoUrl,
             MTUserInvalidRole,
             MTUserRoleHcaRequiresHcaId,
         ],
@@ -370,3 +623,66 @@ class TestUser:
         """An account survives a dump-and-rebuild unchanged."""
         user = User(**valid_manager_kwargs)
         assert User(**user.model_dump()) == user
+
+
+class TestAccountLanguage:
+    """Tests for the language preference the emailed documents follow."""
+
+    def test_french_is_the_default(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """An account nobody has set a preference on is a French one."""
+        assert User(**valid_manager_kwargs).language is Language.FR
+
+    def test_a_known_language_is_coerced_from_a_string(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """The API sends ``"en"``; the model holds a member."""
+        assert (
+            User(**{**valid_manager_kwargs, "language": "en"}).language
+            is Language.EN
+        )
+
+    def test_none_reads_as_the_default(
+        self, valid_manager_kwargs: Dict[str, Any]
+    ) -> None:
+        """The column arrived after the rows did.
+
+        Notes:
+            An account with no stored preference is ordinary, not broken, so
+            ``None`` is the default rather than an error.
+        """
+        assert (
+            User(**{**valid_manager_kwargs, "language": None}).language
+            is Language.FR
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("de", id="Invalid - a language we do not speak"),
+            pytest.param("french", id="Invalid - the name, not the code"),
+            pytest.param("FR", id="Invalid - the right code, wrong case"),
+            pytest.param(7, id="Invalid - not a string"),
+        ],
+    )
+    def test_an_unknown_language_is_refused(
+        self, valid_manager_kwargs: Dict[str, Any], value: Any
+    ) -> None:
+        """**Refused rather than quietly defaulted.**
+
+        Args:
+            valid_manager_kwargs (Dict[str, Any]): Base arguments.
+            value (Any): The rejected language.
+
+        Notes:
+            A preference the holder set and the server ignored is worse than
+            one it rejected: the screen would go on showing their choice while
+            every emailed document came out in the other language.
+        """
+        with pytest.raises(MTUserInvalidLanguage):
+            User(**{**valid_manager_kwargs, "language": value})
+
+    def test_the_language_exception_shares_the_model_base(self) -> None:
+        """One except clause still catches everything this model raises."""
+        assert issubclass(MTUserInvalidLanguage, MTInvalidUserException)

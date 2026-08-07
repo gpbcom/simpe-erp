@@ -7,13 +7,15 @@ import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import Stack from '@mui/material/Stack';
+import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LockIcon from '@mui/icons-material/Lock';
-import { useUpdateEmployment } from '@/api/queries';
+import { useCertificationTypes, useUpdateEmployment } from '@/api/queries';
 import { AppIcon } from '@/components/icons/AppIcon';
 import type { Certification, ContractType, Hca } from '@/api/types';
 
@@ -62,17 +64,27 @@ export function EmploymentSection({ profile, editable }: EmploymentSectionProps)
     profile.certifications,
   );
   const [added, setAdded] = useState('');
+  const [fieldEmployee, setFieldEmployee] = useState(profile.field_employee);
+  const { data: catalogue } = useCertificationTypes();
 
   useEffect(() => {
     setContract(profile.contract_type);
     setCertifications(profile.certifications);
+    setFieldEmployee(profile.field_employee);
   }, [profile]);
+
+  // Only what is not already held, so the picker cannot add a duplicate the
+  // server would store twice and the planner would read once.
+  const available = (catalogue ?? []).filter(
+    (entry) => !certifications.some((held) => held.code === entry.code),
+  );
 
   const dirty =
     contract !== profile.contract_type ||
+    fieldEmployee !== profile.field_employee ||
     certifications.length !== profile.certifications.length ||
     certifications.some(
-      (entry, index) => entry.name !== profile.certifications[index]?.name,
+      (entry, index) => entry.code !== profile.certifications[index]?.code,
     );
 
   return (
@@ -116,6 +128,49 @@ export function EmploymentSection({ profile, editable }: EmploymentSectionProps)
                     icon={<LockIcon />}
                     label={t(`hca.contract_${profile.contract_type}`)}
                     data-testid="contract-type"
+                  />
+                </Tooltip>
+              </Box>
+            )}
+          </Box>
+
+          {/* On the rounds, or not */}
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              {t('hcas.fieldEmployee')}
+            </Typography>
+            {editable ? (
+              <Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={fieldEmployee}
+                      onChange={(event) => setFieldEmployee(event.target.checked)}
+                      // The same identifier as the locked chip below, on
+                      // purpose: one name for "the field employee control",
+                      // whichever half of the screen rendered it. A test
+                      // tells them apart by looking *inside* — this one
+                      // wraps a real checkbox, and a chip does not.
+                      data-testid="field-employee"
+                    />
+                  }
+                  label={t(fieldEmployee ? 'common.yes' : 'common.no')}
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {t('hcas.fieldEmployeeHint')}
+                </Typography>
+              </Box>
+            ) : (
+              <Box sx={{ mt: 0.5 }}>
+                <Tooltip title={t('hca.managedByManager')}>
+                  <Chip
+                    icon={<LockIcon />}
+                    label={t(
+                      profile.field_employee
+                        ? 'hcas.fieldEmployee'
+                        : 'hcas.notFieldEmployee',
+                    )}
+                    data-testid="field-employee"
                   />
                 </Tooltip>
               </Box>
@@ -170,18 +225,33 @@ export function EmploymentSection({ profile, editable }: EmploymentSectionProps)
               {editable ? (
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <TextField
+                    select
                     label={t('hca.addCertification')}
                     value={added}
                     onChange={(event) => setAdded(event.target.value)}
-                    inputProps={{ 'data-testid': 'own-new-certification' }}
-                  />
+                    sx={{ flexGrow: 1 }}
+                    slotProps={{
+                      select: { native: true },
+                      inputLabel: { shrink: true },
+                      htmlInput: { 'data-testid': 'own-new-certification' },
+                    }}
+                  >
+                    <option value="" />
+                    {available.map((entry) => (
+                      <option key={entry.code} value={entry.code}>
+                        {entry.label}
+                      </option>
+                    ))}
+                  </TextField>
                   <Button
                     onClick={() => {
-                      if (!added.trim()) return;
+                      const chosen = available.find((entry) => entry.code === added);
+                      if (!chosen) return;
                       setCertifications([
                         ...certifications,
                         {
-                          name: added.trim(),
+                          name: chosen.label,
+                          code: chosen.code,
                           issuer: null,
                           obtained_on: null,
                           expires_on: null,
@@ -207,6 +277,7 @@ export function EmploymentSection({ profile, editable }: EmploymentSectionProps)
                   update.mutate({
                     contract_type: contract,
                     certifications,
+                    field_employee: fieldEmployee,
                   })
                 }
                 data-testid="save-employment"

@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, Query, status
 # First-party imports
 from api.dependencies import get_current_user, get_hca_service
 from models.auth.user import User
-from models.people.availability_slot import AvailabilitySlot
+from models.people.hca.availability_slot import AvailabilitySlot
+from models.schemas.requests.hca.working_days_request import WorkingDaysRequest
+from models.schemas.responses.hca.hca_response import HcaResponse
 from service.hcas.hcas import HcaService
 
 logger: Logger = getLogger(__name__)
@@ -51,6 +53,52 @@ async def list_availability(
     """
     logger.debug("Listing absences for assistant %s.", hca_id)
     return await service.list_availability(hca_id, caller, start=start, end=end)
+
+
+@router.put("/{hca_id}/working-days", response_model=HcaResponse)
+async def set_working_days(
+    hca_id: str,
+    payload: WorkingDaysRequest,
+    service: HcaService = Depends(get_hca_service),
+    caller: User = Depends(get_current_user),
+) -> HcaResponse:
+    """Declare which days of the week an assistant works.
+
+    Args:
+        hca_id (str): The assistant whose working week is being set.
+        payload (WorkingDaysRequest): The days now worked.
+        service (HcaService): The assistant service.
+        caller (User): The authenticated caller.
+
+    Returns:
+        HcaResponse: The assistant, carrying their new working week.
+
+    Raises:
+        MTWorkingDaysRequestInvalidWeekdays: If the payload names no day or an
+            unknown one; answered as a 422.
+        MTHcaForbidden: If an assistant sets a colleague's working week;
+            answered as a 403.
+        MTHcaNotFound: If no such assistant exists; answered as a 404.
+
+    Notes:
+        Authenticated rather than role-gated, matching the absence routes: an
+        assistant sets their own working week, and a manager or administrator
+        sets anybody's. Which of the two the caller is can only be decided by
+        the service, because only it can compare the addressed assistant
+        against the caller's own record.
+
+        The whole assistant comes back rather than just the week, so a client
+        that has just changed it does not need a second call to redisplay the
+        record — and so the working week and the absences are read from one
+        shape in both directions.
+    """
+    logger.info(
+        "Setting the working week of assistant %s to %s.",
+        hca_id,
+        ", ".join(day.value for day in payload.working_weekdays),
+    )
+    updated = await service.set_working_days(hca_id, payload.working_weekdays, caller)
+    return HcaResponse.from_hca(updated)
 
 
 @router.post(

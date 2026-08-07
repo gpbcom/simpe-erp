@@ -3,10 +3,10 @@ from __future__ import annotations
 # Standard library imports
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import ClassVar, Optional, Union
+from typing import ClassVar, List, Optional, Union
 
 # Third-party imports
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, JsonValue, field_serializer, field_validator  # noqa: E501
 
 # First-party imports
 from models.catalog.exceptions import (
@@ -17,6 +17,8 @@ from models.catalog.exceptions import (
     MTInterventionTypeInvalidId,
     MTInterventionTypeInvalidIsActive,
     MTInterventionTypeInvalidName,
+    MTInterventionTypeInvalidRequiredCertifications,
+    MTInterventionTypeInvalidRequiredSkills,
     MTInterventionTypeInvalidServiceCategory,
 )
 from models.enums import ServiceCategory
@@ -37,6 +39,12 @@ class InterventionType(BaseModel):
         base_hourly_rate_ht (Optional[Decimal]): Hourly rate excluding tax for
             this type, or ``None`` to bill the agency-wide default.
         is_active (bool): Whether the type may be put on a new quote.
+        required_certification_codes (List[str]): Codes from the certification
+            catalogue an assistant must hold before this work may be assigned
+            to them. Empty by default.
+        required_skill_codes (List[str]): Codes from the skill catalogue an
+            assistant must declare before this work may be assigned to them.
+            Empty by default.
         created_at (Optional[datetime]): Creation timestamp, set by the store.
         updated_at (Optional[datetime]): Last-update timestamp, set by the
             store.
@@ -57,6 +65,26 @@ class InterventionType(BaseModel):
         - Types are retired with ``is_active``, never deleted. A quote issued
           last year still references its type, and removing the row would make
           that quote unreprintable.
+        - ``required_certification_codes`` is **empty by default**, so adding
+          the field changed nothing about work already sold. A default that
+          required something would have made every existing planning run fail
+          the moment this shipped, which is a migration failure wearing a
+          solver's clothes.
+        - The codes are the catalogue *default*, and a
+          :class:`~models.quoting.quote_line.QuoteLine` may override them. Which
+          qualification a given hour actually needs is occasionally a property
+          of the customer rather than of the service — the same reasoning that
+          moved ``service_category`` onto the line.
+        - ``required_skill_codes`` is a **second, independent list**, not more
+          entries in the first. The two catalogues are separate because a
+          certification is recorded by a manager and a skill is declared by its
+          holder, and the planner reports them as different unplaced reasons —
+          "nobody holds DEAES" is a hire, "nobody has declared LEVE-PERSONNE"
+          may be somebody who can already do it not having said so. One merged
+          list would collapse those into one message and send managers to the
+          wrong screen. It defaults to empty for the same reason the
+          certification list does: adding the field changed nothing about work
+          already sold.
     """
 
     MAX_HOURLY_RATE: ClassVar[Decimal] = Decimal("10000")
@@ -81,6 +109,14 @@ class InterventionType(BaseModel):
     is_active: bool = Field(
         default=True,
         description="Whether the type may be put on a new quote.",
+    )
+    required_certification_codes: List[str] = Field(
+        default_factory=list,
+        description="Certification codes an assistant must hold to do this work.",
+    )
+    required_skill_codes: List[str] = Field(
+        default_factory=list,
+        description="Skill codes an assistant must declare to do this work.",
     )
     created_at: Optional[datetime] = Field(
         default=None,
@@ -159,7 +195,8 @@ class InterventionType(BaseModel):
             )
         normalized = value.strip().upper()
         if not all(
-            character.isalnum() or character in "-_" for character in normalized
+            character.isalnum() or character in "-_"
+            for character in normalized  # noqa: E501
         ):
             raise MTInterventionTypeInvalidCode(
                 f"Invalid code: {value!r}. Must hold only letters, digits, "
@@ -245,7 +282,7 @@ class InterventionType(BaseModel):
         """
         if value is None:
             return None
-        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):  # noqa: E501
             raise MTInterventionTypeInvalidHourlyRate(
                 f"Invalid base_hourly_rate_ht: {value!r}. "
                 f"Must be a positive decimal amount or None."
@@ -259,7 +296,8 @@ class InterventionType(BaseModel):
             ) from None
         if not coerced.is_finite() or coerced <= 0:
             raise MTInterventionTypeInvalidHourlyRate(
-                f"Invalid base_hourly_rate_ht: {coerced!r}. Must be strictly positive."
+                f"Invalid base_hourly_rate_ht: {coerced!r}. "  # noqa: E501
+                "Must be strictly positive."
             )
         if coerced > cls.MAX_HOURLY_RATE:
             raise MTInterventionTypeInvalidHourlyRate(
@@ -290,6 +328,90 @@ class InterventionType(BaseModel):
                 f"Invalid is_active: {value!r}. Must be true or false."
             )
         return value
+
+    @field_validator("required_certification_codes", mode="before")
+    def validate_required_certification_codes(cls, value: JsonValue) -> List[str]:  # noqa: E501
+        """Validates that the required codes are a list of catalogue keys.
+
+        Args:
+            value (JsonValue): Raw ``required_certification_codes`` value.
+                ``None`` falls back to an empty list.
+
+        Returns:
+            List[str]: The upper-cased codes, de-duplicated, in the order they
+            were given.
+
+        Raises:
+            MTInterventionTypeInvalidRequiredCertifications: If ``value`` is
+                neither ``None`` nor a list of non-empty strings.
+
+        Notes:
+            - De-duplicated rather than refused on a repeat. The same code
+              listed twice means exactly what it means once, and rejecting it
+              would fail a save over something the screen can silently fix.
+            - Upper-cased here so a requirement matches an assistant's
+              qualification by plain equality. Normalising at comparison time
+              instead would put the rule in the solver's hot loop and let it
+              drift from the one applied on the way in.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise MTInterventionTypeInvalidRequiredCertifications(
+                f"Invalid required_certification_codes: {value!r}. "
+                f"Must be a list of certification codes."
+            )
+        codes: List[str] = []
+        for entry in value:
+            if not isinstance(entry, str) or not entry.strip():
+                raise MTInterventionTypeInvalidRequiredCertifications(
+                    f"Invalid certification code: {entry!r}. "
+                    f"Must be a non-empty string."
+                )
+            normalized = entry.strip().upper()
+            if normalized not in codes:
+                codes.append(normalized)
+        return codes
+
+    @field_validator("required_skill_codes", mode="before")
+    def validate_required_skill_codes(cls, value: JsonValue) -> List[str]:
+        """Validates that the required skill codes are a list of catalogue keys.
+
+        Args:
+            value (JsonValue): Raw ``required_skill_codes`` value. ``None``
+                falls back to an empty list.
+
+        Returns:
+            List[str]: The upper-cased codes, de-duplicated, in the order they
+            were given.
+
+        Raises:
+            MTInterventionTypeInvalidRequiredSkills: If ``value`` is neither
+                ``None`` nor a list of non-empty strings.
+
+        Notes:
+            The rule is the same as
+            :meth:`validate_required_certification_codes` and the exception is
+            not. A message naming the wrong catalogue sends whoever reads it to
+            the wrong screen, and the two are edited by different people.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise MTInterventionTypeInvalidRequiredSkills(
+                f"Invalid required_skill_codes: {value!r}. "
+                f"Must be a list of skill codes."
+            )
+        codes: List[str] = []
+        for entry in value:
+            if not isinstance(entry, str) or not entry.strip():
+                raise MTInterventionTypeInvalidRequiredSkills(
+                    f"Invalid skill code: {entry!r}. Must be a non-empty string."
+                )
+            normalized = entry.strip().upper()
+            if normalized not in codes:
+                codes.append(normalized)
+        return codes
 
     @field_validator("created_at", "updated_at", mode="before")
     def validate_date(

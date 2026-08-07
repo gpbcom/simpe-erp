@@ -16,13 +16,15 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import {
   useMyAccount,
   useMyProfile,
-  useRemoveMyPhoto,
+  useRemoveMyAccountPhoto,
   useUpdateMyProfile,
-  useUploadMyPhoto,
+  useUploadMyAccountPhoto,
 } from '@/api/queries';
 import { AbsencesSection } from './AbsencesSection';
+import { WorkingDaysSection } from './WorkingDaysSection';
 import { AccountSection } from './AccountSection';
 import { EmploymentSection } from './EmploymentSection';
+import { SkillsSection } from './SkillsSection';
 import { PasswordSection } from './PasswordSection';
 import { formatDateTime, initialsOf } from '@/utils/format';
 import { hasAtLeast, useSession } from '@/store/session';
@@ -100,8 +102,8 @@ export function MyAccountPage() {
   // manager and administrator in the agency, which is the bug this fixes.
   const { data: profile } = useMyProfile(account?.hca_id);
   const update = useUpdateMyProfile();
-  const uploadPhoto = useUploadMyPhoto();
-  const removePhoto = useRemoveMyPhoto();
+  const uploadPhoto = useUploadMyAccountPhoto();
+  const removePhoto = useRemoveMyAccountPhoto();
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<ProfileForm>(EMPTY);
@@ -208,10 +210,73 @@ export function MyAccountPage() {
 
       {/* ── The account: every caller has one ────────────────────── */}
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 8 }}>
+        {/* The portrait sits here, above the assistant record and outside it,
+            because it belongs to the account. It used to live inside the
+            assistant block, which meant a manager or an administrator had no
+            photograph at all — not a locked one, simply nothing on the page. */}
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <Avatar
+                src={account.photo_url ?? undefined}
+                sx={{ width: 112, height: 112, mx: 'auto', mb: 2, fontSize: 36 }}
+                data-testid="profile-avatar"
+              >
+                {initialsOf(fullName)}
+              </Avatar>
+              <Typography variant="h3">{fullName}</Typography>
+
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                data-testid="photo-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) uploadPhoto.mutate(file);
+                  // Cleared so choosing the same file twice fires a second
+                  // change event; without it a failed upload could not be
+                  // retried with the same photograph.
+                  event.target.value = '';
+                }}
+              />
+              <Stack direction="row" spacing={1} sx={{ mt: 2 }} justifyContent="center">
+                <Button
+                  size="small"
+                  startIcon={<PhotoCameraIcon />}
+                  onClick={() => fileInput.current?.click()}
+                  disabled={uploadPhoto.isPending}
+                  data-testid="upload-photo"
+                >
+                  {t('account.changePhoto')}
+                </Button>
+                {account.photo_url ? (
+                  <Button
+                    size="small"
+                    color="inherit"
+                    onClick={() => removePhoto.mutate()}
+                    disabled={removePhoto.isPending}
+                    data-testid="remove-photo"
+                  >
+                    {t('common.remove')}
+                  </Button>
+                ) : null}
+              </Stack>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mt: 1, display: 'block' }}
+              >
+                {profile ? t('hca.photoIsYourPin') : t('account.photoExplained')}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, md: 5 }}>
           <AccountSection account={account} />
         </Grid>
-        <Grid size={{ xs: 12, lg: 4 }}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <PasswordSection />
         </Grid>
       </Grid>
@@ -223,68 +288,9 @@ export function MyAccountPage() {
         </Alert>
       ) : (
         <Grid container spacing={3}>
-          {/* ── Portrait and the assistant's own record ──────────────── */}
+          {/* ── The assistant's own record ───────────────────────────── */}
           <Grid size={{ xs: 12, md: 4 }}>
             <Stack spacing={3}>
-              <Card>
-                <CardContent sx={{ textAlign: 'center' }}>
-                  <Avatar
-                    src={profile.photo_url ?? undefined}
-                    sx={{ width: 112, height: 112, mx: 'auto', mb: 2, fontSize: 36 }}
-                    data-testid="profile-avatar"
-                  >
-                    {initialsOf(fullName)}
-                  </Avatar>
-                  <Typography variant="h3">{fullName}</Typography>
-
-                  <input
-                    ref={fileInput}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    hidden
-                    data-testid="photo-input"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) uploadPhoto.mutate(file);
-                      event.target.value = '';
-                    }}
-                  />
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ mt: 2 }}
-                    justifyContent="center"
-                  >
-                    <Button
-                      size="small"
-                      startIcon={<PhotoCameraIcon />}
-                      onClick={() => fileInput.current?.click()}
-                      disabled={uploadPhoto.isPending}
-                      data-testid="upload-photo"
-                    >
-                      {t('hca.changePhoto')}
-                    </Button>
-                    {profile.photo_url ? (
-                      <Button
-                        size="small"
-                        color="inherit"
-                        onClick={() => removePhoto.mutate()}
-                        data-testid="remove-photo"
-                      >
-                        {t('common.remove')}
-                      </Button>
-                    ) : null}
-                  </Stack>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ mt: 1, display: 'block' }}
-                  >
-                    {t('hca.photoIsYourPin')}
-                  </Typography>
-                </CardContent>
-              </Card>
-
               <Card data-testid="record-section">
                 <CardContent>
                   <Stack spacing={1.5}>
@@ -393,6 +399,10 @@ export function MyAccountPage() {
               </Card>
 
               <EmploymentSection profile={profile} editable={managesEmployment} />
+
+              <SkillsSection profile={profile} />
+
+              <WorkingDaysSection profile={profile} />
 
               <AbsencesSection profile={profile} />
             </Stack>

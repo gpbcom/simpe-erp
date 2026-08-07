@@ -14,7 +14,7 @@ from models.schemas.exceptions import (
     MTPricingRulesResponseInvalidBaseRate,
     MTPricingRulesResponseInvalidSurcharges,
 )
-from models.schemas.responses.pricing_rules_response import PricingRulesResponse
+from models.schemas.responses.catalog.pricing_rules_response import PricingRulesResponse
 
 
 class TestPricingRulesResponse:

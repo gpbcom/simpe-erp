@@ -1,0 +1,20 @@
+# The dev environment's overrides. Everything else comes from values.yaml.
+ingress:
+  host: dev.simple-erp.local
+  tls:
+    enabled: false
+
+api:
+  autoscaling:
+    minReplicas: 1
+    maxReplicas: 4
+
+workerPlanning:
+  scaling:
+    minReplicas: 1
+    maxReplicas: 10
+
+
+observability:
+  # On here first: a trace that is wrong is cheaper to find in dev.
+  tracingEnabled: true

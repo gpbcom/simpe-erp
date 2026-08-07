@@ -20,6 +20,11 @@ import { useSession } from '@/store/session';
 interface CompanyForm {
   name: string;
   registration_number: string;
+  legal_form: string;
+  share_capital: string;
+  rcs_number: string;
+  vat_number: string;
+  phone_number: string;
   contact_email: string;
   street: string;
   postal_code: string;
@@ -31,6 +36,11 @@ interface CompanyForm {
 const EMPTY: CompanyForm = {
   name: '',
   registration_number: '',
+  legal_form: '',
+  share_capital: '',
+  rcs_number: '',
+  vat_number: '',
+  phone_number: '',
   contact_email: '',
   street: '',
   postal_code: '',
@@ -73,6 +83,11 @@ export function CompanyPage() {
     setForm({
       name: company.name,
       registration_number: company.registration_number ?? '',
+      legal_form: company.legal_form ?? '',
+      share_capital: company.share_capital ?? '',
+      rcs_number: company.rcs_number ?? '',
+      vat_number: company.vat_number ?? '',
+      phone_number: company.phone_number ?? '',
       contact_email: company.contact_email ?? '',
       street: company.address?.street ?? '',
       postal_code: company.address?.postal_code ?? '',
@@ -105,6 +120,11 @@ export function CompanyPage() {
       {
         name: form.name.trim(),
         registration_number: form.registration_number.trim() || null,
+        legal_form: form.legal_form.trim() || null,
+        share_capital: form.share_capital.trim() || null,
+        rcs_number: form.rcs_number.trim() || null,
+        vat_number: form.vat_number.trim() || null,
+        phone_number: form.phone_number.trim() || null,
         contact_email: form.contact_email.trim() || null,
         address: hasAddress
           ? {
@@ -173,6 +193,42 @@ export function CompanyPage() {
               <Grid size={{ xs: 12, md: 6 }}>
                 {field('contact_email', t('company.contactEmail'), {
                   helperText: t('company.contactEmailHint'),
+                })}
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {field('phone_number', t('company.phoneNumber'))}
+              </Grid>
+            </Grid>
+
+            <Divider />
+
+            {/*
+              What a quote must say about whoever is making the offer. Kept
+              in its own section rather than mixed into the identity block:
+              these are the fields an accountant fills in once, and burying
+              them among the trading name is how they stay empty.
+            */}
+            <Box>
+              <Typography variant="h3">{t('company.legalIdentity')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t('company.legalIdentityHint')}
+              </Typography>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {field('legal_form', t('company.legalForm'), {
+                  helperText: t('company.legalFormHint'),
+                })}
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {field('share_capital', t('company.shareCapital'))}
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {field('rcs_number', t('company.rcsNumber'))}
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                {field('vat_number', t('company.vatNumber'), {
+                  helperText: t('company.vatNumberHint'),
                 })}
               </Grid>
             </Grid>

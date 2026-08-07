@@ -77,6 +77,7 @@ def _quote(
         Quote: The quote.
     """
     return Quote(
+        company_id="company-1",
         id="quote-1",
         reference="D-0142",
         customer_id="customer-1",
@@ -456,7 +457,9 @@ class TestQuoteEditability:
             }
         )
 
-        await service.replace_lines("quote-1", _quote(status=QuoteStatus.ACCEPTED))
+        await service.replace_lines(
+            "quote-1", _quote(status=QuoteStatus.ACCEPTED).lines
+        )
 
         # `update` rather than a dedicated replace: the service prices the new
         # lines onto a copy of the stored quote and writes the whole thing.
@@ -476,6 +479,6 @@ class TestQuoteEditability:
         with pytest.raises(MTQuoteForbidden):
             await service.replace_lines(
                 "quote-1",
-                _quote(status=QuoteStatus.ACCEPTED),
+                _quote(status=QuoteStatus.ACCEPTED).lines,
                 author_id=OTHER_AUTHOR,
             )

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 
 # Third-party imports
 import pytest
 
-from models.auth.exceptions import MTUserStaffAccountNeedsChange
+from models.auth.exceptions import (
+    MTUserInvalidMustChangePassword,
+    MTUserStaffAccountNeedsChange,
+)
 from models.auth.user import User
 
 # First-party imports
 from models.enums import AccountOrigin, HcaApplicationStatus, UserRole
-from models.people.exceptions import (
+from models.people.hca_application.exceptions import (
     MTHcaApplicationInvalidCompany,
     MTHcaApplicationInvalidDecision,
     MTHcaApplicationInvalidEmail,
@@ -82,11 +85,11 @@ class TestHcaApplication:
             pytest.param(None, id="Invalid - missing"),
         ],
     )
-    def test_an_application_to_nobody_is_refused(self, value: Union[str, None]) -> None:
+    def test_an_application_to_nobody_is_refused(self, value: Optional[str]) -> None:
         """The specification requires the applicant to choose a company.
 
         Args:
-            value (Union[str, None]): The rejected company identifier.
+            value (Optional[str]): The rejected company identifier.
 
         Notes:
             An application addressed to nobody has nobody with standing to
@@ -320,8 +323,15 @@ class TestStaffCreatedAccount:
         Notes:
             Read the wrong way round it either locks somebody out of their own
             account or waives the change the flag exists to force.
+
+            The exception is named outright. This used to assert
+            ``MTInvalidHcaApplicationException.__base__``, which was a
+            roundabout spelling of ``Exception`` — it passed for any failure
+            whatsoever, including one raised by a field this test does not
+            touch, and it broke the moment the people exceptions were given a
+            shared root of their own.
         """
-        with pytest.raises(MTInvalidHcaApplicationException.__base__):
+        with pytest.raises(MTUserInvalidMustChangePassword):
             User(
                 company_id="company-1",
                 email="a@example.com",

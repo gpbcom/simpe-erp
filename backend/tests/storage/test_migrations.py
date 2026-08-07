@@ -4,19 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from alembic.config import Config
-
 # Third-party imports
-from alembic.operations import Operations
-from alembic.runtime.migration import MigrationContext
-from alembic.script import ScriptDirectory
 import pytest
 from sqlalchemy import Engine, create_engine, inspect
 
 # First-party imports
+from migration_templates import MigrationTemplates
 from storage.orm import Base
-
-BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 ColumnSnapshot = Dict[str, Tuple[str, bool]]
 ForeignKeySnapshot = List[Tuple[Tuple[str, ...], str, object]]
@@ -68,38 +62,9 @@ class TestMigrations:
             }
         return snapshot
 
-    def _migrated_engine(self, database_path: Path) -> Engine:
-        """Build an engine whose schema comes from running the migrations.
-
-        Args:
-            database_path (Path): Where to create the scratch database.
-
-        Returns:
-            Engine: An engine pointing at the migrated database.
-
-        Notes:
-            The revision's ``upgrade`` is driven directly rather than through
-            ``command.upgrade`` so this test does not need the application
-            configuration, a PostgreSQL URL or a database password.
-        """
-        config = Config()
-        config.set_main_option(
-            "script_location", str(BACKEND_ROOT / "conf" / "alembic")
-        )
-        script = ScriptDirectory.from_config(config)
-        engine = create_engine(f"sqlite:///{database_path}")
-        with engine.begin() as connection:
-            context = MigrationContext.configure(connection)
-            with Operations.context(context):
-                # walk_revisions yields newest-first; migrations must be applied
-                # oldest-first or a table is created before the one its foreign
-                # key points at.
-                revisions = list(script.walk_revisions(base="base", head="heads"))
-                for revision in reversed(revisions):
-                    revision.module.upgrade()
-        return engine
-
-    def test_the_migration_matches_the_orm_metadata(self, tmp_path: Path) -> None:
+    def test_the_migration_matches_the_orm_metadata(
+        self, tmp_path: Path, migrations: MigrationTemplates
+    ) -> None:
         """Running the migrations yields the schema the ORM describes.
 
         Notes:
@@ -108,19 +73,23 @@ class TestMigrations:
             still pass — it creates its schema from the metadata — and only
             production, which is migrated, would break.
         """
-        migrated = self._migrated_engine(tmp_path / "migrated.db")
+        migrated = migrations.copy_to(tmp_path / "migrated.db")
         from_metadata = create_engine(f"sqlite:///{tmp_path / 'metadata.db'}")
         Base.metadata.create_all(from_metadata)
         assert self._snapshot(migrated) == self._snapshot(from_metadata)
 
-    def test_the_migration_creates_every_table(self, tmp_path: Path) -> None:
+    def test_the_migration_creates_every_table(
+        self, tmp_path: Path, migrations: MigrationTemplates
+    ) -> None:
         """Every table the ORM declares exists after migrating."""
-        migrated = self._migrated_engine(tmp_path / "migrated.db")
+        migrated = migrations.copy_to(tmp_path / "migrated.db")
         assert set(self._snapshot(migrated)) == set(Base.metadata.tables)
 
-    def test_the_account_email_index_is_unique(self, tmp_path: Path) -> None:
+    def test_the_account_email_index_is_unique(
+        self, tmp_path: Path, migrations: MigrationTemplates
+    ) -> None:
         """Two accounts cannot share a sign-in address, at the schema level."""
-        migrated = self._migrated_engine(tmp_path / "migrated.db")
+        migrated = migrations.copy_to(tmp_path / "migrated.db")
         indexes = inspect(migrated).get_indexes("users")
         email_index = next(
             index for index in indexes if index["column_names"] == ["email"]
@@ -129,7 +98,7 @@ class TestMigrations:
         assert bool(email_index["unique"]) is True
 
     def test_deleting_an_assistant_is_restricted_by_the_account_link(
-        self, tmp_path: Path
+        self, tmp_path: Path, migrations: MigrationTemplates
     ) -> None:
         """The account foreign key restricts rather than cascades.
 
@@ -138,15 +107,17 @@ class TestMigrations:
             assistant record was removed; restricting forces the operator to
             deal with the account first.
         """
-        migrated = self._migrated_engine(tmp_path / "migrated.db")
+        migrated = migrations.copy_to(tmp_path / "migrated.db")
         keys = inspect(migrated).get_foreign_keys("users")
         hca_key = next(key for key in keys if key["referred_table"] == "hcas")
         assert (hca_key.get("options") or {}).get("ondelete") == "RESTRICT"
 
     @pytest.mark.parametrize("table", ["certifications", "availability_slots"])
-    def test_assistant_children_cascade(self, tmp_path: Path, table: str) -> None:
+    def test_assistant_children_cascade(
+        self, tmp_path: Path, table: str, migrations: MigrationTemplates
+    ) -> None:
         """Qualifications and absences are deleted with their assistant."""
-        migrated = self._migrated_engine(tmp_path / "migrated.db")
+        migrated = migrations.copy_to(tmp_path / "migrated.db")
         keys = inspect(migrated).get_foreign_keys(table)
         hca_key = next(key for key in keys if key["referred_table"] == "hcas")
         assert (hca_key.get("options") or {}).get("ondelete") == "CASCADE"

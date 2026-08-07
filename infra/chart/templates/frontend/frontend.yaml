@@ -1,0 +1,77 @@
+{{/*
+The front-end, and the one ConfigMap that makes its image promotable.
+
+The API's address used to be a Vite build argument, inlined into the bundle —
+so one image existed per environment and the digest tested in staging was never
+the digest that reached production. The image now ships a /config.json which
+this mounts over.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-frontend-config
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+data:
+  config.json: |
+    {"api_base_url": {{ .Values.frontend.apiBaseUrl | quote }}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-frontend
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "simple-erp.selectorLabels" (dict "root" . "component" "frontend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "simple-erp.labels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+      annotations:
+        checksum/config: {{ toYaml .Values.frontend | sha256sum }}
+    spec:
+      containers:
+        - name: frontend
+          image: {{ include "simple-erp.frontendImage" . }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            # Over the file that ships in the image. nginx serves it
+            # `no-store`, so a promoted image cannot keep a browser pointed at
+            # the environment it was promoted from.
+            - name: runtime-config
+              mountPath: /usr/share/nginx/html/config.json
+              subPath: config.json
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: {{ include "simple-erp.fullname" . }}-frontend-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "simple-erp.fullname" . }}-frontend
+  labels:
+    {{- include "simple-erp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  selector:
+    {{- include "simple-erp.selectorLabels" (dict "root" . "component" "frontend") | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

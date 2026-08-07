@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,11 +10,11 @@ import pytest
 
 # First-party imports
 from models.configuration.planning_config import PlanningConfig
-from models.enums import AvailabilityKind, ContractType, UnplacedReason
+from models.enums import AvailabilityKind, ContractType, UnplacedReason, Weekday
 from models.geo.geo_point import GeoPoint
 from models.people.hca import Hca
-from models.planning.exceptions import MTRequirementInvalidWindow
-from models.planning.intervention_requirement import InterventionRequirement
+from models.planning.intervention.exceptions import MTRequirementInvalidWindow
+from models.planning.intervention.intervention_requirement import InterventionRequirement
 from models.settings.planning_settings import PlanningSettings
 from service.planning.plannings import PlanningService
 
@@ -40,6 +40,7 @@ def _hca(
     hca_id: str = "hca-1",
     home: GeoPoint = HOME,
     availability: Optional[List[Dict[str, object]]] = None,
+    working_weekdays: Optional[List[str]] = None,
 ) -> Hca:
     """Build an assistant whose home is already geocoded.
 
@@ -47,6 +48,9 @@ def _hca(
         hca_id (str): The identifier to assign.
         home (GeoPoint): Where they live.
         availability (Optional[List[Dict[str, object]]]): Absences to record.
+        working_weekdays (Optional[List[str]]): The days of the week they work.
+            Defaults to every day, so a test that says nothing about the
+            working week is not silently constrained by one.
 
     Returns:
         Hca: The assistant.
@@ -68,6 +72,9 @@ def _hca(
         contract_type=ContractType.CDI,
         driving_license={"categories": ["B"]},
         availability=availability or [],
+        working_weekdays=(
+            working_weekdays if working_weekdays else list(Weekday.values())
+        ),
     )
 
 
@@ -111,6 +118,7 @@ def _solve(
     requirements: List[InterventionRequirement],
     assistants: List[Hca],
     radius_km: float = 200.0,
+    settings: Optional[PlanningSettings] = None,
 ):
     """Run the solver over a scenario with a given radius.
 
@@ -119,6 +127,9 @@ def _solve(
         requirements (List[InterventionRequirement]): The work.
         assistants (List[Hca]): The workforce.
         radius_km (float): The intervention radius to apply.
+        settings (Optional[PlanningSettings]): The stored rules to solve
+            under. Defaults to the shipped working day at ``radius_km``, which
+            is what a test that only cares about distance wants.
 
     Returns:
         PlanningSolution: What the solver produced.
@@ -129,6 +140,7 @@ def _solve(
         quotes=MagicMock(),
         customers=MagicMock(),
         hcas=MagicMock(),
+        types=MagicMock(),
         settings=MagicMock(),
         config=config,
     )
@@ -138,7 +150,9 @@ def _solve(
     return service.solve(
         requirements,
         assistants,
-        PlanningSettings(max_intervention_radius_km=radius_km),
+        settings
+        if settings
+        else PlanningSettings(max_intervention_radius_km=radius_km),
     )
 
 
@@ -251,6 +265,182 @@ class TestInterventionRadius:
         solution = _solve(config, [_requirement("r1", NEARBY)], [homeless], 200)
 
         assert solution.assignments == []
+
+
+class TestWorkingWeekdays:
+    """Tests for the recurring days an assistant does not work."""
+
+    def test_work_on_a_day_they_never_work_is_refused(
+        self, config: PlanningConfig
+    ) -> None:
+        """A day off in the week is a hard constraint, not a preference.
+
+        Notes:
+            The only assistant is within the radius, qualified and not absent.
+            The visit goes unplaced solely because it falls on a day they do
+            not work — which is what makes this constraint load-bearing rather
+            than a filter the solver could pay its way past.
+        """
+        monday_off = _hca(
+            working_weekdays=["tuesday", "wednesday", "thursday", "friday"]
+        )
+        solution = _solve(
+            config, [_requirement("r1", NEARBY, day=MONDAY)], [monday_off]
+        )
+
+        assert solution.is_complete() is False
+        assert solution.unassigned_requirement_ids == ["r1"]
+
+    def test_work_on_a_day_they_do_work_is_placed(self, config: PlanningConfig) -> None:
+        """The constraint bites on the day off, and only on it."""
+        monday_off = _hca(
+            working_weekdays=["tuesday", "wednesday", "thursday", "friday"]
+        )
+        tuesday = MONDAY + timedelta(days=1)
+        solution = _solve(
+            config, [_requirement("r1", NEARBY, day=tuesday)], [monday_off]
+        )
+
+        assert solution.is_complete() is True
+
+    def test_the_work_goes_to_the_colleague_who_works_that_day(
+        self, config: PlanningConfig
+    ) -> None:
+        """A day off moves work to somebody else rather than dropping it.
+
+        Notes:
+            The realistic case, and the one a rota is for: two assistants who
+            are equally close, and only one of whom works Mondays.
+        """
+        monday_off = _hca(
+            "hca-1", working_weekdays=["tuesday", "wednesday", "thursday"]
+        )
+        works_mondays = _hca("hca-2", working_weekdays=["monday", "tuesday"])
+        solution = _solve(
+            config,
+            [_requirement("r1", NEARBY, day=MONDAY)],
+            [monday_off, works_mondays],
+        )
+
+        assert solution.is_complete() is True
+        assert solution.assignments[0].hca_id == "hca-2"
+
+    def test_a_day_off_and_an_absence_are_both_enforced(
+        self, config: PlanningConfig
+    ) -> None:
+        """Neither half of the rule shadows the other.
+
+        Notes:
+            One assistant does not work Mondays; the other works Mondays but is
+            on leave this one. Both are within the radius, and the visit still
+            cannot be placed — so neither check is quietly standing in for the
+            other.
+        """
+        monday_off = _hca("hca-1", working_weekdays=["tuesday", "wednesday"])
+        on_leave = _hca(
+            "hca-2",
+            working_weekdays=["monday", "tuesday"],
+            availability=[
+                {
+                    "hca_id": "hca-2",
+                    "start_date": MONDAY,
+                    "end_date": MONDAY,
+                    "kind": AvailabilityKind.SICK_LEAVE,
+                }
+            ],
+        )
+        solution = _solve(
+            config, [_requirement("r1", NEARBY, day=MONDAY)], [monday_off, on_leave]
+        )
+
+        assert solution.is_complete() is False
+
+
+class TestConfigurableWorkingDay:
+    """Tests for the working day and lunch window a manager owns."""
+
+    def test_a_visit_outside_the_stored_day_is_refused(
+        self, config: PlanningConfig
+    ) -> None:
+        """The bounds come from the settings, not from the config file.
+
+        Notes:
+            The configuration still says 09:00-20:00. The stored settings say
+            the day ends at 17:00, and an 18:00 visit is refused — which is
+            only true if the solver reads the settings. Before this change it
+            read ``config`` and the visit would have been placed.
+        """
+        settings = PlanningSettings(
+            max_intervention_radius_km=200.0,
+            day_start_minute=9 * 60,
+            day_end_minute=17 * 60,
+        )
+        late = _requirement("r1", NEARBY, window=(18 * 60, 19 * 60), duration=60)
+        solution = _solve(config, [late], [_hca()], settings=settings)
+
+        assert solution.is_complete() is False
+
+    def test_a_widened_day_places_work_the_default_would_refuse(
+        self, config: PlanningConfig
+    ) -> None:
+        """Moving the day is what makes it configurable, not just narrower.
+
+        Notes:
+            An 08:00 visit falls outside the shipped 09:00 start. A manager who
+            has moved the day to 07:00 gets it placed, without a deployment.
+        """
+        early = _requirement("r1", NEARBY, window=(8 * 60, 9 * 60), duration=60)
+        refused = _solve(config, [early], [_hca()])
+        assert refused.is_complete() is False
+
+        settings = PlanningSettings(
+            max_intervention_radius_km=200.0,
+            day_start_minute=7 * 60,
+            day_end_minute=20 * 60,
+        )
+        allowed = _solve(config, [early], [_hca()], settings=settings)
+
+        assert allowed.is_complete() is True
+
+    def test_the_lunch_break_is_reserved_inside_the_stored_window(
+        self, config: PlanningConfig
+    ) -> None:
+        """The break falls in the window a manager chose, not the shipped one.
+
+        Notes:
+            One visit, pinned to 09:00-10:00 by its own window, at the
+            assistant's own address so travel cannot confound the arithmetic.
+            The two solves differ in nothing but the stored lunch window.
+
+            Moved to 09:00-10:00, the break has nowhere to go but on top of the
+            visit, and the work goes unplaced. Left at the shipped 11:30-14:30
+            the break sits well clear and the same visit is placed. A solver
+            still reading the configuration file would place it both times.
+        """
+        pinned = _requirement("r1", HOME, window=(9 * 60, 10 * 60), duration=60)
+
+        collides = _solve(
+            config,
+            [pinned],
+            [_hca()],
+            settings=PlanningSettings(
+                max_intervention_radius_km=200.0,
+                lunch_break_minutes=60,
+                lunch_window_start_minute=9 * 60,
+                lunch_window_end_minute=10 * 60,
+            ),
+        )
+        assert collides.is_complete() is False
+
+        clear = _solve(
+            config,
+            [pinned],
+            [_hca()],
+            settings=PlanningSettings(max_intervention_radius_km=200.0),
+        )
+
+        assert clear.is_complete() is True
+        assert clear.assignments[0].start_minute == 9 * 60
 
 
 class TestCustomerConflicts:
@@ -380,6 +570,7 @@ class TestFeasibilityDiagnosis:
             quotes=AsyncMock(),
             customers=AsyncMock(),
             hcas=AsyncMock(),
+            types=AsyncMock(),
             settings=AsyncMock(),
             config=config,
         )
@@ -426,6 +617,82 @@ class TestFeasibilityDiagnosis:
         )
 
         assert explained[0].reason is UnplacedReason.NO_ASSISTANT_AVAILABLE
+
+    def test_a_day_nobody_works_is_named_as_such(
+        self, service: PlanningService
+    ) -> None:
+        """A recurring day off reads differently from a week's leave.
+
+        Notes:
+            **The distinction is the point of the reason existing.** "Nobody
+            works a Monday" is a rota or a recruitment decision; "everybody is
+            absent" resolves itself when they come back. Reporting the second
+            when the first is true sends a manager through absence records
+            looking for a day nobody ever agreed to work.
+        """
+        never_mondays = _hca(
+            working_weekdays=["tuesday", "wednesday", "thursday", "friday"]
+        )
+        explained = service.explain_unplaced(
+            ["r1"],
+            [_requirement("r1", NEARBY)],
+            [never_mondays],
+            PlanningSettings(max_intervention_radius_km=200.0),
+        )
+
+        assert explained[0].reason is UnplacedReason.NOT_A_WORKING_DAY
+        assert "monday" in (explained[0].detail or "")
+
+    def test_a_day_nobody_works_is_reported_before_an_absence(
+        self, service: PlanningService
+    ) -> None:
+        """The more specific of the two overlapping reasons wins.
+
+        Notes:
+            The assistant neither works Mondays nor is available on this one.
+            Both readings are true; only the first names something to change.
+        """
+        both = _hca(
+            working_weekdays=["tuesday", "wednesday"],
+            availability=[
+                {
+                    "hca_id": "hca-1",
+                    "start_date": MONDAY,
+                    "end_date": MONDAY,
+                    "kind": AvailabilityKind.SICK_LEAVE,
+                }
+            ],
+        )
+        explained = service.explain_unplaced(
+            ["r1"],
+            [_requirement("r1", NEARBY)],
+            [both],
+            PlanningSettings(max_intervention_radius_km=200.0),
+        )
+
+        assert explained[0].reason is UnplacedReason.NOT_A_WORKING_DAY
+
+    def test_the_working_day_reported_is_the_stored_one(
+        self, service: PlanningService
+    ) -> None:
+        """The report quotes the hours a manager set, not the shipped ones.
+
+        Notes:
+            A report naming 09:00-20:00 while the agency runs 08:00-17:00 sends
+            somebody to widen a window that is already as wide as the rule
+            allows. The minute is printed too: a day ending at 17:30 reported
+            as "17:00" hides a half-hour that was never there.
+        """
+        settings = PlanningSettings(
+            max_intervention_radius_km=200.0,
+            day_start_minute=8 * 60,
+            day_end_minute=17 * 60 + 30,
+        )
+        late = _requirement("r1", NEARBY, window=(18 * 60, 19 * 60), duration=60)
+        explained = service.explain_unplaced(["r1"], [late], [_hca()], settings)
+
+        assert explained[0].reason is UnplacedReason.OUTSIDE_WORKING_DAY
+        assert "08:00–17:30" in (explained[0].detail or "")
 
     def test_a_window_shorter_than_the_service_never_reaches_a_solve(
         self, service: PlanningService
@@ -524,3 +791,76 @@ class TestFeasibilityDiagnosis:
         described = explained[0].describe()
         assert "Service r1" in described
         assert str(MONDAY) in described
+
+
+class TestReproducibility:
+    """Tests that the same week plans the same way twice."""
+
+    def test_the_solver_is_configured_for_a_reproducible_search(self) -> None:
+        """**Three settings together, and a seed alone is not enough.**
+
+        Notes:
+            Fixing ``random_seed`` was tried first and still gave 502, 495 and
+            502 travel minutes over three runs of one input, because
+            ``max_time_in_seconds`` halts the search wherever elapsed time
+            happens to land — a loaded machine explores less. The deterministic
+            budget is what actually stops it at the same place, and a single
+            worker stops parallel searches racing to the incumbent.
+
+            Asserted on the configuration rather than by solving three times:
+            a test that ran the solver repeatedly would take a minute and would
+            still only sample the non-determinism it is meant to exclude.
+
+            Built from the shipped defaults, not from this module's fixture:
+            the fixture shortens the budget so the suite stays fast, and
+            asserting against it would test the fixture.
+        """
+        shipped = PlanningConfig()
+
+        assert shipped.solver_workers == 1
+        assert shipped.solver_seed >= 0
+        assert shipped.solver_deterministic_budget > 0
+
+    def test_the_wall_clock_limit_is_a_net_not_a_budget(self) -> None:
+        """It must be loose enough that the deterministic budget binds first.
+
+        Notes:
+            If the clock fires it is the clock that decided where to stop, and
+            the run is no longer reproducible. Measured on a development
+            machine, a deterministic budget of 4.0 completes in about twenty
+            seconds; the net is an order of magnitude above that so it is
+            reached only by something pathological.
+        """
+        shipped = PlanningConfig()
+
+        assert shipped.solver_time_limit_seconds >= (
+            shipped.solver_deterministic_budget * 10
+        )
+
+    def test_the_same_input_plans_identically_twice(
+        self, config: PlanningConfig
+    ) -> None:
+        """The promise, end to end on a small instance.
+
+        Args:
+            config (PlanningConfig): The planning rules.
+
+        Notes:
+            Small on purpose — two assistants and six visits solve in well
+            under a second, so this can assert the actual guarantee rather than
+            its configuration without costing the suite a minute.
+        """
+        requirements = [_requirement(f"r{index}", NEARBY) for index in range(6)]
+        assistants = [_hca("hca-1"), _hca("hca-2", home=NEARBY)]
+
+        first = _solve(config, requirements, assistants)
+        second = _solve(config, requirements, assistants)
+
+        assert first.total_travel_minutes == second.total_travel_minutes
+        assert [
+            (entry.requirement_id, entry.hca_id, entry.start_minute)
+            for entry in sorted(first.assignments, key=lambda e: e.requirement_id)
+        ] == [
+            (entry.requirement_id, entry.hca_id, entry.start_minute)
+            for entry in sorted(second.assignments, key=lambda e: e.requirement_id)
+        ]

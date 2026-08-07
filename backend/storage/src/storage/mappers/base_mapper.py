@@ -116,7 +116,7 @@ class BaseMapper(ABC, Generic[ModelType, RowType]):
               hand over a model straight from a request payload.
             - The log names the model it was handed rather than the one the
               mapper was built for. The two are the same everywhere but in
-              :class:`~storage.mappers.intervention_mapper.InterventionMapper`,
+              :class:`~storage.mappers.planning.intervention_mapper.InterventionMapper`,
               which carries a second pair alongside its own and reuses this.
         """
         if model.id:

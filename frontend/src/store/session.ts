@@ -7,6 +7,7 @@ import {
   signIn as apiSignIn,
 } from '@/api/client';
 import type { User, UserRole } from '@/api/types';
+import { setLanguage } from '@/i18n';
 
 interface SessionState {
   /** The signed-in account, once resolved. */
@@ -24,6 +25,27 @@ interface SessionState {
 }
 
 /**
+ * Adopt the account's stored language, so the interface opens in it.
+ *
+ * @param user - The account just resolved from the server.
+ * @returns The same account, unchanged.
+ *
+ * @remarks
+ * The server holds the preference because the quotes emailed to customers
+ * are generated from it by a background webhook, which has no browser to
+ * read a `localStorage` value out of. Adopting it here is what keeps the
+ * two ends honest: signing in on a colleague's laptop should not leave the
+ * screen in their language while every document goes out in yours.
+ *
+ * `setLanguage` writes `localStorage` too, so the choice still survives a
+ * reload made before the session has been restored.
+ */
+function adopt(user: User): User {
+  if (user.language) setLanguage(user.language);
+  return user;
+}
+
+/**
  * The signed-in account, and how to change it.
  *
  * @remarks
@@ -37,7 +59,7 @@ export const useSession = create<SessionState>((set) => ({
 
   signIn: async (email, password) => {
     await apiSignIn(email, password);
-    set({ user: await fetchMe() });
+    set({ user: adopt(await fetchMe()) });
   },
 
   signOut: () => {
@@ -51,7 +73,7 @@ export const useSession = create<SessionState>((set) => ({
       return;
     }
     try {
-      set({ user: await fetchMe(), loading: false });
+      set({ user: adopt(await fetchMe()), loading: false });
     } catch {
       // A token the server no longer accepts is worse than none: every screen
       // would fail with a different symptom instead of one clear sign-in page.

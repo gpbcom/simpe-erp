@@ -17,13 +17,13 @@ from api.dependencies import (
 from models.auth.user import User
 from models.companies.company import Company
 from models.companies.company_choice import CompanyChoice
-from models.schemas.requests.company_registration_request import (
+from models.schemas.requests.companies.company_registration_request import (
     CompanyRegistrationRequest,
 )
-from models.schemas.responses.company_registration_response import (
+from models.schemas.responses.companies.company_registration_response import (
     CompanyRegistrationResponse,
 )
-from models.schemas.responses.user_response import UserResponse
+from models.schemas.responses.auth.user_response import UserResponse
 from service.companies.companies import CompanyService
 from service.companies.registration import CompanyRegistrationService
 

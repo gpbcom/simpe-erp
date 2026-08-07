@@ -3,9 +3,6 @@ name: Release
 on:
   push:
     tags: ['v*']
-
-# Only what a release needs: the token is scoped to writing packages, and
-# nothing here can push a commit or open a pull request.
 permissions:
   contents: read
   packages: write
@@ -21,10 +18,6 @@ jobs:
             context: ./backend
             target: ''
           - name: worker
-            # Deliberately the same image as the backend, published under a
-            # second name. Building one image and running it two ways is what
-            # keeps the API and the worker from drifting apart, which is
-            # exactly what happens when a worker gets a Dockerfile of its own.
             context: ./backend
             target: ''
           - name: frontend

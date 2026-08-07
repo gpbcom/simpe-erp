@@ -5,16 +5,24 @@ from logging import Logger, getLogger
 from typing import List, Optional
 
 # Third-party imports
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 # First-party imports
-from api.dependencies import get_customer_service, get_manager_user
+from api.dependencies import (
+    get_customer_service,
+    get_event_publisher,
+    get_manager_user,
+    get_planning_service,
+)
 from models.auth.user import User
 from models.enums import RegistrationStatus
 from models.people.customer import Customer
+from models.planning.planning_run import PlanningRun
 from models.quoting.quote import Quote
-from models.schemas.requests.status_update_request import StatusUpdateRequest
+from models.schemas.requests.customers.status_update_request import StatusUpdateRequest
 from service.customers.customers import CustomerService
+from service.messaging.publisher import EventPublisher
+from service.planning.plannings import PlanningService
 
 logger: Logger = getLogger(__name__)
 
@@ -185,23 +193,63 @@ async def list_customer_quotes(
     return await service.quotes_for(customer_id)
 
 
-@router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{customer_id}",
+    response_model=Optional[PlanningRun],
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def delete_customer(
     customer_id: str,
+    response: Response,
     service: CustomerService = Depends(get_customer_service),
-    _: User = Depends(get_manager_user),
-) -> None:
-    """Remove a customer who has never been quoted.
+    plannings: PlanningService = Depends(get_planning_service),
+    publisher: EventPublisher = Depends(get_event_publisher),
+    caller: User = Depends(get_manager_user),
+) -> Optional[PlanningRun]:
+    """Remove a customer, every quote written for them, and replan.
 
     Args:
         customer_id (str): The customer to remove.
+        response (Response): The response being built, so the status can drop
+            to 204 when there is nothing to replan.
         service (CustomerService): The customer service.
-        _ (User): The authenticated caller; enforces manager access.
+        plannings (PlanningService): Records the replan.
+        publisher (EventPublisher): Queues the solve for a worker.
+        caller (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        Optional[PlanningRun]: The pending replan with the identifier to poll,
+        or ``None`` when the customer had no future visits.
 
     Raises:
         MTCustomerNotFound: If no such customer exists; answered as a 404.
-        MTCustomerHasQuotes: If any quote names them; answered as a 409, with
-            stopping them offered instead.
+        MTCustomerHasQuotes: If a quote of theirs cannot be identified and so
+            cannot be removed with them; answered as a 409.
+
+    Notes:
+        - **This destroys billing history**, and the screen offering it says
+          how much before asking. Stopping a customer remains the right answer
+          for one who was really served and has really left; this is for a
+          household entered by mistake, and for the fixtures a test campaign
+          removes after itself.
+        - **The period is measured before the delete.** Their visits go with
+          their quotes, so asking afterwards would find nothing and replan
+          nothing — leaving every assistant who was due to visit them holding a
+          gap that no other work has been moved into.
     """
-    logger.info("Deleting customer %s.", customer_id)
+    period = await plannings.future_period_for_customer(customer_id)
     await service.delete(customer_id)
+    logger.info("%s deleted customer %s.", caller.email, customer_id)
+    if period is None:
+        logger.info(
+            "Customer %s had no future visit; no replan is queued.", customer_id
+        )
+        response.status_code = status.HTTP_204_NO_CONTENT
+        return None
+    return await plannings.queue_replan(
+        requested_by=caller.id or caller.email,
+        company_id=caller.company_id,
+        period=period,
+        publisher=publisher,
+        reason=f"customer {customer_id} was removed",
+    )

@@ -17,7 +17,11 @@ from api.dependencies import (
 from models.auth.user import User
 from models.enums import EventRoutingKey, QuoteStatus
 from models.quoting.quote import Quote
-from models.schemas.requests.quote_interruption_request import (
+from models.schemas.requests.quoting.quote_create_request import (
+    QuoteCreateRequest,
+)
+from models.schemas.requests.quoting.quote_lines_request import QuoteLinesRequest
+from models.schemas.requests.quoting.quote_interruption_request import (
     QuoteInterruptionRequest,
 )
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
@@ -31,14 +35,14 @@ router = APIRouter(prefix="/api/v1/quotes", tags=["Quotes"])
 
 @router.post("", response_model=Quote, status_code=status.HTTP_201_CREATED)
 async def create_quote(
-    quote: Quote,
+    payload: QuoteCreateRequest,
     service: QuoteService = Depends(get_quote_service),
     caller: User = Depends(get_manager_user),
 ) -> Quote:
     """Create a quote and price whatever lines it arrives with.
 
     Args:
-        quote (Quote): The quote to create.
+        payload (QuoteCreateRequest): What the quote should offer.
         service (QuoteService): The quote service.
         caller (User): The authenticated caller; enforces manager access and is
             recorded as the quote's author.
@@ -55,7 +59,9 @@ async def create_quote(
         manager's quote needs no validation step — they are the ones who would
         sign it off — so it lands as a draft ready to send.
     """
-    return await service.create(quote, author_id=caller.id or caller.email)
+    return await service.create(
+        payload.to_quote(caller.company_id), author_id=caller.id or caller.email
+    )
 
 
 @router.get("", response_model=List[Quote])
@@ -238,7 +244,7 @@ async def get_quote_aggregates(
 @router.put("/{quote_id}/lines", response_model=Quote)
 async def replace_quote_lines(
     quote_id: str,
-    quote: Quote,
+    payload: QuoteLinesRequest,
     service: QuoteService = Depends(get_quote_service),
     _: User = Depends(get_manager_user),
 ) -> Quote:
@@ -246,7 +252,8 @@ async def replace_quote_lines(
 
     Args:
         quote_id (str): The quote to change.
-        quote (Quote): A quote carrying the new lines.
+        payload (QuoteLinesRequest): The services that replace the stored
+            ones.
         service (QuoteService): The quote service.
         _ (User): The authenticated caller; enforces manager access.
 
@@ -264,7 +271,7 @@ async def replace_quote_lines(
         stay as stored, so editing lines cannot reassign the quote or accept it
         on the customer's behalf.
     """
-    return await service.replace_lines(quote_id, quote)
+    return await service.replace_lines(quote_id, payload.lines)
 
 
 @router.post("/{quote_id}/price", response_model=Quote)

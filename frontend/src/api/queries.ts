@@ -4,20 +4,32 @@ import { useSession } from '@/store/session';
 import type {
   AvailabilitySlot,
   NewQuote,
+  NewQuoteLine,
+  QuoteLinesEdit,
   Certification,
+  CertificationType,
+  CertificationTypeUpdate,
+  Skill,
+  SkillCreate,
+  SkillType,
+  SkillTypeUpdate,
   ContractType,
   Company,
   CompanyProfileUpdate,
   Customer,
+  NewCustomer,
   Hca,
   HcaPlanning,
   InterventionType,
+  Language,
   InterventionTypeUpdate,
   PricingRules,
   Notification,
   PlanningRun,
+  PlanningSettings,
   User,
   UserRole,
+  Weekday,
   Quote,
   QuoteStatus,
 } from './types';
@@ -48,10 +60,13 @@ export const keys = {
   customerQuotes: (id: string) => ['customers', id, 'quotes'] as const,
   users: ['users'] as const,
   planningRuns: ['planning', 'runs'] as const,
+  planningSettings: ['planning', 'settings'] as const,
   hcas: (search?: string) => ['hcas', search ?? ''] as const,
   hca: (id: string) => ['hcas', id] as const,
   customers: (search?: string) => ['customers', search ?? ''] as const,
   interventionTypes: ['intervention-types'] as const,
+  certificationTypes: ['certification-types'] as const,
+  skillTypes: ['skill-types'] as const,
   pricingRules: ['intervention-types', 'pricing-rules'] as const,
   notifications: ['notifications'] as const,
   unreadCount: ['notifications', 'unread'] as const,
@@ -151,6 +166,291 @@ export function useCreateInterventionType() {
   });
 }
 
+/**
+ * The qualifications the agency recognises.
+ *
+ * @param includeInactive - Whether retired entries are listed too.
+ * @returns The query.
+ *
+ * @remarks
+ * Readable by any signed-in caller, not just a manager: an assistant's own
+ * account screen names the qualifications they hold, and without this it would
+ * have to print `DEAES` at them and hope.
+ */
+export function useCertificationTypes(includeInactive = false) {
+  return useQuery({
+    queryKey: [...keys.certificationTypes, includeInactive] as const,
+    queryFn: () =>
+      request<CertificationType[]>(
+        `/api/v1/certifications?size=500&include_inactive=${includeInactive}`,
+      ),
+  });
+}
+
+/** Add a qualification to the catalogue. */
+export function useCreateCertificationType() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { code: string; label: string; description?: string | null }) =>
+      request<CertificationType>('/api/v1/certifications', {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.certificationTypes });
+    },
+  });
+}
+
+/**
+ * Change what a catalogue entry says.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * `PATCH`, and the body carries no `code`. The code is what every stored
+ * qualification and every service requirement is matched on, so renaming one
+ * would disqualify its holders on the next planning run — the server refuses
+ * it, and the form locks the input to say so before anybody tries.
+ */
+export function useUpdateCertificationType() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CertificationTypeUpdate }) =>
+      request<CertificationType>(`/api/v1/certifications/${id}`, {
+        method: 'PATCH',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.certificationTypes });
+      // The workforce screen prints a qualification's label beside the person
+      // holding it, so a rename that stopped here would leave the old wording
+      // on every chip until the page was reloaded.
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+    },
+  });
+}
+
+/**
+ * Remove a catalogue entry that nothing refers to.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Answers 409 when an assistant holds it or a service requires it, with both
+ * counts in the message and retirement offered instead. No foreign key
+ * protects those references, so letting the delete through would leave a
+ * requirement pointing at nothing — which fails every planning run it touches.
+ */
+export function useDeleteCertificationType() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/api/v1/certifications/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.certificationTypes });
+    },
+  });
+}
+
+/**
+ * The skill catalogue.
+ *
+ * @returns The query, holding every skill the agency recognises.
+ *
+ * @remarks
+ * Readable by any signed-in caller, and that matters more here than for the
+ * qualifications: an assistant declares their own skills from their own
+ * account screen, so this is the list they pick from. Retired entries are
+ * hidden unless asked for, so the picker offers only what may still be
+ * declared.
+ */
+export function useSkillTypes(includeInactive = false) {
+  return useQuery({
+    queryKey: [...keys.skillTypes, includeInactive] as const,
+    queryFn: () =>
+      request<SkillType[]>(
+        `/api/v1/skills?size=500&include_inactive=${includeInactive}`,
+      ),
+  });
+}
+
+/**
+ * Add a skill to the catalogue.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Manager-gated, even though the declarations are not. An assistant says what
+ * they can do; what the agency is willing to recognise and plan against is the
+ * agency's decision.
+ */
+export function useCreateSkillType() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { code: string; label: string; description?: string | null }) =>
+      request<SkillType>('/api/v1/skills', {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.skillTypes });
+    },
+  });
+}
+
+/**
+ * Change what a skill-catalogue entry says.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * `PATCH`, and the body carries no `code`. The code is what every declared
+ * skill and every service requirement is matched on, so renaming one would
+ * un-skill its holders on the next planning run — the server refuses it, and
+ * the form locks the input to say so before anybody tries.
+ */
+export function useUpdateSkillType() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: SkillTypeUpdate }) =>
+      request<SkillType>(`/api/v1/skills/${id}`, {
+        method: 'PATCH',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.skillTypes });
+      // The workforce screen prints a skill's label beside the person who
+      // declared it, so a rename that stopped here would leave the old wording
+      // on every chip until the page was reloaded.
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+    },
+  });
+}
+
+/**
+ * Remove a skill-catalogue entry that nothing refers to.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Answers 409 when an assistant has declared it or a service requires it, with
+ * both counts in the message and retirement offered instead. No foreign key
+ * protects those references, so letting the delete through would leave a
+ * requirement pointing at nothing — which fails every planning run it touches.
+ */
+export function useDeleteSkillType() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/api/v1/skills/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.skillTypes });
+    },
+  });
+}
+
+/**
+ * Declare a skill about yourself.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The one planner-visible thing an assistant may write about their own record,
+ * and the reason it is not the qualifications beside it: what somebody was
+ * *awarded* is a manager's record, what they *can do* is their own. It takes
+ * effect at once — every manager and administrator is notified rather than
+ * asked to approve — so the calendars stop agreeing with the workforce until
+ * the next run, which is why `planning` is invalidated too.
+ */
+export function useDeclareMySkill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SkillCreate) =>
+      request<Skill>('/api/v1/me/hca/skills', { method: 'POST', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Withdraw a skill you declared about yourself.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The assistant comes from the credential and is part of the server's lookup,
+ * so knowing a skill identifier is not enough to strip a colleague of one. A
+ * manager or an administrator removes anybody's through
+ * {@link useRemoveSkill}.
+ */
+export function useWithdrawMySkill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (skillId: string) =>
+      request<void>(`/api/v1/me/hca/skills/${skillId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Withdraw a skill an assistant declared, as a manager or an administrator.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The supervisors' half of the pair. A declaration needs no approval, so this
+ * is the correction: somebody who believes a skill has been over-claimed can
+ * remove it without waiting for its owner.
+ */
+export function useRemoveSkill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hcaId, skillId }: { hcaId: string; skillId: string }) =>
+      request<void>(`/api/v1/hcas/${hcaId}/skills/${skillId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Register a customer.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The whole `['customers']` prefix is invalidated rather than one key, because
+ * the directory is cached per search term: a customer added while a filter is
+ * typed would otherwise be absent from the list the manager is looking at, and
+ * present the moment they clear the box.
+ *
+ * The call can take a second or two. The server geocodes the address while it
+ * validates the payload, and an address the map does not know is still stored —
+ * with the failure recorded on it — so this resolving is not the same as the
+ * home being routable.
+ */
+export function useCreateCustomer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (customer: NewCustomer) =>
+      request<Customer>('/api/v1/customers', { method: 'POST', json: customer }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+}
+
 /** One customer, by identifier. */
 export function useCustomer(customerId: string) {
   return useQuery({
@@ -211,13 +511,66 @@ export function useSetAutoRenew() {
 export function useUpdateMyAccount() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { full_name: string; email: string }) =>
+    mutationFn: (body: { full_name: string; email: string; language: Language }) =>
       request<User>('/api/v1/me/account', { method: 'PATCH', json: body }),
     onSuccess: () => {
       // Both: the account screen reads the query, and the top bar and the role
       // guards read the session. Refreshing one would leave the other showing
       // the old name until the next reload.
       void client.invalidateQueries({ queryKey: keys.myAccount });
+      void useSession.getState().refresh();
+    },
+  });
+}
+
+/**
+ * Replace the caller's own portrait.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Bound to the *account*, not to the assistant record, so a manager and an
+ * administrator can set one too. The assistant-scoped route this replaces
+ * (`PUT /me/hca/photo`, still there for any client that used it) answers 403
+ * for them, which is what left them with no portrait at all.
+ *
+ * Sent as multipart, never as a URL. The API detects the content type from the
+ * file's magic bytes rather than trusting the header, so the `Content-Type` is
+ * deliberately left for the browser to set with its boundary.
+ *
+ * The assistant record's own query is invalidated as well: when the account is
+ * bound to one, the server writes the same portrait there so the manager's map
+ * pin follows.
+ */
+export function useUploadMyAccountPhoto() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append('photo', file);
+      return request<User>('/api/v1/me/account/photo', { method: 'PUT', body });
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myAccount });
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      // The session holds its own copy of the account, so leaving it alone
+      // would make `useSession().user` disagree with the screen about whether
+      // there is a portrait.
+      void useSession.getState().refresh();
+    },
+  });
+}
+
+/** Remove the caller's own portrait. */
+export function useRemoveMyAccountPhoto() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<User>('/api/v1/me/account/photo', { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myAccount });
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+      void client.invalidateQueries({ queryKey: ['hcas'] });
       void useSession.getState().refresh();
     },
   });
@@ -299,6 +652,83 @@ export function useUsers(enabled = true) {
     queryKey: keys.users,
     queryFn: () => request<User[]>('/api/v1/users?size=500'),
     enabled,
+  });
+}
+
+/**
+ * Remove an assistant, their sign-in account, and replan what they were due.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Answers **202** with the replan it queued, or **204** when the person had no
+ * future visit and nothing needed recomputing. The account goes with the
+ * record — one naming a record that no longer exists cannot sign in usefully
+ * and cannot be repaired from any screen.
+ *
+ * The plannings are invalidated as well as the workforce: the visits are
+ * rewritten by a worker behind the screen's back, so nothing else would
+ * refresh them.
+ */
+export function useDeleteHca() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<PlanningRun | undefined>(`/api/v1/hcas/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      void client.invalidateQueries({ queryKey: keys.users });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Remove a customer, every quote written for them, and replan.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * **Irreversible, and it destroys billing history**, which is why the dialog
+ * that offers it counts the quotes first. Stopping a customer remains the
+ * right answer for one who was really served and has left; this is for a
+ * household entered by mistake.
+ */
+export function useDeleteCustomer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<PlanningRun | undefined>(`/api/v1/customers/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['customers'] });
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Remove a sign-in account outright.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * No replan follows, and that is not an oversight: an account is not
+ * scheduled — the assistant record is — so removing one cannot change a
+ * calendar. Deactivating is the ordinary way to stop somebody signing in;
+ * this is for accounts that should never have existed.
+ */
+export function useDeleteUser() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/api/v1/users/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.users });
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+    },
   });
 }
 
@@ -563,6 +993,49 @@ export function useSendQuote() {
   });
 }
 
+/**
+ * Record that the customer accepted a quote that was sent to them.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * **Acceptance is what makes a quote's lines schedulable**, so this is the step
+ * that puts work into the next planning run. Validation does not: it issues the
+ * offer and leaves the quote at `sent`, waiting on the customer.
+ *
+ * Without this, `sent` was a dead end. The backend has had
+ * `POST /quotes/{id}/accept` all along and nothing in the interface called it,
+ * so a validated quote could never reach `accepted` — and a manager who
+ * validated a fortnight of work and re-ran the planning saw the same visit
+ * count every time, with nothing on screen explaining why.
+ *
+ * Invalidates the planning queries as well as the quotes, because a schedule
+ * already on screen was computed without these hours.
+ */
+export function useAcceptQuote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: string) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}/accept`, { method: 'POST' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/** Record that the customer declined a quote that was sent to them. */
+export function useRejectQuote() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (quoteId: string) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}/reject`, { method: 'POST' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+    },
+  });
+}
+
 /** Send a submitted quote back to its author. */
 export function useRefuseQuote() {
   const client = useQueryClient();
@@ -587,16 +1060,20 @@ export function useRefuseQuote() {
  * `manager` without the role is refused by the guard, and one who picked `own`
  * on somebody else's quote is refused by the authorship check — so the choice
  * here is about which surface to use, never about what is allowed.
+ *
+ * The body is {@link QuoteLinesEdit} rather than a partial quote. It used to be
+ * the latter, which let this send a reference and a customer the server then
+ * ignored — a contract nobody could read off the types.
  */
 export function useReplaceQuoteLines(scope: 'manager' | 'own') {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ quoteId, quote }: { quoteId: string; quote: Partial<Quote> }) =>
+    mutationFn: ({ quoteId, lines }: { quoteId: string; lines: NewQuoteLine[] }) =>
       request<Quote>(
         scope === 'manager'
           ? `/api/v1/quotes/${quoteId}/lines`
           : `/api/v1/me/quotes/${quoteId}/lines`,
-        { method: 'PUT', json: quote },
+        { method: 'PUT', json: { lines } satisfies QuoteLinesEdit },
       ),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['quotes'] });
@@ -611,39 +1088,6 @@ export function useUpdateMyProfile() {
   return useMutation({
     mutationFn: (body: unknown) =>
       request<Hca>('/api/v1/me/hca', { method: 'PATCH', json: body }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.myProfile });
-    },
-  });
-}
-
-/**
- * Replace the caller's own photograph.
- *
- * @remarks
- * Sent as multipart, never as a URL. The API detects the content type from the
- * file's magic bytes rather than trusting the header, so the `Content-Type` is
- * deliberately left for the browser to set with its boundary.
- */
-export function useUploadMyPhoto() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => {
-      const body = new FormData();
-      body.append('photo', file);
-      return request<Hca>('/api/v1/me/hca/photo', { method: 'PUT', body });
-    },
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.myProfile });
-    },
-  });
-}
-
-/** Remove the caller's own photograph. */
-export function useRemoveMyPhoto() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: () => request<Hca>('/api/v1/me/hca/photo', { method: 'DELETE' }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myProfile });
     },
@@ -666,6 +1110,7 @@ export function useUpdateEmployment(hcaId: string | null) {
     mutationFn: (body: {
       contract_type: ContractType;
       certifications: Certification[];
+      field_employee: boolean;
     }) =>
       request<Hca>(`/api/v1/hcas/${hcaId}/employment`, {
         method: 'PATCH',
@@ -674,6 +1119,98 @@ export function useUpdateEmployment(hcaId: string | null) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myProfile });
       void client.invalidateQueries({ queryKey: ['hcas'] });
+      // Taking somebody off the rounds changes who the next run may schedule,
+      // so the calendars stop agreeing with the workforce screen until they
+      // are refetched.
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Read the planning rules in force.
+ *
+ * @returns The query, holding the agency's radius, working day and lunch rules.
+ *
+ * @remarks
+ * Manager-gated on the server, so this is only mounted behind a manager route.
+ * The row is seeded from configuration on first read, so this never returns
+ * "no rules yet" for a caller to handle.
+ */
+export function usePlanningSettings() {
+  return useQuery({
+    queryKey: keys.planningSettings,
+    queryFn: () => request<PlanningSettings>('/api/v1/planning/settings'),
+  });
+}
+
+/**
+ * Change the planning rules.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The whole rule set is sent, not the field that changed. The server's payload
+ * defaults every field but the radius, so a partial body would silently reset
+ * the working day to 09:00–20:00 — which looks like a successful save.
+ *
+ * **A change does not re-plan anything.** It applies to the next planning run,
+ * so the cached calendars are deliberately left alone: recomputing this week
+ * because somebody widened a radius would move assistants who have already been
+ * told where to go. Only the runs list is invalidated, because the next run
+ * will read the new rules.
+ */
+export function useUpdatePlanningSettings() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      max_intervention_radius_km: number;
+      day_start_minute: number;
+      day_end_minute: number;
+      lunch_break_minutes: number;
+      lunch_window_start_minute: number;
+      lunch_window_end_minute: number;
+    }) =>
+      request<PlanningSettings>('/api/v1/planning/settings', {
+        method: 'PUT',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.planningSettings });
+      void client.invalidateQueries({ queryKey: keys.planningRuns });
+    },
+  });
+}
+
+/**
+ * Declare which days of the week an assistant works.
+ *
+ * @param hcaId - The assistant whose working week is being set.
+ * @returns The mutation.
+ *
+ * @remarks
+ * The assistant is named by the path, never by the payload: the server refuses
+ * a week filed against a colleague, and taking the identifier from the body
+ * would mean guarding the wrong person.
+ *
+ * The whole week is sent rather than the day that changed. Two tabs open on the
+ * same screen would otherwise race, and last-write-wins on a delta produces a
+ * week nobody chose.
+ */
+export function useSetWorkingDays(hcaId: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (workingWeekdays: Weekday[]) =>
+      request<Hca>(`/api/v1/hcas/${hcaId}/working-days`, {
+        method: 'PUT',
+        json: { working_weekdays: workingWeekdays },
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myProfile });
+      void client.invalidateQueries({ queryKey: ['hcas'] });
+      // Dropping a day changes who the next run may schedule, so the calendars
+      // stop agreeing with the workforce screen until they are refetched.
+      void client.invalidateQueries({ queryKey: ['planning'] });
     },
   });
 }

@@ -14,10 +14,10 @@ from api.dependencies import (
 )
 from models.auth.user import User
 from models.people.hca_application import HcaApplication
-from models.schemas.requests.application_decision_request import (
+from models.schemas.requests.hca.application_decision_request import (
     ApplicationDecisionRequest,
 )
-from models.schemas.requests.hca_application_request import HcaApplicationRequest
+from models.schemas.requests.hca.hca_application_request import HcaApplicationRequest
 from service.hcas.hcas import HcaService
 
 logger: Logger = getLogger(__name__)

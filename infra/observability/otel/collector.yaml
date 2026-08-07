@@ -1,0 +1,59 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  tail_sampling:
+    decision_wait: 30s
+    policies:
+      - name: keep-errors
+        type: status_code
+        status_code: {status_codes: [ERROR]}
+      - name: keep-slow
+        type: latency
+        latency: {threshold_ms: 1000}
+      - name: sample-the-rest
+        type: probabilistic
+        probabilistic: {sampling_percentage: 10}
+
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 15
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Where the LLM spans will go when there are any. Commented out rather than
+  # absent so the shape of the decision is on the record: the exporter is added
+  # here and the application does not change.
+  #
+  # otlphttp/langfuse:
+  #   endpoint: http://langfuse:3000/api/public/otel
+  #   headers:
+  #     Authorization: "Basic ${LANGFUSE_AUTH}"
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling, batch]
+      exporters: [otlp/tempo]
+      # When Langfuse arrives this becomes two pipelines selected by a routing
+      # connector on the span's `gen_ai.system` attribute — LLM spans to
+      # Langfuse, everything else to Tempo. Both keep the same trace id, so a
+      # request that called a model is one trace and not two.
+
+  telemetry:
+    logs:
+      level: info

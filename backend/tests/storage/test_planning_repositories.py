@@ -15,9 +15,9 @@ from models.geo.postal_address import PostalAddress
 from models.people.hca import Hca
 from models.planning.intervention import Intervention
 from models.planning.planning_run import PlanningRun
-from storage.repositories.hca import HcaRepository
-from storage.repositories.intervention import InterventionRepository
-from storage.repositories.planning_run import PlanningRunRepository
+from storage.repositories.people.hca import HcaRepository
+from storage.repositories.planning.intervention import InterventionRepository
+from storage.repositories.planning.planning_run import PlanningRunRepository
 
 MONDAY = date(2026, 8, 3)
 TUESDAY = date(2026, 8, 4)
@@ -61,6 +61,7 @@ def _visit(
         Intervention: The unsaved visit.
     """
     return Intervention(
+        company_id="company-1",
         planning_run_id=run_id,
         name=name,
         intervention_type_id="type-1",
@@ -94,6 +95,7 @@ async def _run(session: AsyncSession, status: PlanningRunStatus) -> PlanningRun:
     """
     return await PlanningRunRepository(session).create(
         PlanningRun(
+            company_id="company-1",
             status=status,
             requested_by="admin-1",
             period_start=MONDAY,
@@ -193,9 +195,181 @@ class TestPlanningRunRepository:
         assert latest is not None
         assert latest.status is PlanningRunStatus.SUCCEEDED
 
+    # ------------------------------------------------------------------ #
+    #  Claiming a run
+    # ------------------------------------------------------------------ #
+
+    async def test_a_pending_run_can_be_claimed(self, session: AsyncSession) -> None:
+        """The winner gets the run back, now running and stamped."""
+        stored = await _run(session, PlanningRunStatus.PENDING)
+        started = datetime.now(UTC)
+
+        claimed = await PlanningRunRepository(session).claim(stored.id, started)
+
+        assert claimed is not None
+        assert claimed.id == stored.id
+        assert claimed.status is PlanningRunStatus.RUNNING
+        assert claimed.started_at is not None
+
+    async def test_a_run_can_only_be_claimed_once(self, session: AsyncSession) -> None:
+        """The second worker is told it lost, rather than solving in parallel.
+
+        Notes:
+            **This is the test the compare-and-swap exists for.** A message is
+            acknowledged only once its handler returns, so a worker killed
+            mid-solve leaves its run to be redelivered — and two workers holding
+            it would each solve the same period and each overwrite the other's
+            plan. The ``WHERE status = 'pending'`` is evaluated by the database,
+            so exactly one of them can match.
+        """
+        stored = await _run(session, PlanningRunStatus.PENDING)
+        repository = PlanningRunRepository(session)
+
+        first = await repository.claim(stored.id, datetime.now(UTC))
+        second = await repository.claim(stored.id, datetime.now(UTC))
+
+        assert first is not None
+        assert second is None
+
+    @pytest.mark.parametrize(
+        "settled",
+        [
+            pytest.param(PlanningRunStatus.RUNNING, id="Refused - already running"),
+            pytest.param(PlanningRunStatus.SUCCEEDED, id="Refused - succeeded"),
+            pytest.param(PlanningRunStatus.FAILED, id="Refused - failed"),
+        ],
+    )
+    async def test_only_a_pending_run_can_be_claimed(
+        self, session: AsyncSession, settled: PlanningRunStatus
+    ) -> None:
+        """A finished run redelivered by the broker is not solved again.
+
+        Notes:
+            Re-running a succeeded run would rewrite a calendar people are
+            already working from, for no reason at all.
+        """
+        stored = await _run(session, settled)
+
+        claimed = await PlanningRunRepository(session).claim(
+            stored.id, datetime.now(UTC)
+        )
+
+        assert claimed is None
+
+    async def test_claiming_a_run_that_is_not_there_is_reported(
+        self, session: AsyncSession
+    ) -> None:
+        """``None``, not an error: the run may have been deleted."""
+        assert (
+            await PlanningRunRepository(session).claim("nope", datetime.now(UTC))
+            is None
+        )
+
+    async def test_a_losing_claim_leaves_the_run_alone(
+        self, session: AsyncSession
+    ) -> None:
+        """The loser must not stamp its own start time over the winner's.
+
+        Notes:
+            The moment matters: it is what a manager reads to know how long a
+            solve has been going, and a second worker moving it forward would
+            make a run that started ten minutes ago look like it just began.
+        """
+        stored = await _run(session, PlanningRunStatus.PENDING)
+        repository = PlanningRunRepository(session)
+        winner = await repository.claim(stored.id, datetime.now(UTC))
+
+        await repository.claim(stored.id, datetime.now(UTC))
+
+        loaded = await repository.get(stored.id)
+        assert winner is not None
+        assert loaded is not None
+        assert loaded.started_at == winner.started_at
+
 
 class TestInterventionRepository:
     """Tests for the produced plan's persistence."""
+
+    # ------------------------------------------------------------------ #
+    #  One agency's plan is not another's
+    # ------------------------------------------------------------------ #
+
+    async def test_replanning_one_agency_leaves_another_agencys_week_intact(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """The delete names an agency, so it cannot reach past one.
+
+        Notes:
+            **This is the test the whole scoping change exists for.** Replacing
+            a period deletes every visit in it and writes the new plan back;
+            unscoped, one agency replanning its week deleted every other
+            agency's visits in the same days and wrote none of them back. Two
+            agencies planning overlapping periods is the normal case, not a rare
+            race — the broker gives each its own queue precisely so their runs
+            proceed at the same time — so this lost calendars routinely.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        theirs = _visit(hca_id, run.id, name="Theirs").model_copy(
+            update={"company_id": "company-2"}
+        )
+
+        await repository.replace_for_period(
+            "company-2", MONDAY, date(2026, 8, 9), [theirs]
+        )
+        await repository.replace_for_period(
+            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Ours")]
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert sorted(visit.name for visit in visits) == ["Ours", "Theirs"]
+
+    async def test_an_empty_plan_clears_only_its_own_agency(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A run that placed nothing still must not blank everybody else.
+
+        Notes:
+            The emptiest case is the most dangerous one: with no visits to write
+            back, an unscoped delete leaves nothing behind at all. It is also
+            why the agency is a parameter rather than read off the visits —
+            there are none to read it from.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        theirs = _visit(hca_id, run.id, name="Theirs").model_copy(
+            update={"company_id": "company-2"}
+        )
+        await repository.replace_for_period(
+            "company-2", MONDAY, date(2026, 8, 9), [theirs]
+        )
+
+        await repository.replace_for_period("company-1", MONDAY, date(2026, 8, 9), [])
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in visits] == ["Theirs"]
+
+    async def test_the_agency_survives_the_round_trip(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """A stored visit still knows whose calendar it is on.
+
+        Notes:
+            It has to: the next replacement of that period finds it by exactly
+            this column, and a visit that lost it would be one no run could ever
+            clear.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.company_id for visit in visits] == ["company-1"]
 
     # ------------------------------------------------------------------ #
     #  Replacing a period
@@ -210,10 +384,16 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="First")]
+            "company-1",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="First")],
         )
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Second")]
+            "company-1",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Second")],
         )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
@@ -234,6 +414,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
+            "company-1",
             MONDAY,
             date(2026, 8, 16),
             [
@@ -242,7 +423,10 @@ class TestInterventionRepository:
             ],
         )
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Replanned")]
+            "company-1",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Replanned")],
         )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 16))
@@ -257,9 +441,11 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
         )
-        written = await repository.replace_for_period(MONDAY, date(2026, 8, 9), [])
+        written = await repository.replace_for_period(
+            "company-1", MONDAY, date(2026, 8, 9), []
+        )
 
         assert written == 0
         assert await repository.count_for_period(MONDAY, date(2026, 8, 9)) == 0
@@ -283,6 +469,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
+            "company-1",
             MONDAY,
             date(2026, 8, 9),
             [
@@ -312,6 +499,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
+            "company-1",
             MONDAY,
             date(2026, 8, 9),
             [
@@ -332,6 +520,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
+            "company-1",
             MONDAY,
             date(2026, 8, 16),
             [
@@ -357,7 +546,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
         )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
@@ -378,6 +567,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
+            "company-1",
             MONDAY,
             date(2026, 8, 9),
             [
@@ -405,7 +595,7 @@ class TestInterventionRepository:
         run = await _run(session, PlanningRunStatus.RUNNING)
         with pytest.raises(IntegrityError):
             await InterventionRepository(session).replace_for_period(
-                MONDAY, date(2026, 8, 9), [_visit("ghost", run.id)]
+                "company-1", MONDAY, date(2026, 8, 9), [_visit("ghost", run.id)]
             )
 
     # ------------------------------------------------------------------ #
@@ -427,7 +617,10 @@ class TestInterventionRepository:
         run = await _run(session, PlanningRunStatus.RUNNING)
         repository = InterventionRepository(session)
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Toilette")]
+            "company-1",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Toilette")],
         )
         stored = (await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9)))[0]
 
@@ -448,7 +641,10 @@ class TestInterventionRepository:
         run = await _run(session, PlanningRunStatus.RUNNING)
         repository = InterventionRepository(session)
         await repository.replace_for_period(
-            MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Toilette")]
+            "company-1",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Toilette")],
         )
         stored = (await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9)))[0]
 
@@ -487,6 +683,7 @@ class TestInterventionRepository:
         run = await _run(session, PlanningRunStatus.RUNNING)
         repository = InterventionRepository(session)
         await repository.replace_for_period(
+            "company-1",
             MONDAY,
             date(2026, 8, 9),
             [

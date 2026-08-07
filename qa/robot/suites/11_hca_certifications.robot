@@ -22,7 +22,12 @@ Test Teardown    Take A Screenshot On Failure
 
 *** Variables ***
 ${TARGET_HCA_NAME}      Martin
-${QA_CERTIFICATION}     QA-Qualification-Temporaire
+# Picked from the catalogue rather than typed. A free-text qualification
+# matches no requirement, so the editor now offers only what the agency
+# recognises — and the suite has to choose one the target does not already
+# hold, which ``Certification The Target Does Not Hold`` works out at run time.
+${QA_CERTIFICATION_CODE}    ${EMPTY}
+${QA_CERTIFICATION_LABEL}   ${EMPTY}
 
 
 *** Test Cases ***
@@ -82,8 +87,7 @@ Cancelling Changes Nothing
     [Tags]    hcas
     ${before}=    Certifications Of The Target Assistant
     Open The Editor For The Target Assistant
-    Fill Text    [data-testid="new-certification"]    ${QA_CERTIFICATION}
-    Click    [data-testid="add-certification"]
+    Add The QA Qualification In The Editor
     Click    [data-testid="cancel-certifications"]
     Sleep    1s
     ${after}=    Certifications Of The Target Assistant
@@ -94,14 +98,13 @@ Adding And Saving A Qualification Stores It
     [Tags]    smoke    hcas
     ${before}=    Certifications Of The Target Assistant
     Open The Editor For The Target Assistant
-    Fill Text    [data-testid="new-certification"]    ${QA_CERTIFICATION}
-    Click    [data-testid="add-certification"]
+    Add The QA Qualification In The Editor
     Click    [data-testid="save-certifications"]
     Sleep    2s
 
     ${after}=    Certifications Of The Target Assistant
-    ${names}=    Evaluate    [c["name"] for c in $after]
-    Should Contain    ${names}    ${QA_CERTIFICATION}
+    ${codes}=    Evaluate    [c["code"] for c in $after]
+    Should Contain    ${codes}    ${QA_CERTIFICATION_CODE}
     Should Be True    ${{ len($after) }} == ${{ len($before) }} + 1
 
 The Saved Qualification Shows On The Grid
@@ -110,7 +113,9 @@ The Saved Qualification Shows On The Grid
     Navigate To    /hcas
     Fill Text    [data-testid="hca-search"]    ${TARGET_HCA_NAME}
     Sleep    2s
-    Get Text    [data-testid="hcas-grid"]    *=    ${QA_CERTIFICATION}
+    # The catalogue's *label*, because that is what the chip prints: a code is
+    # what the planner matches on, not what a manager reads.
+    Get Text    [data-testid="hcas-grid"]    *=    ${QA_CERTIFICATION_LABEL}
     [Teardown]    Clear The Search
 
 Removing A Qualification Stores The Removal
@@ -127,16 +132,58 @@ Removing A Qualification Stores The Removal
     Sleep    2s
 
     ${after}=    Certifications Of The Target Assistant
-    ${names}=    Evaluate    [c["name"] for c in $after]
-    Should Not Contain    ${names}    ${QA_CERTIFICATION}
+    ${codes}=    Evaluate    [c["code"] for c in $after]
+    Should Not Contain    ${codes}    ${QA_CERTIFICATION_CODE}
 
 
 *** Keywords ***
 Open The Workforce Screen
+    Choose A Qualification The Target Does Not Hold
     Open The Application
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /hcas
     Wait For Elements State    [data-testid="hcas-grid"]    visible
+
+Choose A Qualification The Target Does Not Hold
+    [Documentation]    Pick a catalogue entry the assistant does not already have.
+    ...
+    ...    Worked out at run time rather than written down. The editor offers
+    ...    only what is not already held, so a hard-coded code would be absent
+    ...    from the list for an assistant who happens to hold it — and the
+    ...    failure would read as a broken select rather than as a stale
+    ...    fixture.
+    ${catalogue}=    The Certification Catalogue
+    ${held}=    Certifications Of The Target Assistant
+    ${held_codes}=    Evaluate    [c["code"] for c in $held]
+    ${available}=    Evaluate
+    ...    [e for e in $catalogue if e["code"] not in $held_codes]
+    Should Not Be Empty    ${available}
+    ...    msg=Every seeded qualification is already held; the suite has nothing to add.
+    Set Suite Variable    ${QA_CERTIFICATION_CODE}    ${available}[0][code]
+    Set Suite Variable    ${QA_CERTIFICATION_LABEL}    ${available}[0][label]
+
+The Certification Catalogue
+    [Documentation]    Return every qualification the agency recognises.
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/certifications
+    ...    headers=${headers}
+    ...    expected_status=200
+    ${entries}=    Set Variable    ${response.json()}
+    Should Not Be Empty    ${entries}
+    ...    msg=The certification catalogue is empty; was the seeder run?
+    RETURN    ${entries}
+
+Add The QA Qualification In The Editor
+    [Documentation]    Choose the qualification from the catalogue and add it.
+    ...
+    ...    A native select, so ``Select Options By`` rather than ``Fill Text``.
+    ...    The picker offers labels and carries codes, which is why the option
+    ...    is chosen by value.
+    Select Options By    [data-testid="new-certification"]    value
+    ...    ${QA_CERTIFICATION_CODE}
+    Click    [data-testid="add-certification"]
 
 Restore The Assistant And Close
     [Documentation]    Strip the QA qualification however the suite ended.
@@ -199,8 +246,8 @@ Index Of The QA Qualification
     ...    them in stored order, and an assistant who already held two
     ...    qualifications would put it at index two, not zero.
     ${current}=    Certifications Of The Target Assistant
-    ${names}=    Evaluate    [c["name"] for c in $current]
-    ${index}=    Get Index From List    ${names}    ${QA_CERTIFICATION}
+    ${codes}=    Evaluate    [c["code"] for c in $current]
+    ${index}=    Get Index From List    ${codes}    ${QA_CERTIFICATION_CODE}
     Should Be True    ${index} >= 0    msg=The QA qualification is not stored.
     RETURN    ${index}
 
@@ -213,10 +260,14 @@ Remove The QA Qualification Through The API
     ...    ${API_URL}/api/v1/hcas/${hca_id}    headers=${headers}    expected_status=200
     ${hca}=    Set Variable    ${response.json()}
     ${kept}=    Evaluate
-    ...    [c for c in $hca["certifications"] if c["name"]!="${QA_CERTIFICATION}"]
+    ...    [c for c in $hca["certifications"] if c["code"]!="${QA_CERTIFICATION_CODE}"]
+    # ``field_employee`` is sent back as it was found. The payload replaces all
+    # three fields it carries, so omitting it would quietly put somebody back
+    # on the rounds the agency had taken them off.
     ${body}=    Create Dictionary
     ...    contract_type=${hca}[contract_type]
     ...    certifications=${kept}
+    ...    field_employee=${hca}[field_employee]
     PATCH
     ...    ${API_URL}/api/v1/hcas/${hca_id}/employment
     ...    json=${body}

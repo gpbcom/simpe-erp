@@ -8,6 +8,12 @@ class MTEmploymentUpdateRequestInvalidContractType(
     """Exception raised when the contract type is not a known one."""
 
 
+class MTEmploymentUpdateRequestInvalidFieldEmployee(
+    MTInvalidEmploymentUpdateRequestException
+):
+    """Exception raised when an invalid ``field_employee`` value is provided."""
+
+
 class MTEmploymentUpdateRequestInvalidCertifications(
     MTInvalidEmploymentUpdateRequestException
 ):
@@ -26,3 +32,11 @@ class MTHcaProfileUpdateRequestInvalidAddress(
     MTInvalidHcaProfileUpdateRequestException
 ):
     """Exception raised when the address is neither an address nor a mapping."""
+
+
+class MTInvalidWorkingDaysRequestException(Exception):
+    """Exception raised when a working-days payload is malformed."""
+
+
+class MTWorkingDaysRequestInvalidWeekdays(MTInvalidWorkingDaysRequestException):
+    """Exception raised when the working days are not known weekdays."""

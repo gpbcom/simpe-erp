@@ -9,12 +9,12 @@ from fastapi import APIRouter, Depends, status
 # First-party imports
 from api.dependencies import get_auth_service, get_current_user, get_manager_user
 from models.auth.user import User
-from models.schemas.requests.password_change_request import PasswordChangeRequest
-from models.schemas.requests.staff_account_request import StaffAccountRequest
-from models.schemas.responses.temporary_credentials_response import (
+from models.schemas.requests.auth.password_change_request import PasswordChangeRequest
+from models.schemas.requests.account.staff_account_request import StaffAccountRequest
+from models.schemas.responses.auth.temporary_credentials_response import (
     TemporaryCredentialsResponse,
 )
-from models.schemas.responses.user_response import UserResponse
+from models.schemas.responses.auth.user_response import UserResponse
 from service.auth.auth import AuthService
 
 logger: Logger = getLogger(__name__)

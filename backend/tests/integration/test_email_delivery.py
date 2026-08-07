@@ -67,9 +67,17 @@ def empty_inbox(mailpit: httpx.Client) -> Iterator[None]:
         None: With an empty inbox.
 
     Notes:
-        **This is what makes the campaign idempotent.** Without it the second
-        run asserts against the first run's messages and passes for the wrong
-        reason — or fails because it found two of everything.
+        - **This is what makes the campaign idempotent.** Without it the second
+          run asserts against the first run's messages and passes for the wrong
+          reason — or fails because it found two of everything.
+        - **These tests must run single-process.** The purge is global and the
+          catcher is shared, so two of them on two xdist workers wipe each
+          other's messages mid-assertion — and
+          :meth:`test_an_empty_inbox_means_nothing_was_sent` asserts the inbox
+          is empty *for the whole catcher*. ``addopts`` forces ``-n auto``, so
+          the CI job passes ``-n0`` explicitly and anyone running these by hand
+          must too. Three tests gain nothing from parallelism; correctness
+          costs everything.
     """
     mailpit.delete("/api/v1/messages")
     yield
@@ -137,6 +145,7 @@ def _planning() -> HcaPlanning:
         period_end=date(2026, 8, 16),
         interventions=[
             Intervention(
+                company_id="company-1",
                 id="visit-1",
                 planning_run_id="run-1",
                 name="Aide a la toilette",

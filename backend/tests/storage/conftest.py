@@ -13,10 +13,25 @@ from sqlalchemy.ext.asyncio import (
 )
 
 # First-party imports
+from migration_templates import MigrationTemplates
 from models.enums import ContractType
 from models.people.customer import Customer
 from models.people.hca import Hca
 from storage.orm import Base
+
+
+@pytest.fixture(scope="session")
+def migrations(tmp_path_factory: pytest.TempPathFactory) -> MigrationTemplates:
+    """Return the per-worker cache of migrated template databases.
+
+    Args:
+        tmp_path_factory (pytest.TempPathFactory): Supplies a directory unique
+            to this worker, so two xdist workers never share a template file.
+
+    Returns:
+        MigrationTemplates: The cache.
+    """
+    return MigrationTemplates(tmp_path_factory.mktemp("migration-templates"))
 
 
 @pytest_asyncio.fixture
