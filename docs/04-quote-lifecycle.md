@@ -15,18 +15,27 @@ So an assistant writes the quote, and it waits.
 ```
               ┌──── an assistant's path ────┐
               │                             │
-   draft ──submit──▶ pending-validation ──validate──▶ sent ──accept──▶ accepted
-     ▲                       │                          │
-     │                       │                          └───reject───▶ rejected
+   draft ──submit──▶ pending-validation ──validate──▶ accepted
+     ▲                       │
+     │                       │
      └────refuse-validation──┘
      │
      └──send──▶ accepted        ┌──── a manager's path ────┐
+
+   sent ──accept──▶ accepted    ┌── legacy rows only ──┐
+        └─reject──▶ rejected
 ```
+
+**Nothing produces `sent` any more.** Both approval paths end at `accepted`:
+`send` for a manager's own hand-written quote, `validate` for an assistant's
+write-up. The status and its two transitions are kept because quotes stored in
+it before that change still exist and need a way forward — see
+[Validating is committing](#validating-is-committing).
 
 | Transition | Who | From → to | Also requires |
 |---|---|---|---|
 | `submit` | author (assistant) | `draft` → `pending-validation` | priced; the caller wrote it |
-| `validate` | manager | `pending-validation` → `sent` | priced |
+| `validate` | manager | `pending-validation` → `accepted` | priced; stamps the issue dates and the approver as validator |
 | `refuse-validation` | manager | `pending-validation` → `draft` | — |
 | `send` | manager | `draft` → `accepted` | priced; stamps the issue dates and the sender as validator |
 | `accept` | manager | any → `accepted` | priced |
@@ -230,15 +239,29 @@ queue, because that queue is a database query on
 | The whole journey, across two roles | — | `qa/robot/suites/05_quote_validation_journey.robot` |
 
 
-## Validating is issuing
+## Validating is committing
 
 There is no second button. A manager's approval *is* the act of issuing the
-offer, so validation stamps `issued_on` and a `valid_until` 30 days out
-(`QuoteService.VALIDITY_DAYS`) alongside moving the quote to `sent`.
+offer **and of committing the work**, so validation stamps `issued_on` and a
+`valid_until` 30 days out (`QuoteService.VALIDITY_DAYS`) alongside moving the
+quote to `accepted`.
+
+**It used to stop at `sent`**, needing a separate acceptance before any of the
+work was scheduled — and nothing on any screen asked for that step. The quote
+left the validation queue, looked approved, and its visits never reached a
+planning run: a manager validated a fortnight of work, re-ran the computation
+and saw the same visit count, with nothing anywhere explaining the difference.
+
+The asymmetry made it worse. `send` has always accepted a manager's own draft
+outright, on the reasoning that they write one up for an arrangement already
+settled with the family. That reasoning applies just as well to an assistant's
+write-up: by the time it reaches the queue the customer has agreed, and what a
+manager is ruling on is the agency's figures. The two paths now end in the same
+place, which is what the two buttons always looked like they did.
 
 It did not always. `record_validation` set the status, the approver and the
-timestamp and left both dates null, so a quote reached `sent` with no issue date
-and no expiry — the customer's copy carried neither. Only the seeder wrote them,
+timestamp and left both dates null, so a quote reached its issued state with no
+issue date and no expiry — the customer's copy carried neither. Only the seeder wrote them,
 which meant seeded and runtime quotes disagreed about what a sent quote looks
 like.
 

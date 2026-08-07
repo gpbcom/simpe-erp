@@ -65,11 +65,21 @@ data:
       max_intervention_radius_km: 30.0
       average_speed_kmh: 30.0
       average_speed_without_license_kmh: 12.0
-      solver_time_limit_seconds: 30.0
-      # Equal to the planning worker's CPU limit. The budget above is
-      # wall-clock, so more threads than cores means the kernel throttles the
-      # cgroup and thirty seconds takes a minute. The check in
-      # templates/tests/ fails the render if the two disagree.
+      # What actually stops the search, measured in solver work units rather
+      # than seconds. It was hard-coded here at neither value: this file set
+      # only the wall-clock net, at 30.0, and left the deterministic budget to
+      # the model's default — so a cluster solved every week against a net a
+      # fifth the length of the solve it needed, truncated the search, and
+      # logged that the plan was not reproducible. Sized in values.yaml.
+      solver_deterministic_budget: {{ .Values.workerPlanning.solverDeterministicBudget }}
+      # A safety net, not a budget. It bounds a pathological instance; a solve
+      # that reaches it has stopped being reproducible and says so at WARNING.
+      solver_time_limit_seconds: {{ .Values.workerPlanning.solverTimeLimitSeconds }}
+      solver_seed: {{ .Values.workerPlanning.solverSeed }}
+      # Equal to the planning worker's CPU limit. More threads than cores means
+      # the kernel throttles the cgroup, so the wall-clock net above arrives
+      # after less real search. The check in templates/common/guards.yaml fails
+      # the render if the two disagree.
       solver_workers: {{ .Values.workerPlanning.solverWorkers }}
       travel_weight: 1
       unassigned_penalty: 100000

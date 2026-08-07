@@ -310,7 +310,7 @@ async def validate_quote(
     publisher: EventPublisher = Depends(get_event_publisher),
     caller: User = Depends(get_manager_user),
 ) -> Quote:
-    """Approve a quote an assistant submitted, and issue it.
+    """Approve a quote an assistant submitted, committing its work.
 
     Args:
         quote_id (str): The quote to validate.
@@ -319,7 +319,7 @@ async def validate_quote(
             recorded as the account that approved the figures.
 
     Returns:
-        Quote: The validated quote, now sent.
+        Quote: The validated quote, accepted and schedulable.
 
     Raises:
         MTQuoteNotFound: If no such quote exists; answered as a 404.
@@ -328,10 +328,16 @@ async def validate_quote(
         MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.
 
     Notes:
-        **Manager-gated, and that is the whole point of the status.** An
-        assistant knows what a customer needs but does not set the agency's
-        prices, so the quote they wrote waits here until somebody who does
-        agrees to it. Who agreed is recorded on the quote.
+        - **Manager-gated, and that is the whole point of the status.** An
+          assistant knows what a customer needs but does not set the agency's
+          prices, so the quote they wrote waits here until somebody who does
+          agrees to it. Who agreed is recorded on the quote.
+        - **Validation accepts the quote**, so this is the moment its lines
+          enter the planning computation — the same thing ``POST /{id}/send``
+          does for a manager's own hand-written one. It used to stop at
+          ``sent`` and need a second, separate acceptance, which nothing on any
+          screen asked for: the quote left the validation queue and its work
+          silently never reached a run.
     """
     logger.info("Validating quote %s at the request of %s.", quote_id, caller.email)
     validated = await service.validate(quote_id, validator_id=caller.id or caller.email)

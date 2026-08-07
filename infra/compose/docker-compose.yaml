@@ -149,10 +149,10 @@ services:
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     networks: [simple-erp]
 
-  # Two deployments, one image. A solve is CPU-bound and pins its cores for a
-  # thirty-second budget; a notification fan-out is I/O-bound and finishes in
+  # Two deployments, one image. A solve is CPU-bound and pins its cores for
+  # minutes at a time; a notification fan-out is I/O-bound and finishes in
   # milliseconds. Sharing a process means they scale together, and a manager
-  # waits half a minute for a badge because the pod is mid-solve.
+  # waits out a whole solve for a badge because the pod is mid-plan.
   worker-planning:
     build:
       context: ../../backend
@@ -169,10 +169,19 @@ services:
       rabbitmq:
         condition: service_healthy
     command: ["worker", "planning"]
-    # Longer than the solver's own budget, so a stop lets the in-flight solve
-    # finish and acknowledge instead of being killed and redelivered. The
-    # default is thirty seconds, which is exactly the budget.
-    stop_grace_period: 90s
+    # Longer than a solve actually takes, so a stop lets the in-flight plan
+    # finish and acknowledge instead of being killed and redelivered.
+    #
+    # **Measured, not guessed, because the guess was wrong.** This was 90s
+    # against a comment claiming that was "longer than the solver's own
+    # budget" — but the budget stopped being thirty wall-clock seconds when it
+    # became deterministic, and the seeded 77-visit week takes 138s on one
+    # worker. Every `docker compose stop` was killing solves mid-flight and
+    # having them redelivered, which looks like a worker that cannot keep up
+    # rather than a grace period that is too short.
+    #
+    # Mirrors workerPlanning.terminationGracePeriodSeconds in the chart.
+    stop_grace_period: 300s
     networks: [simple-erp]
 
   worker-notifications:

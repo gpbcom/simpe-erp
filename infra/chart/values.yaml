@@ -78,18 +78,40 @@ workerPlanning:
     messagesPerReplica: 2
     pollingInterval: 15
     # Longer than the solver's budget, so a draining queue does not evict a pod
-    # twenty-five seconds into a thirty-second solve.
-    cooldownPeriod: 120
+    # part-way through a solve. This said 120, which was written when a solve
+    # was assumed to take thirty seconds; a budget of 150.0 at about fourteen
+    # seconds a unit is nearer forty minutes, so the old value could evict a
+    # pod eighteen times over inside one run — and each eviction repeats the
+    # whole solve on another replica rather than losing it.
+    cooldownPeriod: 2700
     scaleDownStabilizationSeconds: 300
   resources:
     # Guaranteed QoS: requests equal limits. The solver's budget is wall-clock,
     # so under a CPU limit with no matching request the kernel throttles the
     # cgroup and thirty seconds of budget takes a minute of real time.
-    requests: {cpu: 2, memory: 2Gi}
-    limits: {cpu: 2, memory: 2Gi}
+    requests: {cpu: 8, memory: 2Gi}
+    limits: {cpu: 8, memory: 2Gi}
   # Must equal the CPU above. There is a test in the chart that fails if it
   # does not.
-  solverWorkers: 2
+  #
+  # Eight, not two, and the cores above were raised to match. One worker
+  # cannot place the seeded week at any budget tried, and two is nearer to
+  # one than to eight; the measurements in backend/conf/app.yaml record
+  # eight workers placing it every time and roughly halving the travel. A
+  # chart that renders is not the same as a chart that plans, and this
+  # shipped a worker count measured to fail.
+  solverWorkers: 8
+  # The reproducible search budget, in solver work units. This is the setting
+  # that decides whether a week's work all gets placed, and it is the one the
+  # chart used to omit entirely — see templates/common/config.yaml. Keep it in
+  # step with backend/conf/app.yaml, which carries the sizing measurements.
+  solverDeterministicBudget: 150.0
+  # The wall-clock safety net. It must stay above the time the budget above
+  # actually takes, or every solve is truncated at the net instead of finishing
+  # its budget, and no two runs of one week agree — which is exactly what the
+  # config files shipped, at 900.0 against a budget costing some 1440s.
+  solverTimeLimitSeconds: 3600.0
+  solverSeed: 0
   # The default is thirty seconds, which is exactly the solve budget — so
   # Kubernetes would SIGKILL mid-solve on every scale-down.
   terminationGracePeriodSeconds: 90

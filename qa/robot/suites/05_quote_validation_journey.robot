@@ -67,9 +67,11 @@ An Assistant Submits A Quote And A Manager Is Notified
     Wait For Elements State    [data-testid="validate-QA-${suffix}"]    visible
     Click    [data-testid="validate-QA-${suffix}"]
 
-    # Validating issues the quote. It becomes SENT, not ACCEPTED — a manager
-    # approving a price is not a customer agreeing to it.
-    Quote Status Should Become    ${quote}[id]    sent
+    # Validating issues the quote *and* commits its work: it becomes ACCEPTED,
+    # which is the one status the planner loads. It stopped at SENT before,
+    # needing a second acceptance nothing on any screen asked for — so a
+    # validated quote's visits silently never reached a run.
+    Quote Status Should Become    ${quote}[id]    accepted
     Sign Out
 
     # --- The assistant is told the outcome ------------------------------

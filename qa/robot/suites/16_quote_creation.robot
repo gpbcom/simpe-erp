@@ -156,12 +156,12 @@ Validating A Quote Changes Its Status And Issues It
     Wait For Elements State    [data-testid="validate-QA-VALID-${suffix}"]    visible
     Click    [data-testid="validate-QA-VALID-${suffix}"]
 
-    Quote Status Should Become    ${stored}[id]    sent
+    Quote Status Should Become    ${stored}[id]    accepted
     ${issued}=    Quote With Reference    QA-VALID-${suffix}
     Should Not Be Equal    ${issued}[issued_on]     ${None}
-    ...    msg=A sent quote carries no issue date.
+    ...    msg=A validated quote carries no issue date.
     Should Not Be Equal    ${issued}[valid_until]   ${None}
-    ...    msg=A sent quote carries no expiry.
+    ...    msg=A validated quote carries no expiry.
 
 Sending A Hand-Written Quote Puts Its Hours In Front Of The Planner
     [Documentation]    **The gap this test exists for.**

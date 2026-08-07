@@ -93,7 +93,8 @@
     "interruptedTooltip": "Les prestations postérieures ne sont ni planifiées ni facturées ; elles restent visibles sur le devis.",
     "renewed": "Reconduit",
     "renewedTooltip": "Ce devis a été rédigé automatiquement à l'échéance du précédent.",
-    "arrangementSummary": "{{count}} prestation(s), du {{from}} au {{to}}"
+    "arrangementSummary": "{{count}} prestation(s), du {{from}} au {{to}}",
+    "validatedAwaitingAcceptance": "Devis validé. Il est accepté et ses prestations entrent dans le prochain calcul de planning."
   },
   "hca": {
     "firstName": "Prénom",

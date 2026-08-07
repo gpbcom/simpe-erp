@@ -31,16 +31,19 @@ groups:
         expr: |
           histogram_quantile(
             0.9, sum(rate(planning_run_duration_seconds_bucket[30m])) by (le)
-          ) > 60
+          ) > 3000
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "Planning runs are taking far longer than their budget"
+          summary: "Planning runs are running into their wall-clock net"
           description: >-
             Check planning.solver_workers against the CPU limit of the planning
             worker. More threads than cores means the kernel throttles the whole
-            cgroup, and thirty seconds of budget takes a minute of real time.
+            cgroup, so a unit of the deterministic budget costs several times
+            its measured wall clock, the net fires before the budget is spent,
+            and the truncated search leaves visits unplaced at status FEASIBLE.
+            The run logs that its plan is not reproducible when this happens.
 
   - name: simple-erp-broker
     rules:

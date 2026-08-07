@@ -212,12 +212,19 @@ class QuoteStatus(StrEnum):
         EXPIRED (str): Its validity date passed before an answer was given.
 
     Notes:
-        ``PENDING_VALIDATION`` sits between the draft and the customer. An
+        ``PENDING_VALIDATION`` sits between the draft and the commitment. An
         assistant knows what a customer needs but does not set the agency's
-        prices, so a quote they write waits for a manager before it can be sent.
-        It is deliberately a status rather than a flag: a quote is in exactly
-        one place at a time, and a boolean beside the status would allow the
-        nonsense of an accepted quote still awaiting validation.
+        prices, so a quote they write waits for a manager before its work is
+        committed. It is deliberately a status rather than a flag: a quote is in
+        exactly one place at a time, and a boolean beside the status would allow
+        the nonsense of an accepted quote still awaiting validation.
+
+        ``SENT`` is **no longer produced by any path**. Validation used to stop
+        there, needing a second acceptance that nothing on any screen asked for,
+        so a validated quote's work silently never reached a planning run; both
+        approval paths now end at ``ACCEPTED``. The member is kept because rows
+        stored in it before that change still exist, and the interface keeps its
+        tab and its accept button for exactly them.
     """
 
     DRAFT = "draft"

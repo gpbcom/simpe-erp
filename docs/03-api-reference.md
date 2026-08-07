@@ -121,7 +121,7 @@ nothing.
 | GET | `/{id}` · `/{id}/aggregates` | One quote; its weekly totals |
 | PUT | `/{id}/lines` | Replaces the lines and reprices **any** quote in the agency. Drafts only |
 | POST | `/{id}/price` | Reprices against the current catalog. Drafts only |
-| POST | `/{id}/validate` | Approves a submitted quote → `sent`, recording who |
+| POST | `/{id}/validate` | Approves a submitted quote → **`accepted`**, recording who. Its visits enter the next planning run |
 | POST | `/{id}/refuse-validation` | Sends it back to its author → `draft` |
 | POST | `/renewals/run` | Writes successors for expired auto-renewing arrangements. **Safe to repeat** |
 | POST | `/{id}/interrupt` | Ends an arrangement on a day (inclusive) and reprices it |

@@ -219,27 +219,108 @@ class TestASolveThatProducedNothing:
         assert "out-of-radius" in str(raised.value)
 
 
-class TestAPartialPlanIsStillDiagnosedPerVisit:
-    """Tests that the per-visit diagnosis survives where it is meaningful."""
+def _partial(status_name: str) -> PlanningSolution:
+    """Build a plan that placed one visit of two.
 
-    def test_a_feasible_solve_missing_one_visit_names_it(self) -> None:
+    Args:
+        status_name (str): The solver status.
+
+    Returns:
+        PlanningSolution: A feasible solution missing ``req-2``.
+    """
+    return PlanningSolution(
+        assignments=[],
+        unassigned_requirement_ids=["req-2"],
+        total_travel_minutes=10,
+        is_feasible=True,
+        status_name=status_name,
+    )
+
+
+class TestAPartialPlanTheSolverProvedBest:
+    """Tests the per-visit diagnosis where the solver really did settle it."""
+
+    def test_an_optimal_solve_missing_one_visit_names_it(self) -> None:
         """**The case the per-visit reasons were written for.**
 
         Notes:
-            Here the solver really did place the rest and really could not fit
-            this one, so "travel, lunch and the other visits leave no room" is
-            a finding rather than a guess.
+            ``OPTIMAL`` means the search finished: it looked everywhere and
+            this was the best plan there is. An unplaced visit costs
+            ``unassigned_penalty``, so one left out of an optimal plan really
+            could not be fitted — "travel, lunch and the other visits leave no
+            room" is a finding rather than a guess.
         """
         requirements = [_requirement("req-1"), _requirement("req-2")]
-        solution = PlanningSolution(
-            assignments=[],
-            unassigned_requirement_ids=["req-2"],
-            total_travel_minutes=10,
-            is_feasible=True,
-            status_name="FEASIBLE",
-        )
 
-        message = _refuse(solution, requirements)
+        message = _refuse(_partial("OPTIMAL"), requirements)
 
         assert "1 of 2 visit(s) could not be scheduled" in message
         assert "Aide a la toilette" in message
+
+
+class TestAPartialPlanTheSolverNeverProvedBest:
+    """Tests for a plan that merely happens to be the best one *found*.
+
+    Notes:
+        **This is what a run reported as "2 of 77 visits could not be
+        scheduled — travel, the lunch break and the other visits that day
+        leave no room for it".** The status was ``FEASIBLE``: the solver had
+        found a plan and stopped on its deterministic budget without proving
+        it was the best one.
+
+        An unplaced visit is the most expensive term in the objective — a
+        hundred thousand against a travel minute's one — so a search that could
+        have placed those two would have. Leaving them out is evidence the
+        search ran out of budget, not that the day is full. Saying otherwise
+        sends a manager to move a customer's hours to solve an arithmetic
+        problem.
+    """
+
+    def test_a_feasible_solve_does_not_blame_travel_and_lunch(self) -> None:
+        """Nothing about those visits was established."""
+        requirements = [_requirement("req-1"), _requirement("req-2")]
+
+        message = _refuse(_partial("FEASIBLE"), requirements)
+
+        assert "lunch" not in message
+        assert "leave no room" not in message
+
+    def test_a_feasible_solve_still_reports_the_size_of_the_gap(self) -> None:
+        """How much did not fit is a fact, and the number people act on."""
+        requirements = [_requirement("req-1"), _requirement("req-2")]
+
+        message = _refuse(_partial("FEASIBLE"), requirements)
+
+        assert "1 of 2 visit(s) unscheduled" in message
+        assert "FEASIBLE" in message
+
+    def test_a_feasible_solve_names_the_lever_before_the_rota(self) -> None:
+        """The budget is the thing to try first, and the message says so."""
+        requirements = [_requirement("req-1"), _requirement("req-2")]
+
+        message = _refuse(_partial("FEASIBLE"), requirements)
+
+        assert "solver_deterministic_budget" in message
+        assert "before moving anybody's hours" in message
+
+    def test_a_feasible_solve_says_nothing_was_proved(self) -> None:
+        """"Not placed" and "cannot be placed" are different claims."""
+        requirements = [_requirement("req-1"), _requirement("req-2")]
+
+        message = _refuse(_partial("FEASIBLE"), requirements)
+
+        assert "not a proof" in message
+
+    def test_a_specific_obstacle_survives_into_the_message(self) -> None:
+        """A visit nobody can reach is a fact whatever the search then did."""
+        requirements = [_requirement("req-1"), _requirement("req-2")]
+
+        with pytest.raises(MTPlanningInfeasible) as raised:
+            _service()._require_complete(
+                _partial("FEASIBLE"),
+                requirements,
+                [_hca()],
+                PlanningSettings(max_intervention_radius_km=0.1),
+            )
+
+        assert "out-of-radius" in str(raised.value)

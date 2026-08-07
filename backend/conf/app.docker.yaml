@@ -75,30 +75,76 @@ planning:
   # Not seeded: these are a property of the road network, not an agency rule.
   average_speed_kmh: 30.0
   average_speed_without_license_kmh: 12.0
-  solver_time_limit_seconds: 600.0
-  # Must not exceed the CPU the process is actually given. The budget above is
-  # wall-clock, so under a container CPU limit more threads than cores means the
-  # kernel throttles the whole cgroup and thirty seconds of budget takes a minute
-  # of real time. Keep this equal to the deployment's CPU limit.
-  # One worker, and a fixed seed, so the same week plans the same way
-  # twice. Parallel workers race to the incumbent, so re-planning an
-  # unchanged week returned 404 minutes of travel, then 371, then 355 —
-  # three numbers a manager cannot tell apart from a real improvement.
-  # Raise the worker count to trade that back for speed.
-  solver_workers: 1
+  # A safety net, not a budget. It bounds a pathological instance; a solve
+  # that reaches it has stopped being reproducible and says so at WARNING.
+  # It must stay well above what the budget below actually costs in seconds,
+  # or the net truncates every search — the Helm chart shipped that mistake,
+  # and both it and the config tests now refuse a net under eight times the
+  # budget.
+  solver_time_limit_seconds: 3600.0
+  # **The setting that decides whether a week's work all gets placed —
+  # and a measured trade-off, with neither side of it free.**
+  #
+  # It was 1, for reproducibility: parallel workers race to the incumbent,
+  # so re-planning an unchanged week returned 404 minutes of travel, then
+  # 371, then 355 — three numbers a manager cannot tell apart from a real
+  # improvement. It was tempting to assume the deterministic budget below
+  # had since removed that race, since it was introduced for exactly that
+  # reason. **It has not.** Solving one unchanged week three times at eight
+  # workers gave 243, 250 and 242 travel minutes, with the placements
+  # themselves differing — a deterministic budget fixes *when* the search
+  # stops, not which worker reached the incumbent first.
+  #
+  # What one worker costs is the other half: it cannot place the seeded
+  # 77-visit week at any budget tried, and a run that leaves work unplaced
+  # is refused outright rather than stored, so the agency gets no plan at
+  # all. Eight workers place all 77 every time and roughly halve the travel.
+  #
+  # Eight is set here because no plan is worse than a plan that moves by
+  # three percent between runs. If that judgement is wrong for an agency,
+  # this is the one line to change.
+  #
+  # Keep equal to the CPU the process is actually given. More threads than
+  # cores and the kernel throttles the whole cgroup under a container limit.
+  solver_workers: 8
   solver_seed: 0
   # The budget that actually stops the search, measured in work rather
   # than in seconds. solver_time_limit_seconds is only a safety net: if
   # it fires, the run logs a WARNING and is no longer reproducible.
   #
-  # Sized by measurement on a seeded-agency instance — 12 assistants,
-  # 77 visits, one worker:
-  #     4.0 ->  12s, 0 of 77 placed (UNKNOWN: it never finds one)
-  #    15.0 ->  89s, 77 of 77, 1070 travel minutes
-  #    40.0 -> 233s, 77 of 77, 1070 travel minutes
-  # Above 15 buys nothing but time, and below it the run fails outright,
-  # so 20 is the smallest value with margin over the cliff.
-  solver_deterministic_budget: 20.0
+  # Re-measured on the seeded agency — 12 assistants, 77 visits over
+  # 2026-08-10..16 — after `list_schedulable` gained its ORDER BY. That
+  # matters: the previous sizing here recorded 15.0 and 40.0 both placing
+  # all 77, but it was taken while PostgreSQL was free to return the rows
+  # in any order, so it had been tuned to one arbitrary ordering. With the
+  # order fixed, the same settings leave visits stranded.
+  #
+  #   workers  budget   wall    unplaced   travel
+  #         1    20.0    138s          2        —
+  #         1    40.0    228s          2      496
+  #         1    80.0   >300s          1      449   (hit the net)
+  #         8    40.0    576s          0      243
+  #
+  # **Budget is not the lever; worker count is.** Doubling the budget on
+  # one worker changed nothing, and the run that fails tells the operator
+  # to raise the budget — advice this table shows to be wrong on this
+  # instance. Eight workers place the week outright and roughly halve the
+  # travel.
+  #
+  # Not yet measured: 8 workers at a smaller budget. The wall clock above
+  # is ten minutes, so if 20.0 also places all 77 it is worth having.
+  # **Re-sized after a 95-visit week left one visit unplaced at a budget of
+  # 100.0.** The run's own diagnosis says to raise the budget, and that
+  # advice was half right: the budget was never spent. The table below
+  # measures 40.0 units costing 576s across eight workers — about 14.4
+  # seconds of wall clock per unit — so a budget of 100.0 needs some 1440s,
+  # and the net above was 900.0. Every solve was cut short by the clock,
+  # which is what an unplaced visit at status FEASIBLE looks like.
+  #
+  # So both moved: the net is now well clear of what the budget costs, and
+  # the budget itself is raised by half, because the week that failed is
+  # 95 visits where every figure below was measured on 77.
+  solver_deterministic_budget: 150.0
   travel_weight: 1
   # Must dominate any realistic travel cost, so leaving a requirement
   # unassigned stays a last resort rather than a cheap way to avoid a drive.

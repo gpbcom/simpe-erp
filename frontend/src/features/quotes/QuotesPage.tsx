@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Alert from '@mui/material/Alert';
 import Card from '@mui/material/Card';
+import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
@@ -54,6 +56,12 @@ export function QuotesPage() {
   const status = TABS[tab]?.status;
   const { data, isLoading } = useQuotes(status);
   const { data: customers } = useCustomers();
+  // What validating actually did, said once, where the manager is looking.
+  // Validation now accepts the quote outright, so the confirmation says the
+  // work is committed rather than leaving the manager to wonder. It used to
+  // stop at `sent` and need a second acceptance nothing asked for, which is
+  // how a validated fortnight of work reached no planning run at all.
+  const [validated, setValidated] = useState(false);
   const validate = useValidateQuote();
   const refuse = useRefuseQuote();
   const send = useSendQuote();
@@ -151,7 +159,11 @@ export function QuotesPage() {
                 variant="contained"
                 color="success"
                 startIcon={<AppIcon name="quoteValidate" />}
-                onClick={() => validate.mutate(params.row.id ?? '')}
+                onClick={() =>
+                  validate.mutate(params.row.id ?? '', {
+                    onSuccess: () => setValidated(true),
+                  })
+                }
                 data-testid={`validate-${params.row.reference}`}
               >
                 {t('quote.validate')}
@@ -168,11 +180,10 @@ export function QuotesPage() {
               </Button>
             </>
           ) : null}
-          {/* The customer's answer to an offer already sent. Validation issues
-              the quote and leaves it here; only acceptance makes its lines
-              schedulable, so without these two buttons `sent` was a dead end —
-              a manager validated a fortnight of work, re-ran the planning, and
-              saw the same visit count with nothing explaining why. */}
+          {/* Kept for quotes already stored as `sent`. Nothing produces that
+              status any more — validating accepts outright — but rows written
+              before that change still exist, and without these two buttons
+              they would sit in a tab with no way forward. */}
           {params.row.status === 'sent' ? (
             <>
               <Button
@@ -266,6 +277,21 @@ export function QuotesPage() {
         scope="manager"
         onClose={() => setEditing(null)}
       />
+
+      <Snackbar
+        open={validated}
+        autoHideDuration={8000}
+        onClose={() => setValidated(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity="success"
+          onClose={() => setValidated(false)}
+          data-testid="validated-and-accepted"
+        >
+          {t('quote.validatedAwaitingAcceptance')}
+        </Alert>
+      </Snackbar>
     </Stack>
   );
 }

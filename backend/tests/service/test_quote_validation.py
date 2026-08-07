@@ -99,7 +99,7 @@ def quotes() -> AsyncMock:
     repository.record_submission.return_value = _quote(
         status=QuoteStatus.PENDING_VALIDATION
     )
-    repository.record_validation.return_value = _quote(status=QuoteStatus.SENT)
+    repository.record_validation.return_value = _quote(status=QuoteStatus.ACCEPTED)
     return repository
 
 
@@ -187,17 +187,63 @@ class TestQuoteSubmission:
 class TestQuoteValidation:
     """Tests for a manager ruling on a submitted quote."""
 
-    async def test_validating_issues_the_quote(
+    async def test_validating_accepts_the_quote(
         self, service: QuoteService, quotes: AsyncMock
     ) -> None:
-        """Approval sends the quote, and records who approved it."""
+        """**Approval commits the work**, and records who approved it.
+
+        Notes:
+            ``ACCEPTED`` is the one status the planner loads, so this is the
+            moment a submitted quote's lines become visits. It stopped at
+            ``SENT`` before and needed a second, separate acceptance that
+            nothing on any screen asked for — so a validated fortnight of work
+            left the queue and never reached a run.
+        """
         quotes.get.return_value = _quote(status=QuoteStatus.PENDING_VALIDATION)
 
         validated = await service.validate("quote-1", validator_id=MANAGER)
 
-        assert validated.status is QuoteStatus.SENT
+        assert validated.status is QuoteStatus.ACCEPTED
+        assert validated.is_schedulable() is True
         assert quotes.record_validation.await_args.kwargs["validated_by"] == MANAGER
-        assert quotes.record_validation.await_args.kwargs["status"] is QuoteStatus.SENT
+        assert (
+            quotes.record_validation.await_args.kwargs["status"]
+            is QuoteStatus.ACCEPTED
+        )
+
+    async def test_validating_issues_the_quote_with_its_dates(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """Validating is also the issuing, so the offer gets its dates here."""
+        quotes.get.return_value = _quote(status=QuoteStatus.PENDING_VALIDATION)
+
+        await service.validate("quote-1", validator_id=MANAGER)
+
+        arguments = quotes.record_validation.await_args.kwargs
+        assert arguments["issued_on"] is not None
+        assert arguments["valid_until"] > arguments["issued_on"]
+
+    async def test_the_two_approval_paths_end_in_the_same_place(
+        self, service: QuoteService, quotes: AsyncMock
+    ) -> None:
+        """A manager's own quote and an assistant's end up equally schedulable.
+
+        Notes:
+            ``send`` has always accepted a hand-written draft outright — a
+            manager writes one up for an arrangement already settled with the
+            family. Validation is the same act on somebody else's write-up, and
+            the two ending in different statuses is what made one of them look
+            broken.
+        """
+        quotes.get.return_value = _quote(status=QuoteStatus.PENDING_VALIDATION)
+        await service.validate("quote-1", validator_id=MANAGER)
+        after_validation = quotes.record_validation.await_args.kwargs["status"]
+
+        quotes.get.return_value = _quote(status=QuoteStatus.DRAFT)
+        await service.send("quote-1", validator_id=MANAGER)
+        after_send = quotes.record_validation.await_args.kwargs["status"]
+
+        assert after_validation is after_send is QuoteStatus.ACCEPTED
 
     async def test_refusing_returns_the_quote_to_its_author(
         self, service: QuoteService, quotes: AsyncMock

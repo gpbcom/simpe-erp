@@ -194,17 +194,18 @@ class SkillType(BaseModel):
             return None
         if not isinstance(value, str):
             raise MTSkillTypeInvalidDescription(
-                f"Invalid description: {value!r}. Must be a string or None."
+                f"Invalid description: {value!r}. "  # noqa: E501
+                "Must be a string or None."
             )
         stripped = value.strip()
         return stripped if stripped else None
 
     @field_validator("is_active", mode="before")
-    def validate_is_active(cls, value: Union[bool, str, int, None]) -> bool:
+    def validate_is_active(cls, value: Optional[bool, str, int]) -> bool:
         """Validates that ``is_active`` is a boolean.
 
         Args:
-            value (Union[bool, str, int, None]): Raw ``is_active`` value.
+            value (Optional[bool, str, int]): Raw ``is_active`` value.
                 ``None`` falls back to ``True``.
 
         Returns:

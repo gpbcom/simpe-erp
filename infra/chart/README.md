@@ -18,16 +18,23 @@ why a bare `helm lint infra/chart` fails — pass the tag.
 `templates/common/guards.yaml` holds checks for the mistakes that are silent at
 runtime — the pods start, report Ready, and do the wrong thing:
 
-- `workerPlanning.solverWorkers` not equal to its CPU limit. The solver's budget
-  is wall-clock, so more threads than cores means the kernel throttles the whole
-  cgroup and thirty seconds of budget takes a minute of real time. The run still
-  reports as having used its budget, so the only symptom is a queue that will
-  not drain.
+- `workerPlanning.solverWorkers` not equal to its CPU limit. More threads than
+  cores means the kernel throttles the whole cgroup, so the wall-clock net
+  arrives after less real search. The run still reports as having used its
+  allowance, so the only symptom is a queue that will not drain.
 - The planning worker's CPU request not equal to its limit. Anything but
   Guaranteed QoS is the same throttling, reached from the other side.
+- `workerPlanning.solverTimeLimitSeconds` below eight times
+  `solverDeterministicBudget`. The two measure different things — seconds and
+  solver work units — so nothing makes them agree by construction. This chart
+  shipped that mistake: it pinned the net at 30.0 and never set the budget at
+  all, so a cluster stopped every solve a fifth of the way into the search it
+  needed, left visits unplaced that a full search places, and logged on every
+  run that the plan was not reproducible.
 - A termination grace period under 60s on the planning worker. Kubernetes'
-  default is 30, which is *exactly* the solve budget — so a scale-down SIGKILLs
-  mid-solve and the message is redelivered from the start.
+  default is 30 and a real solve is minutes, so a scale-down SIGKILLs mid-solve.
+  No work is lost — the message goes unacknowledged and another replica takes
+  it — but the whole solve is repeated.
 - `workerNotifications` scaling to zero. A badge should be instant; a cold start
   is not.
 

@@ -337,6 +337,8 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             - Unpaginated by design: a planning run needs the whole workload at
               once, and paging through it would build a plan from a moving
               target.
+            - **Ordered, and that is a determinism requirement rather than a
+              presentational one.** See the comment on the statement itself.
             - The filter is on the **line** dates, not the quote's issue date. A
               quote issued in January can carry work in March, and asking by
               issue date would either miss it or drag in months of irrelevant
@@ -371,6 +373,17 @@ class QuoteRepository(BaseRepository[QuoteRow]):
                 QuoteLineRow.service_date <= period_end,
             )
             .distinct()
+            # A total order, and it is load-bearing rather than cosmetic. The
+            # requirement list is built by walking these rows, so their order
+            # is the order of the CP-SAT variables — and PostgreSQL guarantees
+            # no ordering for a SELECT without one. Two runs of the same week
+            # could therefore hand the solver two different models, which is
+            # what made a fixed `random_seed` and a deterministic budget stop
+            # in a different place each time and leave a different number of
+            # visits unplaced. The primary key is used because it is the only
+            # column certain to be unique: ordering by anything with ties
+            # leaves the tied rows free to swap.
+            .order_by(QuoteRow.id)
         )
         rows = await self._fetch_all(statement)
         if not rows:

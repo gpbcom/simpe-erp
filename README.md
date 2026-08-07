@@ -153,6 +153,14 @@ other is the image and package registries, at build time.
 
 ```sh
 cp infra/compose/.env.example infra/compose/.env
+make up-build
+```
+
+`make` is the short way in: the compose files live under `infra/compose/`, so
+every raw command needs two `-f` flags, and the `Makefile` at the root passes
+both for you. Spelled out, that first command is:
+
+```sh
 docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml up --build
 ```
 
@@ -255,25 +263,51 @@ see [Observability](#observability) above for the addresses. It reads the
 cannot fire on a laptop and not in the cluster.
 → [docs/14](docs/14-observability.md)
 
-Because two `-f` flags on every command gets tedious, export them once per shell:
+Because two `-f` flags on every command gets tedious, there are two ways round
+it. Either use the `Makefile` at the root, which passes both on every target:
+
+```sh
+make            # list the targets
+make up         # start, in the background
+make stop       # stop, keeping the containers and the data
+make down       # stop and remove the containers, keeping the data
+```
+
+…or export the pair once per shell and use `docker compose` directly:
 
 ```sh
 export COMPOSE_FILE=infra/compose/docker-compose.yaml:infra/compose/docker-compose.dev.yaml
 ```
 
-Every command below assumes that. Without it, spell both files out.
+**Whichever you pick, use the same two files to go down as you did to come up.**
+`mailpit`, `seed` and the whole observability chain are declared *only* in the
+dev overlay, so a bare `docker compose down` leaves them running attached to a
+network it has just deleted — and the next `up` fails with
+`network <id> not found`, naming the network rather than the containers that are
+really the problem. The `Makefile` exists mostly to make that unreachable.
+
+Every raw command below assumes `COMPOSE_FILE` is exported. Without it, spell
+both files out.
 
 ### Day to day
 
-```sh
-docker compose up -d                  # start, in the background
-docker compose up --build             # rebuild first — after a dependency change
-docker compose ps                     # what is running, and is it healthy
-docker compose logs -f backend        # follow one service
-docker compose logs -f backend worker-planning # …or several
-docker compose stop                   # stop, keeping the data
-docker compose down                   # stop and remove the containers
-```
+| `make` | `docker compose` | |
+|---|---|---|
+| `make up` | `docker compose up -d` | start, in the background |
+| `make up-build` | `docker compose up -d --build` | rebuild first — after a dependency change |
+| `make ps` | `docker compose ps` | what is running, and is it healthy |
+| `make logs S=backend` | `docker compose logs -f backend` | follow one service |
+| — | `docker compose logs -f backend worker-planning` | …or several |
+| `make stop` | `docker compose stop` | stop, keeping the data |
+| `make down` | `docker compose down --remove-orphans` | stop and remove the containers |
+| `make seed` | `docker compose run --rm seed` | re-run the seeder |
+| `make clean` | `docker compose down -v && … up --build` | **destroys the data** — see [Starting over](#starting-over) |
+| `make urls` | — | print every address the stack publishes |
+| `make replan-config` | `docker compose restart worker-planning` | pick up an edited `backend/conf/app.dev.yaml` |
+
+`make replan-config` is worth knowing about because `backend/conf/` is
+bind-mounted: the solver settings can be changed and tried without a rebuild,
+and the planning worker only reads them at start.
 
 Application source is **bind-mounted** in development: editing a `.py` reloads
 uvicorn, editing a `.tsx` hot-reloads Vite. You only need `--build` when a
@@ -317,6 +351,12 @@ cd backend && uv run pytest
 ### Starting over
 
 ```sh
+make clean                                     # both steps below, with both -f flags
+```
+
+or, spelled out:
+
+```sh
 DEV="-f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml"
 docker compose $DEV down -v --remove-orphans   # containers AND volumes: a clean database
 docker compose $DEV up --build                 # rebuild and reseed from nothing
@@ -324,12 +364,15 @@ docker compose $DEV up --build                 # rebuild and reseed from nothing
 
 `-v` destroys `postgres-data`, `minio-data` and `rabbitmq-data`. In development
 that is the fastest way back to a known state; anywhere else it is data loss.
+`make clean` is the same thing and just as destructive — it is not a cache
+sweep.
 
-**Use the same `-f` files to go down as you did to come up.** `mailpit` and
-`seed` are defined only in the dev overlay, so a bare `docker compose down`
-leaves them behind attached to the network it has just deleted — and the next
-`up` fails with `network <id> not found`, naming the network rather than the two
-containers that are really the problem.
+**Use the same `-f` files to go down as you did to come up**, which is the one
+thing the `Makefile` guarantees. `mailpit` and `seed` are defined only in the
+dev overlay, so a bare `docker compose down` leaves them behind attached to the
+network it has just deleted — and the next `up` fails with
+`network <id> not found`, naming the network rather than the two containers that
+are really the problem.
 
 ### Rebuilding one image
 
@@ -548,7 +591,13 @@ infra/            everything that runs it
   observability/    collector, Prometheus, Loki, Tempo, Grafana — shared with compose
 qa/               Robot Framework GUI campaign + coverage
 docs/             the documentation set — start at docs/README.md
+Makefile          dev-stack shortcuts; passes both compose -f flags for you
 ```
+
+The `Makefile` is the one infrastructure file **not** under `infra/`, on
+purpose: it is the entry point, and an entry point nobody can find is not one.
+It drives the dev overlay only — production keeps its explicit `-f` flags, where
+being explicit is worth the length.
 
 ## Working on it
 

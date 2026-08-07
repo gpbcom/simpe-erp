@@ -826,15 +826,25 @@ class TestReproducibility:
 
         Notes:
             If the clock fires it is the clock that decided where to stop, and
-            the run is no longer reproducible. Measured on a development
-            machine, a deterministic budget of 4.0 completes in about twenty
-            seconds; the net is an order of magnitude above that so it is
-            reached only by something pathological.
+            the run is no longer reproducible.
+
+            **The shipped defaults failed this, and the failure was the bug.**
+            A net of 600.0 against a budget of 100.0 stops every solve at
+            around four tenths of its allowance, and a 95-visit week came back
+            one visit short at status FEASIBLE — which is indistinguishable,
+            from the outside, from a week that genuinely does not fit.
+
+            Twenty rather than ten, and measured rather than guessed: the
+            sizing table in ``backend/conf/app.yaml`` records 40.0 units
+            costing 576 seconds at eight workers, so a unit is worth about
+            fourteen and a half seconds of wall clock and ten times the budget
+            is not enough to spend it. The Helm chart carries the same floor,
+            so a cluster cannot be configured into this either.
         """
         shipped = PlanningConfig()
 
         assert shipped.solver_time_limit_seconds >= (
-            shipped.solver_deterministic_budget * 10
+            shipped.solver_deterministic_budget * 20
         )
 
     def test_the_same_input_plans_identically_twice(

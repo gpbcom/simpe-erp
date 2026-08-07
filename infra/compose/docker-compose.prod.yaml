@@ -52,7 +52,20 @@ services:
       replicas: 2
       resources:
         limits:
-          cpus: "2.0"
+          # **Keep equal to planning.solver_workers in conf/app.docker.yaml.**
+          # The chart fails to render when the two disagree; compose has no
+          # such check, so the same mistake is silent here. Too many threads
+          # and the kernel throttles the whole cgroup; too few, and a core is
+          # paid for and never used while visits go unplaced for want of
+          # search.
+          #
+          # This said 2.0 while that file said eight workers — the throttling
+          # case, and the worst place to have it: eight threads sharing two
+          # cores make a unit of the solver's budget cost about four times its
+          # measured wall clock, so the safety net fires first and the search
+          # is cut short. An unplaced visit at status FEASIBLE is what that
+          # looks like to whoever is reading the plan.
+          cpus: "8.0"
           memory: 2G
 
   worker-notifications:

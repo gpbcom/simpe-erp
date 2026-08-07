@@ -396,11 +396,63 @@ class PlanningService:
             len(requirements),
             solution.status_name,
         )
+        if solution.status_name != "OPTIMAL":
+            raise MTPlanningInfeasible(
+                self._describe_unproven_gap(solution, unplaced_ids, requirements, specific)
+            )
         reasons = "; ".join(item.describe() for item in explained)
         raise MTPlanningInfeasible(
             f"The planning constraints cannot be met: "
             f"{len(unplaced_ids)} of {len(requirements)} visit(s) could not be "
             f"scheduled. {reasons}"
+        )
+
+    def _describe_unproven_gap(
+        self,
+        solution: PlanningSolution,
+        unplaced_ids: List[str],
+        requirements: List[InterventionRequirement],
+        specific: List[UnplacedRequirement],
+    ) -> str:
+        """Say what a plan the solver never proved best actually establishes.
+
+        Args:
+            solution (PlanningSolution): What the solver returned.
+            unplaced_ids (List[str]): The requirements left out.
+            requirements (List[InterventionRequirement]): Everything submitted.
+            specific (List[UnplacedRequirement]): The obstacles the diagnosis
+                could establish on its own, if any.
+
+        Returns:
+            str: The message the run fails with.
+
+        Notes:
+            - **``FEASIBLE`` is not ``OPTIMAL``, and the difference is the whole
+              message.** An unplaced visit costs ``unassigned_penalty`` — a
+              hundred thousand against a travel minute's one — so a solver that
+              could place it would have. Leaving two out is therefore evidence
+              that it *did not find* the better plan, not that none exists; only
+              ``OPTIMAL`` says it looked everywhere.
+            - Reporting "travel, the lunch break and the other visits that day
+              leave no room for it" here asserts a fact about that visit which
+              nothing established. It sends a manager to widen windows and move
+              customers, when the plan they wanted may be one budget increase
+              away.
+            - The specific obstacles still survive. A visit nobody is qualified
+              for is a fact whatever the search then did, and it is usually the
+              real reason the rest would not fit around it.
+        """
+        found = (
+            " " + "; ".join(item.describe() for item in specific) if specific else ""
+        )
+        return (
+            f"The best plan found within the budget leaves "
+            f"{len(unplaced_ids)} of {len(requirements)} visit(s) unscheduled "
+            f"(solver status {solution.status_name}). That is not a proof that "
+            f"they cannot fit — an unplaced visit is the most expensive thing "
+            f"in the objective, so the search would have placed them had it "
+            f"found how. Raise planning.solver_deterministic_budget and run it "
+            f"again before moving anybody's hours.{found}"
         )
 
     def _describe_empty_solve(

@@ -93,7 +93,8 @@
     "interruptedTooltip": "Services after this day are neither planned nor billed; they stay visible on the quote.",
     "renewed": "Renewed",
     "renewedTooltip": "This quote was written automatically when the previous one expired.",
-    "arrangementSummary": "{{count}} service(s), {{from}} to {{to}}"
+    "arrangementSummary": "{{count}} service(s), {{from}} to {{to}}",
+    "validatedAwaitingAcceptance": "Validated. The quote is accepted and its visits enter the next planning run."
   },
   "hca": {
     "firstName": "First name",

@@ -91,7 +91,7 @@ class PlanningConfig(BaseModel):
         description="Average travel speed without a driving licence, in km/h.",
     )
     solver_time_limit_seconds: float = Field(
-        default=600.0,
+        default=3600.0,
         description="Wall-clock budget handed to the solver, in seconds.",
     )
     solver_workers: int = Field(
@@ -103,7 +103,7 @@ class PlanningConfig(BaseModel):
         description="Random seed fixing the solver's tie-breaking.",
     )
     solver_deterministic_budget: float = Field(
-        default=20.0,
+        default=150.0,
         description="Reproducible search budget, in solver time units.",
     )
     travel_weight: int = Field(

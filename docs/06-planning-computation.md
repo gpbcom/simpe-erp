@@ -119,6 +119,41 @@ nothing.
 The reasons are folded into the exception message, so the failed run record is
 enough to act on without re-running anything.
 
+### What the solver status entitles the message to say
+
+The per-visit reasons are only findings when the search finished. Three cases,
+and they used to read identically:
+
+| Status | What it means | What the run says |
+|---|---|---|
+| `OPTIMAL` | The search looked everywhere; this is the best plan there is | The per-visit reasons, in full |
+| `FEASIBLE` | A plan was found and the budget ran out before proving it best | The size of the gap, and that it is **not** a proof |
+| `INFEASIBLE` | Proved that no plan satisfies the constraints | Says so, and that it is a proof |
+| `UNKNOWN` | The search stopped having found nothing | Says nothing was established |
+
+**An unplaced visit costs `unassigned_penalty` — a hundred thousand against a
+travel minute's one — so a solver that could place it would have.** Under
+`FEASIBLE`, visits left out are therefore evidence the search ran out of budget,
+not that the day is full. Reporting "travel, the lunch break and the other
+visits that day leave no room for it" there sends a manager to move a customer's
+hours to solve an arithmetic problem. Only `OPTIMAL` earns that sentence.
+
+The specific reasons — radius, qualifications, skills, working day — survive
+into every one of these messages. They are established outside the solver, so
+they hold whatever it then did, and they are usually *why* the rest would not
+fit around them.
+
+### The input order is part of the determinism
+
+`random_seed` and `max_deterministic_time` only reproduce a run **given an
+identical model**, and the model is built by walking the rows
+`list_schedulable` returns. That query had no `ORDER BY`, and PostgreSQL
+guarantees no ordering without one — so the same week could be handed to the
+solver as two different variable orderings, the search would stop in a
+different place, and a different number of visits would come back unplaced. The
+same week really did report two unplaced and then one. It now orders by the
+primary key, which is the only column certain to break every tie.
+
 **This runs after a failed solve, never before one.** It is a diagnosis, not a
 pre-flight gate: the tests are necessary conditions, and something that passes
 all of them can still be unplaceable for reasons only the search can find.
@@ -142,18 +177,36 @@ The objective minimises travel, with `unassigned_penalty: 100000` — chosen to
 dominate any realistic travel cost, so leaving a requirement unplaced is a last
 resort rather than a cheap way to avoid a drive.
 
-### The budget is wall-clock, and that decides the thread count
+### Two budgets, and only one of them stops the search
 
-`solver_time_limit_seconds: 30.0` is real time, not CPU time. `solver_workers`
-is how many parallel search threads CP-SAT may run, and it was **hard-coded at
-8** against a container capped at two cores.
+`solver_deterministic_budget` is what actually ends a solve. It counts solver
+*work units* rather than seconds, which is the whole point: a wall-clock budget
+stops wherever elapsed time happens to land, so a loaded machine explores less
+and returns a worse plan for the same week.
 
-Under a container CPU *limit* that does not merely fail to help: the kernel
-throttles the whole cgroup, so thirty seconds of budget takes a minute or more
-of real time — and the run still reports as having used its budget, so the only
-symptom is a queue that will not drain. It is now `planning.solver_workers`, and
-it must equal the CPU the process is actually given. The Helm chart refuses to
-render if the two disagree, and the compose file says so beside the limit.
+`solver_time_limit_seconds` is a **safety net, not a budget**. It bounds a
+pathological instance that would otherwise grind for a very long time inside its
+allowance. A solve that reaches it has stopped being reproducible and says so at
+WARNING.
+
+**These two measure different things, so nothing makes them agree by
+construction — and a pair that disagrees is silent.** The Helm chart shipped
+exactly that mistake: it pinned the net at `30.0` and never set the deterministic
+budget at all, so a cluster fell back to the model default and then cut every
+solve off a fraction of the way into the search it needed. The plan came back
+with visits unplaced that a full search places, and the only trace was one
+WARNING per run. Both `infra/chart` and
+`tests/models/configuration/test_solver_budget_is_reachable.py` now refuse a net
+below eight times the budget, which is the measured cost of spending one.
+
+`solver_workers` is how many parallel search threads CP-SAT may run, and it was
+**hard-coded at 8** against a container capped at two cores. Under a container
+CPU *limit* that does not merely fail to help: the kernel throttles the whole
+cgroup, so the net arrives after less real search — and the run still reports as
+having used its allowance, so the only symptom is a queue that will not drain. It
+is now `planning.solver_workers`, and it must equal the CPU the process is
+actually given. The Helm chart refuses to render if the two disagree, and the
+compose file says so beside the limit.
 
 Zero is refused rather than read as "decide for me": CP-SAT takes it as a
 request for no search at all, returns immediately, and the run fails looking

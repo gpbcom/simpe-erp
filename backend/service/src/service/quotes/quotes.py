@@ -938,12 +938,28 @@ class QuoteService:
             MTQuoteNotPriced: If the quote has no priced lines.
 
         Notes:
-            Validation moves the quote to ``SENT``: the manager's approval *is*
-            the act of issuing the offer, and there is no second button to
-            press. Sending it back to ``DRAFT`` instead was the obvious
-            alternative and is wrong — an approved quote would then be
-            indistinguishable from one nobody had looked at, and the assistant
-            could edit the figures a manager had just signed off.
+            - **Validation moves the quote to ``ACCEPTED``**, which is the one
+              status the planner loads. The manager's approval *is* the
+              commitment here: an assistant writes up an arrangement they have
+              already settled with the family, so by the time it reaches the
+              validation queue the customer has agreed and what is being ruled
+              on is the agency's figures. This is the same reasoning
+              :meth:`send` applies to a manager's own hand-written quote, and
+              the two paths now end in the same place.
+            - It used to stop at ``SENT``, which read as an offer awaiting an
+              answer and needed a second, separate acceptance before any of the
+              work was scheduled. Nothing said so: the quote left the
+              validation queue, the run was re-run, and the same visit count
+              came back. A step that exists but is invisible is a step that
+              does not happen.
+            - ``SENT`` is no longer produced by any path. It is kept on
+              :class:`~models.enums.QuoteStatus` — and its tab and buttons are
+              kept in the interface — because quotes already stored in it need
+              somewhere to be seen and a way to be moved on.
+            - Sending it back to ``DRAFT`` instead was the obvious alternative
+              and is wrong — an approved quote would then be indistinguishable
+              from one nobody had looked at, and the assistant could edit the
+              figures a manager had just signed off.
         """
         existing = await self.get(quote_id)
         if not existing.status.is_awaiting_validation():
@@ -961,15 +977,14 @@ class QuoteService:
                 f"Quote {existing.reference!r} has no priced lines and cannot "
                 f"be validated."
             )
-        # Validating *is* issuing here — there is no second button — so the
-        # offer gets its dates now. Without them a quote reaches SENT with no
-        # issue date and no expiry, and the customer's copy carries neither. The
-        # seeded data has always set both, so the two disagreed about what a
-        # sent quote looks like.
+        # Validating *is* issuing and committing here — there is no second
+        # button — so the quote gets its dates now. Without them it would carry
+        # no issue date and no expiry, and the customer's copy would show
+        # neither. The seeded data has always set both.
         issued_on = self._utc_now().date()
         validated = await self.quotes.record_validation(
             quote_id,
-            status=QuoteStatus.SENT,
+            status=QuoteStatus.ACCEPTED,
             validated_by=validator_id,
             validated_at=self._utc_now(),
             issued_on=issued_on,
@@ -978,9 +993,10 @@ class QuoteService:
         if validated is None:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         self.logger.info(
-            "Quote %s validated by %s; it may now be sent.",
+            "Quote %s validated by %s; its %d line(s) are now schedulable.",
             validated.reference,
             validator_id,
+            len(validated.lines),
         )
         return validated
 
