@@ -159,7 +159,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist
@@ -256,7 +256,7 @@ jobs:
         run: |
           docker compose -f infra/compose/docker-compose.yaml -f infra/compose/docker-compose.dev.yaml \
             logs --no-color --tail 400
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: robot-results-${{ matrix.shard }}
@@ -265,7 +265,7 @@ jobs:
             qa/results-rerun
           retention-days: 14
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: robot-coverage-raw-${{ matrix.shard }}
@@ -336,7 +336,7 @@ jobs:
             echo "No coverage summary was produced." >&2
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: frontend-coverage
