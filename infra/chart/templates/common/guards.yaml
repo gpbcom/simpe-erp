@@ -7,7 +7,12 @@ Ready, and do the wrong thing.
 */}}
 
 {{/*
-solver_workers against the planning worker's CPU limit.
+solver_day_concurrency times solver_workers, against the CPU limit.
+
+A period is solved as one independent model per day, so a run holds
+`solverDayConcurrency` models at once and each runs `solverWorkers` search
+threads. The CPU it demands is the product; checking either alone let a
+configuration through that pins eight times more threads than cores.
 
 With more threads than cores the kernel throttles the whole cgroup, so the
 wall-clock net below arrives after less real search — and the run still reports
@@ -17,8 +22,10 @@ that shape.
 */}}
 {{- $cpu := .Values.workerPlanning.resources.limits.cpu -}}
 {{- $workers := .Values.workerPlanning.solverWorkers -}}
-{{- if ne (printf "%v" $cpu) (printf "%v" $workers) }}
-{{- fail (printf "workerPlanning.solverWorkers (%v) must equal workerPlanning.resources.limits.cpu (%v). The solver's budget is wall-clock, so more threads than cores means the kernel throttles the cgroup and thirty seconds of budget takes a minute of real time." $workers $cpu) }}
+{{- $days := .Values.workerPlanning.solverDayConcurrency -}}
+{{- $threads := mul $workers $days -}}
+{{- if ne (printf "%v" $cpu) (printf "%v" $threads) }}
+{{- fail (printf "workerPlanning.solverDayConcurrency (%v) times solverWorkers (%v) is %v threads, which must equal workerPlanning.resources.limits.cpu (%v). A period is solved one model per day, so the CPU a run demands is the product, not either alone. More threads than cores means the kernel throttles the whole cgroup and a budget takes several times its measured wall clock." $days $workers $threads $cpu) }}
 {{- end }}
 
 {{/*
@@ -41,26 +48,42 @@ shipped the mistake: it set the net to 30.0 and never set the budget at all, so
 a cluster ran every solve into the net long before the budget was spent,
 truncated the search, and left visits unplaced that a full search places.
 
-The ratio is a sanity floor, not a prediction, and **it was calibrated on the
-wrong worker count**. A 77-visit week spends a budget of 20.0 in about 138
-seconds on *one* worker — near seven seconds per work unit — and eight was set
-from that. But the shipped configuration runs eight workers, where the same
-measurements record 40.0 units costing 576 seconds: about fourteen and a half
-seconds per unit, twice the figure the floor was drawn from.
+The ratio is a sanity floor, not a prediction, and it has been calibrated
+against the wrong thing twice. It was first drawn from a one-worker
+measurement while the shipped config ran eight, so it passed the very
+configuration it exists to catch: a net of 900.0 against a budget of 100.0,
+which truncated every search and left a 95-visit week one visit short at
+status FEASIBLE.
 
-So the floor passed the very configuration it exists to catch. Every config
-file shipped a net of 900.0 against a budget of 100.0 — some 1440 seconds of
-work — and a 95-visit week came back one visit short at status FEASIBLE, which
-is what a search truncated by the clock looks like from the outside.
+**Both numbers now describe one day, not a week.** A period is solved as one
+model per day, so the budget is spent once per day and the net bounds one
+day's solve. On a measured 150-visit, 12-assistant, 5-day instance a per-day
+budget of 5.0 places every visit, with the whole week finishing in about a
+minute.
 
-Twenty, therefore, against the eight-worker cost with room for slower hardware.
-Raising the worker count does not reduce the seconds a unit costs; it buys more
-search inside each one. A solve that hits the net still says so at WARNING.
+Twenty is kept as the floor because it is generous at that scale and leaves
+room for slower hardware, and it is the same figure as
+`MINIMUM_NET_TO_BUDGET_RATIO` in
+`backend/tests/models/configuration/test_solver_budget_is_reachable.py`. Two
+copies of a floor that disagree are worse than one, because whichever is
+looser is the one that decides.
+
+Held against **the larger of the two per-day budgets**. Both passes are
+bounded by the same net, so checking only the feasibility budget would let an
+optimisation budget through that can never be spent — and its symptom is the
+quietest there is: every visit still placed, the rounds merely longer than
+they need to be. A solve that reaches the net still says so at WARNING, and
+its plan is no longer reproducible.
 */}}
-{{- $budget := .Values.workerPlanning.solverDeterministicBudget -}}
+{{- $feasibility := .Values.workerPlanning.solverDeterministicBudget -}}
+{{- $optimisation := .Values.workerPlanning.solverOptimisationBudget -}}
+{{- $budget := $feasibility -}}
+{{- if gt (float64 $optimisation) (float64 $feasibility) }}
+{{- $budget = $optimisation -}}
+{{- end }}
 {{- $net := .Values.workerPlanning.solverTimeLimitSeconds -}}
 {{- if lt (float64 $net) (mulf $budget 20) }}
-{{- fail (printf "workerPlanning.solverTimeLimitSeconds (%v) is below twenty times solverDeterministicBudget (%v). A work unit costs about fourteen seconds of wall clock at eight workers, so the net would stop every solve before its reproducible budget was spent: the search is truncated, visits go unplaced at status FEASIBLE, and every run logs that its plan is not reproducible." $net $budget) }}
+{{- fail (printf "workerPlanning.solverTimeLimitSeconds (%v) is below twenty times the larger per-day budget (%v). Both passes are bounded by the same net, so it must clear the larger of them; otherwise the search is truncated before its reproducible budget is spent, and every run logs that its plan is not reproducible." $net $budget) }}
 {{- end }}
 
 {{/*

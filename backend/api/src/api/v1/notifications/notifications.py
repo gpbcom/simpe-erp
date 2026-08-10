@@ -18,6 +18,7 @@ from api.dependencies import (
 from api.sse.streams import NotificationStreams
 from models.auth.user import User
 from models.notifications.notification import Notification
+from models.schemas.requests.notifications.notification_filter import NotificationFilter
 from service.auth.auth import AuthService
 from storage.repositories.notifications.notification import NotificationRepository
 
@@ -31,6 +32,7 @@ async def list_notifications(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=50, ge=1, le=200),
     unread_only: bool = Query(default=False),
+    notification_filter: NotificationFilter = Depends(),
     notifications: NotificationRepository = Depends(get_notification_repository),
     caller: User = Depends(get_current_user),
 ) -> List[Notification]:
@@ -40,6 +42,8 @@ async def list_notifications(
         page (int): One-based page number.
         size (int): Page size.
         unread_only (bool): Restrict to notifications not yet read.
+        notification_filter (NotificationFilter): The filters, bound from the query string.
+            Every field is optional and an absent one narrows nothing.
         notifications (NotificationRepository): The notification store.
         caller (User): The authenticated caller.
 
@@ -61,6 +65,7 @@ async def list_notifications(
         page=page,
         size=size,
         unread_only=unread_only,
+        notification_filter=notification_filter,
     )
 
 

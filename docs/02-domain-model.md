@@ -102,7 +102,27 @@ themselves — which is enforced by the field living on the manager-gated
 `EmploymentUpdateRequest` and being absent from `HcaProfileUpdateRequest`.
 
 **`Customer`** — somebody served. Identity, address, and a
-`RegistrationStatus`. A stopped customer gets no new interventions.
+`RegistrationStatus`, which is **`prospect` by default**: a newly registered
+household is one the agency has taken details for, not one it has agreed to
+serve.
+
+`RegistrationStatus.can_be_scheduled()` is the one question the planner asks,
+and only `active` answers yes. A prospect may be quoted — that is what a
+prospect is *for* — and their accepted, priced, perfectly routable work still
+produces no requirement, because sending somebody to the door would be the
+error, not the omission. `PlanningService.build()` skips it per quote, counts
+the lines it skipped and names the quote at WARNING, so the work is visibly
+excluded rather than silently missing. This is deliberately **not** the "partial
+plan" a run refuses over: that work was never in scope.
+
+`is_active()` is a narrower question and keeps its exact meaning — *the status
+is `active`*. With three states the two questions came apart, and overloading
+`is_active()` would have wrongly implied a prospect cannot be quoted.
+
+`POST /customers/{id}/promote` is the one transition with a rule: only from
+`prospect`, refused with **409** from anything else. The general
+`PATCH /{id}/status` still reaches every state, including back to `prospect`
+when a signature turns out never to have arrived.
 
 **`User`** — an account, and a `Person` like the rest. On top of the shared
 record it carries `role`, an optional `hca_id` binding it to an assistant
@@ -401,7 +421,7 @@ From `backend/models/src/models/enums.py`.
 |---|---|
 | `UserRole` | `hca` < `manager` < `admin`, with `has_at_least()` |
 | `AccountOrigin` | `self-registered`, `created-by-staff` |
-| `RegistrationStatus` | `active`, `stopped` |
+| `RegistrationStatus` | `active`, `prospect`, `stopped`, with `can_be_scheduled()` |
 | `ContractType` | `cdi`, `cdd`, `interim`, `internship` |
 | `ServiceCategory` | `necessity` (VAT 5.5 %), `comfort` (VAT 20 %) |
 | `QuoteStatus` | `draft`, `pending-validation`, `sent`, `accepted`, `rejected`, `expired` |

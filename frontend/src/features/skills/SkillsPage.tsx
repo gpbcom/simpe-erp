@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { EntityFilterBar } from '@/components/filters/EntityFilterBar';
+import type { FilterDetail } from '@/components/filters/EntityFilterBar';
+import { useEntityFilter } from '@/components/filters/entityFilter';
+import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -11,6 +15,29 @@ import AddIcon from '@mui/icons-material/Add';
 import { useSkillTypes } from '@/api/queries';
 import { SkillTypeDialog } from './SkillTypeDialog';
 import type { SkillType } from '@/api/types';
+
+
+/** Which of the skill filter's fields are text, flags and closed lists. */
+const SKILL_FILTER_SPEC: EntityFilterSpec = {
+  textFields: ['search', 'code', 'label'],
+  flagFields: ['is_active'],
+  enumFields: {},
+};
+
+/** What is folded away behind "more filters". */
+const SKILL_DETAILS: FilterDetail[] = [
+  { field: 'code', label: 'skill.filterCode', kind: 'text' },
+  { field: 'label', label: 'skill.filterLabel', kind: 'text' },
+  {
+    field: 'is_active',
+    label: 'skill.filterActive',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'skill.filterActiveYes' },
+      { value: 'false', label: 'skill.filterActiveNo' },
+    ],
+  },
+];
 
 /**
  * The skill catalogue: which skills the agency recognises.
@@ -35,7 +62,8 @@ import type { SkillType } from '@/api/types';
  */
 export function SkillsPage() {
   const { t } = useTranslation();
-  const { data: entries, isLoading } = useSkillTypes(true);
+  const skillFilter = useEntityFilter(SKILL_FILTER_SPEC);
+  const { data: entries, isLoading } = useSkillTypes(true, skillFilter.filter);
   const [editing, setEditing] = useState<SkillType | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -101,6 +129,13 @@ export function SkillsPage() {
           {t('skills.add')}
         </Button>
       </Box>
+
+      <EntityFilterBar
+        state={skillFilter}
+        testId="skill"
+        searchLabel="skill.searchFilter"
+        details={SKILL_DETAILS}
+      />
 
       <Alert severity="info" data-testid="skills-explained">
         {t('skills.whatThisIs')}

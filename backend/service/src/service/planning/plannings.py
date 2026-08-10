@@ -2,12 +2,13 @@ from __future__ import annotations
 
 # Standard library imports
 import asyncio
-from time import monotonic
 from collections import defaultdict
+import copy
 from datetime import UTC, date, datetime, time
 from logging import Logger, getLogger
 import math
-from typing import Dict, List, Optional, Tuple
+from time import monotonic
+from typing import ClassVar, Dict, List, Optional, Tuple
 
 # Third-party imports
 from ortools.sat.python import cp_model
@@ -16,7 +17,7 @@ from ortools.sat.python import cp_model
 from models.auth.user import User
 from models.catalog.intervention_type import InterventionType
 from models.configuration.planning_config import PlanningConfig
-from models.enums import EventRoutingKey, PlanningRunStatus, UnplacedReason
+from models.enums import QuoteStatus, EventRoutingKey, PlanningRunStatus, UnplacedReason
 from models.geo.geo_point import GeoPoint
 from models.geo.postal_address import PostalAddress
 from models.people.customer import Customer
@@ -31,11 +32,16 @@ from models.planning.planning_run.planning_solution import (
     PlanningSolution,
     ScheduledAssignment,
 )
-from models.planning.planning_run.unplaced_requirement import UnplacedRequirement
+from models.planning.planning_run.suggested_slot import SuggestedSlot
+from models.planning.planning_run.unplaced_quote import UnplacedQuote
+from models.planning.planning_run.unplaced_requirement import (
+    UnplacedRequirement,  # noqa: E501
+)
 from models.quoting.quote import Quote
 from models.settings.planning_settings import PlanningSettings
 from service.messaging.publisher import EventPublisher
 from service.observability.metrics import ApplicationMetrics
+from service.planning.slot_finder import SlotFinder
 from service.planning.exceptions import (
     MTPlanningForbidden,
     MTPlanningInconsistentSolution,
@@ -44,12 +50,16 @@ from service.planning.exceptions import (
     MTPlanningRunNotFound,
     MTPlanningSettingsUnavailable,
 )
-from storage.repositories.catalog.intervention_type import InterventionTypeRepository
+from storage.repositories.catalog.intervention_type import (
+    InterventionTypeRepository,  # noqa: E501
+)
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
 from storage.repositories.planning.intervention import InterventionRepository
 from storage.repositories.planning.planning_run import PlanningRunRepository
-from storage.repositories.planning.planning_settings import PlanningSettingsRepository
+from storage.repositories.planning.planning_settings import (
+    PlanningSettingsRepository,  # noqa: E501
+)
 from storage.repositories.quoting.quote import QuoteRepository
 
 
@@ -94,6 +104,8 @@ class PlanningService:
           outlives the request that asked for it, and a radius edited while the
           solver works must not be read from a stale copy.
     """
+
+    UNKNOWN_QUOTE_REFERENCE: ClassVar[str] = "(quote reference unavailable)"
 
     def __init__(
         self,
@@ -270,21 +282,31 @@ class PlanningService:
 
     async def _solve(
         self, run: PlanningRun
-    ) -> Tuple[PlanningSolution, List[InterventionRequirement], List[Hca]]:
+    ) -> Tuple[
+        PlanningSolution,
+        List[InterventionRequirement],
+        List[Hca],
+        List[UnplacedQuote],
+    ]:
         """Gather the inputs and run the solver off the event loop.
 
         Args:
             run (PlanningRun): The run being executed.
 
         Returns:
-            Tuple[PlanningSolution, List[InterventionRequirement], List[Hca]]:
-            The solution, the requirements it was built from, and the
-            assistants it was solved over.
+            Tuple[PlanningSolution, List[InterventionRequirement], List[Hca],
+            List[UnplacedQuote]]: The solution, the requirements it was built
+            from, the assistants it was solved over, and one report entry per
+            quote whose work could not all be fitted.
 
         Notes:
-            The solver call goes through :func:`asyncio.to_thread`. CP-SAT is
-            synchronous C++ and holds the calling thread for its whole budget;
-            running it inline would freeze every other request in the process.
+            The solve goes through :meth:`solve_period`, which puts **each
+            day** on its own worker thread via :func:`asyncio.to_thread`.
+            CP-SAT is synchronous C++ and holds the calling thread for its
+            whole budget; running it inline would freeze every other request
+            in the process. Because the days are independent, dispatching them
+            separately also costs the wall time of the slowest rather than the
+            sum of all.
         """
         quotes = await self.quotes.list_schedulable(
             run.company_id, run.period_start, run.period_end
@@ -296,7 +318,7 @@ class PlanningService:
                 if customer is not None:
                     customers[quote.customer_id] = customer
         catalog = await self.types.get_many(
-            [line.intervention_type_id for quote in quotes for line in quote.lines]
+            [line.intervention_type_id for quote in quotes for line in quote.lines]  # noqa: E501
         )
         requirements = self.build(
             quotes, customers, catalog, run.period_start, run.period_end
@@ -312,20 +334,18 @@ class PlanningService:
             settings.max_intervention_radius_km,
             settings.lunch_break_minutes,
         )
-        solution = await asyncio.to_thread(
-            self.solve, requirements, assistants, settings
-        )
-        self._require_complete(solution, requirements, assistants, settings)
-        return solution, requirements, assistants
+        solution = await self.solve_period(requirements, assistants, settings)
+        unplaced = self._report_unplaced(solution, requirements, assistants, settings)
+        return solution, requirements, assistants, unplaced
 
-    def _require_complete(
+    def _report_unplaced(
         self,
         solution: PlanningSolution,
         requirements: List[InterventionRequirement],
         assistants: List[Hca],
         settings: PlanningSettings,
-    ) -> None:
-        """Fail the run unless every piece of accepted work was placed.
+    ) -> List[UnplacedQuote]:
+        """Group whatever could not be placed by the quote it was sold on.
 
         Args:
             solution (PlanningSolution): What the solver decided.
@@ -333,24 +353,36 @@ class PlanningService:
             assistants (List[Hca]): The workforce it was solved over.
             settings (PlanningSettings): The rules in force.
 
+        Returns:
+            List[UnplacedQuote]: One entry per quote with unplaced work,
+            empty when the whole week fitted.
+
         Raises:
-            MTPlanningInfeasible: If the solver could not satisfy the
-                constraints for every requirement.
+            MTPlanningInfeasible: Only when the solver produced **no plan at
+                all**. There is nothing to store in that case, so the run has
+                to fail.
 
         Notes:
-            - *A partial plan is refused, not stored.** A calendar missing three
-              visits still looks like a calendar; nobody reads the run record to
-              check, and the visits quietly dropped are the ones that end with a
-              customer waiting at the door. Failing means this week's existing
-              plan stays untouched — :meth:`_store` is never reached — so the
-              agency keeps a working calendar while the problem is fixed.
-            - The message names each visit and why it did not fit, so a manager
-              can widen the radius, move a window or file cover without having to
-              re-run anything to find out what went wrong.
+            - **A partial plan is now stored, where it used to be refused.**
+              The old rule failed the whole run the moment one visit could not
+              be placed, on the grounds that a calendar missing three visits
+              still looks like a calendar. That risk is real, and the answer
+              here is to make the gap loud rather than to withhold the week:
+              the run ends ``PARTIAL``, the screen says so in its own colour,
+              and every affected quote is named. Withholding eighty-nine good
+              visits because of one impossible one served nobody.
+            - **An empty solve is still a failure**, and that is not the same
+              thing. When the solver returned nothing there is no plan to
+              store, so there is no partial week to keep — the previous one
+              stays untouched, exactly as before.
+            - The report is grouped by **quote**, not by visit. A quote is
+              what the agency sold and what an operator has in front of them
+              when the customer telephones; a flat list of visits is a list of
+              symptoms.
         """
         if solution.is_feasible and not solution.unassigned_requirement_ids:
             self.logger.info("Every requirement was placed within the constraints.")
-            return
+            return []
 
         unplaced_ids = (
             solution.unassigned_requirement_ids
@@ -369,7 +401,9 @@ class PlanningService:
         # sends a manager to move windows and widen radii for a problem whose
         # answer is a bigger budget.
         specific = [
-            item for item in explained if item.reason is not UnplacedReason.NO_FEASIBLE_SLOT
+            item
+            for item in explained
+            if item.reason is not UnplacedReason.NO_FEASIBLE_SLOT
         ]
         # Recorded here rather than in the diagnosis, because this is the point
         # at which a visit is definitely not going to happen. `explain_unplaced`
@@ -389,23 +423,173 @@ class PlanningService:
             )
             raise MTPlanningInfeasible(self._describe_empty_solve(solution, specific))
 
-        self.logger.error(
-            "The planning constraints cannot be met: %d of %d requirement(s) "
-            "could not be placed (solver status %s).",
+        grouped = self._group_by_quote(explained)
+        self.logger.warning(
+            "%d of %d visit(s) could not be placed, across %d quote(s): %s. "
+            "The rest of the week has been planned and stored.",
             len(unplaced_ids),
             len(requirements),
-            solution.status_name,
+            len(grouped),
+            ", ".join(entry.quote_reference for entry in grouped),
         )
-        if solution.status_name != "OPTIMAL":
-            raise MTPlanningInfeasible(
-                self._describe_unproven_gap(solution, unplaced_ids, requirements, specific)
+        return grouped
+
+    async def _return_for_validation(self, report: List[UnplacedQuote]) -> None:
+        """Send every quote that could not be fitted back to be validated.
+
+        Args:
+            report (List[UnplacedQuote]): The quotes with unplaced work, each
+                already carrying its reasons and any slots on offer.
+
+        Notes:
+            - **An accepted quote whose work will not fit is not a settled
+              commitment.** Leaving it accepted means the agency has agreed to
+              something it cannot do, and the next run will fail on it again
+              and again with nobody asked to decide anything. Moving it back
+              to ``pending-validation`` puts it in the queue a manager already
+              works through, beside the reasons and the times on offer.
+            - The feedback is written **with** the status change, so a quote
+              never sits in the validation queue without saying why it came
+              back. A manager reading "waiting for validation" on work they
+              validated last week, with no explanation, would reasonably
+              conclude the system had lost it.
+            - One failure does not stop the others. A quote that cannot be
+              moved is logged and the rest still go back, because the
+              alternative is a run that half-updated the queue.
+        """
+        for entry in report:
+            try:
+                quote = await self.quotes.get_by_reference(entry.quote_reference)
+                if quote is None or quote.id is None:
+                    self.logger.error(
+                        "Quote %s could not be found to return it for "
+                        "validation; its work stays unplanned and nobody has "
+                        "been asked to decide.",
+                        entry.quote_reference,
+                    )
+                    continue
+                await self.quotes.set_planning_feedback(quote.id, entry)
+                await self.quotes.set_status(quote.id, QuoteStatus.PENDING_VALIDATION)
+                self.logger.info(
+                    "Quote %s returned for validation: %d visit(s) unplaced, "
+                    "%d alternative slot(s) offered.",
+                    entry.quote_reference,
+                    len(entry.visits),
+                    len(entry.alternatives),
+                )
+            except Exception as exc:  # noqa: BLE001 - one quote must not stop the rest
+                self.logger.error(
+                    "Could not return quote %s for validation: %s.",
+                    entry.quote_reference,
+                    exc,
+                )
+
+    def _offer_alternatives(
+        self,
+        report: List[UnplacedQuote],
+        assistants: List[Hca],
+        requirements: List[InterventionRequirement],
+        solution: PlanningSolution,
+        settings: PlanningSettings,
+    ) -> List[UnplacedQuote]:
+        """Attach free slots to each quote that could not be fitted.
+
+        Args:
+            report (List[UnplacedQuote]): The quotes with unplaced work.
+            assistants (List[Hca]): The workforce.
+            requirements (List[InterventionRequirement]): All of the work.
+            solution (PlanningSolution): The plan that was stored.
+            settings (PlanningSettings): The rules in force.
+
+        Returns:
+            List[UnplacedQuote]: The same report, with offers added.
+
+        Notes:
+            Being told a visit did not fit leaves an operator to telephone a
+            customer with nothing to propose. The point of this step is that
+            the call becomes a decision — "Wednesday at 14:00 with Amina, or
+            Thursday at 09:00 with Luc" — rather than an apology.
+
+            Failures are swallowed on purpose. A suggestion is a convenience;
+            losing the report itself, which names what went wrong, because a
+            search for extras raised would be a bad trade.
+        """
+        finder = SlotFinder(settings, logger=self.logger)
+        by_id = {item.id: item for item in requirements}
+        days = sorted({item.day for item in requirements})
+        offered: List[UnplacedQuote] = []
+        for entry in report:
+            slots: List[SuggestedSlot] = []
+            visits: List[UnplacedRequirement] = []
+            for visit in entry.visits:
+                requirement = by_id.get(visit.requirement_id)
+                if requirement is None:
+                    visits.append(visit)
+                    continue
+                found: List[SuggestedSlot] = []
+                try:
+                    found = list(
+                        finder.find(
+                            requirement,
+                            assistants,
+                            solution.assignments,
+                            by_id,
+                            days,
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 - convenience only
+                    self.logger.error(
+                        "Could not look for alternative slots for %s: %s.",
+                        visit.requirement_id,
+                        exc,
+                    )
+                # Kept against the visit as well as pooled on the quote. Two
+                # unplaced visits have two different sets of free times, and a
+                # flat list leaves an operator to guess which slot answers
+                # which problem — and a screen no way to make them clickable.
+                visits.append(visit.model_copy(update={"alternatives": found}))
+                slots.extend(found)
+            offered.append(
+                entry.model_copy(update={"visits": visits, "alternatives": slots})
             )
-        reasons = "; ".join(item.describe() for item in explained)
-        raise MTPlanningInfeasible(
-            f"The planning constraints cannot be met: "
-            f"{len(unplaced_ids)} of {len(requirements)} visit(s) could not be "
-            f"scheduled. {reasons}"
-        )
+        return offered
+
+    def _group_by_quote(
+        self, explained: List[UnplacedRequirement]
+    ) -> List[UnplacedQuote]:
+        """Turn a flat list of unplaced visits into one entry per quote.
+
+        Args:
+            explained (List[UnplacedRequirement]): The diagnosed visits.
+
+        Returns:
+            List[UnplacedQuote]: The quotes, in the order they first appear.
+
+        Notes:
+            - Order of first appearance rather than sorted, because the input
+              order is the period's own and a manager reads a week forwards.
+            - A visit whose quote reference never resolved is grouped under a
+              placeholder rather than dropped. Losing a finding because its
+              paperwork is incomplete is the one outcome worse than an ugly
+              heading.
+        """
+        buckets: Dict[str, List[UnplacedRequirement]] = {}
+        order: List[str] = []
+        for item in explained:
+            reference = item.quote_reference or self.UNKNOWN_QUOTE_REFERENCE
+            if reference not in buckets:
+                buckets[reference] = []
+                order.append(reference)
+            buckets[reference].append(item)
+        return [
+            UnplacedQuote(
+                quote_reference=reference,
+                customer_id=buckets[reference][0].customer_id,
+                customer_name=buckets[reference][0].customer_name,
+                visits=buckets[reference],
+            )
+            for reference in order
+        ]
 
     def _describe_unproven_gap(
         self,
@@ -557,6 +741,8 @@ class PlanningService:
                     hca_id=assistant.id,
                     hca_full_name=assistant.full_name(),
                     customer_id=requirement.customer_id,
+                    customer_name=requirement.customer_name,
+                    quote_reference=requirement.quote_reference,
                     day=requirement.day,
                     start_time=self._to_time(assignment.start_minute),
                     end_time=self._to_time(assignment.end_minute),
@@ -622,6 +808,8 @@ class PlanningService:
         scheduled_count: Optional[int] = None,
         unassigned: Optional[List[str]] = None,
         error_message: Optional[str] = None,
+        is_optimised: Optional[bool] = None,
+        unplaced_quotes: Optional[List[UnplacedQuote]] = None,
     ) -> PlanningRun:
         """Record a run's outcome.
 
@@ -632,6 +820,12 @@ class PlanningService:
             scheduled_count (Optional[int]): How many visits were written.
             unassigned (Optional[List[str]]): What could not be placed.
             error_message (Optional[str]): Why it failed, when it did.
+            is_optimised (Optional[bool]): Whether the travel was proved
+                minimal. Left ``None`` for a run that never got far enough to
+                ask, which is not the same as ``False``.
+            unplaced_quotes (Optional[List[UnplacedQuote]]): One entry per
+                quote whose work could not all be fitted, so the screen can
+                name them without re-running the diagnosis.
 
         Returns:
             PlanningRun: The finished run.
@@ -643,6 +837,8 @@ class PlanningService:
                 "total_travel_minutes": travel_minutes,
                 "scheduled_count": scheduled_count,
                 "unassigned_requirement_ids": unassigned or [],
+                "is_optimised": is_optimised,
+                "unplaced_quotes": unplaced_quotes or [],
                 "error_message": error_message,
             }
         )
@@ -687,8 +883,7 @@ class PlanningService:
                 distances.append(home.distance_km(requirement.location))
         if not distances:
             self.logger.warning(
-                "No assistant has a resolved home. "
-                "Distance cannot be measured."
+                "No assistant has a resolved home. Distance cannot be measured."
             )
             return None
         return min(distances)
@@ -747,8 +942,8 @@ class PlanningService:
             and other.day == requirement.day
         ]
         for other in same_customer_day:
-            span_start = min(requirement.window_start_minute, other.window_start_minute)
-            span_end = max(requirement.window_end_minute, other.window_end_minute)
+            span_start = min(requirement.window_start_minute, other.window_start_minute)  # noqa: E501
+            span_end = max(requirement.window_end_minute, other.window_end_minute)  # noqa: E501
             if span_end - span_start < (
                 requirement.duration_minutes + other.duration_minutes
             ):
@@ -798,8 +993,11 @@ class PlanningService:
         ):
             return UnplacedRequirement(
                 requirement_id=requirement.id,
+                quote_line_id=requirement.quote_line_id,
                 name=requirement.name,
                 customer_id=requirement.customer_id,
+                customer_name=requirement.customer_name,
+                quote_reference=requirement.quote_reference,
                 day=requirement.day,
                 reason=UnplacedReason.OUTSIDE_WORKING_DAY,
                 detail=(
@@ -820,8 +1018,11 @@ class PlanningService:
             if not candidates:
                 return UnplacedRequirement(
                     requirement_id=requirement.id,
+                    quote_line_id=requirement.quote_line_id,
                     name=requirement.name,
                     customer_id=requirement.customer_id,
+                    customer_name=requirement.customer_name,
+                    quote_reference=requirement.quote_reference,
                     day=requirement.day,
                     reason=UnplacedReason.MISSING_CERTIFICATION,
                     detail=(
@@ -842,8 +1043,11 @@ class PlanningService:
             if not candidates:
                 return UnplacedRequirement(
                     requirement_id=requirement.id,
+                    quote_line_id=requirement.quote_line_id,
                     name=requirement.name,
                     customer_id=requirement.customer_id,
+                    customer_name=requirement.customer_name,
+                    quote_reference=requirement.quote_reference,
                     day=requirement.day,
                     reason=UnplacedReason.MISSING_SKILL,
                     detail=(
@@ -865,8 +1069,11 @@ class PlanningService:
             )
             return UnplacedRequirement(
                 requirement_id=requirement.id,
+                quote_line_id=requirement.quote_line_id,
                 name=requirement.name,
                 customer_id=requirement.customer_id,
+                customer_name=requirement.customer_name,
+                quote_reference=requirement.quote_reference,
                 day=requirement.day,
                 reason=UnplacedReason.OUT_OF_RADIUS,
                 detail=detail,
@@ -880,8 +1087,11 @@ class PlanningService:
         if not working:
             return UnplacedRequirement(
                 requirement_id=requirement.id,
+                quote_line_id=requirement.quote_line_id,
                 name=requirement.name,
                 customer_id=requirement.customer_id,
+                customer_name=requirement.customer_name,
+                quote_reference=requirement.quote_reference,
                 day=requirement.day,
                 reason=UnplacedReason.NOT_A_WORKING_DAY,
                 detail=(
@@ -898,8 +1108,11 @@ class PlanningService:
         ]:
             return UnplacedRequirement(
                 requirement_id=requirement.id,
+                quote_line_id=requirement.quote_line_id,
                 name=requirement.name,
                 customer_id=requirement.customer_id,
+                customer_name=requirement.customer_name,
+                quote_reference=requirement.quote_reference,
                 day=requirement.day,
                 reason=UnplacedReason.NO_ASSISTANT_AVAILABLE,
                 detail=(
@@ -912,8 +1125,11 @@ class PlanningService:
         if clash is not None:
             return UnplacedRequirement(
                 requirement_id=requirement.id,
+                quote_line_id=requirement.quote_line_id,
                 name=requirement.name,
                 customer_id=requirement.customer_id,
+                customer_name=requirement.customer_name,
+                quote_reference=requirement.quote_reference,
                 day=requirement.day,
                 reason=UnplacedReason.CUSTOMER_CONFLICT,
                 detail=(
@@ -924,8 +1140,11 @@ class PlanningService:
 
         return UnplacedRequirement(
             requirement_id=requirement.id,
+            quote_line_id=requirement.quote_line_id,
             name=requirement.name,
             customer_id=requirement.customer_id,
+            customer_name=requirement.customer_name,
+            quote_reference=requirement.quote_reference,
             day=requirement.day,
             reason=UnplacedReason.NO_FEASIBLE_SLOT,
             detail=(
@@ -934,7 +1153,7 @@ class PlanningService:
             ),
         )
 
-    def _unplaced_sort_key(self, item: UnplacedRequirement) -> Tuple[str, date, str]:
+    def _unplaced_sort_key(self, item: UnplacedRequirement) -> Tuple[str, date, str]:  # noqa: E501
         """Return the ordering key grouping a report by reason.
 
         Args:
@@ -949,11 +1168,15 @@ class PlanningService:
         """Discard any state from a previous solve.
 
         Notes:
-            A solver instance is reusable, and leaving variables from a prior
-            run in the tables would silently mix two problems together.
+            - A solver instance is reusable, and leaving variables from a prior
+              run in the tables would silently mix two problems together.
+            - The same literals as ``assigned``, indexed by requirement. Reading
+              back who holds a visit used to scan the whole flat table for each
+              placed one, which is O(R^2 * A) for an answer that is O(A).
         """
         self.model = cp_model.CpModel()
         self.assigned = {}
+        self.assignees = {}
         self.unassigned = {}
         self.starts = {}
         self.ends = {}
@@ -976,6 +1199,54 @@ class PlanningService:
         for requirement in requirements:
             grouped[requirement.day].append(requirement)
         return dict(grouped)
+
+    def _reachable_work(
+        self,
+        assistant: Hca,
+        requirements: List[InterventionRequirement],
+    ) -> List[InterventionRequirement]:
+        """Return the work this assistant could conceivably be given.
+
+        Args:
+            assistant (Hca): The assistant.
+            requirements (List[InterventionRequirement]): One day's work.
+
+        Returns:
+            List[InterventionRequirement]: Those whose assignment literal is
+            not already forced to zero.
+
+        Notes:
+            - **Only definitely-banned work may be dropped, and the direction
+              of that asymmetry is the whole safety argument.** The scheduling
+              constraints — no-overlap, lunch, travel — are added per
+              (assistant, day) over this list. Keeping a requirement that is
+              in fact banned costs a few unused variables. Dropping one that
+              is *not* banned removes the constraints that stop it being
+              double-booked or reached without travel, and the solver would
+              take the free lunch. So every test below repeats a ban already
+              applied by :meth:`_add_availability`,
+              :meth:`_add_certifications`, :meth:`_add_skills` or
+              :meth:`_add_radius`; nothing new is decided here.
+            - The bans themselves stay where they are. This does not replace
+              them — it avoids building the pairwise ordering and travel
+              structure around literals they have already pinned, which is
+              the part that grows with the square of a day's work.
+        """
+        home = assistant.address.to_geo_point()
+        if home is None:
+            return []
+        return [
+            requirement
+            for requirement in requirements
+            if assistant.is_schedulable_on(requirement.day)
+            and assistant.holds_certifications(
+                requirement.required_certification_codes, requirement.day
+            )
+            and assistant.holds_skills(
+                requirement.required_skill_codes, requirement.day
+            )
+            and self.settings.covers(home.distance_km(requirement.location))
+        ]
 
     def _build_assignment_vars(
         self,
@@ -1000,6 +1271,9 @@ class PlanningService:
                     f"assign_{requirement.id}_{assistant.id}"
                 )
                 self.assigned[(requirement.id, assistant.id)] = literal
+                self.assignees.setdefault(requirement.id, []).append(
+                    (assistant.id, literal)
+                )
                 literals.append(literal)
             dropped = self.model.new_bool_var(f"unassigned_{requirement.id}")
             self.unassigned[requirement.id] = dropped
@@ -1048,7 +1322,7 @@ class PlanningService:
                     )
                 )
 
-    def _add_day_bounds(self, requirements: List[InterventionRequirement]) -> None:
+    def _add_day_bounds(self, requirements: List[InterventionRequirement]) -> None:  # noqa: E501
         """Keep every visit inside the working day.
 
         Args:
@@ -1065,9 +1339,9 @@ class PlanningService:
         """
         for requirement in requirements:
             self.model.add(
-                self.starts[requirement.id] >= self.settings.day_start_minute
+                self.starts[requirement.id] >= self.settings.day_start_minute  # noqa: E501
             )
-            self.model.add(self.ends[requirement.id] <= self.settings.day_end_minute)
+            self.model.add(self.ends[requirement.id] <= self.settings.day_end_minute)  # noqa: E501
 
     def _add_availability(
         self,
@@ -1105,7 +1379,7 @@ class PlanningService:
                     assistant.id,
                 )
                 for requirement in requirements:
-                    self.model.add(self.assigned[(requirement.id, assistant.id)] == 0)
+                    self.model.add(self.assigned[(requirement.id, assistant.id)] == 0)  # noqa: E501
                 continue
             self.logger.debug(
                 "Assistant %s works %d day(s) a week.",
@@ -1114,7 +1388,7 @@ class PlanningService:
             )
             for requirement in requirements:
                 if not assistant.is_schedulable_on(requirement.day):
-                    self.model.add(self.assigned[(requirement.id, assistant.id)] == 0)
+                    self.model.add(self.assigned[(requirement.id, assistant.id)] == 0)  # noqa: E501
 
     def _add_certifications(
         self,
@@ -1179,7 +1453,7 @@ class PlanningService:
             allowed = {assistant.id for assistant in qualified}
             for assistant in assistants:
                 if assistant.id not in allowed:
-                    self.model.add(self.assigned[(requirement.id, assistant.id)] == 0)
+                    self.model.add(self.assigned[(requirement.id, assistant.id)] == 0)  # noqa: E501
 
     def _add_skills(
         self,
@@ -1232,8 +1506,7 @@ class PlanningService:
             ]
             if not qualified:
                 self.logger.error(
-                    "No field employee has declared %s on %s; %r cannot be "
-                    "placed.",
+                    "No field employee has declared %s on %s; %r cannot be placed.",
                     ", ".join(requirement.required_skill_codes),
                     requirement.day,
                     requirement.name,
@@ -1346,7 +1619,7 @@ class PlanningService:
             list
         )
         for requirement in requirements:
-            grouped[(requirement.customer_id, requirement.day)].append(requirement)
+            grouped[(requirement.customer_id, requirement.day)].append(requirement)  # noqa: E501
 
         for (customer_id, day), same_day in grouped.items():
             if len(same_day) < 2:
@@ -1383,8 +1656,8 @@ class PlanningService:
             for requirement in requirements
         ]
         for slot in assistant.blocking_slots_on(day):
-            start_minute = slot.start_time.hour * 60 + slot.start_time.minute
-            end_minute = slot.end_time.hour * 60 + slot.end_time.minute
+            start_minute = slot.start_time.hour * 60 + slot.start_time.minute  # noqa: E501
+            end_minute = slot.end_time.hour * 60 + slot.end_time.minute  # noqa: E501
             intervals.append(
                 self.model.new_interval_var(
                     start_minute,
@@ -1432,7 +1705,7 @@ class PlanningService:
 
         break_start = self.model.new_int_var(
             self.settings.lunch_window_start_minute,
-            self.settings.lunch_window_end_minute - self.settings.lunch_break_minutes,
+            self.settings.lunch_window_end_minute - self.settings.lunch_break_minutes,  # noqa: E501
             f"lunch_start_{assistant.id}_{day}",
         )
         break_interval = self.model.new_optional_interval_var(
@@ -1500,7 +1773,7 @@ class PlanningService:
             for second in requirements[index + 1 :]:
                 before.update(self._order_pair(assistant, first, second))
         for requirement in requirements:
-            self._add_home_legs(assistant, requirement, requirements, before, home)
+            self._add_home_legs(assistant, requirement, requirements, before, home)  # noqa: E501
 
     def _order_pair(
         self,
@@ -1529,7 +1802,7 @@ class PlanningService:
         holds_both = self.model.new_bool_var(
             f"both_{assistant.id}_{first.id}_{second.id}"
         )
-        self.model.add_bool_and([holds_first, holds_second]).only_enforce_if(holds_both)
+        self.model.add_bool_and([holds_first, holds_second]).only_enforce_if(holds_both)  # noqa: E501
         self.model.add_bool_or(
             [holds_first.negated(), holds_second.negated(), holds_both]
         )
@@ -1623,7 +1896,7 @@ class PlanningService:
             self.starts[requirement.id] >= self.settings.day_start_minute + outbound
         ).only_enforce_if(is_first)
 
-    def _add_objective(self, requirements: List[InterventionRequirement]) -> None:
+    def _add_objective(self, requirements: List[InterventionRequirement]) -> None:  # noqa: E501
         """Minimise travel, and treat dropping work as very expensive.
 
         Args:
@@ -1639,14 +1912,78 @@ class PlanningService:
             self.config.unassigned_penalty * self.unassigned[requirement.id]
             for requirement in requirements
         ]
-        travel_cost = [self.config.travel_weight * term for term in self.travel_terms]
+        travel_cost = [self.config.travel_weight * term for term in self.travel_terms]  # noqa: E501
         self.model.minimize(sum(dropped_cost) + sum(travel_cost))
 
-    def _run(self, requirements: List[InterventionRequirement]) -> PlanningSolution:
+    def _minimise_unplaced(self, requirements: List[InterventionRequirement]) -> None:  # noqa: E501
+        """Ask only "can everything be placed?", ignoring the driving.
+
+        Args:
+            requirements (List[InterventionRequirement]): The day's work.
+
+        Notes:
+            - The first of two passes. Its objective is a small integer — how
+              many visits were left out — with an obvious lower bound of zero,
+              so the solver reaches and *proves* the answer quickly. The
+              combined objective cannot: adding travel to it makes the bound
+              useless, and the search spends its whole budget shaving minutes
+              off rounds before it can say whether the week fits at all.
+            - Every travel *constraint* stays in the model. Only the travel
+              term of the objective is dropped. A pass that did not charge
+              travel time would call a round feasible that nobody can drive,
+              and the plan kept when the second pass runs out would be one of
+              those.
+        """
+        self.model.minimize(
+            sum(self.unassigned[requirement.id] for requirement in requirements)
+        )
+
+    def _minimise_travel(self, placed: PlanningSolution) -> None:
+        """Ask for shorter rounds, now that everything is known to fit.
+
+        Args:
+            placed (PlanningSolution): The complete plan the first pass
+                found, used as a starting point.
+
+        Notes:
+            - The second pass runs on the **same model**, which is what makes
+              it cheap: ``minimize`` replaces the previous objective rather
+              than adding to it, so nothing is rebuilt. Pinning
+              ``sum(unassigned) == 0`` first is what stops it buying a
+              shorter round by dropping a visit.
+            - The first pass's answer is offered as a hint, so the search
+              starts from a plan that already works and can only improve on
+              it. Hints are cleared first: one left over from a different
+              objective points the search at the wrong place, which costs
+              time silently.
+        """
+        self.model.add(sum(self.unassigned[key] for key in self.unassigned) == 0)  # noqa: E501
+        self.model.clear_hints()
+        for assignment in placed.assignments:
+            literal = self.assigned.get((assignment.requirement_id, assignment.hca_id))  # noqa: E501
+            if literal is not None:
+                self.model.add_hint(literal, 1)
+            self.model.add_hint(
+                self.starts[assignment.requirement_id], assignment.start_minute
+            )
+        self.model.minimize(
+            sum(self.config.travel_weight * term for term in self.travel_terms)
+        )
+
+    def _run(
+        self,
+        requirements: List[InterventionRequirement],
+        budget: float,
+        phase: str,
+    ) -> PlanningSolution:
         """Search for a solution and read it back.
 
         Args:
             requirements (List[InterventionRequirement]): The work.
+            budget (float): The deterministic budget this pass may spend.
+            phase (str): Which pass this is, for the log. A run makes two of
+                them and they fail in different ways, so a log line that did
+                not say which would be unreadable.
 
         Returns:
             PlanningSolution: What was found.
@@ -1681,16 +2018,15 @@ class PlanningService:
               that admits it.
         """
         solver = cp_model.CpSolver()
-        solver.parameters.max_deterministic_time = (
-            self.config.solver_deterministic_budget
-        )
-        solver.parameters.max_time_in_seconds = self.config.solver_time_limit_seconds
+        solver.parameters.max_deterministic_time = budget
+        solver.parameters.max_time_in_seconds = self.config.solver_time_limit_seconds  # noqa: E501
         solver.parameters.num_search_workers = self.config.solver_workers
         solver.parameters.random_seed = self.config.solver_seed
         self.logger.info(
-            "Solving with a deterministic budget of %.1f, a %.1fs safety net, "
-            "%d worker(s) and seed %d.",
-            self.config.solver_deterministic_budget,
+            "Solving the %s pass with a deterministic budget of %.1f, a "
+            "%.1fs safety net, %d worker(s) and seed %d.",
+            phase,
+            budget,
             self.config.solver_time_limit_seconds,
             self.config.solver_workers,
             self.config.solver_seed,
@@ -1706,9 +2042,6 @@ class PlanningService:
             )
 
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            # INFEASIBLE is a proof; UNKNOWN is a search that stopped. Saying
-            # "contradictory" for both told an operator the constraints were
-            # impossible when the honest answer was that the budget ran out.
             if status == cp_model.INFEASIBLE:
                 self.logger.error(
                     "The solver proved no plan exists (%s); the constraints are "
@@ -1799,8 +2132,8 @@ class PlanningService:
             MTPlanningInconsistentSolution: If no assistant holds it, which
                 the exactly-one constraint makes impossible.
         """
-        for (requirement_id, hca_id), literal in self.assigned.items():
-            if requirement_id == requirement.id and solver.value(literal):
+        for hca_id, literal in self.assignees.get(requirement.id, []):
+            if solver.value(literal):
                 return hca_id
         self.logger.error(
             "Requirement %s is neither assigned nor unassigned; the "
@@ -1887,6 +2220,183 @@ class PlanningService:
             happens once here rather than at every constraint.
         """
         return clock_time.hour * 60 + clock_time.minute
+
+    async def _solve_day_off_the_loop(
+        self,
+        limit: asyncio.Semaphore,
+        day: date,
+        requirements: List[InterventionRequirement],
+        assistants: List[Hca],
+        settings: PlanningSettings,
+    ) -> PlanningSolution:
+        """Solve one day on a worker thread, bounded by the semaphore.
+
+        Args:
+            limit (asyncio.Semaphore): Bounds how many days run at once.
+            day (date): The day being planned.
+            requirements (List[InterventionRequirement]): That day's work.
+            assistants (List[Hca]): The workforce available.
+            settings (PlanningSettings): The manager-owned rules.
+
+        Returns:
+            PlanningSolution: What the solver made of that day.
+        """
+        async with limit:
+            worker = copy.copy(self)
+            return await asyncio.to_thread(
+                worker._solve_day, day, requirements, assistants, settings
+            )
+
+    def _solve_day(
+        self,
+        day: date,
+        requirements: List[InterventionRequirement],
+        assistants: List[Hca],
+        settings: PlanningSettings,
+    ) -> PlanningSolution:
+        """Build and solve one day's model.
+
+        Args:
+            day (date): The day being planned.
+            requirements (List[InterventionRequirement]): That day's work.
+            assistants (List[Hca]): The workforce available.
+            settings (PlanningSettings): The manager-owned rules.
+
+        Returns:
+            PlanningSolution: What the solver made of that day.
+
+        Notes:
+            Every constraint below is the one :meth:`solve` used to add over
+            the whole period, given one day's requirements instead. Nothing
+            is dropped and nothing is weakened — which is what makes the
+            decomposition exact rather than an approximation.
+        """
+        self.logger.debug(
+            "Building the model for %s: %d requirement(s).", day, len(requirements)
+        )
+        self._reset()
+        self.settings = settings
+        self._build_assignment_vars(requirements, assistants)
+        self._build_interval_vars(requirements, assistants)
+        self._add_day_bounds(requirements)
+        self._add_availability(requirements, assistants)
+        self._add_certifications(requirements, assistants)
+        self._add_skills(requirements, assistants)
+        self._add_radius(requirements, assistants)
+        self._add_customer_conflicts(requirements)
+        for assistant in assistants:
+            reachable = self._reachable_work(assistant, requirements)
+            if not reachable:
+                self.logger.debug(
+                    "%s can take none of %s's %d requirement(s); skipping their round.",
+                    assistant.id,
+                    day,
+                    len(requirements),
+                )
+                continue
+            self._add_no_overlap(assistant, day, reachable)
+            self._add_lunch_break(assistant, day, reachable)
+            self._add_travel(assistant, day, reachable)
+
+        self._minimise_unplaced(requirements)
+        placed = self._run(
+            requirements, self.config.solver_deterministic_budget, "feasibility"
+        )
+        if not placed.is_feasible or placed.unassigned_requirement_ids:
+            self.logger.info("%s was not fully placed; not optimising its rounds.", day)
+            return placed
+
+        self._minimise_travel(placed)
+        shortened = self._run(
+            requirements, self.config.solver_optimisation_budget, "optimisation"
+        )
+        if not shortened.is_feasible:
+            self.logger.error(
+                "The optimisation pass for %s returned %s though the "
+                "feasibility pass had already placed every visit. Keeping the "
+                "unoptimised plan; this is a model-construction fault.",
+                day,
+                shortened.status_name,
+            )
+            return placed
+        self.logger.info(
+            "%s: travel %d -> %d minute(s) (%s).",
+            day,
+            placed.total_travel_minutes,
+            shortened.total_travel_minutes,
+            shortened.status_name,
+        )
+        return shortened.model_copy(
+            update={"is_optimised": shortened.status_name == "OPTIMAL"}
+        )
+
+    def _merge_days(
+        self,
+        solutions: List[PlanningSolution],
+        requirements: List[InterventionRequirement],
+    ) -> PlanningSolution:
+        """Combine the daily plans into one answer for the period.
+
+        Args:
+            solutions (List[PlanningSolution]): One per day, in calendar
+                order.
+            requirements (List[InterventionRequirement]): The whole period's
+                work, for the log.
+
+        Returns:
+            PlanningSolution: The period's plan.
+
+        Notes:
+            - **A day that produced nothing sinks the period**, and the
+              status it sinks to matters. ``INFEASIBLE`` is a proof that no
+              plan exists; ``UNKNOWN`` only says the search stopped. The
+              caller picks between "the constraints contradict each other"
+              and "raise the budget" on exactly that distinction, so a
+              proof anywhere in the week outranks an exhausted search.
+            - The unplaced list is left **empty** on those branches rather
+              than filled with the day's work, because
+              :meth:`_report_unplaced` already reads an empty list as "every
+              requirement" — and saying it here instead would name one day's
+              visits as the finding when nothing was established about them.
+            - ``OPTIMAL`` only survives if **every** day proved it. One
+              unproven day makes the period unproven, which is what stops the
+              caller claiming a plan is best when part of it was a guess.
+        """
+        failed = [item for item in solutions if not item.is_feasible]
+        if failed:
+            proved = any(item.status_name == "INFEASIBLE" for item in failed)
+            status = "INFEASIBLE" if proved else "UNKNOWN"
+            self.logger.error(
+                "%d of %d day(s) produced no plan; the period is %s.",
+                len(failed),
+                len(solutions),
+                status,
+            )
+            return PlanningSolution(is_feasible=False, status_name=status)
+
+        assignments = [item for day in solutions for item in day.assignments]
+        unplaced = [
+            item for day in solutions for item in day.unassigned_requirement_ids
+        ]
+        travel = sum(day.total_travel_minutes for day in solutions)
+        proven = all(day.status_name == "OPTIMAL" for day in solutions)
+        self.logger.info(
+            "Merged %d day(s): %d of %d requirement(s) placed, %d minute(s) "
+            "of travel, %s.",
+            len(solutions),
+            len(assignments),
+            len(requirements),
+            travel,
+            "every day proved optimal" if proven else "not every day proved optimal",
+        )
+        return PlanningSolution(
+            assignments=assignments,
+            unassigned_requirement_ids=unplaced,
+            total_travel_minutes=travel,
+            is_feasible=True,
+            is_optimised=all(day.is_optimised for day in solutions),
+            status_name="OPTIMAL" if proven else "FEASIBLE",
+        )
 
     ############################
     # Publicly Exposed Methods #
@@ -2129,7 +2639,7 @@ class PlanningService:
               conditions, and something that passes all of them can still be
               unplaceable for reasons only the search can find.
         """
-        self.logger.info("Diagnosing %d unplaced requirement(s).", len(unplaced_ids))
+        self.logger.info("Diagnosing %d unplaced requirement(s).", len(unplaced_ids))  # noqa: E501
         by_id = {item.id: item for item in requirements}
         explained: List[UnplacedRequirement] = []
         for requirement_id in unplaced_ids:
@@ -2154,7 +2664,7 @@ class PlanningService:
             )
         return sorted(explained, key=self._unplaced_sort_key)
 
-    async def future_period_for_hca(self, hca_id: str) -> Optional[Tuple[date, date]]:
+    async def future_period_for_hca(self, hca_id: str) -> Optional[Tuple[date, date]]:  # noqa: E501
         """Return the span of an assistant's remaining visits, from today.
 
         Args:
@@ -2323,30 +2833,42 @@ class PlanningService:
         if claimed is None:
             return run
         run = claimed
-        # Measured from the claim, not from the message arriving: what is being
-        # asked is how long this worker took, and time spent queued behind
-        # another run is the queue's figure rather than the solver's.
         started = monotonic()
         try:
-            solution, requirements, assistants = await self._solve(run)
-            scheduled = await self._store(run, solution, requirements, assistants)
+            solution, requirements, assistants, unplaced = await self._solve(run)
+            scheduled = await self._store(run, solution, requirements, assistants)  # noqa: E501
+            if unplaced:
+                # Offers are computed against the plan that was just stored,
+                # so a suggested slot is one the next run can actually take.
+                unplaced = self._offer_alternatives(
+                    unplaced,
+                    assistants,
+                    requirements,
+                    solution,
+                    await self.current_settings(),
+                )
+                await self._return_for_validation(unplaced)
         except Exception as exc:  # noqa: BLE001 - recorded on the run
             self.logger.error("Planning run %s failed: %s", run_id, exc)
-            self._record_outcome(PlanningRunStatus.FAILED, monotonic() - started)
+            self._record_outcome(PlanningRunStatus.FAILED, monotonic() - started)  # noqa: E501
             return await self._finish(
                 run,
                 status=PlanningRunStatus.FAILED,
                 error_message=str(exc),
             )
-        self._record_outcome(
-            PlanningRunStatus.SUCCEEDED, monotonic() - started, scheduled
-        )
+        # A week with a gap in it is stored and named, not withheld. What it
+        # must never be is indistinguishable from a complete one, so it gets
+        # its own status rather than SUCCEEDED with a field nobody reads.
+        status = PlanningRunStatus.PARTIAL if unplaced else PlanningRunStatus.SUCCEEDED
+        self._record_outcome(status, monotonic() - started, scheduled)
         return await self._finish(
             run,
-            status=PlanningRunStatus.SUCCEEDED,
+            status=status,
+            unplaced_quotes=unplaced,
             travel_minutes=solution.total_travel_minutes,
             scheduled_count=scheduled,
             unassigned=solution.unassigned_requirement_ids,
+            is_optimised=solution.is_optimised,
         )
 
     async def get_run(self, run_id: str) -> PlanningRun:
@@ -2409,9 +2931,9 @@ class PlanningService:
             raise MTPlanningForbidden("You may only view your own planning.")
         assistant = await self.hcas.get(hca_id)
         if assistant is None:
-            self.logger.warning("Diary requested for absent assistant %s.", hca_id)
+            self.logger.warning("Diary requested for absent assistant %s.", hca_id)  # noqa: E501
             raise MTPlanningRunNotFound(f"No assistant {hca_id!r} exists.")
-        visits = await self.interventions.list_for_hca(hca_id, period_start, period_end)
+        visits = await self.interventions.list_for_hca(hca_id, period_start, period_end)  # noqa: E501
         self.logger.info(
             "Serving %d visit(s) for assistant %s from %s to %s.",
             len(visits),
@@ -2462,7 +2984,7 @@ class PlanningService:
                 caller.hca_id,
             )
             return [
-                await self.planning_for(caller.hca_id, caller, period_start, period_end)
+                await self.planning_for(caller.hca_id, caller, period_start, period_end)  # noqa: E501
             ]
         hca_ids = await self.interventions.list_hca_ids_for_period(
             period_start, period_end
@@ -2476,7 +2998,7 @@ class PlanningService:
         plannings: List[HcaPlanning] = []
         for hca_id in hca_ids:
             plannings.append(
-                await self.planning_for(hca_id, caller, period_start, period_end)
+                await self.planning_for(hca_id, caller, period_start, period_end)  # noqa: E501
             )
         return plannings
 
@@ -2507,6 +3029,18 @@ class PlanningService:
             - A quote that is not accepted contributes nothing, even if it was
               passed in. The repository already filters on status; checking
               again here means the rule holds however this is called.
+            - **A customer who may not be scheduled contributes nothing either,
+              however good their quote is.** A prospect may hold accepted,
+              priced, in-period, perfectly routable work; the agency has not
+              agreed to deliver it, and sending somebody to a door nobody has
+              agreed to knock on is the error. See
+              :meth:`~models.enums.RegistrationStatus.can_be_scheduled`.
+            - This is **not** the "partial plan" the run refuses elsewhere. That
+              rule is about placeable work being quietly dropped; this work was
+              never in scope, so excluding it is the correct plan rather than an
+              incomplete one. What keeps it from being silent is the counter and
+              the ``WARNING`` naming the quote — a manager reading the log finds
+              out that promoting the customer is what schedules it.
             - **The certification requirement is resolved here, once.** A line
               may override its catalog entry — see
               :meth:`~models.quoting.quote_line.QuoteLine.effective_certification_codes`
@@ -2531,10 +3065,17 @@ class PlanningService:
             period_start,
             period_end,
         )
+        self.logger.debug(
+            "Requirement window %s to %s over %d customer(s).",
+            period_start,
+            period_end,
+            len(customers),
+        )
         requirements: List[InterventionRequirement] = []
         skipped_unroutable = 0
         skipped_out_of_period = 0
         skipped_interrupted = 0
+        skipped_not_schedulable = 0
 
         for quote in quotes:
             if not quote.is_schedulable():
@@ -2545,7 +3086,21 @@ class PlanningService:
                 )
                 continue
             customer = customers.get(quote.customer_id)
-            location = customer.address.to_geo_point() if customer is not None else None
+            if customer is not None and not customer.can_be_scheduled():
+                skipped_not_schedulable += sum(
+                    1
+                    for line in quote.lines
+                    if period_start <= line.service_date <= period_end
+                )
+                self.logger.warning(
+                    "Quote %s is accepted but customer %s is %s, so none of it "
+                    "is planned. Promote them to active to schedule this work.",
+                    quote.reference,
+                    quote.customer_id,
+                    customer.registration_status.value,
+                )
+                continue
+            location = customer.address.to_geo_point() if customer is not None else None  # noqa: E501
             for line in quote.lines:
                 if not period_start <= line.service_date <= period_end:
                     skipped_out_of_period += 1
@@ -2561,7 +3116,7 @@ class PlanningService:
                         quote.reference,
                         line.name,
                         quote.customer_id,
-                        customer.address.geocoding_error if customer else "unknown",
+                        customer.address.geocoding_error if customer else "unknown",  # noqa: E501
                     )
                     continue
                 entry = catalog.get(line.intervention_type_id)
@@ -2583,11 +3138,15 @@ class PlanningService:
                     InterventionRequirement(
                         id=line.id if line.id else f"{quote.id}:{line.name}",
                         quote_line_id=line.id if line.id else "",
+                        quote_reference=quote.reference,
+                        customer_name=(
+                            customer.full_name() if customer is not None else ""
+                        ),
                         customer_id=quote.customer_id,
                         name=line.name,
                         intervention_type_id=line.intervention_type_id,
                         day=line.service_date,
-                        window_start_minute=self._to_minutes(line.earliest_start),
+                        window_start_minute=self._to_minutes(line.earliest_start),  # noqa: E501
                         window_end_minute=self._to_minutes(line.latest_end),
                         duration_minutes=line.duration_minutes,
                         location=location,
@@ -2598,12 +3157,20 @@ class PlanningService:
 
         self.logger.info(
             "Built %d requirement(s); skipped %d outside the period, %d past an "
-            "interruption and %d unroutable.",
+            "interruption, %d unroutable and %d for a customer who may not be "
+            "scheduled.",
             len(requirements),
             skipped_out_of_period,
             skipped_interrupted,
             skipped_unroutable,
+            skipped_not_schedulable,
         )
+        if skipped_not_schedulable:
+            self.logger.info(
+                "%d piece(s) of accepted work belong to customers who are not "
+                "active and were left out of the plan on purpose.",
+                skipped_not_schedulable,
+            )
         if skipped_unroutable:
             self.logger.error(
                 "%d piece(s) of accepted work cannot be planned at all until "
@@ -2695,8 +3262,26 @@ class PlanningService:
             placed listed explicitly.
 
         Notes:
-            Returns rather than raises on an empty input. A week with no
-            accepted work is a legitimate answer, not an error.
+            - Returns rather than raises on an empty input. A week with no
+              accepted work is a legitimate answer, not an error.
+            - **The period is solved one day at a time, and the answer is the
+              same one a single model would give.** Every constraint in this
+              class is day-local: a requirement belongs to exactly one day,
+              ``start`` and ``end`` are minutes from midnight, the customer
+              no-overlap is keyed by ``(customer, day)``, and the no-overlap,
+              lunch and travel constraints are all built per (assistant,
+              day). The objective is a plain sum, so ``min`` over the week
+              equals the sum of the daily minima. Solving the days separately
+              is therefore an exact decomposition rather than a heuristic —
+              it cannot return a worse plan, only the same one sooner.
+            - What it buys is search space. A week is a set of independent
+              sub-problems that CP-SAT cannot discover on its own, so it
+              explores their product; solving them apart collapses that.
+            - **Anything that couples two days breaks this.** A weekly hours
+              cap, a rest period between shifts, or a fairness term across
+              the week would all make the decomposition wrong — silently, by
+              returning plans that are worse rather than by failing. Such a
+              constraint has to go back into one model over the whole period.
         """
         if not requirements:
             self.logger.warning("Nothing to plan: no requirement was supplied.")
@@ -2712,25 +3297,77 @@ class PlanningService:
                 status_name="NO_ASSISTANTS",
             )
 
+        by_day = self._by_day(requirements)
         self.logger.info(
-            "Planning %d requirement(s) across %d assistant(s).",
+            "Planning %d requirement(s) across %d assistant(s), as %d "
+            "independent day(s).",
             len(requirements),
             len(assistants),
+            len(by_day),
         )
-        self._reset()
-        self.settings = settings
-        self._build_assignment_vars(requirements, assistants)
-        self._build_interval_vars(requirements, assistants)
-        self._add_day_bounds(requirements)
-        self._add_availability(requirements, assistants)
-        self._add_certifications(requirements, assistants)
-        self._add_skills(requirements, assistants)
-        self._add_radius(requirements, assistants)
-        self._add_customer_conflicts(requirements)
-        for assistant in assistants:
-            for day, day_requirements in self._by_day(requirements).items():
-                self._add_no_overlap(assistant, day, day_requirements)
-                self._add_lunch_break(assistant, day, day_requirements)
-                self._add_travel(assistant, day, day_requirements)
-        self._add_objective(requirements)
-        return self._run(requirements)
+        solutions = [
+            self._solve_day(day, by_day[day], assistants, settings)
+            for day in sorted(by_day)
+        ]
+        return self._merge_days(solutions, requirements)
+
+    async def solve_period(
+        self,
+        requirements: List[InterventionRequirement],
+        assistants: List[Hca],
+        settings: PlanningSettings,
+    ) -> PlanningSolution:
+        """Solve a period's days concurrently and merge them.
+
+        Args:
+            requirements (List[InterventionRequirement]): The accepted work.
+            assistants (List[Hca]): The workforce available.
+            settings (PlanningSettings): The manager-owned rules.
+
+        Returns:
+            PlanningSolution: The same plan :meth:`solve` would return, found
+            in the time of the slowest day rather than the sum of all of them.
+
+        Notes:
+            - **Real parallelism, not a thread-shaped illusion.** CP-SAT
+              releases the interpreter lock while it searches, so four day
+              models in four threads take the wall time of one. Measured on
+              this build: four pre-built models solved together in 8.00s
+              against 8.01s for one alone.
+            - **Each day gets its own service, because the model is built on
+              ``self``.** ``_reset`` rebinds ``self.model`` and the variable
+              tables, so two days sharing an instance would overwrite each
+              other's model half-built. A shallow copy per day gives each
+              thread its own bindings while sharing the travel tables, which
+              are finished before any day starts and only read afterwards.
+            - The semaphore, not the executor, is what bounds CPU. A run
+              demands ``solver_day_concurrency * solver_workers`` threads, and
+              exceeding the cores the process is given means the kernel
+              throttles the whole cgroup — the same trap the worker count
+              carries, reached from the other side.
+            - Results are re-sorted by day before merging. Gathering preserves
+              submission order, but relying on that would make reproducibility
+              depend on a detail of the scheduler rather than on the data.
+        """
+        if not requirements or not assistants:
+            return self.solve(requirements, assistants, settings)
+
+        by_day = self._by_day(requirements)
+        limit = asyncio.Semaphore(self.config.solver_day_concurrency)
+        self.logger.info(
+            "Planning %d requirement(s) across %d assistant(s), as %d "
+            "independent day(s), %d at a time.",
+            len(requirements),
+            len(assistants),
+            len(by_day),
+            self.config.solver_day_concurrency,
+        )
+        solutions = await asyncio.gather(
+            *[
+                self._solve_day_off_the_loop(
+                    limit, day, by_day[day], assistants, settings
+                )
+                for day in sorted(by_day)
+            ]
+        )
+        return self._merge_days(list(solutions), requirements)

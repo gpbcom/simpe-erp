@@ -15,6 +15,9 @@ from api.dependencies import (
 )
 from models.auth.user import User
 from models.catalog.certification_type import CertificationType
+from models.schemas.requests.catalog.certification_type_filter import (
+    CertificationTypeFilter,
+)
 from models.schemas.requests.catalog.certification_type_update_request import (
     CertificationTypeUpdateRequest,
 )
@@ -30,6 +33,7 @@ async def list_certification_types(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=100, ge=1, le=500),
     include_inactive: bool = Query(default=False),
+    certification_filter: CertificationTypeFilter = Depends(),
     service: CertificationTypeService = Depends(get_certification_type_service),
     _: User = Depends(get_current_user),
 ) -> List[CertificationType]:
@@ -39,6 +43,8 @@ async def list_certification_types(
         page (int): One-based page number.
         size (int): Page size.
         include_inactive (bool): Whether retired entries are included.
+        certification_filter (CertificationTypeFilter): The filters, bound from the query string.
+            Every field is optional and an absent one narrows nothing.
         service (CertificationTypeService): The catalogue service.
         _ (User): The authenticated caller.
 
@@ -55,7 +61,12 @@ async def list_certification_types(
         Retired entries are hidden unless asked for, so a screen offering a
         requirement offers only what may still be required.
     """
-    return await service.list(page=page, size=size, include_inactive=include_inactive)
+    return await service.list(
+        page=page,
+        size=size,
+        include_inactive=include_inactive,
+        certification_filter=certification_filter,
+    )
 
 
 @router.post("", response_model=CertificationType, status_code=status.HTTP_201_CREATED)

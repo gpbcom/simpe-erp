@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 # Standard library imports
+from base64 import b64decode
 from datetime import date, time
 from decimal import Decimal
 from email.message import EmailMessage
 from io import BytesIO
 from typing import List
+from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
 from openpyxl import load_workbook
@@ -38,6 +40,7 @@ from service.emails.exceptions import (
     MTEmailNotConfigured,
 )
 from service.utils.formatter import Formatter
+from storage.s3.s3_storage import S3Storage
 
 ADDRESS = {
     "street": "12 rue de Rivoli",
@@ -232,10 +235,7 @@ def _total_row(sheet, label: str) -> int:
         French, and the first match is that one.
     """
     found = [
-        cell.row
-        for row in sheet.iter_rows()
-        for cell in row
-        if cell.value == label
+        cell.row for row in sheet.iter_rows() for cell in row if cell.value == label
     ]
     if not found:
         raise AssertionError(f"No totals row labelled {label!r} was written.")
@@ -839,32 +839,25 @@ class TestQuoteLanguage:
             translated at all.
         """
         sheet = load_workbook(
-            BytesIO(
-                Formatter.format_quote(_quote(), _customer(), _company(), language)
-            )
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company(), language))
         ).active
 
         assert sheet["A1"].value.startswith(title)
         assert sheet.title == title
         assert (
-            sheet.cell(row=Formatter.QUOTE_HEADER_ROW, column=2).value
-            == service_header
+            sheet.cell(row=Formatter.QUOTE_HEADER_ROW, column=2).value == service_header
         )
 
     def test_the_status_word_is_translated(self) -> None:
         """The pill carries a word, so the word has to be in the language."""
         french = load_workbook(
             BytesIO(
-                Formatter.format_quote(
-                    _quote(), _customer(), _company(), Language.FR
-                )
+                Formatter.format_quote(_quote(), _customer(), _company(), Language.FR)
             )
         ).active
         english = load_workbook(
             BytesIO(
-                Formatter.format_quote(
-                    _quote(), _customer(), _company(), Language.EN
-                )
+                Formatter.format_quote(_quote(), _customer(), _company(), Language.EN)
             )
         ).active
 
@@ -881,7 +874,7 @@ class TestQuoteLanguage:
     def test_a_duration_is_written_out_not_left_in_minutes(
         self, language: Language, expected: str
     ) -> None:
-        """"1110" is the solver's unit, not an answer for a customer.
+        """ "1110" is the solver's unit, not an answer for a customer.
 
         Args:
             language (Language): The language asked for.
@@ -974,9 +967,7 @@ class TestQuoteSummary:
         """Its labels come from the same catalogue as everything else."""
         sheet = load_workbook(
             BytesIO(
-                Formatter.format_quote(
-                    _quote(), _customer(), _company(), Language.EN
-                )
+                Formatter.format_quote(_quote(), _customer(), _company(), Language.EN)
             )
         ).active
         row = Formatter.QUOTE_SUMMARY_ROW
@@ -1048,7 +1039,7 @@ class TestQuoteLegalForm:
             assert fragment in details, f"{fragment!r} is missing from the issuer."
 
     def test_the_capital_is_labelled_and_carries_its_currency(self) -> None:
-        """"Capital social 10 000,00 €", not a bare number."""
+        """ "Capital social 10 000,00 €", not a bare number."""
         sheet = load_workbook(
             BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
@@ -1119,7 +1110,7 @@ class TestQuoteTotalsBlock:
     def test_a_rate_drops_its_trailing_zeros(
         self, rate: Decimal, expected: str
     ) -> None:
-        """"TVA 5.500%" reads as a rate somebody mistyped.
+        """ "TVA 5.500%" reads as a rate somebody mistyped.
 
         Args:
             rate (Decimal): The rate as a fraction.
@@ -1173,17 +1164,10 @@ class TestQuoteLegalTerms:
             the words, not the law.
         """
         sheet = load_workbook(
-            BytesIO(
-                Formatter.format_quote(
-                    _quote(), _customer(), _company(), language
-                )
-            )
+            BytesIO(Formatter.format_quote(_quote(), _customer(), _company(), language))
         ).active
         text = " ".join(
-            str(cell.value)
-            for row in sheet.iter_rows()
-            for cell in row
-            if cell.value
+            str(cell.value) for row in sheet.iter_rows() for cell in row if cell.value
         )
 
         assert fragment in text
@@ -1194,10 +1178,7 @@ class TestQuoteLegalTerms:
             BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
         text = " ".join(
-            str(cell.value)
-            for row in sheet.iter_rows()
-            for cell in row
-            if cell.value
+            str(cell.value) for row in sheet.iter_rows() for cell in row if cell.value
         )
 
         assert "30 jours" in text
@@ -1217,10 +1198,7 @@ class TestQuoteLegalTerms:
             BytesIO(Formatter.format_quote(quote, _customer(), _company()))
         ).active
         text = " ".join(
-            str(cell.value)
-            for row in sheet.iter_rows()
-            for cell in row
-            if cell.value
+            str(cell.value) for row in sheet.iter_rows() for cell in row if cell.value
         )
 
         assert "valable" not in text.lower()
@@ -1232,10 +1210,124 @@ class TestQuoteLegalTerms:
             BytesIO(Formatter.format_quote(_quote(), _customer(), _company()))
         ).active
         text = " ".join(
-            str(cell.value)
-            for row in sheet.iter_rows()
-            for cell in row
-            if cell.value
+            str(cell.value) for row in sheet.iter_rows() for cell in row if cell.value
         )
 
         assert "signature du client" in text.lower()
+
+
+#: A one-pixel PNG, the smallest thing Pillow will open. Embedded rather than
+#: generated so the test asserts on the renderer, not on an image library.
+ONE_PIXEL_PNG = b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAE"
+    "hQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+class TestTheQuoteCarriesTheAgencyLogo:
+    """Tests for the letterhead on the document a customer signs."""
+
+    def test_a_logo_is_drawn_on_the_sheet(self) -> None:
+        """The image travels in the workbook, not as a link.
+
+        Notes:
+            A link would resolve only for a reader who could reach the object
+            store, which a customer cannot — the document has to carry the
+            picture itself.
+        """
+        payload = Formatter.format_quote(
+            _quote(), _customer(), _company(), logo=ONE_PIXEL_PNG
+        )
+
+        sheet = load_workbook(BytesIO(payload)).active
+
+        assert len(sheet._images) == 1
+
+    def test_no_logo_leaves_the_sheet_as_it_was(self) -> None:
+        """An agency that has not uploaded one prints what it always did."""
+        payload = Formatter.format_quote(_quote(), _customer(), _company())
+
+        sheet = load_workbook(BytesIO(payload)).active
+
+        assert sheet._images == []
+
+    def test_a_corrupt_logo_does_not_stop_the_quote(self) -> None:
+        """**A quote must go out even when its letterhead is unreadable.**
+
+        Notes:
+            Refusing to produce a priced offer because a decoration could not
+            be decoded would turn a cosmetic problem into a commercial one.
+        """
+        payload = Formatter.format_quote(
+            _quote(), _customer(), _company(), logo=b"not an image at all"
+        )
+
+        sheet = load_workbook(BytesIO(payload)).active
+
+        assert sheet._images == []
+        assert sheet["A1"].value is not None
+
+    def test_the_logo_is_scaled_down_but_never_up(self) -> None:
+        """A small mark was meant to be small.
+
+        Notes:
+            Enlarging it to fill the space would print it blurred on a document
+            the agency is identified by.
+        """
+        payload = Formatter.format_quote(
+            _quote(), _customer(), _company(), logo=ONE_PIXEL_PNG
+        )
+
+        drawn = load_workbook(BytesIO(payload)).active._images[0]
+
+        assert drawn.width == 1
+        assert drawn.height == 1
+
+
+class TestFetchingTheLogoForAQuote:
+    """Tests for how the mailer obtains the image it embeds."""
+
+    async def test_an_agency_with_no_logo_fetches_nothing(self) -> None:
+        """No logo is not a reason to talk to the object store."""
+        logos = MagicMock(spec=S3Storage)
+        logos.fetch_logo = AsyncMock(return_value=ONE_PIXEL_PNG)
+        service = EmailService(config=EmailConfig(enabled=True), logos=logos)
+
+        assert await service._fetch_logo(_company()) is None
+        logos.fetch_logo.assert_not_awaited()
+
+    async def test_a_deployment_with_no_object_store_fetches_nothing(self) -> None:
+        """Quotes still go out; they simply have no letterhead."""
+        service = EmailService(config=EmailConfig(enabled=True))
+
+        agency = _company().model_copy(
+            update={
+                "logo_url": (
+                    "https://minio.internal/simple-erp/company-logos/company-1/a.png"
+                )
+            }
+        )
+
+        assert await service._fetch_logo(agency) is None
+
+    async def test_an_unreadable_logo_is_reported_not_raised(self) -> None:
+        """**The failure mode that must not reach the customer.**
+
+        Notes:
+            The store already reports rather than raises; this asserts the
+            mailer does not turn that ``None`` back into an exception on the
+            way to the renderer.
+        """
+        logos = MagicMock(spec=S3Storage)
+        logos.fetch_logo = AsyncMock(return_value=None)
+        service = EmailService(config=EmailConfig(enabled=True), logos=logos)
+
+        agency = _company().model_copy(
+            update={
+                "logo_url": (
+                    "https://minio.internal/simple-erp/company-logos/company-1/a.png"
+                )
+            }
+        )
+
+        assert await service._fetch_logo(agency) is None

@@ -20,6 +20,9 @@ from models.schemas.requests.catalog.intervention_type_update_request import (
     InterventionTypeUpdateRequest,
 )
 from models.schemas.responses.catalog.pricing_rules_response import PricingRulesResponse
+from models.schemas.requests.catalog.intervention_type_filter import (
+    InterventionTypeFilter,
+)
 from service.intervention_types.intervention_types import (
     InterventionTypeService,  # noqa: E501
 )
@@ -57,6 +60,7 @@ async def list_intervention_types(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=50, ge=1, le=500),
     include_inactive: bool = Query(default=False),
+    type_filter: InterventionTypeFilter = Depends(),
     service: InterventionTypeService = Depends(get_intervention_type_service),
     _: User = Depends(get_manager_user),
 ) -> List[InterventionType]:
@@ -66,6 +70,9 @@ async def list_intervention_types(
         page (int): One-based page number.
         size (int): Page size.
         include_inactive (bool): Whether retired types are included.
+        type_filter (InterventionTypeFilter): The filters, bound from the
+            query string. Every field is optional and an absent one
+            narrows nothing.
         service (InterventionTypeService): The catalog service.
         _ (User): The authenticated caller; enforces manager access.
 
@@ -76,7 +83,12 @@ async def list_intervention_types(
         Retired types are hidden unless asked for, so a quote-building screen
         offers only what may still be sold.
     """
-    return await service.list(page=page, size=size, include_inactive=include_inactive)
+    return await service.list(
+        page=page,
+        size=size,
+        include_inactive=include_inactive,
+        type_filter=type_filter,
+    )
 
 
 @router.get("/pricing-rules", response_model=PricingRulesResponse)

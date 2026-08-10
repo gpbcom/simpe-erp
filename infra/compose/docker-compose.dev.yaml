@@ -154,7 +154,16 @@ services:
       - ../observability/loki/loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
     ports:
-      - "3100:3100"
+      # Published on 3101, not 3100. The RobotCode VS Code extension runs its
+      # language server on 127.0.0.1:3100 whenever a `.robot` file is open, so
+      # the container failed to bind whenever somebody had the QA suite in
+      # their editor — which looked like a Docker fault and is not one.
+      #
+      # Only the host mapping moves. Grafana reads `http://loki:3100` and Alloy
+      # pushes to the same address, both over the compose network, so nothing
+      # inside the stack is affected: this port exists so you can curl Loki
+      # from the laptop.
+      - "3101:3100"
     networks: [simple-erp]
 
   tempo:

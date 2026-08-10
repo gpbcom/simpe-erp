@@ -442,6 +442,114 @@ A Manager Cannot Change The Agency's Legal Identity
     ...    ${API_URL}/api/v1/me/company
     ...    json=${body}    headers=${headers}    expected_status=403
 
+The Bank Details Are Recorded For SEPA Billing
+    [Documentation]    A customer told what to pay has to be told where.
+    ...
+    ...    Asserted against the API rather than the form, as the legal-identity
+    ...    case is: a screen that keeps a typed value and never sends it looks
+    ...    identical to one that works.
+    [Tags]    smoke    company    banking
+    Sign In As    ${ADMIN_EMAIL}
+    Navigate To    /company
+    Wait For Elements State    [data-testid="company-iban"]    visible
+    Fill Text    [data-testid="company-iban"]    FR76 3000 6000 0112 3456 7890 189
+    Fill Text    [data-testid="company-bic"]     bnpafrpp
+    Click    [data-testid="save-company"]
+    Wait For Elements State    [data-testid="company-saved"]    visible
+
+    ${stored}=    Agency As Stored
+    Should Be Equal    ${stored}[iban]    FR7630006000011234567890189
+    Should Be Equal    ${stored}[bic]     BNPAFRPP
+    [Teardown]    Restore The Agency And Sign Out
+
+An IBAN That Fails Its Checksum Is Refused
+    [Documentation]    The two check digits exist to catch a transposition.
+    ...
+    ...    The digits below are transposed, not missing: every shape rule
+    ...    passes and only the checksum fails, which is exactly the error
+    ...    somebody makes copying twenty-seven characters by hand. Stored
+    ...    unchecked, it surfaces weeks later as a payment that never arrived.
+    [Tags]    smoke    company    banking
+    ${agency}=    Agency As Stored
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    name=${agency}[name]
+    ...    iban=FR7630006000011234567809189
+    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${headers}    expected_status=422
+
+A Manager Reads The Agency's Account Masked
+    [Documentation]    **The account number is the one field a leak can spend.**
+    ...
+    ...    A manager runs the agency's work and needs its address, telephone
+    ...    number and registration; they have no reason to hold the account it
+    ...    is paid into. The agency-wide routes hand back a masked projection,
+    ...    and an administrator reads theirs whole at /me/company.
+    [Tags]    smoke    company    banking    access
+    ${agency}=    Agency As Stored
+    ${admin}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${admin_headers}=    Authorisation Header    ${admin}
+    ${body}=    Create Dictionary
+    ...    name=${agency}[name]
+    ...    iban=FR7630006000011234567890189
+    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${admin_headers}    expected_status=200
+
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/companies/${agency}[id]
+    ...    headers=${headers}    expected_status=200
+    ${seen}=    Set Variable    ${response.json()}
+    Should Be True    ${seen}[iban_is_masked]
+    Should Not Be Equal    ${seen}[iban]    FR7630006000011234567890189
+    Should Not Contain    ${seen}[iban]    300060000112345678
+    [Teardown]    Restore The Agency And Sign Out
+
+A Manager Cannot Change The Agency's Bank Details
+    [Documentation]    The same administrator gate the rest of the screen has.
+    [Tags]    smoke    company    banking    access
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    name=Smuggled
+    ...    iban=FR7630006000011234567890189
+    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${headers}    expected_status=403
+
+A Logo Cannot Be Repointed Through The Profile Payload
+    [Documentation]    **The logo is written only by the route that uploads it.**
+    ...
+    ...    Accepting one here would let a hand-crafted payload point the field
+    ...    at an image this application does not own — and the delete path
+    ...    would then be asked to remove somebody else's object. The payload
+    ...    has no such field, so the value is ignored rather than refused.
+    [Tags]    company    visual-identity    access
+    ${agency}=    Agency As Stored
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    name=${agency}[name]
+    ...    logo_url=https://evil.example/tracker.png
+    ${response}=    PUT
+    ...    ${API_URL}/api/v1/me/company
+    ...    json=${body}    headers=${headers}    expected_status=200
+    Should Not Be Equal    ${response.json()}[logo_url]    https://evil.example/tracker.png
+    [Teardown]    Restore The Agency And Sign Out
+
+A Manager Cannot Change The Agency's Logo
+    [Documentation]    A logo is how the agency identifies itself on a quote.
+    [Tags]    smoke    company    visual-identity    access
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    DELETE
+    ...    ${API_URL}/api/v1/me/company/logo
+    ...    headers=${headers}    expected_status=403
+
 
 *** Keywords ***
 Snapshot The Agency And Open
@@ -500,6 +608,8 @@ Restore The Agency
     ...    rcs_number=${ORIGINAL_AGENCY}[rcs_number]
     ...    vat_number=${ORIGINAL_AGENCY}[vat_number]
     ...    phone_number=${ORIGINAL_AGENCY}[phone_number]
+    ...    iban=${ORIGINAL_AGENCY}[iban]
+    ...    bic=${ORIGINAL_AGENCY}[bic]
     PUT
     ...    ${API_URL}/api/v1/me/company
     ...    json=${body}    headers=${headers}    expected_status=200

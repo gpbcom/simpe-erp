@@ -15,7 +15,12 @@ from models.catalog.certification_type import CertificationType
 from models.catalog.intervention_type import InterventionType
 from models.catalog.skill_type import SkillType
 from models.companies.company import Company
-from models.enums import AccountOrigin, QuoteStatus, UserRole
+from models.enums import (
+    AccountOrigin,
+    QuoteStatus,
+    RegistrationStatus,
+    UserRole,
+)
 from models.geo.postal_address import PostalAddress
 from models.people.customer import Customer
 from models.people.hca import Hca
@@ -561,17 +566,63 @@ class Seeder:
         self.logger.info("Workforce holds %d assistants.", len(stored))
         return stored
 
+    def _registration_status(self, first: str, last: str) -> RegistrationStatus:
+        """Return the status one seeded customer is created with.
+
+        Args:
+            first (str): Their given name.
+            last (str): Their family name.
+
+        Returns:
+            RegistrationStatus: ``PROSPECT`` for the named few, ``ACTIVE``
+            otherwise.
+
+        Notes:
+            Keyed by name rather than by an extra element on the customer
+            tuple, matching how the seeded assistants get their managers and
+            their qualifications: the variation is a handful of exceptions, and
+            widening a forty-row tuple to carry one field for two of them makes
+            the other thirty-eight noisier to read.
+        """
+        full_name = f"{first} {last}"
+        self.logger.debug("Choosing a registration status for %s.", full_name)
+        if not self.data.PROSPECTS:
+            # Every seeded customer would then be active, and the prospect
+            # screens would have nothing to act on — which reads as the feature
+            # being broken rather than as the dataset being empty.
+            self.logger.error("The dataset names no prospects; none will be seeded.")
+        elif full_name in self.data.PROSPECTS:
+            self.logger.warning(
+                "%s is seeded as a prospect: their work is quotable but nothing "
+                "will be planned for them until they are promoted.",
+                full_name,
+            )
+            return RegistrationStatus.PROSPECT
+        self.logger.info("%s is seeded as an active customer.", full_name)
+        return RegistrationStatus.ACTIVE
+
     async def seed_customers(self) -> List[Customer]:
         """Create the people served.
 
         Returns:
             List[Customer]: Every customer, seeded or existing.
+
+        Notes:
+            **The status is stated, never left to the model's default.** That
+            default is now ``PROSPECT`` — a new customer is somebody the agency
+            is talking to, not somebody it has agreed to serve — and a seeded
+            book that inherited it would be a book the planner refuses to
+            schedule anything from. Everyone here is ``ACTIVE`` except the
+            handful named in :attr:`~seed.dataset.Dataset.PROSPECTS`, who exist
+            so the status filter and the promote button have something real to
+            act on.
         """
         stored: List[Customer] = []
         for first, last, street, postcode, city, lat, lon in self.data.CUSTOMERS:  # noqa: E501
             customer_id = self.data.identifier("customer", f"{first} {last}")
             existing = await self.customers.get(customer_id)
             if existing is not None:
+                self.logger.debug("Customer %s is already seeded.", customer_id)
                 stored.append(existing)
                 continue
             stored.append(
@@ -583,10 +634,33 @@ class Seeder:
                         phone_number=f"+3361000{len(stored):04d}",  # noqa: E501
                         email=f"{first.lower()}.{last.lower()}@example.fr",
                         address=self._address(street, postcode, city, lat, lon),
+                        registration_status=self._registration_status(first, last),
                     )
                 )
             )
-        self.logger.info("Customer book holds %d people.", len(stored))
+        schedulable = [
+            customer
+            for customer in stored
+            if customer.registration_status.can_be_scheduled()
+        ]
+        if not schedulable:
+            # Every planning suite in the campaign would then compute an empty
+            # run and pass, which is the worst way for a seed to be wrong.
+            self.logger.error(
+                "Not one seeded customer can be scheduled; no planning run will "
+                "place anything."
+            )
+        elif len(schedulable) < len(stored) // 2:
+            self.logger.warning(
+                "Only %d of %d seeded customers can be scheduled.",
+                len(schedulable),
+                len(stored),
+            )
+        self.logger.info(
+            "Customer book holds %d people, %d of them schedulable.",
+            len(stored),
+            len(schedulable),
+        )
         return stored
 
     async def seed_accounts(self, company_id: str, assistants: List[Hca]) -> List[str]:  # noqa: E501

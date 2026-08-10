@@ -17,6 +17,7 @@ from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.hca.certification import Certification
 from models.people.hca.skill import Skill
 from models.people.hca import Hca
+from models.schemas.requests.hca.hca_filter import HcaFilter
 from storage.mappers.people.hca_mapper import HcaMapper
 from storage.orm.people.availability_row import AvailabilityRow
 from storage.orm.people.certification_row import CertificationRow
@@ -65,22 +66,53 @@ class HcaRepository(BaseRepository[HcaRow]):
         self,
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
+        hca_filter: Optional[HcaFilter] = None,
     ) -> Select[Tuple[HcaRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
         Args:
             search (Optional[str]): Case-insensitive fragment.
             contract_type (Optional[ContractType]): Restrict to one contract.
+            hca_filter (Optional[HcaFilter]): The richer filter. Its ``search``
+                and ``contract_type`` win over the two positional arguments
+                when both are given.
 
         Returns:
             Select[tuple[HcaRow]]: The filtered statement, without ordering or pagination.
+
+        Notes:
+            - Shared so a page and its total can never be computed from
+              different filters.
+            - ``search`` and ``contract_type`` survive as parameters because
+              other callers still pass them on their own. A caller with an
+              :class:`HcaFilter` passes that instead and the two named
+              arguments fall away.
         """
+        applied = hca_filter or HcaFilter()
+        self.logger.debug(
+            "Building the assistant query from %s.",
+            applied.model_dump(exclude_none=True),
+        )
+        if hca_filter is not None and search and applied.search:
+            # Both were given and they disagree. The filter wins, so say which
+            # fragment actually ran rather than leaving the caller to wonder.
+            self.logger.warning(
+                "Two searches were passed (%r and %r); the filter's %r is used.",
+                search,
+                applied.search,
+                applied.search,
+            )
+        search = applied.search or search
+        contract_type = applied.contract_type or contract_type
+        if applied.is_empty() and search is None and contract_type is None:
+            self.logger.info("No filter was given; the query is every assistant.")
+
         statement = select(HcaRow)
         if contract_type is not None:
             statement = statement.where(HcaRow.contract_type == contract_type.value)  # noqa: E501
         if search:
             pattern = f"%{search.strip().lower()}%"
-            statement: Select[tuple[HcaRow]] = statement.where(
+            statement = statement.where(
                 or_(
                     HcaRow.first_name.ilike(pattern),
                     HcaRow.last_name.ilike(pattern),
@@ -88,6 +120,42 @@ class HcaRepository(BaseRepository[HcaRow]):
                     HcaRow.city.ilike(pattern),
                 )
             )
+        # One column each, unlike ``search``: somebody who has decided the
+        # fragment is a postcode does not want it matched against a surname.
+        for fragment, column in (
+            (applied.city, HcaRow.city),
+            (applied.postal_code, HcaRow.postal_code),
+            (applied.email, HcaRow.email),
+        ):
+            if fragment:
+                statement = statement.where(
+                    column.ilike(f"%{fragment.strip().lower()}%")
+                )
+        if applied.phone:
+            typed = "".join(
+                character for character in applied.phone if character.isdigit()
+            )
+            if not typed:
+                # Everything typed was punctuation, so the predicate would be
+                # `LIKE '%%'` — every assistant, under a filter that says it is
+                # narrowing by telephone number.
+                self.logger.error(
+                    "Telephone filter %r holds no digit; it is dropped rather "
+                    "than matched as a wildcard.",
+                    applied.phone,
+                )
+            if typed:
+                statement = statement.where(HcaRow.phone_number.like(f"%{typed}%"))
+        if applied.field_employee is not None:
+            statement = statement.where(
+                HcaRow.field_employee.is_(applied.field_employee)
+            )
+        if applied.is_geocoded is not None:
+            resolved = HcaRow.latitude.is_not(None) & HcaRow.longitude.is_not(None)
+            statement = statement.where(resolved if applied.is_geocoded else ~resolved)
+        if applied.has_photo is not None:
+            has_photo = HcaRow.photo_url.is_not(None)
+            statement = statement.where(has_photo if applied.has_photo else ~has_photo)
         return statement
 
     ############################
@@ -575,6 +643,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         size: Optional[int] = None,
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
+        hca_filter: Optional[HcaFilter] = None,
     ) -> List[Hca]:
         """Return a page of assistants.
 
@@ -594,7 +663,9 @@ class HcaRepository(BaseRepository[HcaRow]):
             search,
             contract_type.value if contract_type else None,
         )
-        statement = self._build_query(search=search, contract_type=contract_type)  # noqa: E501
+        statement = self._build_query(
+            search=search, contract_type=contract_type, hca_filter=hca_filter
+        )  # noqa: E501
         statement = statement.order_by(HcaRow.last_name, HcaRow.first_name)
         rows = await self._fetch_all(self._paginate(statement, page, size))
         if not rows:
@@ -627,6 +698,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         self,
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
+        hca_filter: Optional[HcaFilter] = None,
     ) -> int:
         """Return how many assistants match a query.
 
@@ -638,7 +710,9 @@ class HcaRepository(BaseRepository[HcaRow]):
             int: The number of matching assistants.
         """
         return await self._count(
-            self._build_query(search=search, contract_type=contract_type)
+            self._build_query(
+                search=search, contract_type=contract_type, hca_filter=hca_filter
+            )
         )
 
     async def delete(self, hca_id: str) -> bool:

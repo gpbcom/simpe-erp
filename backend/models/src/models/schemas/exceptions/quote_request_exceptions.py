@@ -44,3 +44,25 @@ class MTQuoteLinesRequestInvalidLines(MTInvalidQuoteLinesRequestException):
         same, because the two payloads are answered by different routes and a
         caller reading the message should be told which one it failed.
     """
+
+
+class MTInvalidQuoteRescheduleRequestException(Exception):
+    """Exception raised when a reschedule payload is invalid."""
+
+
+class MTQuoteRescheduleRequestInvalidLineId(MTInvalidQuoteRescheduleRequestException):
+    """Exception raised when the line to move is not named."""
+
+
+class MTQuoteRescheduleRequestInvalidDay(MTInvalidQuoteRescheduleRequestException):
+    """Exception raised when the new day is not a date."""
+
+
+class MTQuoteRescheduleRequestInvalidWindow(MTInvalidQuoteRescheduleRequestException):
+    """Exception raised when the offered window is not a usable window.
+
+    Notes:
+        Whether it is *wide enough* for the work is decided by the quote line,
+        which is the thing that knows how long the service takes. This covers
+        only what the payload can judge on its own: real minutes, in order.
+    """

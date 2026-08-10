@@ -17,12 +17,27 @@ class RegistrationStatus(StrEnum):
     """Enumeration for the registration status of a customer.
 
     Attributes:
-        ACTIVE (str): The customer is registered and may be quoted and served.
+        ACTIVE (str): The customer is registered and served; their accepted
+            work is planned.
+        PROSPECT (str): The agency is in discussion with them. They may be
+            quoted, but no visit is ever planned for them — see
+            :meth:`can_be_scheduled`.
         STOPPED (str): The customer has stopped the service; no new quote or
             intervention may be created for them.
+
+    Notes:
+        **A prospect is not a lesser active customer, and not a stopped one.**
+        Somebody who has been quoted but has not signed is exactly the state
+        this enum had no word for: quoting them is the whole point, and routing
+        an assistant to their door before they have agreed is the failure the
+        third member exists to prevent.
+
+        This is the only status a *new* customer is given. Promotion to
+        :attr:`ACTIVE` is a manager's deliberate act.
     """
 
     ACTIVE = "active"
+    PROSPECT = "prospect"
     STOPPED = "stopped"
 
     @classmethod
@@ -30,9 +45,30 @@ class RegistrationStatus(StrEnum):
         """Return every registration-status value.
 
         Returns:
-            Tuple[str, ...]: ``("active", "stopped")``.
+            Tuple[str, ...]: ``("active", "prospect", "stopped")``.
         """
         return tuple(status.value for status in cls)
+
+    def can_be_scheduled(self) -> bool:
+        """Return whether a customer in this state may be given planned visits.
+
+        Returns:
+            bool: ``True`` only for an active customer.
+
+        Notes:
+            **The one rule the planner asks about.** A prospect may hold
+            accepted, priced, perfectly routable quotes and still produce no
+            requirement: the agency has not agreed to deliver the work, so
+            sending somebody to the door would be the error, not the omission.
+
+            Distinct from
+            :meth:`~models.people.customer.customer.Customer.is_active` even
+            though the two agree today. That one answers "what state is this
+            customer in"; this one answers "may the solver place their work",
+            and a later state — a customer suspended mid-contract, say — would
+            separate them.
+        """
+        return self is RegistrationStatus.ACTIVE
 
 
 @unique
@@ -212,19 +248,18 @@ class QuoteStatus(StrEnum):
         EXPIRED (str): Its validity date passed before an answer was given.
 
     Notes:
-        ``PENDING_VALIDATION`` sits between the draft and the commitment. An
-        assistant knows what a customer needs but does not set the agency's
-        prices, so a quote they write waits for a manager before its work is
-        committed. It is deliberately a status rather than a flag: a quote is in
-        exactly one place at a time, and a boolean beside the status would allow
-        the nonsense of an accepted quote still awaiting validation.
-
-        ``SENT`` is **no longer produced by any path**. Validation used to stop
-        there, needing a second acceptance that nothing on any screen asked for,
-        so a validated quote's work silently never reached a planning run; both
-        approval paths now end at ``ACCEPTED``. The member is kept because rows
-        stored in it before that change still exist, and the interface keeps its
-        tab and its accept button for exactly them.
+        - ``PENDING_VALIDATION`` sits between the draft and the commitment. An
+          assistant knows what a customer needs but does not set the agency's
+          prices, so a quote they write waits for a manager before its work is
+          committed. It is deliberately a status rather than a flag: a quote is in
+          exactly one place at a time, and a boolean beside the status would allow
+          the nonsense of an accepted quote still awaiting validation.
+        - ``SENT`` is **no longer produced by any path**. Validation used to stop
+          there, needing a second acceptance that nothing on any screen asked for,
+          so a validated quote's work silently never reached a planning run; both
+          approval paths now end at ``ACCEPTED``. The member is kept because rows
+          stored in it before that change still exist, and the interface keeps its
+          tab and its accept button for exactly them.
     """
 
     DRAFT = "draft"
@@ -286,7 +321,7 @@ class InterventionStatus(StrEnum):
         """Return every intervention-status value.
 
         Returns:
-            Tuple[str, ...]: The four supported statuses.
+            Tuple[str, ...]: The five supported statuses.
         """
         return tuple(status.value for status in cls)
 
@@ -403,31 +438,53 @@ class PlanningRunStatus(StrEnum):
         PENDING (str): Accepted and queued, not yet picked up.
         RUNNING (str): The solver is running.
         SUCCEEDED (str): The solver finished and the interventions were written.
+        PARTIAL (str): A plan was written, but some work could not be fitted.
         FAILED (str): The run ended on an error; see the run's error message.
+
+    Notes:
+        :attr:`PARTIAL` exists because a week that mostly works is worth
+        having. The run used to fail outright the moment one visit could not
+        be placed, which left the agency with the *previous* week's calendar
+        and a wall of text — safe, but it meant one impossible visit withheld
+        eighty-nine perfectly good ones.
+
+        It is deliberately **not** ``SUCCEEDED``. A calendar missing three
+        visits still looks like a calendar, and the visits quietly dropped are
+        the ones that end with somebody waiting at their door — so the state
+        has its own name, its own colour on the screen, and a report naming
+        every quote involved.
     """
 
     PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
+    PARTIAL = "partial"
     FAILED = "failed"
 
     def is_terminal(self) -> bool:
         """Return whether no further status change can follow this one.
 
         Returns:
-            bool: ``True`` for :attr:`SUCCEEDED` and :attr:`FAILED`.
+            bool: ``True`` for :attr:`SUCCEEDED`, :attr:`PARTIAL` and
+            :attr:`FAILED`.
 
         Notes:
-            Clients poll a run until this returns ``True``.
+            Clients poll a run until this returns ``True``. A partial run is
+            finished — the plan is written and nothing more will happen to it
+            — so a client that kept polling would wait forever.
         """
-        return self in (PlanningRunStatus.SUCCEEDED, PlanningRunStatus.FAILED)
+        return self in (
+            PlanningRunStatus.SUCCEEDED,
+            PlanningRunStatus.PARTIAL,
+            PlanningRunStatus.FAILED,
+        )
 
     @classmethod
     def values(cls) -> Tuple[str, ...]:
         """Return every planning-run-status value.
 
         Returns:
-            Tuple[str, ...]: The four supported statuses.
+            Tuple[str, ...]: The five supported statuses.
         """
         return tuple(status.value for status in cls)
 
@@ -593,7 +650,7 @@ class HcaApplicationStatus(StrEnum):
         Returns:
             bool: ``True`` for approved and rejected.
         """
-        return self in (HcaApplicationStatus.APPROVED, HcaApplicationStatus.REJECTED)
+        return self in (HcaApplicationStatus.APPROVED, HcaApplicationStatus.REJECTED)  # noqa: E501
 
 
 @unique

@@ -72,6 +72,7 @@ data:
       # fifth the length of the solve it needed, truncated the search, and
       # logged that the plan was not reproducible. Sized in values.yaml.
       solver_deterministic_budget: {{ .Values.workerPlanning.solverDeterministicBudget }}
+      solver_optimisation_budget: {{ .Values.workerPlanning.solverOptimisationBudget }}
       # A safety net, not a budget. It bounds a pathological instance; a solve
       # that reaches it has stopped being reproducible and says so at WARNING.
       solver_time_limit_seconds: {{ .Values.workerPlanning.solverTimeLimitSeconds }}
@@ -81,6 +82,7 @@ data:
       # after less real search. The check in templates/common/guards.yaml fails
       # the render if the two disagree.
       solver_workers: {{ .Values.workerPlanning.solverWorkers }}
+      solver_day_concurrency: {{ .Values.workerPlanning.solverDayConcurrency }}
       travel_weight: 1
       unassigned_penalty: 100000
 

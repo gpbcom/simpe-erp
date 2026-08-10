@@ -18,7 +18,7 @@ import yaml
 from api.dependencies import (
     close_connection_manager,
     get_app_config,
-    get_photo_storage,
+    get_object_storage,
     start_notification_relay,
     stop_notification_relay,
 )
@@ -77,8 +77,10 @@ def setup_logging(config_path: Optional[str] = None) -> None:
         than aborting start-up: losing structured logs is bad, refusing to
         serve because of it is worse.
     """
-    chosen = config_path if config_path else os.environ.get(
-        LOGGER_PATH_ENV, DEFAULT_LOGGER_PATH
+    chosen = (
+        config_path
+        if config_path
+        else os.environ.get(LOGGER_PATH_ENV, DEFAULT_LOGGER_PATH)
     )
     resolved = Path(chosen)
     if not resolved.exists():
@@ -133,7 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     started_logger.info("Geocoding configured against %s.", geocoding.base_url)
     try:
-        if await get_photo_storage().ensure_bucket():
+        if await get_object_storage().ensure_bucket():
             started_logger.info("Photograph bucket %s is ready.", config.s3.bucket)
         else:
             started_logger.warning(

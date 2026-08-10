@@ -34,6 +34,11 @@ class InterventionRequirement(BaseModel):
         MAX_DURATION_MINUTES (ClassVar[int]): Longest single service accepted.
         id (str): Identifier, stable for the duration of one solve.
         quote_line_id (str): The accepted quote line this came from.
+        quote_reference (str): The quote's human-readable reference. Carried
+            so that a visit which cannot be placed can be reported against the
+            document an operator actually has in front of them, rather than
+            against an identifier that appears on no screen.
+        customer_name (str): Who the work is for, for the same reason.
         customer_id (str): Whose home the work happens at.
         name (str): What the service is.
         intervention_type_id (str): The catalog entry it sells.
@@ -80,6 +85,14 @@ class InterventionRequirement(BaseModel):
 
     id: str = Field(description="Identifier, stable for one solve.")
     quote_line_id: str = Field(description="The accepted quote line this came from.")
+    quote_reference: str = Field(
+        default="",
+        description="Human-readable reference of the quote it was sold on.",
+    )
+    customer_name: str = Field(
+        default="",
+        description="Who the work is for, for a message somebody has to read.",
+    )
     customer_id: str = Field(description="Whose home the work happens at.")
     name: str = Field(description="What the service is.")
     intervention_type_id: str = Field(description="The catalog entry it sells.")

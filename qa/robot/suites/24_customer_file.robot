@@ -1,12 +1,19 @@
 *** Settings ***
-Documentation    The customer's file, and the two controls that end or extend care.
+Documentation    The customer's file, and the decisions taken from it.
 ...
 ...              "Bénéficiaires" sat in the navigation for a long time with no
 ...              screen behind it: the click fell through to the catch-all and
 ...              redirected home, which reads as the click not registering.
-...              This suite covers the screen that now answers it, and the two
-...              decisions taken from it — ending an arrangement early, and
-...              letting one renew itself.
+...              This suite covers the screen that now answers it, how the book
+...              is narrowed, and the three decisions taken from a file —
+...              promoting a prospect into the planning, ending an arrangement
+...              early, and letting one renew itself.
+...
+...              **Promotion is the one with teeth.** A prospect may hold
+...              accepted, priced, perfectly routable work that every planning
+...              run deliberately leaves out; promoting them is what enters it
+...              into the next one, so the promoted status is asserted on the
+...              server rather than on the chip.
 ...
 ...              **Idempotent by construction.** Every quote it interrupts or
 ...              renews is one it created, deleted by identifier in the
@@ -107,7 +114,9 @@ A Beneficiary Can Be Registered From The Book
     ${stored}=    Wait Until Keyword Succeeds    10s    1s
     ...    Customer Stored Under    ${surname}
     Append To List    ${CREATED_CUSTOMER_IDS}    ${stored}[id]
-    Should Be Equal    ${stored}[registration_status]    active
+    # A prospect, not a customer. The agency has taken their details, not
+    # agreed to serve them, and nothing is scheduled until somebody says so.
+    Should Be Equal    ${stored}[registration_status]    prospect
     Should Be Equal    ${stored}[address][city]    Paris
     [Teardown]    Clear The Search
 
@@ -275,6 +284,120 @@ An Assistant Cannot End Somebody's Care
     ...    ${API_URL}/api/v1/quotes/${FIXTURE_QUOTE_ID}/interrupt
     ...    json=${body}    headers=${headers}    expected_status=403
 
+A Prospect Can Be Promoted To An Active Customer
+    [Documentation]    **The requirement: promote, and only for a manager.**
+    ...
+    ...    Registered through the API rather than through the dialog, because
+    ...    what is under test is the promotion and not the form.
+    ...
+    ...    The control is offered only on a prospect. One disabled on all ninety
+    ...    rows buries the six that are waiting, so an active customer simply
+    ...    does not have one.
+    ...
+    ...    Idempotent: the prospect is this run's, quoted for nothing, and
+    ...    deleted by identifier in the teardown.
+    [Tags]    smoke    customers    prospect
+    ${prospect}=    Register A Prospect
+    Append To List    ${CREATED_CUSTOMER_IDS}    ${prospect}[id]
+    Open The File Of    ${prospect}[id]
+    Wait For Elements State    [data-testid="customer-is-prospect"]    visible
+
+    Click    [data-testid="promote-customer-${prospect}[id]"]
+    Wait For Elements State    [data-testid="customer-is-prospect"]    detached
+
+    # Asserted on the server. A chip that changed because the drawer re-read a
+    # cache and a record that was never written look identical on screen.
+    ${stored}=    Customer By Id    ${prospect}[id]
+    Should Be Equal    ${stored}[registration_status]    active
+    [Teardown]    Run Keywords    Close The File    AND    Clear The Search
+
+An Active Customer Is Not Offered Promotion
+    [Documentation]    There is nothing to promote them to.
+    ...
+    ...    Pressing it would be a 409, which is the right answer to a request
+    ...    nobody should have been able to make. Absent is better than refused.
+    [Tags]    customers    prospect
+    Open The File Of The Fixture Customer
+    ${offered}=    Get Element Count    [data-testid="customer-is-prospect"]
+    Should Be Equal As Integers    ${offered}    0
+    [Teardown]    Close The File
+
+An Assistant Cannot Promote Anybody
+    [Documentation]    Deciding the agency will serve a household is a
+    ...    manager's call, and an administrator's.
+    ...
+    ...    Sent by hand: the control is absent from an assistant's screen only
+    ...    because the whole entry is, and a missing button proves nothing
+    ...    about what the API accepts.
+    [Tags]    smoke    customers    prospect    access
+    ${prospect}=    Register A Prospect
+    Append To List    ${CREATED_CUSTOMER_IDS}    ${prospect}[id]
+    ${token}=    Sign In Through The API    ${ASSISTANT_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    POST
+    ...    ${API_URL}/api/v1/customers/${prospect}[id]/promote
+    ...    headers=${headers}    expected_status=403
+
+Promoting Somebody Twice Is Refused Rather Than Ignored
+    [Documentation]    Two managers pressing at once.
+    ...
+    ...    A control that succeeds silently when it did nothing is one somebody
+    ...    presses again and then wonders which press took effect.
+    [Tags]    customers    prospect
+    ${prospect}=    Register A Prospect
+    Append To List    ${CREATED_CUSTOMER_IDS}    ${prospect}[id]
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    POST
+    ...    ${API_URL}/api/v1/customers/${prospect}[id]/promote
+    ...    headers=${headers}    expected_status=200
+    POST
+    ...    ${API_URL}/api/v1/customers/${prospect}[id]/promote
+    ...    headers=${headers}    expected_status=409
+
+The Book Can Be Narrowed To The Prospects
+    [Documentation]    **The requirement: filter the book on its fields.**
+    ...
+    ...    The prospects tab is the one that matters: a prospect can be holding
+    ...    accepted, priced work that no planning run will touch, and this is
+    ...    how a manager finds them.
+    [Tags]    smoke    customers    prospect    filters
+    ${prospect}=    Register A Prospect
+    Append To List    ${CREATED_CUSTOMER_IDS}    ${prospect}[id]
+    Navigate To    /customers
+    Wait For Elements State    [data-testid="customers-grid"]    visible
+
+    Click    [data-testid="customer-tab-prospect"]
+    Wait For Elements State
+    ...    [data-testid="customer-status-${prospect}[id]"]    visible
+    # The filter is in the URL, so a narrowed book is a link somebody can send.
+    ${url}=    Get Url
+    Should Contain    ${url}    status=prospect
+    # The fixture customer is active, so the prospects tab must not hold them.
+    ${active}=    Get Element Count    [data-testid="customer-name-${CUSTOMER_ID}"]
+    Should Be Equal As Integers    ${active}    0
+
+    Click    [data-testid="customer-tab-active"]
+    Wait For Elements State    [data-testid="customer-name-${CUSTOMER_ID}"]    visible
+    [Teardown]    Clear The Search
+
+A Town Filter Narrows The Book And Survives A Reload
+    [Documentation]    The filters are URL state, not component state.
+    ...
+    ...    Reloaded, a filter held in a ``useState`` comes back cleared and the
+    ...    manager is reading the whole book believing they are not.
+    [Tags]    customers    filters
+    Click    [data-testid="toggle-customer-filters"]
+    Wait For Elements State    [data-testid="customer-filters"]    visible
+    Fill Text    [data-testid="customer-filter-city"]    ZZZ-nowhere-ZZZ
+    Wait For Elements State    [data-testid="no-customer"]    visible
+
+    Reload
+    Wait For Elements State    [data-testid="no-customer"]    visible
+    ${url}=    Get Url
+    Should Contain    ${url}    city=ZZZ-nowhere-ZZZ
+    [Teardown]    Clear The Search
+
 
 *** Keywords ***
 Open The Customer Screen
@@ -383,6 +506,51 @@ Collect Any Successors
         Append To List    ${CREATED_QUOTE_IDS}    ${quote_id}
     END
 
+Register A Prospect
+    [Documentation]    Register a household through the API and return it.
+    ...
+    ...    They come back a prospect because that is the model's default —
+    ...    asserted here rather than assumed, since every promotion test above
+    ...    is meaningless if the fixture starts out active.
+    ${suffix}=    Unique Suffix
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Catenate    SEPARATOR=
+    ...    {"first_name": "Prospect", "last_name": "Qatest-${suffix}",
+    ...    "phone_number": "+33600000198", "email": "${suffix}@qa.simple-erp.fr",
+    ...    "address": {"street": "12 rue de Rivoli", "postal_code": "75004",
+    ...    "city": "Paris", "country": "France"}}
+    ${response}=    POST
+    ...    ${API_URL}/api/v1/customers
+    ...    data=${body}
+    ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
+    ...    expected_status=201
+    Should Be Equal    ${response.json()}[registration_status]    prospect
+    RETURN    ${response.json()}
+
+Customer By Id
+    [Documentation]    Return one customer as the server holds them.
+    [Arguments]    ${customer_id}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/customers/${customer_id}
+    ...    headers=${headers}    expected_status=200
+    RETURN    ${response.json()}
+
+Open The File Of
+    [Documentation]    Open the drawer on one customer, finding them by name.
+    ...
+    ...    Searched for first: a household this run registered sits at the end
+    ...    of a book of forty and the grid shows twenty-five to a page.
+    [Arguments]    ${customer_id}
+    Navigate To    /customers
+    Wait For Elements State    [data-testid="customers-grid"]    visible
+    Fill Text    [data-testid="customer-search"]    Qatest
+    Wait For Elements State    [data-testid="customer-name-${customer_id}"]    visible
+    Click    [data-testid="customer-name-${customer_id}"]
+    Wait For Elements State    [data-testid="customer-detail"]    visible
+
 Open The File Of The Fixture Customer
     [Documentation]    Open the drawer on the customer the fixture is for.
     Navigate To    /customers
@@ -398,7 +566,14 @@ Close The File
 
 Clear The Search
     [Documentation]    Put the grid back to the whole book.
+    ...
+    ...    The button rather than emptying the box: the box is one of eight
+    ...    filters now, and a status tab left on would leave the next test
+    ...    reading a narrowed book with nothing saying so. It is only rendered
+    ...    when something is actually filtered, hence the ignored error.
+    Run Keyword And Ignore Error    Click    [data-testid="clear-customer-filters"]
     Run Keyword And Ignore Error    Fill Text    [data-testid="customer-search"]    ${EMPTY}
+    Sleep    0.5s
 
 Return To The Manager And The Customer Screen
     [Documentation]    Sign back in as the manager and reopen the book.

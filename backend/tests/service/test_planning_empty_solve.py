@@ -10,7 +10,7 @@ import pytest
 
 # First-party imports
 from models.configuration.planning_config import PlanningConfig
-from models.enums import ContractType
+from models.enums import ContractType, UnplacedReason
 from models.geo.geo_point import GeoPoint
 from models.people.hca import Hca
 from models.planning.intervention.intervention_requirement import (
@@ -66,6 +66,10 @@ def _requirement(requirement_id: str) -> InterventionRequirement:
     return InterventionRequirement(
         id=requirement_id,
         quote_line_id=requirement_id,
+        # One quote for every visit in these fixtures, so a report grouped by
+        # quote has something real to group by.
+        quote_reference="DEV-2026-0001",
+        customer_name="Marie Durand",
         customer_id=f"customer-{requirement_id}",
         name="Aide a la toilette",
         intervention_type_id="type-1",
@@ -115,7 +119,7 @@ def _empty(status_name: str, requirements: List[InterventionRequirement]) -> Pla
 
 
 def _refuse(solution: PlanningSolution, requirements) -> str:
-    """Run the refusal and return the message it raises.
+    """Run the report over an empty solve and return the message it raises.
 
     Args:
         solution (PlanningSolution): What the solver returned.
@@ -123,9 +127,14 @@ def _refuse(solution: PlanningSolution, requirements) -> str:
 
     Returns:
         str: The failure message.
+
+    Notes:
+        Only an **empty** solve raises now. A solve that placed some of the
+        week returns a report instead and the plan is stored, so a partial
+        result goes through :func:`_report` below.
     """
     with pytest.raises(MTPlanningInfeasible) as raised:
-        _service()._require_complete(
+        _service()._report_unplaced(
             solution,
             requirements,
             [_hca()],
@@ -206,7 +215,7 @@ class TestASolveThatProducedNothing:
         requirements = [_requirement("req-1")]
 
         with pytest.raises(MTPlanningInfeasible) as raised:
-            _service()._require_complete(
+            _service()._report_unplaced(
                 _empty("UNKNOWN", requirements),
                 requirements,
                 [_hca()],
@@ -237,90 +246,115 @@ def _partial(status_name: str) -> PlanningSolution:
     )
 
 
-class TestAPartialPlanTheSolverProvedBest:
-    """Tests the per-visit diagnosis where the solver really did settle it."""
+class TestAPartialPlanIsKeptAndReported:
+    """Tests for a week that mostly worked.
 
-    def test_an_optimal_solve_missing_one_visit_names_it(self) -> None:
-        """**The case the per-visit reasons were written for.**
+    Notes:
+        **This is where the rule changed.** A run used to fail outright the
+        moment one visit could not be placed: the whole week was withheld, the
+        agency kept the previous calendar, and the operator got one long
+        sentence quoting a solver status and a configuration key. Safe, and
+        unusable — one impossible visit took eighty-nine good ones with it.
+
+        The plan is now stored and the gap is reported. What must not happen
+        is the gap becoming invisible, so these tests pin the report itself:
+        every unplaced visit is accounted for, grouped under the quote it was
+        sold on, with the customer named and a reason attached.
+
+        An empty solve is still refused, and the class above still proves it.
+        Nothing is stored in that case because nothing was found.
+    """
+
+    def _report(
+        self, solution: PlanningSolution, requirements, radius_km: float = 200.0
+    ):
+        """Run the report and return the quotes it names.
+
+        Args:
+            solution (PlanningSolution): What the solver returned.
+            requirements: The submitted work.
+            radius_km (float): The intervention radius to diagnose under.
+
+        Returns:
+            List[UnplacedQuote]: One entry per quote with unplaced work.
+        """
+        return _service()._report_unplaced(
+            solution,
+            requirements,
+            [_hca()],
+            PlanningSettings(max_intervention_radius_km=radius_km),
+        )
+
+    def test_a_partial_plan_is_no_longer_refused(self) -> None:
+        """The run continues, where it used to raise.
 
         Notes:
-            ``OPTIMAL`` means the search finished: it looked everywhere and
-            this was the best plan there is. An unplaced visit costs
-            ``unassigned_penalty``, so one left out of an optimal plan really
-            could not be fitted — "travel, lunch and the other visits leave no
-            room" is a finding rather than a guess.
+            The single most important assertion in this file. If this starts
+            raising again, an agency loses a working week over one visit.
         """
         requirements = [_requirement("req-1"), _requirement("req-2")]
 
-        message = _refuse(_partial("OPTIMAL"), requirements)
+        report = self._report(_partial("FEASIBLE"), requirements)
 
-        assert "1 of 2 visit(s) could not be scheduled" in message
-        assert "Aide a la toilette" in message
+        assert report != []
 
-
-class TestAPartialPlanTheSolverNeverProvedBest:
-    """Tests for a plan that merely happens to be the best one *found*.
-
-    Notes:
-        **This is what a run reported as "2 of 77 visits could not be
-        scheduled — travel, the lunch break and the other visits that day
-        leave no room for it".** The status was ``FEASIBLE``: the solver had
-        found a plan and stopped on its deterministic budget without proving
-        it was the best one.
-
-        An unplaced visit is the most expensive term in the objective — a
-        hundred thousand against a travel minute's one — so a search that could
-        have placed those two would have. Leaving them out is evidence the
-        search ran out of budget, not that the day is full. Saying otherwise
-        sends a manager to move a customer's hours to solve an arithmetic
-        problem.
-    """
-
-    def test_a_feasible_solve_does_not_blame_travel_and_lunch(self) -> None:
-        """Nothing about those visits was established."""
+    def test_the_report_names_the_quote_that_could_not_be_fitted(self) -> None:
+        """A visit identifier is not something anybody can act on."""
         requirements = [_requirement("req-1"), _requirement("req-2")]
 
-        message = _refuse(_partial("FEASIBLE"), requirements)
+        report = self._report(_partial("FEASIBLE"), requirements)
 
-        assert "lunch" not in message
-        assert "leave no room" not in message
+        assert [entry.quote_reference for entry in report] == ["DEV-2026-0001"]
 
-    def test_a_feasible_solve_still_reports_the_size_of_the_gap(self) -> None:
-        """How much did not fit is a fact, and the number people act on."""
+    def test_the_report_covers_every_unplaced_visit_and_no_others(self) -> None:
+        """Both directions: nothing invented, and nothing quietly dropped."""
         requirements = [_requirement("req-1"), _requirement("req-2")]
 
-        message = _refuse(_partial("FEASIBLE"), requirements)
+        report = self._report(_partial("FEASIBLE"), requirements)
 
-        assert "1 of 2 visit(s) unscheduled" in message
-        assert "FEASIBLE" in message
+        placed = [visit.requirement_id for entry in report for visit in entry.visits]
+        assert placed == ["req-2"]
 
-    def test_a_feasible_solve_names_the_lever_before_the_rota(self) -> None:
-        """The budget is the thing to try first, and the message says so."""
+    def test_each_unplaced_visit_carries_a_reason(self) -> None:
+        """"It did not fit" is not an answer anybody can act on."""
         requirements = [_requirement("req-1"), _requirement("req-2")]
 
-        message = _refuse(_partial("FEASIBLE"), requirements)
+        report = self._report(_partial("FEASIBLE"), requirements, radius_km=0.1)
 
-        assert "solver_deterministic_budget" in message
-        assert "before moving anybody's hours" in message
+        reasons = [visit.reason.value for entry in report for visit in entry.visits]
+        assert reasons == ["out-of-radius"]
 
-    def test_a_feasible_solve_says_nothing_was_proved(self) -> None:
-        """"Not placed" and "cannot be placed" are different claims."""
-        requirements = [_requirement("req-1"), _requirement("req-2")]
+    def test_several_visits_of_one_quote_are_one_finding(self) -> None:
+        """Three visits blocked by one cause are one problem, not three.
 
-        message = _refuse(_partial("FEASIBLE"), requirements)
+        Notes:
+            Repeating the same sentence per visit is what made the old message
+            unreadable at ninety visits.
+        """
+        requirements = [_requirement(f"req-{index}") for index in range(4)]
+        solution = PlanningSolution(
+            assignments=[],
+            unassigned_requirement_ids=["req-1", "req-2", "req-3"],
+            total_travel_minutes=10,
+            is_feasible=True,
+            status_name="FEASIBLE",
+        )
 
-        assert "not a proof" in message
+        report = self._report(solution, requirements, radius_km=0.1)
 
-    def test_a_specific_obstacle_survives_into_the_message(self) -> None:
-        """A visit nobody can reach is a fact whatever the search then did."""
-        requirements = [_requirement("req-1"), _requirement("req-2")]
+        assert len(report) == 1
+        assert len(report[0].visits) == 3
+        assert report[0].reasons() == [UnplacedReason.OUT_OF_RADIUS]
 
-        with pytest.raises(MTPlanningInfeasible) as raised:
-            _service()._require_complete(
-                _partial("FEASIBLE"),
-                requirements,
-                [_hca()],
-                PlanningSettings(max_intervention_radius_km=0.1),
-            )
+    def test_a_complete_plan_reports_nothing(self) -> None:
+        """Silence is the right answer when the whole week fitted."""
+        requirements = [_requirement("req-1")]
+        solution = PlanningSolution(
+            assignments=[],
+            unassigned_requirement_ids=[],
+            total_travel_minutes=10,
+            is_feasible=True,
+            status_name="OPTIMAL",
+        )
 
-        assert "out-of-radius" in str(raised.value)
+        assert self._report(solution, requirements) == []

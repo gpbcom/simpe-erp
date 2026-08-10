@@ -299,6 +299,19 @@ class Dataset:
         ),
     )
 
+    #: The customers seeded as **prospects** rather than active ones, by name.
+    #:
+    #: A prospect may be quoted and is never planned, so the seeded book needs
+    #: a few of them for the customers screen's status filter and its promote
+    #: button to have anything to act on — and for the planning suites to prove
+    #: that a prospect's accepted work really is left out of a run.
+    #:
+    #: Deliberately **not** the first customer of any seeded assistant: that is
+    #: the one the portfolio, quote-editor and customer-file suites resolve to
+    #: with ``[0]``, and making them unschedulable would break those suites for
+    #: a reason they are not testing. Kept to two, at the end of the book.
+    PROSPECTS: ClassVar[Tuple[str, ...]] = ("Lucien Guillot", "Renee Berger")
+
     # (first name, last name, street, postcode, city, lat, lon)
     CUSTOMERS: ClassVar[Tuple[Tuple, ...]] = (
         ("Marie", "Durand", "12 rue de Rivoli", "75004", "Paris", 48.8558, 2.3588),

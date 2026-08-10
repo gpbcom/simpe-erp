@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import UTC, datetime
 from typing import Optional
 
 # Third-party imports
@@ -12,6 +13,8 @@ from models.schemas.exceptions import (
     MTCompanyProfileUpdateRequestInvalidName,
     MTCompanyProfileUpdateRequestInvalidRegistrationNumber,
 )
+from models.companies.company import Company
+from models.companies.exceptions import MTCompanyInvalidIban
 from models.schemas.requests.companies.company_profile_update_request import (
     CompanyProfileUpdateRequest,
 )
@@ -138,6 +141,13 @@ class TestCompanyProfileUpdateRequest:
             quote had to carry them. They belong on this payload — the
             administrator-gated one — because the agency's legal identity
             is not part of running the week.
+
+            ``iban`` and ``bic`` joined them for the same reason: a customer
+            told what to pay has to be told where. ``logo_url`` did **not**,
+            and its absence is the point — the logo is written only by the
+            upload route, which puts the object in the bucket and then records
+            where it put it, so no hand-crafted payload here can repoint the
+            field at an image this application does not own.
         """
         request = CompanyProfileUpdateRequest(name="Agency")
 
@@ -152,4 +162,79 @@ class TestCompanyProfileUpdateRequest:
             "rcs_number",
             "vat_number",
             "phone_number",
+            "iban",
+            "bic",
         }
+
+
+class TestApplyingTheProfileToAnAgency:
+    """Tests for merging the payload onto the agency it describes."""
+
+    def test_the_submitted_fields_are_written(self) -> None:
+        """The ordinary case: what was sent is what the agency now says."""
+        stored = Company(id="company-1", name="Old Name")
+        request = CompanyProfileUpdateRequest(
+            name="Aide et Soins",
+            iban="FR76 3000 6000 0112 3456 7890 189",
+            bic="bnpafrpp",
+        )
+
+        merged = request.apply_to(stored)
+
+        assert merged.name == "Aide et Soins"
+        assert merged.iban == "FR7630006000011234567890189"
+        assert merged.bic == "BNPAFRPP"
+
+    def test_the_domain_rules_are_re_applied(self) -> None:
+        """**The bug this method exists to prevent.**
+
+        Notes:
+            ``model_copy(update=...)`` writes attributes straight onto the new
+            instance without running a single validator, so a route built that
+            way would store an IBAN with a digit wrong exactly as sent. The
+            digits below are transposed: every shape rule passes and only the
+            check digits fail.
+        """
+        stored = Company(id="company-1", name="Old Name")
+        request = CompanyProfileUpdateRequest(
+            name="Aide et Soins", iban="FR7630006000011234567809189"
+        )
+
+        with pytest.raises(MTCompanyInvalidIban):
+            request.apply_to(stored)
+
+    def test_the_fields_the_payload_does_not_own_survive(self) -> None:
+        """The stored record is the base, not a blank one.
+
+        Notes:
+            ``logo_url`` matters most here. It is written only by the upload
+            route, so a profile save that dropped it would silently remove the
+            agency's letterhead from every quote it prints.
+        """
+        stored = Company(
+            id="company-1",
+            name="Old Name",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            logo_url="https://s3.example/simple-erp/company-logos/company-1/a.png",
+        )
+
+        merged = CompanyProfileUpdateRequest(name="Aide et Soins").apply_to(stored)
+
+        assert merged.id == "company-1"
+        assert merged.created_at == stored.created_at
+        assert merged.logo_url == stored.logo_url
+
+    def test_an_omitted_field_is_cleared(self) -> None:
+        """A full-replacement payload, and the screen sends every field.
+
+        Notes:
+            The form posts what it holds, so a field the administrator emptied
+            arrives as ``None`` and must land as ``None``. Merging only the
+            fields that are set would make clearing an obsolete VAT number
+            impossible through the one screen that offers it.
+        """
+        stored = Company(id="company-1", name="Old Name", vat_number="FR12345678901")
+
+        merged = CompanyProfileUpdateRequest(name="Old Name").apply_to(stored)
+
+        assert merged.vat_number is None

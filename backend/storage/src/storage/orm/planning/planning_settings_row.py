@@ -29,24 +29,20 @@ class PlanningSettingsRow(Base):
         updated_at (datetime): Last-update timestamp.
 
     Notes:
-        One row, with a fixed textual primary key rather than a UUID. These are
-        agency-wide rules; a table that can hold two of them raises the
-        question of which the solver read, and the answer would depend on
-        insertion order.
-
-        ``updated_by`` is deliberately not a foreign key to ``users``. It is an
-        audit trail, and an audit trail that disappears when the account is
-        deleted is not one — the question "who halved the radius?" outlives the
-        person who left.
+        - One row, with a fixed textual primary key rather than a UUID. These are
+          agency-wide rules; a table that can hold two of them raises the
+          question of which the solver read, and the answer would depend on
+          insertion order.
+        - ``updated_by`` is deliberately not a foreign key to ``users``. It is an
+          audit trail, and an audit trail that disappears when the account is
+          deleted is not one — the question "who halved the radius?" outlives the
+          person who left.
     """
 
     __tablename__ = "planning_settings"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     max_intervention_radius_km: Mapped[float] = mapped_column(Float, nullable=False)
-    # Minutes from midnight, not a TIME column. This is the unit the solver
-    # works in, and storing a TIME would mean converting on every read of a
-    # value that is never displayed as a clock time except in one report.
     day_start_minute: Mapped[int] = mapped_column(Integer, nullable=False)
     day_end_minute: Mapped[int] = mapped_column(Integer, nullable=False)
     lunch_break_minutes: Mapped[int] = mapped_column(Integer, nullable=False)

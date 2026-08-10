@@ -11,7 +11,7 @@ import pytest
 # First-party imports
 from models.catalog.intervention_type import InterventionType
 from models.configuration.planning_config import PlanningConfig
-from models.enums import ContractType, UnplacedReason
+from models.enums import ContractType, UnplacedReason, RegistrationStatus
 from models.geo.geo_point import GeoPoint
 from models.people.hca.certification import Certification
 from models.people.hca import Hca
@@ -186,7 +186,9 @@ class TestSkillConstraint:
             travel. Sending somebody who cannot use a hoist to a visit that
             needs one is worse than sending nobody.
         """
-        solution = _solve(config, [_requirement(skill_codes=["LEVE-PERSONNE"])], [_hca()])
+        solution = _solve(
+            config, [_requirement(skill_codes=["LEVE-PERSONNE"])], [_hca()]
+        )
 
         assert solution.unassigned_requirement_ids == ["req-1"]
 
@@ -358,13 +360,9 @@ class TestSkillDiagnosis:
 
         assert explained[0].reason is UnplacedReason.MISSING_SKILL
 
-    def test_later_reasons_only_consider_the_able(
-        self, config: PlanningConfig
-    ) -> None:
+    def test_later_reasons_only_consider_the_able(self, config: PlanningConfig) -> None:
         """ "All 7 assistants are out of radius" is wrong when one was able."""
-        able_but_far = _hca(
-            "hca-1", skills=[Skill(name="Leve", code="LEVE-PERSONNE")]
-        )
+        able_but_far = _hca("hca-1", skills=[Skill(name="Leve", code="LEVE-PERSONNE")])
         others = [_hca(f"hca-{index}") for index in range(2, 8)]
 
         explained = _service(config).explain_unplaced(
@@ -434,10 +432,16 @@ def _quote(line_codes: Optional[List[str]]) -> Quote:
 
 
 def _customer() -> Customer:
-    """Build a geocoded customer the work happens at.
+    """Build a geocoded, active customer the work happens at.
 
     Returns:
         Customer: The customer.
+
+    Notes:
+        **Active, stated rather than defaulted.** The model now defaults to
+        ``PROSPECT``, whose accepted work the planner deliberately leaves out —
+        so a customer built without a status would make every test here assert
+        an empty plan for a reason that has nothing to do with skills.
     """
     return Customer(
         id="customer-1",
@@ -452,6 +456,7 @@ def _customer() -> Customer:
             "latitude": NEARBY.latitude,
             "longitude": NEARBY.longitude,
         },
+        registration_status=RegistrationStatus.ACTIVE,
     )
 
 

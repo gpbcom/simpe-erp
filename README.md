@@ -125,7 +125,7 @@ rather than a message.
 | Docker Engine | 24 or newer |
 | Docker Compose | v2 (`docker compose`, not `docker-compose`) |
 | Memory | ~5 GB free — the solver and the broker are the hungry parts, and the observability chain adds about a gigabyte |
-| Ports | 5173, 8000, 5432, 5672, 15672, 9000, 9001, 1025, 8025, 9101, 9102, and 3000, 3100, 9090, 4317, 4318 for observability |
+| Ports | 5173, 8000, 5432, 5672, 15672, 9000, 9001, 1025, 8025, 9101, 9102, and 3000, 3101, 9090, 4317, 4318 for observability |
 
 The development overlay publishes every one of those ports so you can reach the
 database and the broker directly. If something already holds one, either stop it
@@ -203,7 +203,7 @@ more containers and roughly a gigabyte of memory, which is the deliberate trade.
 |---|---|
 | Grafana | <http://localhost:3000> — no sign-in, anonymous admin · <http://localhost:3000/explore> to query the logs |
 | Prometheus | <http://localhost:9090> · [targets](http://localhost:9090/targets) · [rules](http://localhost:9090/rules) · [alerts](http://localhost:9090/alerts) |
-| Loki | <http://localhost:3100/ready> · <http://localhost:3100/metrics> — an API, not a UI; read the logs in Grafana |
+| Loki | <http://localhost:3101/ready> · <http://localhost:3101/metrics> — an API, not a UI; read the logs in Grafana. Published on 3101 because the RobotCode editor extension holds 3100 |
 | OTLP ingest | `localhost:4317` (gRPC) · `localhost:4318` (HTTP) — endpoints the collector accepts spans on, not pages |
 
 **Loki is published for `curl`, not for a browser** — it serves an API and no

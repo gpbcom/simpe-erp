@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { EntityFilterBar } from '@/components/filters/EntityFilterBar';
+import type { FilterDetail, FilterTab } from '@/components/filters/EntityFilterBar';
+import { useEntityFilter } from '@/components/filters/entityFilter';
+import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -14,6 +18,36 @@ import { useInterventionTypes, usePricingRules } from '@/api/queries';
 import { InterventionTypeDialog } from './InterventionTypeDialog';
 import { formatMoney } from '@/utils/format';
 import type { InterventionType } from '@/api/types';
+
+
+/** Which of the catalog filter's fields are text, flags and closed lists. */
+const CATALOG_FILTER_SPEC: EntityFilterSpec = {
+  textFields: ['search', 'code', 'name'],
+  flagFields: ['is_active'],
+  enumFields: { service_category: ['necessity', 'comfort'] },
+};
+
+/** The two categories a service can belong to; the split an accountant reads. */
+const CATALOG_TABS: FilterTab[] = [
+  { key: 'all', label: 'catalog.filter_all' },
+  { key: 'necessity', value: 'necessity', label: 'catalog.filter_necessity' },
+  { key: 'comfort', value: 'comfort', label: 'catalog.filter_comfort' },
+];
+
+/** What is folded away behind "more filters". */
+const CATALOG_DETAILS: FilterDetail[] = [
+  { field: 'code', label: 'catalog.filterCode', kind: 'text' },
+  { field: 'name', label: 'catalog.filterName', kind: 'text' },
+  {
+    field: 'is_active',
+    label: 'catalog.filterActive',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'catalog.filterActiveYes' },
+      { value: 'false', label: 'catalog.filterActiveNo' },
+    ],
+  },
+];
 
 /**
  * The catalogue: what the agency sells, and what each entry costs an hour.
@@ -52,7 +86,8 @@ import type { InterventionType } from '@/api/types';
  */
 export function InterventionTypesPage() {
   const { t, i18n } = useTranslation();
-  const { data: types, isLoading } = useInterventionTypes(true);
+  const catalogFilter = useEntityFilter(CATALOG_FILTER_SPEC);
+  const { data: types, isLoading } = useInterventionTypes(true, catalogFilter.filter);
   const { data: rules } = usePricingRules();
   const [editing, setEditing] = useState<InterventionType | null>(null);
   const [creating, setCreating] = useState(false);
@@ -131,6 +166,16 @@ export function InterventionTypesPage() {
           {t('catalog.add')}
         </Button>
       </Box>
+
+
+      <EntityFilterBar
+        state={catalogFilter}
+        testId="catalog"
+        searchLabel="catalog.searchFilter"
+        tabField="service_category"
+        tabs={CATALOG_TABS}
+        details={CATALOG_DETAILS}
+      />
 
       {/* ── What every entry is priced against ─────────────────────── */}
       <Card data-testid="pricing-rules">

@@ -26,6 +26,10 @@ class MTS3ConfigInvalidPhotoPrefix(MTInvalidS3ConfigException):
     """Exception raised when an invalid ``photo_key_prefix`` is provided."""
 
 
+class MTS3ConfigInvalidLogoPrefix(MTInvalidS3ConfigException):
+    """Exception raised when an invalid ``logo_key_prefix`` is provided."""
+
+
 class MTS3ConfigInvalidMaxUploadBytes(MTInvalidS3ConfigException):
     """Exception raised when an invalid ``max_upload_bytes`` is provided."""
 

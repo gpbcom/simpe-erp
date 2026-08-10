@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import date, timedelta
 from typing import Any, Dict
 
 # Third-party imports
@@ -8,9 +9,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
-from models.enums import RegistrationStatus
+from models.enums import QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
+from models.quoting.quote import Quote
+from models.schemas.requests.customers.customer_filter import CustomerFilter
 from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.quoting.quote import QuoteRepository
 
 
 class TestCustomerRepository:
@@ -76,12 +80,18 @@ class TestCustomerRepository:
         """An absent customer reads as None, not as an error."""
         assert await CustomerRepository(session).get("no-such-id") is None
 
-    async def test_a_new_customer_is_active(
+    async def test_a_new_customer_is_a_prospect(
         self, session: AsyncSession, customer: Customer
     ) -> None:
-        """A stored customer defaults to being served."""
+        """A stored customer defaults to somebody the agency is talking to.
+
+        Notes:
+            The store keeps whatever the model decided; this asserts the two
+            agree, so a default changed in one place cannot be silently
+            overridden by the other.
+        """
         stored = await CustomerRepository(session).create(customer)
-        assert stored.registration_status is RegistrationStatus.ACTIVE
+        assert stored.registration_status is RegistrationStatus.PROSPECT
 
     # ------------------------------------------------------------------ #
     #  Update
@@ -223,12 +233,264 @@ class TestCustomerRepository:
         found = await repository.list(search="paris")
         assert len(found) == 1
 
+    @pytest.mark.parametrize(
+        ("field", "matching", "other"),
+        [
+            pytest.param("city", "Lyon", "Paris", id="town"),
+            pytest.param("postal_code", "69001", "75004", id="postcode"),
+            pytest.param("email", "needle@example.fr", "hay@example.fr", id="email"),
+            pytest.param("phone", "+33699999999", "+33612345678", id="phone"),
+        ],
+    )
+    async def test_each_named_filter_matches_only_its_own_column(
+        self,
+        session: AsyncSession,
+        customer_kwargs: Dict[str, Any],
+        field: str,
+        matching: str,
+        other: str,
+    ) -> None:
+        """**A named filter is narrower than the search box, on purpose.**
+
+        Args:
+            session (AsyncSession): The database session.
+            customer_kwargs (Dict[str, Any]): A valid customer.
+            field (str): The filter under test.
+            matching (str): The value the wanted customer carries.
+            other (str): The value the unwanted one carries.
+
+        Notes:
+            ``search`` sweeps four columns because somebody typing into it has
+            not decided which field they mean. A manager who has chosen the
+            postcode box has decided, and matching their fragment against a
+            surname would be the wrong answer.
+        """
+        repository = CustomerRepository(session)
+        column = {"phone": "phone_number"}.get(field, field)
+        address_fields = {"city", "postal_code"}
+
+        def _kwargs(value: str, last_name: str) -> Dict[str, Any]:
+            """Build a customer carrying one distinguishing value."""
+            built = {**customer_kwargs, "last_name": last_name}
+            if column in address_fields:
+                built["address"] = {**built["address"], column: value}
+            else:
+                built[column] = value
+            return built
+
+        wanted = await repository.create(Customer(**_kwargs(matching, "Wanted")))
+        await repository.create(Customer(**_kwargs(other, "Other")))
+
+        listed = await repository.list(
+            customer_filter=CustomerFilter(**{field: matching})
+        )
+
+        assert [entry.id for entry in listed] == [wanted.id]
+
+    @pytest.mark.parametrize(
+        "typed",
+        [
+            pytest.param("+33699999999", id="as stored, international"),
+            pytest.param("+33 6 99 99 99 99", id="with spaces"),
+            pytest.param("999999", id="the last digits off a caller display"),
+        ],
+    )
+    async def test_the_phone_filter_matches_however_it_was_typed(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any], typed: str
+    ) -> None:
+        """**A stored number does not look like a typed one.**
+
+        Args:
+            session (AsyncSession): The database session.
+            customer_kwargs (Dict[str, Any]): A valid customer.
+            typed (str): One of the forms a manager might type.
+
+        Notes:
+            Pydantic normalises ``+33699999999`` to ``tel:+33-6-99-99-99-99`` on
+            the way in. A plain ``ILIKE`` against that matches none of the forms
+            above, so both sides are reduced to digits before comparing — and
+            this is the test that would have caught it, because the naive
+            version passed for the one input that happened to be typed exactly
+            as stored.
+        """
+        repository = CustomerRepository(session)
+        wanted = await repository.create(
+            Customer(**{**customer_kwargs, "phone_number": "+33699999999"})
+        )
+        await repository.create(
+            Customer(
+                **{
+                    **customer_kwargs,
+                    "last_name": "Other",
+                    "phone_number": "+33611111111",
+                }
+            )
+        )
+
+        listed = await repository.list(customer_filter=CustomerFilter(phone=typed))
+
+        assert [entry.id for entry in listed] == [wanted.id]
+
+    async def test_the_geocoding_filter_separates_the_two_kinds(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """Whose address resolved, and whose did not.
+
+        Args:
+            session (AsyncSession): The database session.
+            customer_kwargs (Dict[str, Any]): A valid customer.
+
+        Notes:
+            An operational worklist rather than a search: a customer with no
+            coordinate is one no planning run can route to, and finding them
+            all is how somebody fixes it before the next run.
+        """
+        repository = CustomerRepository(session)
+        located = await repository.create(Customer(**customer_kwargs))
+        unlocated = await repository.create(
+            Customer(
+                **{
+                    **customer_kwargs,
+                    "last_name": "Nowhere",
+                    "address": {
+                        **customer_kwargs["address"],
+                        "latitude": None,
+                        "longitude": None,
+                    },
+                }
+            )
+        )
+
+        resolved = await repository.list(
+            customer_filter=CustomerFilter(is_geocoded=True)
+        )
+        unresolved = await repository.list(
+            customer_filter=CustomerFilter(is_geocoded=False)
+        )
+
+        assert [entry.id for entry in resolved] == [located.id]
+        assert [entry.id for entry in unresolved] == [unlocated.id]
+
+    async def test_the_ongoing_filter_finds_who_is_being_served(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """**Who are we serving right now, as opposed to who is on the book.**
+
+        Args:
+            session (AsyncSession): The database session.
+            customer_kwargs (Dict[str, Any]): A valid customer.
+
+        Notes:
+            The one filter that is a join rather than a column. "Ongoing" means
+            an **accepted** quote that has not passed its interruption date —
+            narrower than the customer drawer's notion of "in flight", which
+            also counts quotes merely sent or awaiting validation. The two
+            answer different questions and are allowed to differ; this test is
+            what pins the server's answer down.
+        """
+        customers = CustomerRepository(session)
+        quotes = QuoteRepository(session)
+        served = await customers.create(Customer(**customer_kwargs))
+        idle = await customers.create(
+            Customer(**{**customer_kwargs, "last_name": "Idle"})
+        )
+        await quotes.create(
+            Quote(
+                company_id="company-1",
+                reference="Q-ONGOING",
+                customer_id=served.id,
+                status=QuoteStatus.ACCEPTED,
+            )
+        )
+
+        with_work = await customers.list(
+            customer_filter=CustomerFilter(has_ongoing_arrangement=True)
+        )
+        without_work = await customers.list(
+            customer_filter=CustomerFilter(has_ongoing_arrangement=False)
+        )
+
+        assert [entry.id for entry in with_work] == [served.id]
+        assert [entry.id for entry in without_work] == [idle.id]
+
+    async def test_an_interrupted_arrangement_is_no_longer_ongoing(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """A quote ended before today is history, not current work.
+
+        Args:
+            session (AsyncSession): The database session.
+            customer_kwargs (Dict[str, Any]): A valid customer.
+
+        Notes:
+            The interruption date is **inclusive**, so a quote interrupted today
+            is still running today. This uses yesterday, which is the first day
+            it is not.
+        """
+        customers = CustomerRepository(session)
+        quotes = QuoteRepository(session)
+        stopped = await customers.create(Customer(**customer_kwargs))
+        await quotes.create(
+            Quote(
+                company_id="company-1",
+                reference="Q-ENDED",
+                customer_id=stopped.id,
+                status=QuoteStatus.ACCEPTED,
+                interrupted_on=date.today() - timedelta(days=1),
+            )
+        )
+
+        with_work = await customers.list(
+            customer_filter=CustomerFilter(has_ongoing_arrangement=True)
+        )
+
+        assert with_work == []
+
+    async def test_a_page_and_its_total_agree_about_the_filter(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """**The reason the predicates live in the shared query builder.**
+
+        Args:
+            session (AsyncSession): The database session.
+            customer_kwargs (Dict[str, Any]): A valid customer.
+
+        Notes:
+            ``list`` and ``count`` build from one statement so a filtered page
+            can never be counted against an unfiltered total — which would show
+            a manager "1–25 of 40" over a grid holding three rows.
+        """
+        repository = CustomerRepository(session)
+        await repository.create(Customer(**customer_kwargs))
+        await repository.create(
+            Customer(
+                **{
+                    **customer_kwargs,
+                    "last_name": "Other",
+                    "address": {**customer_kwargs["address"], "city": "Lyon"},
+                }
+            )
+        )
+        applied = CustomerFilter(city="Lyon")
+
+        listed = await repository.list(customer_filter=applied)
+        total = await repository.count(customer_filter=applied)
+
+        assert len(listed) == total == 1
+
     async def test_the_status_filter_restricts_the_page(
         self, session: AsyncSession, customer_kwargs: Dict[str, Any]
     ) -> None:
         """Filtering by status returns only that status."""
         repository = CustomerRepository(session)
-        active = await repository.create(Customer(**customer_kwargs))
+        active = await repository.create(
+            Customer(
+                **{
+                    **customer_kwargs,
+                    "registration_status": RegistrationStatus.ACTIVE,
+                }
+            )
+        )
         stopped = await repository.create(
             Customer(**{**customer_kwargs, "last_name": "Bernard"})
         )

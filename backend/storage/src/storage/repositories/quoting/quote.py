@@ -6,13 +6,15 @@ from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.enums import QuoteStatus
+from models.planning.planning_run.unplaced_quote import UnplacedQuote
 from models.quoting.quote import Quote
+from models.schemas.requests.quoting.quote_filter import QuoteFilter
 from storage.mappers.quoting.quote_mapper import QuoteMapper
 from storage.orm.quoting.quote_line_row import QuoteLineRow
 from storage.orm.quoting.quote_row import QuoteRow
@@ -73,6 +75,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         customer_id: Optional[str] = None,
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
+        quote_filter: Optional[QuoteFilter] = None,
     ) -> Select[Tuple[QuoteRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
@@ -80,23 +83,79 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             customer_id (Optional[str]): Restrict to one customer.
             status (Optional[QuoteStatus]): Restrict to one status.
             authored_by (Optional[str]): Restrict to one author's quotes.
+            quote_filter (Optional[QuoteFilter]): The richer filter from the
+                screen. Its own fields win over the three named arguments.
 
         Returns:
             Select: The filtered statement, without ordering or pagination.
 
         Notes:
-            ``authored_by`` is what confines an assistant to their own work. It
-            is applied here, in the statement, rather than by filtering rows
-            after they are read: a page of fifty that is then narrowed to three
-            has already loaded forty-seven quotes the caller may not see.
+            - ``authored_by`` is what confines an assistant to their own work.
+              It is applied here, in the statement, rather than by filtering
+              rows after they are read: a page of fifty that is then narrowed to
+              three has already loaded forty-seven quotes the caller may not
+              see.
+            - **The named arguments survive the filter, and the narrower of the
+              two always wins.** ``authored_by`` in particular is a permission
+              rather than a preference — a filter that could widen it would let
+              an assistant list the agency's whole quote book by sending
+              ``?authored_by=``.
         """
+        applied = quote_filter or QuoteFilter()
+        self.logger.debug(
+            "Building the quote query from %s.", applied.model_dump(exclude_none=True)
+        )
+        if applied.is_empty() and not any((customer_id, status, authored_by)):
+            self.logger.info("No filter was given; the query is every quote.")
+
         statement = select(QuoteRow)
+        # The caller's own scoping is never widened by the screen's filter: it
+        # is applied first and unconditionally.
         if customer_id is not None:
             statement = statement.where(QuoteRow.customer_id == customer_id)
-        if status is not None:
-            statement = statement.where(QuoteRow.status == status.value)
         if authored_by is not None:
             statement = statement.where(QuoteRow.authored_by == authored_by)
+        if status is not None:
+            statement = statement.where(QuoteRow.status == status.value)
+
+        if applied.customer_id and customer_id is None:
+            statement = statement.where(QuoteRow.customer_id == applied.customer_id)
+        if applied.authored_by and authored_by is None:
+            statement = statement.where(QuoteRow.authored_by == applied.authored_by)
+        elif applied.authored_by and applied.authored_by != authored_by:
+            self.logger.warning(
+                "A quote filter asked for author %r while the caller is scoped "
+                "to %r; the scope wins.",
+                applied.authored_by,
+                authored_by,
+            )
+        if applied.status is not None and status is None:
+            statement = statement.where(QuoteRow.status == applied.status.value)
+        for fragment, column in (
+            (applied.search, QuoteRow.reference),
+            (applied.reference, QuoteRow.reference),
+        ):
+            if fragment:
+                statement = statement.where(
+                    column.ilike(f"%{fragment.strip().lower()}%")
+                )
+        if applied.auto_renew is not None:
+            statement = statement.where(QuoteRow.auto_renew.is_(applied.auto_renew))
+        if applied.is_ongoing is not None:
+            # The same definition the customer book filters by: accepted, and
+            # not past its interruption date — which is inclusive, so a quote
+            # interrupted today is still running today. Spelled once there and
+            # once here would be two definitions of "ongoing" that drift; this
+            # is the same predicate read off the quote's own row.
+            today = date.today()
+            self.logger.info(
+                "Ongoing means accepted and not interrupted before %s.", today
+            )
+            ongoing = (QuoteRow.status == QuoteStatus.ACCEPTED.value) & or_(
+                QuoteRow.interrupted_on.is_(None),
+                QuoteRow.interrupted_on >= today,
+            )
+            statement = statement.where(ongoing if applied.is_ongoing else ~ongoing)
         return statement
 
     ############################
@@ -222,6 +281,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         customer_id: Optional[str] = None,
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
+        quote_filter: Optional[QuoteFilter] = None,
     ) -> List[Quote]:
         """Return a page of quotes.
 
@@ -231,6 +291,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             customer_id (Optional[str]): Restrict to one customer.
             status (Optional[QuoteStatus]): Restrict to one status.
             authored_by (Optional[str]): Restrict to one author's quotes.
+            quote_filter (Optional[QuoteFilter]): The screen's filter.
 
         Returns:
             List[Quote]: The matching quotes, newest reference first.
@@ -242,9 +303,9 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             status.value if status else None,
             authored_by,
         )
-        statement = self._build_query(customer_id, status, authored_by).order_by(
-            QuoteRow.reference.desc()
-        )
+        statement = self._build_query(
+            customer_id, status, authored_by, quote_filter
+        ).order_by(QuoteRow.reference.desc())
         rows = await self._fetch_all(self._paginate(statement, page, size))
         if not rows:
             self.logger.warning("No quote matched the query.")
@@ -306,6 +367,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         customer_id: Optional[str] = None,
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
+        quote_filter: Optional[QuoteFilter] = None,
     ) -> int:
         """Return how many quotes match a query.
 
@@ -313,11 +375,15 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             customer_id (Optional[str]): Restrict to one customer.
             status (Optional[QuoteStatus]): Restrict to one status.
             authored_by (Optional[str]): Restrict to one author's quotes.
+            quote_filter (Optional[QuoteFilter]): The screen's filter, so a
+                page and its total can never come from different filters.
 
         Returns:
             int: The number of matching quotes.
         """
-        return await self._count(self._build_query(customer_id, status, authored_by))
+        return await self._count(
+            self._build_query(customer_id, status, authored_by, quote_filter)
+        )
 
     async def list_schedulable(
         self, company_id: str, period_start: date, period_end: date
@@ -440,6 +506,49 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             "Quote %s moves from %s to %s.", row.reference, row.status, status.value
         )
         row.status = status.value
+        await self.session.flush()
+        await self.session.refresh(row)
+        return self.mapper.to_model(row)
+
+    async def set_planning_feedback(
+        self, quote_id: str, feedback: Optional[UnplacedQuote]
+    ) -> Optional[Quote]:
+        """Record why the last planning could not fit this quote's work.
+
+        Args:
+            quote_id (str): The quote to annotate.
+            feedback (Optional[UnplacedQuote]): The report, or ``None`` to
+                clear it once the work fits again.
+
+        Returns:
+            Optional[Quote]: The updated quote, or ``None`` when absent.
+
+        Notes:
+            Narrow, like :meth:`set_status` beside it, and for the same
+            reason: recording why a week did not fit must not be able to
+            change what was quoted. The two are called together — a quote that
+            goes back to the validation queue without saying why looks like
+            the system lost it — but they stay separable so that clearing the
+            note does not touch the lifecycle.
+        """
+        row = await self._get_row(quote_id)
+        if row is None:
+            self.logger.warning(
+                "Planning feedback requested for absent quote %s.", quote_id
+            )
+            return None
+        row.planning_feedback = (
+            feedback.model_dump(mode="json") if feedback is not None else None
+        )
+        if feedback is not None:
+            self.logger.info(
+                "Quote %s records %d unplaced visit(s) and %d offered slot(s).",
+                row.reference,
+                len(feedback.visits),
+                len(feedback.alternatives),
+            )
+        else:
+            self.logger.debug("Quote %s planning feedback cleared.", row.reference)
         await self.session.flush()
         await self.session.refresh(row)
         return self.mapper.to_model(row)

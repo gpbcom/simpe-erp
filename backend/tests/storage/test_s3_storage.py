@@ -24,6 +24,26 @@ WEBP = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 64
 WAV = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 64
 
 
+class _FakeBody:
+    """The streaming body boto3 returns from ``get_object``."""
+
+    def __init__(self, payload: bytes) -> None:
+        """Store the bytes this body yields.
+
+        Args:
+            payload (bytes): What :meth:`read` returns.
+        """
+        self.payload = payload
+
+    def read(self) -> bytes:
+        """Return the whole body.
+
+        Returns:
+            bytes: The stored payload.
+        """
+        return self.payload
+
+
 class _FakeS3Client:
     """Records the calls a test makes instead of reaching a bucket."""
 
@@ -36,6 +56,25 @@ class _FakeS3Client:
         self.failure = failure
         self.puts: List[Dict[str, Any]] = []
         self.deletes: List[Dict[str, Any]] = []
+        self.gets: List[Dict[str, Any]] = []
+        self.stored: bytes = PNG
+
+    def get_object(self, **kwargs: Any) -> Dict[str, Any]:
+        """Record a read and hand back the stored bytes.
+
+        Args:
+            **kwargs (Any): The call's keyword arguments.
+
+        Returns:
+            Dict[str, Any]: A result shaped like boto3's, whose ``Body`` reads.
+
+        Raises:
+            Exception: The configured failure, when one is set.
+        """
+        if self.failure is not None:
+            raise self.failure
+        self.gets.append(kwargs)
+        return {"Body": _FakeBody(self.stored)}
 
     def put_object(self, **kwargs: Any) -> Dict[str, Any]:
         """Record an upload.
@@ -381,3 +420,191 @@ class TestTheShippedConfigurationsServeTheirPhotos:
             f"{path} builds {built!r}, naming the in-network endpoint. A "
             f"browser cannot resolve 'minio'."
         )
+
+
+class TestCompanyLogos:
+    """Tests for the second prefix this store serves."""
+
+    def test_a_logo_key_lands_under_its_own_prefix(self, storage: S3Storage) -> None:
+        """Logos and photographs must not share a folder.
+
+        Notes:
+            They are removed by different rules — a logo outlives every
+            assistant who ever worked for the agency — so a bulk cleanup of one
+            prefix must not be able to reach the other.
+        """
+        key = storage.build_logo_key("company-1", "image/png")
+
+        assert key.startswith("company-logos/company-1/")
+        assert key.endswith(".png")
+        assert not key.startswith(storage.config.photo_key_prefix)
+
+    def test_two_uploads_never_reuse_a_key(self, storage: S3Storage) -> None:
+        """Replacing a logo writes a new object rather than overwriting one.
+
+        Notes:
+            Overwriting would leave every cached copy — browser, CDN — showing
+            the previous image behind an unchanged URL.
+        """
+        first = storage.build_logo_key("company-1", "image/png")
+        second = storage.build_logo_key("company-1", "image/png")
+
+        assert first != second
+
+    async def test_uploading_a_logo_stores_it_and_returns_its_url(
+        self, storage: S3Storage
+    ) -> None:
+        """The URL that comes back is what the record will point at."""
+        url = await storage.upload_logo("company-1", PNG)
+
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        assert len(client.puts) == 1
+        assert client.puts[0]["ContentType"] == "image/png"
+        assert client.puts[0]["Key"].startswith("company-logos/company-1/")
+        assert "company-logos/company-1/" in url
+
+    async def test_a_logo_is_typed_from_its_bytes_not_its_header(
+        self, storage: S3Storage
+    ) -> None:
+        """A file that is not an image is refused, whatever it claims to be.
+
+        Notes:
+            A WAV file opens with ``RIFF`` exactly as a WebP does. Accepting it
+            because of that marker is how a bucket ends up serving
+            attacker-chosen content types.
+        """
+        with pytest.raises(MTS3UnsupportedContentType):
+            await storage.upload_logo("company-1", WAV)
+
+    async def test_an_oversized_logo_is_refused_before_it_is_written(
+        self, storage: S3Storage
+    ) -> None:
+        """The size limit is the bucket's, not the photograph's."""
+        with pytest.raises(MTS3PayloadTooLarge):
+            await storage.upload_logo("company-1", PNG + b"\x00" * 2048)
+
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        assert client.puts == []
+
+    async def test_deleting_a_logo_removes_the_object(self, storage: S3Storage) -> None:
+        """A URL under the logo prefix resolves to a key this store owns."""
+        url = await storage.upload_logo("company-1", PNG)
+
+        assert await storage.delete_logo(url) is True
+
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        assert client.deletes[0]["Key"].startswith("company-logos/")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param(
+                "https://minio.internal/simple-erp/hca-photos/h-1/a.jpg",
+                id="Invalid - a photograph, not a logo",
+            ),
+            pytest.param(
+                "https://evil.example/anything.png", id="Invalid - another host"
+            ),
+            pytest.param("   ", id="Invalid - blank"),
+        ],
+    )
+    async def test_deleting_something_that_is_not_a_logo_is_refused(
+        self, storage: S3Storage, url: str
+    ) -> None:
+        """**The prefix check is what stops an arbitrary delete.**
+
+        Args:
+            storage (S3Storage): The store under test.
+            url (str): The URL that must not resolve to a key.
+
+        Notes:
+            Without it, passing any URL would let a caller remove any object in
+            the bucket — including every assistant's photograph.
+        """
+        assert await storage.delete_logo(url) is False
+
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        assert client.deletes == []
+
+    async def test_a_failed_delete_is_reported(self, storage: S3Storage) -> None:
+        """A refusal from the bucket is not silently swallowed here."""
+        url = await storage.upload_logo("company-1", PNG)
+        storage.client = _FakeS3Client(
+            failure=ClientError({"Error": {"Code": "AccessDenied"}}, "DeleteObject")
+        )
+
+        with pytest.raises(MTS3DeleteFailed):
+            await storage.delete_logo(url)
+
+    async def test_fetching_a_logo_returns_its_bytes(self, storage: S3Storage) -> None:
+        """The quote renderer needs the image itself, not a link."""
+        url = await storage.upload_logo("company-1", PNG)
+
+        assert await storage.fetch_logo(url) == PNG
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param(
+                "https://minio.internal/simple-erp/hca-photos/h-1/a.jpg",
+                id="Not a logo",
+            ),
+            pytest.param("https://evil.example/anything.png", id="Another host"),
+        ],
+    )
+    async def test_fetching_something_that_is_not_a_logo_yields_nothing(
+        self, storage: S3Storage, url: str
+    ) -> None:
+        """The same prefix guard applies to reads.
+
+        Args:
+            storage (S3Storage): The store under test.
+            url (str): The URL that must not resolve to a key.
+        """
+        assert await storage.fetch_logo(url) is None
+
+    async def test_a_failed_fetch_reports_rather_than_raises(
+        self, storage: S3Storage
+    ) -> None:
+        """**A quote must go out even when its letterhead cannot be read.**
+
+        Notes:
+            The only caller is the quote renderer. Raising would turn a
+            cosmetic problem into a commercial one: the customer waiting for a
+            priced offer would get nothing because a decoration was missing.
+        """
+        url = await storage.upload_logo("company-1", PNG)
+        storage.client = _FakeS3Client(
+            failure=ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        )
+
+        assert await storage.fetch_logo(url) is None
+
+    async def test_an_upload_failure_is_reported(self, storage: S3Storage) -> None:
+        """A write that does not land must not look like one that did."""
+        storage.client = _FakeS3Client(
+            failure=ClientError({"Error": {"Code": "AccessDenied"}}, "PutObject")
+        )
+
+        with pytest.raises(MTS3UploadFailed):
+            await storage.upload_logo("company-1", PNG)
+
+    def test_key_resolution_still_defaults_to_photographs(
+        self, storage: S3Storage
+    ) -> None:
+        """The shared resolver must not have changed under its old callers.
+
+        Notes:
+            ``key_for_url`` grew a prefix argument so both kinds of image could
+            share one path-resolution rule. Its default has to stay the photo
+            prefix, or every existing caller would start refusing the URLs it
+            wrote itself.
+        """
+        photo = "https://minio.internal/simple-erp/hca-photos/h-1/a.jpg"
+
+        assert storage.key_for_url(photo) == "hca-photos/h-1/a.jpg"
+        assert storage.key_for_url(photo, prefix="company-logos/") is None

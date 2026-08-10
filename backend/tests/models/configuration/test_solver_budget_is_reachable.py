@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Standard library imports
 from pathlib import Path
-from typing import List
 
 # Third-party imports
 import pytest
@@ -13,12 +12,17 @@ from models.configuration.app_config import AppConfig
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 SHIPPED_CONFIGS = ("app.yaml", "app.dev.yaml", "app.docker.yaml")
 
-# The wall-clock net has to be far enough above the deterministic budget that
-# the budget is what actually stops the search. A measured 77-visit week spends
-# a budget of 20.0 in about 138 seconds on one worker — near seven seconds of
-# wall clock per work unit — so anything under eight times the budget cannot be
-# reached honestly on any hardware the agency is likely to own.
-MINIMUM_NET_TO_BUDGET_RATIO = 8.0
+# The wall-clock net has to be far enough above each budget that the budget is
+# what actually stops the search.
+#
+# **Twenty, matching the same floor in infra/chart/templates/common/guards.yaml.**
+# It read eight here, drawn from a one-worker measurement while every shipped
+# config ran eight workers — so it passed the very pairing it exists to catch: a
+# net of 900 against a budget of 100, which truncated every search and left a
+# 95-visit week one visit short at status FEASIBLE. Two copies of a floor that
+# disagree are worse than one, because whichever is looser is the one that
+# decides.
+MINIMUM_NET_TO_BUDGET_RATIO = 20.0
 
 
 class TestTheSolverBudgetIsReachable:
@@ -48,12 +52,21 @@ class TestTheSolverBudgetIsReachable:
         """
         planning = AppConfig.load(BACKEND_ROOT / "conf" / name).planning
 
+        # Both passes are bounded by the same net, so it has to clear the
+        # larger of them. Checking only the feasibility budget would let an
+        # optimisation budget be configured that can never be spent — and its
+        # symptom is the quietest one there is: every visit still placed, the
+        # rounds just longer than they need to be.
+        largest = max(
+            planning.solver_deterministic_budget,
+            planning.solver_optimisation_budget,
+        )
         assert planning.solver_time_limit_seconds >= (
-            planning.solver_deterministic_budget * MINIMUM_NET_TO_BUDGET_RATIO
+            largest * MINIMUM_NET_TO_BUDGET_RATIO
         ), (
             f"conf/{name}: a wall-clock net of "
-            f"{planning.solver_time_limit_seconds}s cannot let a deterministic "
-            f"budget of {planning.solver_deterministic_budget} finish."
+            f"{planning.solver_time_limit_seconds}s cannot let a per-day "
+            f"budget of {largest} finish."
         )
 
     def test_every_shipped_config_agrees_on_the_solver(self) -> None:
@@ -67,18 +80,31 @@ class TestTheSolverBudgetIsReachable:
             about at all. They are pinned together here rather than left to
             three files drifting apart.
         """
-        budgets: List[float] = []
-        nets: List[float] = []
-        seeds: List[int] = []
-        for name in SHIPPED_CONFIGS:
-            planning = AppConfig.load(BACKEND_ROOT / "conf" / name).planning
-            budgets.append(planning.solver_deterministic_budget)
-            nets.append(planning.solver_time_limit_seconds)
-            seeds.append(planning.solver_seed)
+        # Every setting that decides what plan comes out, not just the two
+        # that did when the solve was one model and one pass. A day
+        # concurrency or an optimisation budget that differed between
+        # environments would be exactly the same class of bug: the same week
+        # planning differently in two places, with nothing on either screen to
+        # say why.
+        settings = [
+            (
+                AppConfig.load(BACKEND_ROOT / "conf" / name).planning.model_dump(
+                    include={
+                        "solver_deterministic_budget",
+                        "solver_optimisation_budget",
+                        "solver_time_limit_seconds",
+                        "solver_seed",
+                        "solver_workers",
+                        "solver_day_concurrency",
+                    }
+                )
+            )
+            for name in SHIPPED_CONFIGS
+        ]
 
-        assert len(set(budgets)) == 1, f"deterministic budgets differ: {budgets}"
-        assert len(set(nets)) == 1, f"wall-clock nets differ: {nets}"
-        assert len(set(seeds)) == 1, f"solver seeds differ: {seeds}"
+        for key in settings[0]:
+            values = [entry[key] for entry in settings]
+            assert len(set(values)) == 1, f"{key} differs across configs: {values}"
 
     @pytest.mark.parametrize("name", SHIPPED_CONFIGS)
     def test_dropping_work_outranks_any_possible_travel(self, name: str) -> None:

@@ -5,11 +5,12 @@ from logging import Logger, getLogger
 from typing import List, Optional, Set, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.catalog.skill_type import SkillType
+from models.schemas.requests.catalog.skill_type_filter import SkillTypeFilter
 from storage.mappers.catalog.skill_type_mapper import SkillTypeMapper
 from storage.orm.catalog.skill_type_row import SkillTypeRow
 from storage.repositories.base import BaseRepository
@@ -51,18 +52,63 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
     # Internal Helpers Methods #
     ############################
 
-    def _build_query(self, include_inactive: bool) -> Select[Tuple[SkillTypeRow]]:
+    def _build_query(
+        self, include_inactive: bool, skill_filter: Optional[SkillTypeFilter] = None
+    ) -> Select[Tuple[SkillTypeRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
         Args:
             include_inactive (bool): Whether retired entries are included.
+            skill_filter (Optional[SkillTypeFilter]): The screen's filter.
+            skill_filter (SkillTypeFilter): The screen's filter, or ``None``.
 
         Returns:
             Select: The filtered statement, without ordering or pagination.
+
+        Notes:
+            **``is_active`` wins over ``include_inactive`` when it is set.**
+            The older switch has two states and no way to ask for the retired
+            entries *on their own*; the filter has three. Unset, the switch
+            still decides, so every caller that predates the filter behaves
+            exactly as it did.
         """
+        applied = skill_filter or SkillTypeFilter()
+        self.logger.debug(
+            "Building the catalogue query from %s (include_inactive=%s).",
+            applied.model_dump(exclude_none=True),
+            include_inactive,
+        )
         statement = select(SkillTypeRow)
-        if not include_inactive:
+        if applied.is_active is not None:
+            if include_inactive and applied.is_active:
+                self.logger.warning(
+                    "include_inactive asked for the retired entries and the "
+                    "filter asked for the active ones; the filter wins."
+                )
+            statement = statement.where(SkillTypeRow.is_active.is_(applied.is_active))
+        elif not include_inactive:
             statement = statement.where(SkillTypeRow.is_active.is_(True))
+        else:
+            self.logger.info("Listing the catalogue including retired entries.")
+        if applied.search:
+            pattern = f"%{applied.search.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    SkillTypeRow.code.ilike(pattern),
+                    SkillTypeRow.label.ilike(pattern),
+                    SkillTypeRow.description.ilike(pattern),
+                )
+            )
+        # One column each, unlike ``search``: somebody who has decided the
+        # fragment is a code does not want it matched against a description.
+        for fragment, column in (
+            (applied.code, SkillTypeRow.code),
+            (applied.label, SkillTypeRow.label),
+        ):
+            if fragment:
+                statement = statement.where(
+                    column.ilike(f"%{fragment.strip().lower()}%")
+                )
         return statement
 
     ############################
@@ -190,6 +236,7 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
         page: int = 1,
         size: Optional[int] = None,
         include_inactive: bool = False,
+        skill_filter: Optional[SkillTypeFilter] = None,
     ) -> List[SkillType]:
         """Return a page of the catalogue.
 
@@ -212,22 +259,30 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
             page,
             include_inactive,
         )
-        statement = self._build_query(include_inactive).order_by(SkillTypeRow.label)
+        statement = self._build_query(include_inactive, skill_filter).order_by(
+            SkillTypeRow.label
+        )
         rows = await self._fetch_all(self._paginate(statement, page, size))
         if not rows:
             self.logger.warning("No skill type matched the query.")
         return self.mapper.to_models(rows)
 
-    async def count(self, include_inactive: bool = False) -> int:
+    async def count(
+        self,
+        include_inactive: bool = False,
+        skill_filter: Optional[SkillTypeFilter] = None,
+    ) -> int:
         """Return how many catalogue entries match a query.
 
         Args:
             include_inactive (bool): Whether retired entries are counted.
+            skill_filter (Optional[SkillTypeFilter]): The screen's filter, so a page
+                and its total can never come from different filters.
 
         Returns:
             int: The number of matching entries.
         """
-        return await self._count(self._build_query(include_inactive))
+        return await self._count(self._build_query(include_inactive, skill_filter))
 
     async def delete(self, type_id: str) -> bool:
         """Remove a catalogue entry outright.
@@ -247,7 +302,5 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
         if removed:
             self.logger.info("Deleted skill type %s.", type_id)
         else:
-            self.logger.warning(
-                "Delete requested for absent skill type %s.", type_id
-            )
+            self.logger.warning("Delete requested for absent skill type %s.", type_id)
         return removed

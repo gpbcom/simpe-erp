@@ -51,6 +51,14 @@ class PlanningSolution(BaseModel):
         ``is_feasible`` false is different: the solver found nothing, which
         means the constraints contradict each other rather than the workload
         being too big.
+
+        ``is_optimised`` is a third, weaker thing again, and it is about the
+        *rounds* rather than about the work. A plan is found in two passes:
+        the first places everything, the second shortens the driving. If the
+        second runs out of budget the first pass's plan is kept and this stays
+        false — every visit is still scheduled, the travel simply was not
+        proved minimal. It is recorded because a plan nobody can tell apart
+        from an optimised one is how a slow creep in travel goes unnoticed.
     """
 
     assignments: List[ScheduledAssignment] = Field(
@@ -68,6 +76,10 @@ class PlanningSolution(BaseModel):
     is_feasible: bool = Field(
         default=False,
         description="Whether the solver found any solution.",
+    )
+    is_optimised: bool = Field(
+        default=False,
+        description="Whether the travel in this plan was proved minimal.",
     )
     status_name: str = Field(
         default="UNKNOWN",

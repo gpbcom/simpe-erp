@@ -95,7 +95,9 @@ class ProbeServer:
         if path == "/ready":
             if self.is_ready():
                 return 200, self.READY, "application/json"
-            self.logger.warning("Answering /ready with 503: this worker cannot consume.")
+            self.logger.warning(
+                "Answering /ready with 503: this worker cannot consume."
+            )
             return 503, self.NOT_READY, "application/json"
         if path == "/metrics":
             body, content_type = self.metrics.render()

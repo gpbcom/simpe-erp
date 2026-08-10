@@ -23,8 +23,10 @@ from models.schemas.requests.companies.company_registration_request import (
 from models.schemas.responses.companies.company_registration_response import (
     CompanyRegistrationResponse,
 )
+from models.schemas.responses.companies.company_view import CompanyView
 from models.schemas.responses.auth.user_response import UserResponse
 from service.companies.companies import CompanyService
+from service.companies.exceptions import MTInvalidCompanyServiceException
 from service.companies.registration import CompanyRegistrationService
 
 logger: Logger = getLogger(__name__)
@@ -141,49 +143,90 @@ async def create_company(
     return await service.create(company)
 
 
-@router.get("", response_model=List[Company])
+@router.get("", response_model=List[CompanyView])
 async def list_companies(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=50, ge=1, le=500),
     service: CompanyService = Depends(get_company_service),
-    _: User = Depends(get_manager_user),
-) -> List[Company]:
-    """List companies in full.
+    caller: User = Depends(get_manager_user),
+) -> List[CompanyView]:
+    """List companies, with the bank account masked for a manager.
 
     Args:
         page (int): One-based page number.
         size (int): Page size.
         service (CompanyService): The company service.
-        _ (User): The authenticated caller; enforces manager access.
+        caller (User): The authenticated caller; enforces manager access, and
+            decides whether the IBAN comes back whole.
 
     Returns:
-        List[Company]: The companies, contact details included.
+        List[CompanyView]: The companies, contact details included and the
+        account number masked unless the caller is an administrator.
     """
-    logger.debug("Listing companies: page=%d.", page)
-    return await service.list(page=page, size=size)
+    logger.debug("Listing companies for %s: page=%d.", caller.email, page)
+    try:
+        companies = await service.list(page=page, size=size)
+    except MTInvalidCompanyServiceException as exc:
+        logger.error("Could not list companies for %s: %s.", caller.email, exc)
+        raise
+    if not companies:
+        logger.warning(
+            "Page %d holds no company; %s sees an empty list.", page, caller.email
+        )
+    reveal = caller.is_admin()
+    logger.info(
+        "Serving %d company/companies to %s with the account %s.",
+        len(companies),
+        caller.email,
+        "revealed" if reveal else "masked",
+    )
+    return [CompanyView.from_company(company, reveal=reveal) for company in companies]
 
 
-@router.get("/{company_id}", response_model=Company)
+@router.get("/{company_id}", response_model=CompanyView)
 async def get_company(
     company_id: str,
     service: CompanyService = Depends(get_company_service),
-    _: User = Depends(get_manager_user),
-) -> Company:
-    """Return one company.
+    caller: User = Depends(get_manager_user),
+) -> CompanyView:
+    """Return one company, with the bank account masked for a manager.
 
     Args:
         company_id (str): The company to read.
         service (CompanyService): The company service.
-        _ (User): The authenticated caller; enforces manager access.
+        caller (User): The authenticated caller; enforces manager access, and
+            decides whether the IBAN comes back whole.
 
     Returns:
-        Company: The company.
+        CompanyView: The company.
 
     Raises:
         MTCompanyNotFound: If no such company exists; answered as a 404.
+
+    Notes:
+        A manager runs the agency's work and needs its address, its telephone
+        number and its registration; they have no reason to read the account
+        it is paid into, and an account number is the one field here that lets
+        a leak become a payment. An administrator reads their own agency whole
+        at ``GET /api/v1/me/company``, and reads any agency whole here.
     """
-    logger.debug("Reading company %s.", company_id)
-    return await service.get(company_id)
+    logger.debug("Reading company %s for %s.", company_id, caller.email)
+    try:
+        company = await service.get(company_id)
+    except MTInvalidCompanyServiceException as exc:
+        logger.error(
+            "Could not read company %s for %s: %s.", company_id, caller.email, exc
+        )
+        raise
+    reveal = caller.is_admin()
+    if not reveal and company.iban is not None:
+        logger.warning(
+            "Masking the account of company %s for %s, who is not an administrator.",
+            company_id,
+            caller.email,
+        )
+    logger.info("Served company %s to %s.", company_id, caller.email)
+    return CompanyView.from_company(company, reveal=reveal)
 
 
 @router.put("/{company_id}", response_model=Company)

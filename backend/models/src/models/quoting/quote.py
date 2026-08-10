@@ -16,6 +16,7 @@ from pydantic import (
 
 # First-party imports
 from models.enums import QuoteStatus
+from models.planning.planning_run.unplaced_quote import UnplacedQuote
 from models.quoting.exceptions import (
     MTQuoteInvalidAggregates,
     MTQuoteInvalidCustomerId,
@@ -115,6 +116,10 @@ class Quote(BaseModel):
     validated_by: Optional[str] = Field(
         default=None,
         description="The account that validated it.",
+    )
+    planning_feedback: Optional[UnplacedQuote] = Field(
+        default=None,
+        description="Why the last planning could not fit this quote's work.",
     )
     interrupted_on: Optional[date] = Field(
         default=None,
@@ -225,7 +230,7 @@ class Quote(BaseModel):
         return value.strip()
 
     @field_validator("status", mode="before")
-    def validate_status(cls, value: Union[str, QuoteStatus, None]) -> QuoteStatus:
+    def validate_status(cls, value: Union[str, QuoteStatus, None]) -> QuoteStatus:  # noqa: E501
         """Validates that ``status`` is a known quote status.
 
         Args:
@@ -507,7 +512,7 @@ class Quote(BaseModel):
             An empty quote is **not** priced. Treating it as priced would let a
             quote with nothing on it be accepted and sent for zero euros.
         """
-        return bool(self.lines) and all(line.is_priced() for line in self.lines)
+        return bool(self.lines) and all(line.is_priced() for line in self.lines)  # noqa: E501
 
     def is_schedulable(self) -> bool:
         """Return whether this quote's lines may be planned.
@@ -565,20 +570,18 @@ class Quote(BaseModel):
             triple per distinct VAT rate, ordered by rate.
 
         Notes:
-            **A quote must state its tax per rate, not as one figure.** Home
-            care is billed at two: 5.5% for a necessity service and 20% for a
-            comfort one, and a document showing a single "VAT" line gives a
-            customer no way to check either — nor an accountant any way to
-            post it.
-
-            The base is summed from the lines rather than recomputed from the
-            tax, because the rate is a property of the line's category and
-            dividing back out of a rounded tax amount reintroduces the cents
-            that rounding just removed.
-
-            An unpriced line contributes nothing. It has no amounts yet, and
-            counting it as zero would state a rate the customer is not being
-            charged at.
+            - **A quote must state its tax per rate, not as one figure.** Home
+              care is billed at two: 5.5% for a necessity service and 20% for a
+              comfort one, and a document showing a single "VAT" line gives a
+              customer no way to check either — nor an accountant any way to
+              post it.
+            - The base is summed from the lines rather than recomputed from the
+              tax, because the rate is a property of the line's category and
+              dividing back out of a rounded tax amount reintroduces the cents
+              that rounding just removed.
+            - An unpriced line contributes nothing. It has no amounts yet, and
+              counting it as zero would state a rate the customer is not being
+              charged at.
         """
         bases: Dict[Decimal, Decimal] = {}
         taxes: Dict[Decimal, Decimal] = {}

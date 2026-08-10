@@ -116,7 +116,10 @@ export function CustomerDialog({ open, onClose, onCreated }: CustomerDialogProps
           city: form.city.trim(),
           country: form.country.trim(),
         },
-        registration_status: 'active',
+        // A newly registered household is a prospect, not a customer. They
+        // may be quoted straight away — that is what the next screen is for —
+        // but nothing is scheduled for them until a manager promotes them.
+        registration_status: 'prospect',
       },
       {
         onSuccess: (customer) => {

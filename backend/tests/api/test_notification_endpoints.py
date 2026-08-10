@@ -117,15 +117,22 @@ class TestReading:
     def test_the_page_parameters_are_passed_through(
         self, client: TestClient, notifications: MagicMock
     ) -> None:
-        """The popover asks for a page; the page is what it gets."""
+        """The popover asks for a page; the page is what it gets.
+
+        Notes:
+            An empty ``NotificationFilter`` always travels with the request:
+            FastAPI binds one from the query string whether or not anything was
+            filtered on. It narrows nothing, which is what the store's
+            ``is_empty`` check is for.
+        """
         client.get("/api/v1/notifications?page=2&size=10&unread_only=true")
 
-        assert notifications.list_for.await_args.kwargs == {
-            "recipient_id": "reader-1",
-            "page": 2,
-            "size": 10,
-            "unread_only": True,
-        }
+        passed = notifications.list_for.await_args.kwargs
+        assert passed["recipient_id"] == "reader-1"
+        assert passed["page"] == 2
+        assert passed["size"] == 10
+        assert passed["unread_only"] is True
+        assert passed["notification_filter"].is_empty() is True
 
     @pytest.mark.parametrize("query", ["page=0", "size=0", "size=201"])
     def test_an_impossible_page_is_refused(

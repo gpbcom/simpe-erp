@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import date
 from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, or_, select
+from sqlalchemy import ColumnElement, Select, func, literal, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 # First-party imports
-from models.enums import RegistrationStatus
+from models.enums import QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
+from models.schemas.requests.customers.customer_filter import CustomerFilter
 from storage.mappers.people.customer_mapper import CustomerMapper
 from storage.orm.people.customer_row import CustomerRow
 from storage.orm.planning.intervention_row import InterventionRow
@@ -30,7 +33,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         instances. The ORM row type never leaves this class.
     """
 
-    def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:
+    def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:  # noqa: E501
         """Initialize the repository.
 
         Args:
@@ -39,31 +42,144 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 named after this module.
         """
         resolved_logger = logger if logger else getLogger(__name__)
-        super().__init__(session=session, row_class=CustomerRow, logger=resolved_logger)
+        super().__init__(session=session, row_class=CustomerRow)
         self.mapper = CustomerMapper(logger=resolved_logger)
 
     ############################
     # Internal Helpers Methods #
     ############################
 
+    def _ongoing_arrangement(self) -> Select[Tuple[int]]:
+        """Return the correlated subquery for "is being served right now".
+
+        Returns:
+            Select[Tuple[int]]: A statement to use with ``.exists()``.
+
+        Notes:
+            - **The definition of an ongoing arrangement, in one place.** Accepted,
+              and not past its interruption date — which is inclusive, so a quote
+              interrupted today is still running today.
+            - Deliberately narrower than the customer drawer's notion of "in
+              flight", which also counts quotes that are merely sent or awaiting
+              validation. Those answer *what is in the pipeline*; this answers
+              *who are we serving*, which is the question a manager filters the
+              book by. The two are allowed to differ, and this note is so they
+              differ on purpose rather than by drift.
+        """
+        today = date.today()
+        self.logger.debug("Building the ongoing-arrangement subquery for %s.", today)  # noqa: E501
+        self.logger.info("Ongoing means accepted and not interrupted before %s.", today)
+        if today.year < 2000:
+            self.logger.error(
+                "The host clock says %s, so every arrangement looks ongoing. "
+                "The ongoing filter cannot be trusted until it is corrected.",
+                today,
+            )
+        elif today.month == 12 and today.day == 31:
+            self.logger.warning(
+                "Reading ongoing arrangements on %s: the comparison is "
+                "inclusive, so an arrangement interrupted today is still "
+                "ongoing today and drops out tomorrow.",
+                today,
+            )
+        return (
+            select(literal(1))
+            .select_from(QuoteRow)
+            .where(
+                QuoteRow.customer_id == CustomerRow.id,
+                QuoteRow.status == QuoteStatus.ACCEPTED.value,
+                or_(
+                    QuoteRow.interrupted_on.is_(None),
+                    QuoteRow.interrupted_on >= today,
+                ),
+            )
+        )
+
+    def _dialable_digits(
+        self, column: InstrumentedAttribute[str]
+    ) -> ColumnElement[str]:
+        """Return a telephone column reduced to its bare digits, in SQL.
+
+        Args:
+            column (InstrumentedAttribute[str]): The telephone column.
+
+        Returns:
+            ColumnElement[str]: The column with its punctuation removed.
+
+        Notes:
+            - **A stored number does not look like a typed one.** Pydantic's
+              ``PhoneNumber`` normalises on the way in, so ``+33699999999`` is
+              stored as ``tel:+33-6-99-99-99-99``. A manager typing any of the
+              forms they know — ``0699999999``, ``+33 6 99…``, or the last six
+              digits off a caller display — would match none of it.
+            - So both sides are reduced to digits before comparing. ``replace``
+              is the one string function SQLite and PostgreSQL spell the same
+              way, which is why this is three nested calls rather than a regular
+              expression.
+        """
+        self.logger.debug("Reducing %s to its dialable digits.", column.key)
+        self.logger.info("Telephone matching compares digits, not stored text.")
+        if column.key != "phone_number":
+            self.logger.error(
+                "Column %s is not a telephone number; digit-stripping it will "
+                "match something other than what was asked for.",
+                column.key,
+            )
+        elif column.type.length is not None and column.type.length < 16:
+            self.logger.warning(
+                "Column %s holds at most %d characters, which is shorter than a "
+                "normalised international number; stored values may be cut off.",
+                column.key,
+                column.type.length,
+            )
+        stripped = func.replace(column, "tel:", "")
+        stripped = func.replace(stripped, "-", "")
+        stripped = func.replace(stripped, " ", "")
+        return func.replace(stripped, "+", "")
+
     def _build_query(
         self,
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
+        customer_filter: Optional[CustomerFilter] = None,
     ) -> Select[Tuple[CustomerRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
         Args:
             search (Optional[str]): Case-insensitive fragment.
             status (Optional[RegistrationStatus]): Restrict to one status.
+            customer_filter (Optional[CustomerFilter]): The richer filter. Its
+                ``search`` and ``status`` win over the two positional arguments
+                when both are given.
 
         Returns:
             Select[Tuple[CustomerRow]]: The filtered statement, without ordering or pagination.
 
         Notes:
-            Shared so a page and its total can never be computed from
-            different filters.
+            - Shared so a page and its total can never be computed from
+              different filters.
+            - ``search`` and ``status`` survive as parameters because
+              :meth:`list_for_hca` and the assistant's portfolio still pass them
+              on their own. A caller with a :class:`CustomerFilter` passes that
+              instead and the two named arguments fall away.
         """
+        applied = customer_filter or CustomerFilter()
+        self.logger.debug(
+            "Building the customer query from %s.",
+            applied.model_dump(exclude_none=True),
+        )
+        if customer_filter is not None and search and applied.search:
+            self.logger.warning(
+                "Two searches were passed (%r and %r); the filter's %r is used.",
+                search,
+                applied.search,
+                applied.search,
+            )
+        search = applied.search or search
+        status = applied.status or status
+        if applied.is_empty() and search is None and status is None:
+            self.logger.info("No filter was given; the query is the whole book.")
+
         statement = select(CustomerRow)
         if status is not None:
             statement = statement.where(CustomerRow.registration_status == status.value)
@@ -76,6 +192,44 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                     CustomerRow.email.ilike(pattern),
                     CustomerRow.city.ilike(pattern),
                 )
+            )
+        # One column each, unlike ``search``: a manager who has decided the
+        # fragment is a postcode does not want it matched against a surname.
+        for fragment, column in (
+            (applied.city, CustomerRow.city),
+            (applied.postal_code, CustomerRow.postal_code),
+            (applied.email, CustomerRow.email),
+        ):
+            if fragment:
+                statement = statement.where(
+                    column.ilike(f"%{fragment.strip().lower()}%")
+                )
+        if applied.phone:
+            typed = "".join(
+                character for character in applied.phone if character.isdigit()
+            )
+            if not typed:
+                # Everything the manager typed was punctuation, so the predicate
+                # would be `LIKE '%%'` — every customer, under a filter that
+                # says it is narrowing by telephone number.
+                self.logger.error(
+                    "Telephone filter %r holds no digit; it is dropped rather "
+                    "than matched as a wildcard.",
+                    applied.phone,
+                )
+            if typed:
+                statement = statement.where(
+                    self._dialable_digits(CustomerRow.phone_number).like(f"%{typed}%")
+                )
+        if applied.is_geocoded is not None:
+            resolved = CustomerRow.latitude.is_not(None) & CustomerRow.longitude.is_not(
+                None
+            )
+            statement = statement.where(resolved if applied.is_geocoded else ~resolved)
+        if applied.has_ongoing_arrangement is not None:
+            ongoing = self._ongoing_arrangement().exists()
+            statement = statement.where(
+                ongoing if applied.has_ongoing_arrangement else ~ongoing
             )
         return statement
 
@@ -168,7 +322,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 "Status change requested for absent customer %s.", customer_id
             )
             return None
-        self.logger.info("Setting customer %s status to %s.", customer_id, status.value)
+        self.logger.info("Setting customer %s status to %s.", customer_id, status.value)  # noqa: E501
         row.registration_status = status.value
         await self.session.flush()
         return self.mapper.to_model(row)
@@ -179,6 +333,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         size: Optional[int] = None,
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
+        customer_filter: Optional[CustomerFilter] = None,
     ) -> List[Customer]:
         """Return a page of customers.
 
@@ -188,27 +343,43 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             search (Optional[str]): Case-insensitive fragment matched against
                 the names, the email and the city.
             status (Optional[RegistrationStatus]): Restrict to one status.
+            customer_filter (Optional[CustomerFilter]): The richer filter.
 
         Returns:
             List[Customer]: The matching customers, ordered by family name.
         """
         self.logger.debug(
-            "Listing customers: page=%d search=%r status=%s.",
+            "Listing customers: page=%d search=%r status=%s filter=%s.",
             page,
             search,
             status.value if status else None,
+            customer_filter.model_dump(exclude_none=True) if customer_filter else None,  # noqa: E501
         )
-        statement = self._build_query(search=search, status=status)
-        statement = statement.order_by(CustomerRow.last_name, CustomerRow.first_name)
-        rows = await self._fetch_all(self._paginate(statement, page, size))
+        statement = self._build_query(
+            search=search, status=status, customer_filter=customer_filter
+        )
+        statement = statement.order_by(CustomerRow.last_name, CustomerRow.first_name)  # noqa: E501
+        try:
+            rows = await self._fetch_all(self._paginate(statement, page, size))
+        except SQLAlchemyError:
+            self.logger.error(
+                "The customer query failed on page %d for filter=%s.",
+                page,
+                customer_filter.model_dump(exclude_none=True)
+                if customer_filter
+                else None,
+            )
+            raise
         if not rows:
             self.logger.warning("No customer matched the query.")
+        self.logger.info("Read %d customers on page %d.", len(rows), page)
         return self.mapper.to_models(rows)
 
     async def count(
         self,
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
+        customer_filter: Optional[CustomerFilter] = None,
     ) -> int:
         """Return how many customers match a query.
 
@@ -216,11 +387,32 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             search (Optional[str]): Case-insensitive fragment matched against
                 the names, the email and the city.
             status (Optional[RegistrationStatus]): Restrict to one status.
+            customer_filter (Optional[CustomerFilter]): The richer filter.
 
         Returns:
             int: The number of matching customers.
         """
-        return await self._count(self._build_query(search=search, status=status))
+        self.logger.debug(
+            "Counting customers: search=%r status=%s filter=%s.",
+            search,
+            status.value if status else None,
+            customer_filter.model_dump(exclude_none=True) if customer_filter else None,  # noqa: E501
+        )
+        try:
+            total = await self._count(
+                self._build_query(
+                    search=search,
+                    status=status,
+                    customer_filter=customer_filter,  # noqa: E501
+                )
+            )
+        except SQLAlchemyError:
+            self.logger.error("Counting customers failed for search=%r.", search)  # noqa: E501
+            raise
+        if total == 0:
+            self.logger.warning("No customer matched the counted query.")
+        self.logger.info("%d customers match.", total)
+        return total
 
     async def list_for_hca(
         self,
@@ -347,5 +539,5 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         try:
             return await self._delete_row(customer_id)
         except SQLAlchemyError as exc:
-            self.logger.error("Error deleting customer %s: %s.", customer_id, exc)
+            self.logger.error("Error deleting customer %s: %s.", customer_id, exc)  # noqa: E501
             raise

@@ -8,13 +8,16 @@ from typing import List, Optional
 from models.companies.company import Company
 from models.companies.company_choice import CompanyChoice
 from service.companies.exceptions import (
+    MTCompanyLogoStorageUnavailable,
     MTCompanyNameTaken,
     MTCompanyNotEmpty,
     MTCompanyNotFound,
 )
+from storage.repositories.auth.user import UserRepository
 from storage.repositories.companies.company import CompanyRepository
 from storage.repositories.people.hca import HcaRepository
-from storage.repositories.auth.user import UserRepository
+from storage.s3.exceptions import MTS3DeleteFailed
+from storage.s3.s3_storage import S3Storage
 
 
 class CompanyService:
@@ -22,6 +25,7 @@ class CompanyService:
 
     Attributes:
         companies (CompanyRepository): The company store.
+        logos (Optional[S3Storage]): The object store holding the logos.
         logger (Logger): Logger for company operations.
 
     Notes:
@@ -46,6 +50,7 @@ class CompanyService:
         companies: CompanyRepository,
         users: UserRepository,
         hcas: HcaRepository,
+        logos: Optional[S3Storage] = None,
         logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the service.
@@ -55,14 +60,89 @@ class CompanyService:
             users (UserRepository): The account store, to check an agency is
                 empty before removing it.
             hcas (HcaRepository): The assistant store, for the same check.
+            logos (Optional[S3Storage]): The object store holding the logos.
+                Optional, because every method but the two logo ones works
+                without it — and a test exercising agency deletion should not
+                have to stand up an object store to do so.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
         self.companies = companies
         self.users = users
         self.hcas = hcas
+        self.logos = logos
         self.logger = logger if logger else getLogger(__name__)
         self.logger.debug("CompanyService created.")
+
+    ############################
+    # Internal Helpers Methods #
+    ############################
+
+    async def _remove_superseded(
+        self, previous_url: Optional[str], current_url: Optional[str]
+    ) -> None:
+        """Delete a logo that is no longer referenced, best effort.
+
+        Args:
+            previous_url (Optional[str]): The URL stored before.
+            current_url (Optional[str]): The URL stored now, so an unchanged
+                one is never deleted.
+
+        Notes:
+            Failures are logged, never raised. By the time this runs the record
+            is already correct, so raising would report a failure for an
+            operation that succeeded. The cost is an orphaned object, which is
+            a housekeeping problem rather than a correctness one.
+        """
+        if self.logos is None or not previous_url or previous_url == current_url:
+            self.logger.debug("No superseded logo to remove.")
+            return
+        self.logger.info("Removing the superseded logo %s.", previous_url)
+        try:
+            removed = await self.logos.delete_logo(previous_url)
+        except MTS3DeleteFailed as exc:
+            self.logger.error(
+                "Could not remove the superseded logo %s: %s. The object is "
+                "orphaned but the record is correct.",
+                previous_url,
+                exc,
+            )
+            return
+        if not removed:
+            self.logger.warning(
+                "The object store declined to remove %s; it is not a logo it "
+                "owns. The record is correct either way.",
+                previous_url,
+            )
+
+    def _require_logo_storage(self) -> S3Storage:
+        """Return the object store, refusing when the deployment has none.
+
+        Returns:
+            S3Storage: The configured store.
+
+        Raises:
+            MTCompanyLogoStorageUnavailable: If no object store was injected.
+
+        Notes:
+            Raised rather than silently skipped. A caller who uploaded an image
+            and got a 2xx back would reasonably believe it was kept, and a
+            record that quietly declines to hold one is worse than a route that
+            says the deployment cannot.
+        """
+        self.logger.debug("Checking that an object store is configured.")
+        if self.logos is None:
+            self.logger.warning(
+                "A logo operation was attempted on a deployment with no bucket."
+            )
+            self.logger.error(
+                "No object store is configured; the logo operation cannot proceed."
+            )
+            raise MTCompanyLogoStorageUnavailable(
+                "This deployment has no object store, so logos cannot be stored."
+            )
+        self.logger.info("An object store is available to hold logos.")
+        return self.logos
 
     ############################
     # Publicly Exposed Methods #
@@ -230,6 +310,101 @@ class CompanyService:
             )
         return updated
 
+    async def set_logo(self, company_id: str, payload: bytes) -> Company:
+        """Store an agency's logo and attach it to its record.
+
+        Args:
+            company_id (str): The agency the logo belongs to.
+            payload (bytes): The image bytes.
+
+        Returns:
+            Company: The updated agency.
+
+        Raises:
+            MTCompanyNotFound: If no such agency exists.
+            MTCompanyLogoStorageUnavailable: If the deployment has no object
+                store.
+            MTS3EmptyPayload: If the upload carries no bytes.
+            MTS3UnsupportedContentType: If it is not an accepted image.
+            MTS3PayloadTooLarge: If it exceeds the configured size.
+            MTS3BucketUnavailable: If the object store cannot be reached.
+            MTS3UploadFailed: If the object could not be written.
+
+        Notes:
+            The object is written **before** the record is updated, as with an
+            assistant's photograph. The reverse order would leave a record
+            pointing at an object that does not exist yet, so a failure between
+            the two steps would show a broken image rather than the previous
+            one.
+        """
+        logos = self._require_logo_storage()
+        company = await self.get(company_id)
+        previous_url = company.logo_url
+        self.logger.debug(
+            "Company %s currently shows %s.", company_id, previous_url or "no logo"
+        )
+        if not payload:
+            self.logger.warning(
+                "Company %s sent an empty logo; the object store will refuse it.",
+                company_id,
+            )
+        self.logger.info(
+            "Storing a %d-byte logo for company %s.", len(payload), company_id
+        )
+        logo_url = await logos.upload_logo(company_id, payload)
+        updated = await self.companies.set_logo_url(company_id, logo_url)
+        if updated is None:
+            self.logger.error(
+                "Company %s vanished while its logo was uploading; the object "
+                "at %s is now orphaned.",
+                company_id,
+                logo_url,
+            )
+            raise MTCompanyNotFound(f"No company {company_id!r} exists.")
+        await self._remove_superseded(previous_url, logo_url)
+        self.logger.info("Company %s now shows %s.", company_id, logo_url)
+        return updated
+
+    async def clear_logo(self, company_id: str) -> Company:
+        """Remove an agency's logo.
+
+        Args:
+            company_id (str): The agency to clear.
+
+        Returns:
+            Company: The updated agency.
+
+        Raises:
+            MTCompanyNotFound: If no such agency exists.
+            MTCompanyLogoStorageUnavailable: If the deployment has no object
+                store.
+
+        Notes:
+            The link is cleared first, the opposite of the upload order. What
+            matters in both cases is that the record never points at a missing
+            object: on upload the object must exist first, on removal the link
+            must go first.
+        """
+        self._require_logo_storage()
+        company = await self.get(company_id)
+        previous_url = company.logo_url
+        self.logger.debug("Clearing the logo of company %s.", company_id)
+        if previous_url is None:
+            self.logger.warning(
+                "Company %s has no logo to clear; the record is written anyway "
+                "so the caller's screen agrees with the store.",
+                company_id,
+            )
+        updated = await self.companies.set_logo_url(company_id, None)
+        if updated is None:
+            self.logger.error(
+                "Company %s vanished while its logo was being cleared.", company_id
+            )
+            raise MTCompanyNotFound(f"No company {company_id!r} exists.")
+        await self._remove_superseded(previous_url, None)
+        self.logger.info("Company %s no longer has a logo.", company_id)
+        return updated
+
     async def delete(self, company_id: str) -> None:
         """Remove an agency that nobody belongs to.
 
@@ -241,12 +416,15 @@ class CompanyService:
             MTCompanyNotEmpty: If an account or an assistant still names it.
 
         Notes:
-            The emptiness check names *what* is still attached rather than
-            refusing flatly. "Two accounts and one assistant still belong to
-            this agency" tells the caller what to do next; "cannot delete"
-            leaves them guessing which of three tables to look in.
+            - The emptiness check names *what* is still attached rather than
+              refusing flatly. "Two accounts and one assistant still belong to
+              this agency" tells the caller what to do next; "cannot delete"
+              leaves them guessing which of three tables to look in.
+            - The logo object goes with the row, best effort. Nothing references
+              it once the agency is gone, and leaving it would accumulate images
+              in the bucket that no record can name.
         """
-        await self.get(company_id)
+        company = await self.get(company_id)
         accounts = await self.users.count_for_company(company_id)
         assistants = await self.hcas.count_for_company(company_id)
         if accounts or assistants:
@@ -262,4 +440,5 @@ class CompanyService:
                 f"{assistants} assistant(s); move or remove them first."
             )
         await self.companies.delete(company_id)
+        await self._remove_superseded(company.logo_url, None)
         self.logger.info("Deleted agency %s.", company_id)

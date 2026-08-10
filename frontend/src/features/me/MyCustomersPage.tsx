@@ -4,7 +4,6 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardActionArea from '@mui/material/CardActionArea';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import Drawer from '@mui/material/Drawer';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid2';
@@ -15,6 +14,7 @@ import Typography from '@mui/material/Typography';
 import SearchIcon from '@mui/icons-material/Search';
 import { useMyCustomers } from '@/api/queries';
 import { AppIcon } from '@/components/icons/AppIcon';
+import { CustomerStatusChip } from '@/features/customers/CustomerStatusChip';
 import type { Customer } from '@/api/types';
 
 /**
@@ -84,15 +84,12 @@ export function MyCustomersPage() {
                         <br />
                         {customer.address.postal_code} {customer.address.city}
                       </Typography>
-                      <Chip
-                        label={t(`customer.status_${customer.registration_status}`)}
-                        color={
-                          customer.registration_status === 'active'
-                            ? 'success'
-                            : 'default'
-                        }
-                        sx={{ alignSelf: 'flex-start' }}
-                      />
+                      <Box sx={{ alignSelf: 'flex-start' }}>
+                        <CustomerStatusChip
+                          status={customer.registration_status}
+                          testId={`customer-status-${customer.id}`}
+                        />
+                      </Box>
                     </Stack>
                   </CardContent>
                 </CardActionArea>

@@ -9,15 +9,18 @@ from sqlalchemy.exc import IntegrityError
 
 # First-party imports
 from models.catalog.skill_type import SkillType
+from models.schemas.requests.catalog.skill_type_filter import SkillTypeFilter
 from service.skills.exceptions import (
     MTSkillTypeAlreadyExists,
     MTSkillTypeInUse,
     MTSkillTypeNotFound,
     MTSkillTypeUnknownCode,
 )
+
 # isort: off
 from storage.repositories.catalog.skill_type import SkillTypeRepository
-from storage.repositories.catalog.intervention_type import InterventionTypeRepository   # noqa: E501
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository  # noqa: E501
+
 # isort: on
 from storage.repositories.people.hca import HcaRepository
 
@@ -112,9 +115,7 @@ class SkillTypeService:
             size=self.types.MAX_PAGE_SIZE, include_inactive=True
         )
         return [
-            service.name
-            for service in services
-            if code in service.required_skill_codes
+            service.name for service in services if code in service.required_skill_codes
         ]
 
     ############################
@@ -215,6 +216,7 @@ class SkillTypeService:
         page: int = 1,
         size: Optional[int] = None,
         include_inactive: bool = False,
+        skill_filter: Optional[SkillTypeFilter] = None,
     ) -> List[SkillType]:
         """Return a page of the catalogue.
 
@@ -222,6 +224,7 @@ class SkillTypeService:
             page (int): One-based page number.
             size (Optional[int]): Page size.
             include_inactive (bool): Whether retired entries are included.
+            skill_filter (Optional[SkillTypeFilter]): The screen's filter.
 
         Returns:
             List[SkillType]: The matching entries, ordered by label.
@@ -232,7 +235,10 @@ class SkillTypeService:
             include_inactive,
         )
         return await self.skills.list(
-            page=page, size=size, include_inactive=include_inactive
+            page=page,
+            size=size,
+            include_inactive=include_inactive,
+            skill_filter=skill_filter,
         )
 
     async def update(

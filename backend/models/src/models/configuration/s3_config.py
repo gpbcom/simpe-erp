@@ -5,13 +5,14 @@ import os
 from typing import ClassVar, Optional, Tuple, Union
 
 # Third-party imports
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 # First-party imports
 from models.configuration.exceptions import (
     MTS3ConfigInvalidBucket,
     MTS3ConfigInvalidCredentialEnv,
     MTS3ConfigInvalidEndpointUrl,
+    MTS3ConfigInvalidLogoPrefix,
     MTS3ConfigInvalidMaxUploadBytes,
     MTS3ConfigInvalidPhotoPrefix,
     MTS3ConfigInvalidPublicBaseUrl,
@@ -21,11 +22,13 @@ from models.configuration.exceptions import (
 
 
 class S3Config(BaseModel):
-    """Settings for the object store holding assistant photographs.
+    """Settings for the object store holding assistant photographs and logos.
 
     Attributes:
         DEFAULT_PHOTO_KEY_PREFIX (ClassVar[str]): Key prefix every photo is
             written under.
+        DEFAULT_LOGO_KEY_PREFIX (ClassVar[str]): Key prefix every company logo
+            is written under.
         ALLOWED_PHOTO_CONTENT_TYPES (ClassVar[Tuple[str, ...]]): Image types
             accepted for upload.
         MAX_ALLOWED_UPLOAD_BYTES (ClassVar[int]): Hard ceiling on the
@@ -41,6 +44,7 @@ class S3Config(BaseModel):
         secret_key_env (str): Name of the environment variable holding the
             secret key.
         photo_key_prefix (str): Key prefix every photo is written under.
+        logo_key_prefix (str): Key prefix every company logo is written under.
         max_upload_bytes (int): Largest photograph accepted.
 
     Notes:
@@ -54,6 +58,7 @@ class S3Config(BaseModel):
     """
 
     DEFAULT_PHOTO_KEY_PREFIX: ClassVar[str] = "hca-photos/"
+    DEFAULT_LOGO_KEY_PREFIX: ClassVar[str] = "company-logos/"
     ALLOWED_PHOTO_CONTENT_TYPES: ClassVar[Tuple[str, ...]] = (
         "image/jpeg",
         "image/png",
@@ -82,6 +87,10 @@ class S3Config(BaseModel):
     photo_key_prefix: str = Field(
         default=DEFAULT_PHOTO_KEY_PREFIX,
         description="Key prefix every photograph is written under.",
+    )
+    logo_key_prefix: str = Field(
+        default=DEFAULT_LOGO_KEY_PREFIX,
+        description="Key prefix every company logo is written under.",
     )
     max_upload_bytes: int = Field(
         default=5 * 1024 * 1024,
@@ -196,20 +205,23 @@ class S3Config(BaseModel):
             )
         return value.strip()
 
-    @field_validator("photo_key_prefix", mode="before")
-    def validate_photo_key_prefix(cls, value: Optional[str]) -> str:
-        """Validates that ``photo_key_prefix`` is a slash-terminated prefix.
+    @field_validator("photo_key_prefix", "logo_key_prefix", mode="before")
+    def validate_key_prefix(cls, value: Optional[str], info: ValidationInfo) -> str:
+        """Validates that a key prefix is slash-terminated and relative.
 
         Args:
-            value (Optional[str]): Raw ``photo_key_prefix`` value. ``None``
-                falls back to :attr:`DEFAULT_PHOTO_KEY_PREFIX`.
+            value (Optional[str]): Raw prefix value. ``None`` falls back to the
+                default for the field being validated.
+            info (ValidationInfo): Names the field, so each prefix raises its
+                own exception and reports its own default.
 
         Returns:
             str: The prefix, guaranteed to end in a slash.
 
         Raises:
-            MTS3ConfigInvalidPhotoPrefix: If ``value`` is neither ``None`` nor
-                a non-empty string, or if it starts with a slash.
+            MTS3ConfigInvalidPhotoPrefix: If ``photo_key_prefix`` is neither
+                ``None`` nor a non-empty string, or if it starts with a slash.
+            MTS3ConfigInvalidLogoPrefix: The same, for ``logo_key_prefix``.
 
         Notes:
             A leading slash is rejected because S3 would treat it as an empty
@@ -218,17 +230,29 @@ class S3Config(BaseModel):
 
             The trailing slash is added rather than demanded, so a prefix
             configured without one still groups its objects into a folder.
+
+            One rule, two exceptions. The check is identical for both fields,
+            but the API's exception-to-status map is keyed on the class, and a
+            rejected logo prefix reporting itself as a bad photo prefix would
+            send whoever is fixing the deployment to the wrong line.
         """
+        is_logo = info.field_name == "logo_key_prefix"
+        refuse = (
+            MTS3ConfigInvalidLogoPrefix if is_logo else MTS3ConfigInvalidPhotoPrefix
+        )
+        default = (
+            cls.DEFAULT_LOGO_KEY_PREFIX if is_logo else cls.DEFAULT_PHOTO_KEY_PREFIX
+        )
         if value is None:
-            return cls.DEFAULT_PHOTO_KEY_PREFIX
+            return default
         if not isinstance(value, str) or not value.strip():
-            raise MTS3ConfigInvalidPhotoPrefix(
-                f"Invalid photo_key_prefix: {value!r}. Must be a non-empty string."
+            raise refuse(
+                f"Invalid {info.field_name}: {value!r}. Must be a non-empty string."
             )
         stripped = value.strip()
         if stripped.startswith("/"):
-            raise MTS3ConfigInvalidPhotoPrefix(
-                f"Invalid photo_key_prefix: {value!r}. Must not start with a slash."
+            raise refuse(
+                f"Invalid {info.field_name}: {value!r}. Must not start with a slash."
             )
         return stripped if stripped.endswith("/") else f"{stripped}/"
 

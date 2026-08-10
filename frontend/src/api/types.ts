@@ -25,8 +25,15 @@ export type InterventionStatus = 'planned' | 'confirmed' | 'completed' | 'cancel
 /** What an assistant is employed as. */
 export type ContractType = 'cdi' | 'cdd' | 'interim' | 'internship';
 
-/** Whether a customer is still served. */
-export type RegistrationStatus = 'active' | 'stopped';
+/**
+ * Where a customer stands with the agency.
+ *
+ * `prospect` is what a newly registered household is. They may be quoted —
+ * that is what a prospect is *for* — but no planning run will schedule their
+ * work until a manager promotes them, because the agency has not yet agreed to
+ * deliver it.
+ */
+export type RegistrationStatus = 'active' | 'prospect' | 'stopped';
 
 /** What a notification is about. */
 export type NotificationKind =
@@ -343,6 +350,34 @@ export interface NewCustomer {
   registration_status: RegistrationStatus;
 }
 
+/**
+ * What narrows the customer book.
+ *
+ * @remarks
+ * Mirrors the server's `CustomerFilter`. Every field is optional and an absent
+ * one narrows nothing — the screen sends the two boxes somebody filled in, not
+ * eight.
+ *
+ * The flags are three-state on purpose. `undefined` is "do not filter on this";
+ * `false` is "only those where it is false", which is a question a manager asks
+ * — "whose address failed to resolve?" are exactly the customers nothing can
+ * ever be planned for.
+ *
+ * Filtering runs on the server. The grid holds one page, so a client-side
+ * filter would search only the rows it happens to have and silently miss the
+ * rest of the book.
+ */
+export interface CustomerFilter {
+  search?: string;
+  status?: RegistrationStatus;
+  city?: string;
+  postal_code?: string;
+  email?: string;
+  phone?: string;
+  has_ongoing_arrangement?: boolean;
+  is_geocoded?: boolean;
+}
+
 /** One service on a quote. */
 export interface QuoteLine {
   id: string | null;
@@ -430,6 +465,16 @@ export interface Quote {
    * the quote — so the document can still show what the cancelled visits would
    * have cost.
    */
+  /**
+   * Why the last planning could not fit this quote's work.
+   *
+   * @remarks
+   * `null` is the ordinary case: no note means no problem. When it is set,
+   * the quote has been sent back to `pending-validation` — an accepted quote
+   * whose work will not fit is not a settled commitment — and this says which
+   * visits failed, why, and when somebody qualified is free instead.
+   */
+  planning_feedback: UnplacedQuote | null;
   interrupted_on: string | null;
   /** Whether a successor is written when this quote expires. */
   auto_renew: boolean;
@@ -506,9 +551,101 @@ export interface Notification {
 }
 
 /** One execution of the planning computation. */
+/** Why one visit could not be placed. Mirrors `UnplacedReason` on the server. */
+export type UnplacedReason =
+  | 'out-of-radius'
+  | 'not-a-working-day'
+  | 'no-assistant-available'
+  | 'outside-working-day'
+  | 'missing-certification'
+  | 'missing-skill'
+  | 'customer-conflict'
+  | 'no-feasible-slot';
+
+/** The body of a quote header edit. */
+export interface QuoteHeaderEdit {
+  reference: string;
+  customer_id: string;
+  issued_on: string | null;
+  valid_until: string | null;
+  auto_renew: boolean;
+}
+
+/** A time somebody qualified is free, offered in place of one that failed. */
+export interface SuggestedSlot {
+  day: string;
+  start_minute: number;
+  end_minute: number;
+  hca_id: string;
+  hca_name: string;
+}
+
+/** One visit a run could not fit, and why. */
+export interface UnplacedVisit {
+  requirement_id: string;
+  name: string;
+  customer_id: string;
+  customer_name: string;
+  quote_reference: string;
+  day: string;
+  reason: UnplacedReason;
+  detail: string | null;
+  /**
+   * The quote line this work was sold on.
+   *
+   * @remarks
+   * What makes an offered slot actionable: accepting one moves *this* line.
+   * Null on a note written before the field existed, in which case the slots
+   * are shown but not offered as clickable — there is nothing to move.
+   */
+  quote_line_id: string | null;
+  /**
+   * Times somebody qualified is free instead of this visit's.
+   *
+   * @remarks
+   * Per visit, not per quote. A quote with two unplaced visits has two sets of
+   * free times, and one flat list leaves an operator guessing which slot
+   * answers which problem.
+   */
+  alternatives: SuggestedSlot[];
+}
+
+/**
+ * Everything one quote could not fit into a week.
+ *
+ * @remarks
+ * Grouped by quote because that is the unit somebody can act on: a list of
+ * thirty visits says something is wrong, where "quote DEV-2026-0042 for Marie
+ * Durand, three visits, nobody holds DEAES" says who to telephone.
+ */
+export interface UnplacedQuote {
+  quote_reference: string;
+  customer_id: string;
+  customer_name: string;
+  visits: UnplacedVisit[];
+  /**
+   * Times somebody qualified is free, offered instead.
+   *
+   * @remarks
+   * Offers, not bookings. Nothing is reserved: two operators acting on the
+   * same suggestion are both told it fits, and the next planning run settles
+   * it. Empty means the week is full for everybody qualified, which is itself
+   * an answer.
+   */
+  alternatives: SuggestedSlot[];
+}
+
+/** The slot an operator accepted, for one line of a returned quote. */
+export interface QuoteReschedule {
+  quote_line_id: string;
+  day: string;
+  start_minute: number;
+  end_minute: number;
+}
+
 export interface PlanningRun {
   id: string | null;
-  status: 'pending' | 'running' | 'succeeded' | 'failed';
+  status: 'pending' | 'running' | 'succeeded' | 'partial' | 'failed';
   requested_by: string;
   period_start: string;
   period_end: string;
@@ -516,6 +653,28 @@ export interface PlanningRun {
   finished_at: string | null;
   total_travel_minutes: number | null;
   scheduled_count: number | null;
+  /**
+   * Whether the driving in the stored plan was proved as short as it can be.
+   *
+   * @remarks
+   * A run places every visit first and shortens the rounds second. If the
+   * second pass runs out of budget the first pass's plan is stored unchanged
+   * — nothing is left unscheduled, the travel simply was not proved minimal.
+   *
+   * `null` is not `false`: a run from before the two-pass solve never asked
+   * the question, and rendering it as unoptimised would invent a finding
+   * about a historic plan.
+   */
+  is_optimised: boolean | null;
+  /**
+   * One entry per quote whose work could not all be fitted.
+   *
+   * @remarks
+   * Empty on a run that placed everything. The screen renders this rather
+   * than `error_message` for a partial run: the message is one long sentence
+   * built server-side, and it can neither be translated nor grouped.
+   */
+  unplaced_quotes: UnplacedQuote[];
   unassigned_requirement_ids: string[];
   error_message: string | null;
 }
@@ -549,6 +708,26 @@ export interface Company {
   contact_email: string | null;
   /** Registered address, when one has been recorded. */
   address: PostalAddress | null;
+  /**
+   * The account the agency is paid into, for SEPA transfers.
+   *
+   * @remarks
+   * Only `GET /me/company` — administrator-gated — returns this whole. The
+   * agency routes a manager can reach hand back a masked form instead, so a
+   * value read from anywhere else must never be sent back on a save.
+   */
+  iban: string | null;
+  /** Bank identifier code of that account. */
+  bic: string | null;
+  /**
+   * URL of the agency's logo in the object store.
+   *
+   * @remarks
+   * Read-only here. It is written by `PUT /me/company/logo`, which uploads
+   * the image and then records where it put it — the profile payload cannot
+   * carry it.
+   */
+  logo_url: string | null;
   /** Whether assistants may currently apply. */
   is_accepting_applications: boolean;
   /** When the agency was founded in this system. */
@@ -560,9 +739,10 @@ export interface Company {
 /**
  * What an administrator may change about their own agency.
  *
- * Deliberately narrower than `Company`: no identifier, no timestamps. The
- * server's payload model carries the same fields and no others, so the two
- * agree by construction rather than by anybody remembering to keep them so.
+ * Deliberately narrower than `Company`: no identifier, no timestamps, and no
+ * `logo_url`. The server's payload model carries the same fields and no
+ * others, so the two agree by construction rather than by anybody remembering
+ * to keep them so.
  */
 export interface CompanyProfileUpdate {
   name: string;
@@ -572,6 +752,8 @@ export interface CompanyProfileUpdate {
   rcs_number: string | null;
   vat_number: string | null;
   phone_number: string | null;
+  iban: string | null;
+  bic: string | null;
   contact_email: string | null;
   address: PostalAddress | null;
   is_accepting_applications: boolean;

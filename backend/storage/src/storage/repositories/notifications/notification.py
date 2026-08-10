@@ -6,12 +6,15 @@ from logging import Logger, getLogger
 from typing import List, Optional, Sequence, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.notifications.notification import Notification
-from storage.mappers.notifications.notification_mapper import NotificationMapper
+from models.schemas.requests.notifications.notification_filter import (
+    NotificationFilter,
+)
+from storage.mappers.notifications.notification_mapper import NotificationMapper  # noqa: E501
 from storage.orm.notifications.notification_row import NotificationRow
 from storage.repositories.base import BaseRepository
 
@@ -29,7 +32,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
         a way to read somebody else's queue by guessing an identifier.
     """
 
-    def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:
+    def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:  # noqa: E501
         """Initialize the repository.
 
         Args:
@@ -50,22 +53,59 @@ class NotificationRepository(BaseRepository[NotificationRow]):
     ############################
 
     def _build_query(
-        self, recipient_id: str, unread_only: bool = False
+        self,
+        recipient_id: str,
+        unread_only: bool = False,
+        notification_filter: Optional[NotificationFilter] = None,
     ) -> Select[Tuple[NotificationRow]]:
         """Build the filtered select shared by the read methods.
 
         Args:
             recipient_id (str): The account whose queue is being read.
             unread_only (bool): Restrict to notifications not yet read.
+            notification_filter (Optional[NotificationFilter]): The screen's
+                filter. Its ``is_read`` wins over ``unread_only``.
 
         Returns:
             Select: The filtered statement, without ordering or pagination.
+
+        Notes:
+            **The recipient is a parameter, never a filter field.** It comes
+            from the caller's own credential, and no amount of care in the
+            endpoint would matter if this method could be asked for somebody
+            else's queue — so the narrowing is applied here first and the
+            filter has no way to name a recipient at all.
         """
+        applied = notification_filter or NotificationFilter()
+        self.logger.debug(
+            "Building the notification query for %s from %s.",
+            recipient_id,
+            applied.model_dump(exclude_none=True),
+        )
         statement = select(NotificationRow).where(
             NotificationRow.recipient_id == recipient_id
         )
-        if unread_only:
+        if applied.is_read is not None:
+            if unread_only and applied.is_read:
+                self.logger.warning(
+                    "unread_only asked for the unread notifications and the "
+                    "filter asked for the read ones; the filter wins."
+                )
+            statement = statement.where(NotificationRow.is_read.is_(applied.is_read))
+        elif unread_only:
             statement = statement.where(NotificationRow.is_read.is_(False))
+        else:
+            self.logger.info("Listing every notification for %s.", recipient_id)
+        if applied.kind is not None:
+            statement = statement.where(NotificationRow.kind == applied.kind.value)
+        if applied.search:
+            pattern = f"%{applied.search.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    NotificationRow.title.ilike(pattern),
+                    NotificationRow.body.ilike(pattern),
+                )
+            )
         return statement
 
     ############################
@@ -122,6 +162,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
         page: int = 1,
         size: Optional[int] = None,
         unread_only: bool = False,
+        notification_filter: Optional[NotificationFilter] = None,
     ) -> List[Notification]:
         """Return a page of one account's notifications, newest first.
 
@@ -130,6 +171,8 @@ class NotificationRepository(BaseRepository[NotificationRow]):
             page (int): One-based page number.
             size (Optional[int]): Page size.
             unread_only (bool): Restrict to notifications not yet read.
+            notification_filter (Optional[NotificationFilter]): The
+                screen's filter.
 
         Returns:
             List[Notification]: The matching notifications.
@@ -140,9 +183,9 @@ class NotificationRepository(BaseRepository[NotificationRow]):
             page,
             unread_only,
         )
-        statement = self._build_query(recipient_id, unread_only).order_by(
-            NotificationRow.created_at.desc()
-        )
+        statement = self._build_query(
+            recipient_id, unread_only, notification_filter
+        ).order_by(NotificationRow.created_at.desc())
         rows = await self._fetch_all(self._paginate(statement, page, size))
         if not rows:
             self.logger.debug("Account %s has no notification.", recipient_id)
@@ -162,7 +205,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
             page, so a reader with four hundred unread rows costs one aggregate
             rather than four hundred mapped models.
         """
-        return await self._count(self._build_query(recipient_id, unread_only=True))
+        return await self._count(self._build_query(recipient_id, unread_only=True))  # noqa: E501
 
     async def mark_read(
         self, notification_id: str, recipient_id: str
@@ -197,7 +240,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
             )
             return None
         if row.is_read:
-            self.logger.debug("Notification %s was already read.", notification_id)
+            self.logger.debug("Notification %s was already read.", notification_id)  # noqa: E501
             return self.mapper.to_model(row)
         row.is_read = True
         row.read_at = datetime.now(UTC)
@@ -233,5 +276,5 @@ class NotificationRepository(BaseRepository[NotificationRow]):
         result = await self.session.execute(statement)
         await self.session.flush()
         marked = int(result.rowcount or 0)
-        self.logger.info("Account %s cleared %d notification(s).", recipient_id, marked)
+        self.logger.info("Account %s cleared %d notification(s).", recipient_id, marked)  # noqa: E501
         return marked

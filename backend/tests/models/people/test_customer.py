@@ -61,12 +61,18 @@ class TestCustomer:
         assert customer.last_name == "Durand"
         assert customer.id is None
 
-    def test_registration_status_defaults_to_active(
+    def test_registration_status_defaults_to_prospect(
         self, valid_customer_kwargs: Dict[str, Any]
     ) -> None:
-        """A new customer is served until they are stopped."""
+        """**A new customer is somebody the agency is talking to.**
+
+        Notes:
+            Registering a customer records an enquiry; agreeing to deliver care
+            is a separate act. Defaulting to active would have the planner
+            routing an assistant to a door nobody had agreed to knock on.
+        """
         customer = Customer(**valid_customer_kwargs)
-        assert customer.registration_status is RegistrationStatus.ACTIVE
+        assert customer.registration_status is RegistrationStatus.PROSPECT
 
     def test_the_address_is_built_from_a_mapping(
         self, valid_customer_kwargs: Dict[str, Any]
@@ -254,12 +260,18 @@ class TestCustomer:
         )
         assert customer.registration_status is RegistrationStatus.STOPPED
 
-    def test_a_none_status_defaults_to_active(
+    def test_a_none_status_defaults_to_prospect(
         self, valid_customer_kwargs: Dict[str, Any]
     ) -> None:
-        """An explicit None yields the default rather than an error."""
+        """An explicit None yields the default rather than an error.
+
+        Notes:
+            Omitting the field and sending ``null`` mean the same thing —
+            nobody has said — and the safe reading of that is the state that
+            schedules nothing.
+        """
         customer = Customer(**{**valid_customer_kwargs, "registration_status": None})
-        assert customer.registration_status is RegistrationStatus.ACTIVE
+        assert customer.registration_status is RegistrationStatus.PROSPECT
 
     @pytest.mark.parametrize(
         "invalid_status",
@@ -300,7 +312,43 @@ class TestCustomer:
         self, valid_customer_kwargs: Dict[str, Any]
     ) -> None:
         """An active customer takes new work."""
-        assert Customer(**valid_customer_kwargs).is_active() is True
+        active = Customer(
+            **{
+                **valid_customer_kwargs,
+                "registration_status": RegistrationStatus.ACTIVE,
+            }
+        )
+        assert active.is_active() is True
+
+    @pytest.mark.parametrize(
+        ("status", "schedulable"),
+        [
+            pytest.param(RegistrationStatus.ACTIVE, True, id="active"),
+            pytest.param(RegistrationStatus.PROSPECT, False, id="prospect"),
+            pytest.param(RegistrationStatus.STOPPED, False, id="stopped"),
+        ],
+    )
+    def test_only_an_active_customer_can_be_scheduled(
+        self,
+        valid_customer_kwargs: Dict[str, Any],
+        status: RegistrationStatus,
+        schedulable: bool,
+    ) -> None:
+        """**The predicate the planner asks, and the reason PROSPECT exists.**
+
+        Args:
+            valid_customer_kwargs (Dict[str, Any]): A valid customer.
+            status (RegistrationStatus): The status under test.
+            schedulable (bool): Whether the planner may place their work.
+
+        Notes:
+            A prospect may hold accepted, priced, perfectly routable quotes and
+            still be unschedulable. That is not a defect in the quote — it is
+            the agency not having agreed to deliver it yet.
+        """
+        customer = Customer(**{**valid_customer_kwargs, "registration_status": status})
+
+        assert customer.can_be_scheduled() is schedulable
 
     def test_a_stopped_customer_may_not(
         self, valid_customer_kwargs: Dict[str, Any]

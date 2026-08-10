@@ -52,3 +52,29 @@ class MTCompanyInvalidVatNumber(MTInvalidCompanyException):
 
 class MTCompanyInvalidPhoneNumber(MTInvalidCompanyException):
     """Exception raised when the contact telephone number is not usable."""
+
+
+class MTCompanyInvalidIban(MTInvalidCompanyException):
+    """Exception raised when the IBAN is malformed or fails its checksum.
+
+    Notes:
+        The checksum is part of what makes an IBAN an IBAN, so a number that
+        merely looks right is still refused. A transposed digit in an account a
+        customer is asked to pay into is the kind of error that surfaces as a
+        missing payment weeks later, not as a rejected form.
+    """
+
+
+class MTCompanyInvalidBic(MTInvalidCompanyException):
+    """Exception raised when the BIC is not eight or eleven characters."""
+
+
+class MTCompanyInvalidLogoUrl(MTInvalidCompanyException):
+    """Exception raised when the logo URL was not issued by this application.
+
+    Notes:
+        A URL outside the application's own key prefix is refused rather than
+        stored: the logo is rendered on every screen and on the quote, so a
+        remote one would report every viewer to whoever hosts it, and the
+        object store could not own the object it is later asked to remove.
+    """

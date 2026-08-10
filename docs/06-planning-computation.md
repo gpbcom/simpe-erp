@@ -15,11 +15,86 @@ InterventionRequirement          one per quote line: service, customer,
         ▼
    field employees only          `field_employee` filters the workforce first
         ▼
-CP-SAT solve  (OR-Tools, 30s budget, on a worker)
+one CP-SAT model per DAY         solved concurrently, one search worker each
+        │
+        │   per day, two passes on the same model:
+        │     1. minimise what is left out   ──▶ does the day fit at all?
+        │     2. minimise travel, hinted     ──▶ only if pass 1 placed it all
+        ▼
+   merged into one plan
         │
         ├── feasible and complete ──▶ Intervention rows replace the period's plan
         └── anything unplaced ──────▶ the run FAILS, with a reason per visit
 ```
+
+## A week is solved one day at a time
+
+**No constraint links one day to another**, and that is a property worth
+stating plainly because the whole shape of the solve rests on it. A
+requirement belongs to exactly one day; `start` and `end` are minutes from
+midnight with no day offset; the customer no-overlap is keyed by
+`(customer, day)`; no-overlap, lunch and travel are built per (assistant,
+day). The objective is a plain sum, so the minimum over a week is the sum of
+the daily minima.
+
+Solving the days apart is therefore an **exact decomposition, not a
+heuristic** — it returns the same plan, only sooner. What it buys is search
+space: a week is a set of independent sub-problems that CP-SAT cannot discover
+for itself, so it explores their product. On a measured 150-visit,
+12-assistant, 5-day instance the single model ran past a ten-minute wall-clock
+net without proving anything; the same week now completes in under a minute
+with every visit placed.
+
+**Anything that couples two days breaks this.** A weekly hours cap, a rest
+period between shifts, a fairness term across the week — each would make the
+decomposition wrong, and wrong *quietly*, by returning worse plans rather than
+by failing. Such a constraint has to go back into one model over the whole
+period, and the speed has to be found somewhere else.
+
+Because the days are independent, solving them at once cannot change the
+answer. `PlanningService.solve_period` runs `planning.solver_day_concurrency`
+of them on worker threads — CP-SAT releases the interpreter lock while it
+searches, so this is real parallelism — each on its own shallow copy of the
+service, because the model is built on instance attributes and two days
+sharing one would overwrite each other's half-built model.
+
+## Placing the work and shortening the rounds are two questions
+
+Each day is solved twice, on the same model:
+
+1. **Feasibility.** The objective is only how many visits were left out. That
+   is a small integer with an obvious lower bound of zero, so the solver
+   reaches and *proves* the answer quickly. Every travel constraint is still
+   in the model — only the travel term of the *objective* is dropped. A pass
+   that did not charge travel time would call a round feasible that nobody can
+   drive, and that is precisely the plan kept if the second pass runs out.
+2. **Optimisation.** Only if the first placed everything. It pins
+   `sum(unassigned) == 0` — otherwise the solver discovers that the shortest
+   round is the one skipping the furthest customer — hints itself with the
+   first pass's plan, and minimises travel under `solver_optimisation_budget`.
+
+If the second pass does not finish, **the first pass's plan is stored** and the
+run records `is_optimised: false`. Nothing goes unscheduled for want of an
+optimisation budget — every visit is placed either way, and only the *claim*
+about the driving is withheld. The team planning screen shows that rather than
+rendering it as an ordinary success, because a plan nobody can tell apart from
+an optimised one is how a slow creep in travel goes unnoticed.
+
+**Read the flag as being about the proof, not about the rounds.** On the
+seeded agency it comes back false while the plan is almost certainly already
+optimal: raising the optimisation budget from 5 to 15 returned the identical
+256 minutes of travel and still could not prove it. Reaching the best plan is
+easy here; showing that nothing beats it is not. That is why neither the
+screen nor this page suggests turning the budget up — advice that sends an
+operator to change a setting which does not help is worse than none.
+
+`is_optimised` is nullable and **null is not false**: a run from before this
+existed never asked the question.
+
+A second pass that comes back INFEASIBLE is a **construction fault, not an
+outcome** — the first pass's assignment satisfies that model by definition. It
+is logged at ERROR and the unoptimised plan is kept, because a bug there must
+not cost the agency its week.
 
 ## Who the solver is even allowed to consider
 
@@ -55,17 +130,47 @@ An empty pool is a legitimate answer, logged at `WARNING`: every requirement
 comes back unassigned and the run fails, which is correct and traceable. What
 must not happen is the filter silently falling back to the whole workforce.
 
-## A partial plan is refused, not stored
+## A partial plan is stored and named
 
-This is the decision the whole computation is built around.
+**This reverses the rule the computation was originally built around**, and
+the reason for the original is worth keeping in view: a calendar missing three
+visits still looks like a calendar, nobody reads the run record to check, and
+the visits quietly dropped are exactly the ones that end with somebody waiting
+at their door.
 
-A calendar missing three visits still looks like a calendar. Nobody reads the
-run record to check, and the visits quietly dropped are exactly the ones that
-end with somebody waiting at their door.
+The old answer was to refuse the whole week. That is safe and it is too blunt:
+a real run came back with **one visit of ninety** unplaceable, and the agency
+got no calendar at all plus a sentence quoting a solver status and a
+configuration key. Eighty-nine good visits were withheld over one impossible
+one, and nobody could act on the explanation.
 
-So a run that cannot place everything **fails**. The store is never reached,
-this week's existing plan stays untouched, and the agency keeps a working
-calendar while the problem is fixed.
+So the plan is now stored, and the risk is answered by making the gap
+impossible to miss rather than by withholding the week:
+
+- the run ends **`partial`**, a status of its own — never `succeeded`;
+- the screen shows it in **warning** colours, not as an ordinary success;
+- and `unplaced_quotes` names **every affected quote**, its customer, each
+  visit and why it did not fit.
+
+**An empty solve is still refused**, and that is a different case. When the
+solver returns nothing there is no plan to store, so the previous week stays
+untouched exactly as before.
+
+### What the report says, and in whose words
+
+Grouped by **quote**, because that is the unit somebody can act on. A list of
+thirty unplaced visits says something is wrong; "quote D-2648 for Jeanne
+Vincent, one visit, the day was full" says who to telephone and what about.
+
+No sentence is composed in the backend. `UnplacedQuote` carries the quote, the
+customer and the diagnosed visits; the screen assembles the wording in the
+reader's own language. A message built server-side would reach an English
+operator in French, which the quote emails already taught this codebase once.
+
+The reasons are rendered as plain statements — "nobody holds the qualification
+it requires", "the day was full: travel, the break and the other visits left
+no room" — rather than as the enum values the solver deals in. An operator is
+not obliged to know what a deterministic budget is.
 
 ## And it says why
 
@@ -177,17 +282,39 @@ The objective minimises travel, with `unassigned_penalty: 100000` — chosen to
 dominate any realistic travel cost, so leaving a requirement unplaced is a last
 resort rather than a cheap way to avoid a drive.
 
-### Two budgets, and only one of them stops the search
+### Three budgets, spent once per day each
 
-`solver_deterministic_budget` is what actually ends a solve. It counts solver
-*work units* rather than seconds, which is the whole point: a wall-clock budget
-stops wherever elapsed time happens to land, so a loaded machine explores less
-and returns a worse plan for the same week.
+**Every figure here is per day, not per period.** The week is one model per
+day, so a budget of five is five for Monday and five again for Tuesday. It was
+150 when a single model covered the whole period, and leaving it there through
+the decomposition made a five-day week cost five times 150 — the change that
+was meant to make planning faster briefly made it three times slower. That is
+the kind of mistake this section exists to prevent.
 
-`solver_time_limit_seconds` is a **safety net, not a budget**. It bounds a
-pathological instance that would otherwise grind for a very long time inside its
-allowance. A solve that reaches it has stopped being reproducible and says so at
-WARNING.
+`solver_deterministic_budget` ends the **feasibility** pass and
+`solver_optimisation_budget` ends the **travel** pass. Both count solver *work
+units* rather than seconds, which is the whole point: a wall-clock budget stops
+wherever elapsed time happens to land, so a loaded machine explores less and
+returns a worse plan for the same week.
+
+Sized by measurement on a 150-visit, 12-assistant, 5-day instance, one worker
+per day:
+
+| per-day budget | outcome |
+|---|---|
+| 2.0 | two days found nothing at all (UNKNOWN) |
+| 5.0 | every visit placed, whole week under a minute |
+
+Five is therefore the floor rather than a target. Raising the feasibility
+budget buys nothing once the week reliably fits, and — measured on the seeded
+agency — raising the optimisation budget from 5 to 15 bought nothing either:
+the same 256 minutes of travel, still unproved. The budget is not the lever it
+looks like; proving optimality is simply much harder than reaching it.
+
+`solver_time_limit_seconds` is a **safety net, not a budget**, and it bounds
+one day rather than the week. It catches a pathological instance that would
+otherwise grind for a very long time inside its allowance. A solve that reaches
+it has stopped being reproducible and says so at WARNING.
 
 **These two measure different things, so nothing makes them agree by
 construction — and a pair that disagrees is silent.** The Helm chart shipped
@@ -197,16 +324,28 @@ solve off a fraction of the way into the search it needed. The plan came back
 with visits unplaced that a full search places, and the only trace was one
 WARNING per run. Both `infra/chart` and
 `tests/models/configuration/test_solver_budget_is_reachable.py` now refuse a net
-below eight times the budget, which is the measured cost of spending one.
+below twenty times the budget. That floor has been calibrated against the
+wrong thing twice — first drawn from a one-worker measurement while the shipped
+configuration ran eight, so it passed the very configuration it exists to
+catch: a net of 900 against a budget of 100, which truncated every search and
+left a 95-visit week one visit short at status FEASIBLE.
 
-`solver_workers` is how many parallel search threads CP-SAT may run, and it was
-**hard-coded at 8** against a container capped at two cores. Under a container
-CPU *limit* that does not merely fail to help: the kernel throttles the whole
-cgroup, so the net arrives after less real search — and the run still reports as
-having used its allowance, so the only symptom is a queue that will not drain. It
-is now `planning.solver_workers`, and it must equal the CPU the process is
-actually given. The Helm chart refuses to render if the two disagree, and the
-compose file says so beside the limit.
+`solver_workers` is how many search threads CP-SAT may run **inside one day's
+model**, and `solver_day_concurrency` is how many days run at once. The CPU a
+run demands is **the product**, not either alone, and it must equal the cores
+the process is given. Under a container CPU *limit* more threads than cores
+does not merely fail to help: the kernel throttles the whole cgroup, so the net
+arrives after less real search — and the run still reports as having used its
+allowance, so the only symptom is a queue that will not drain. The Helm chart
+refuses to render when the product and the limit disagree, and the compose file
+says so beside the limit.
+
+Workers is now **one**. The models are one day each and small enough that a
+second thread buys little, and a single worker is what makes a re-planned week
+return the same answer instead of a different one. Parallelism comes from the
+days, which cannot race because they are independent problems — so the
+reproducibility that eight workers cost is recovered without giving up the
+speed.
 
 Zero is refused rather than read as "decide for me": CP-SAT takes it as a
 request for no search at all, returns immediately, and the run fails looking

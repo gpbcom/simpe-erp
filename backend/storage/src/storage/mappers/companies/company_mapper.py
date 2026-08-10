@@ -83,6 +83,9 @@ class CompanyMapper(BaseMapper[Company, CompanyRow]):
             rcs_number=row.rcs_number,
             vat_number=row.vat_number,
             phone_number=row.phone_number,
+            iban=row.iban,
+            bic=row.bic,
+            logo_url=row.logo_url,
             address=self._build_address(row),
             is_accepting_applications=row.is_accepting_applications,
             created_at=self.timestamps.to_utc(row.created_at),
@@ -105,6 +108,9 @@ class CompanyMapper(BaseMapper[Company, CompanyRow]):
         row.rcs_number = model.rcs_number
         row.vat_number = model.vat_number
         row.phone_number = model.phone_number
+        row.iban = model.iban
+        row.bic = model.bic
+        row.logo_url = model.logo_url
         row.is_accepting_applications = model.is_accepting_applications
         address = model.address
         row.street = address.street if address else None

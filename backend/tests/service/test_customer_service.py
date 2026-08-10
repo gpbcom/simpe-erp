@@ -11,8 +11,13 @@ import pytest
 from models.enums import QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
 from models.quoting.quote import Quote
+from models.schemas.requests.customers.customer_filter import CustomerFilter
 from service.customers.customers import CustomerService
-from service.customers.exceptions import MTCustomerHasQuotes, MTCustomerNotFound
+from service.customers.exceptions import (
+    MTCustomerHasQuotes,
+    MTCustomerNotFound,
+    MTCustomerNotPromotable,
+)
 
 
 def _customer(
@@ -137,8 +142,28 @@ class TestCustomerReads:
         )
 
         customers.list.assert_awaited_once_with(
-            page=2, size=10, search="dur", status=RegistrationStatus.ACTIVE
+            page=2,
+            size=10,
+            search="dur",
+            status=RegistrationStatus.ACTIVE,
+            customer_filter=None,
         )
+
+    async def test_listing_passes_the_rich_filter_through(
+        self, service: CustomerService, customers: AsyncMock
+    ) -> None:
+        """The customers screen's filter reaches the repository untouched.
+
+        Notes:
+            The service does not interpret the filter — it hands it on. The
+            predicates live in one place, the repository's shared query
+            builder, so a page and its total can never disagree about them.
+        """
+        applied = CustomerFilter(city="Paris", has_ongoing_arrangement=True)
+
+        await service.list(customer_filter=applied)
+
+        assert customers.list.await_args.kwargs["customer_filter"] is applied
 
 
 class TestCustomerWrites:
@@ -204,6 +229,69 @@ class TestCustomerWrites:
 
         with pytest.raises(MTCustomerNotFound):
             await service.set_status("ghost", RegistrationStatus.STOPPED)
+
+
+class TestCustomerPromotion:
+    """Tests for the act that puts a customer into the planning."""
+
+    async def test_a_prospect_becomes_active(
+        self, service: CustomerService, customers: AsyncMock
+    ) -> None:
+        """The ordinary case, and the only transition promotion allows."""
+        customers.get.return_value = _customer(status=RegistrationStatus.PROSPECT)
+        customers.set_status.return_value = _customer(status=RegistrationStatus.ACTIVE)
+
+        promoted = await service.promote("customer-1")
+
+        customers.set_status.assert_awaited_once_with(
+            "customer-1", RegistrationStatus.ACTIVE
+        )
+        assert promoted.registration_status is RegistrationStatus.ACTIVE
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param(RegistrationStatus.ACTIVE, id="already active"),
+            pytest.param(RegistrationStatus.STOPPED, id="stopped"),
+        ],
+    )
+    async def test_only_a_prospect_may_be_promoted(
+        self,
+        service: CustomerService,
+        customers: AsyncMock,
+        status: RegistrationStatus,
+    ) -> None:
+        """**Refused rather than shrugged off.**
+
+        Args:
+            service (CustomerService): The service under test.
+            customers (AsyncMock): The repository double.
+            status (RegistrationStatus): The status that cannot be promoted.
+
+        Notes:
+            An already-active customer is the case worth refusing: a control
+            that silently succeeds when it did nothing is one somebody presses
+            twice and then wonders which press took effect. Reinstating a
+            *stopped* customer is a different decision with different
+            consequences and goes through ``set_status``.
+        """
+        customers.get.return_value = _customer(status=status)
+
+        with pytest.raises(MTCustomerNotPromotable):
+            await service.promote("customer-1")
+
+        customers.set_status.assert_not_awaited()
+
+    async def test_promoting_an_absent_customer_is_reported(
+        self, service: CustomerService, customers: AsyncMock
+    ) -> None:
+        """Nothing is written for somebody who is not there."""
+        customers.get.return_value = None
+
+        with pytest.raises(MTCustomerNotFound):
+            await service.promote("no-such-customer")
+
+        customers.set_status.assert_not_awaited()
 
 
 class TestCustomerDeletion:

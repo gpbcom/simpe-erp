@@ -4,6 +4,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Alert from '@mui/material/Alert';
+import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
@@ -21,10 +22,15 @@ import {
 } from '@/api/queries';
 import { NewQuoteDialog } from './NewQuoteDialog';
 import { QuoteEditorDialog } from './QuoteEditorDialog';
+import { QuotePlanningFeedback } from './QuotePlanningFeedback';
 import { QuoteStatusChip } from './QuoteStatusChip';
 import { AppIcon } from '@/components/icons/AppIcon';
 import EditIcon from '@mui/icons-material/Edit';
 import { formatDate, formatMoney } from '@/utils/format';
+import { EntityFilterBar } from '@/components/filters/EntityFilterBar';
+import type { FilterDetail } from '@/components/filters/EntityFilterBar';
+import { useEntityFilter } from '@/components/filters/entityFilter';
+import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import type { Quote, QuoteStatus } from '@/api/types';
 
 /** The tabs across the top, in the order work flows through them. */
@@ -35,6 +41,46 @@ const TABS: { key: string; status?: QuoteStatus }[] = [
   { key: 'sent', status: 'sent' },
   { key: 'accepted', status: 'accepted' },
   { key: 'rejected', status: 'rejected' },
+];
+
+/**
+ * The quote filter's fields, **without ``status``**.
+ *
+ * @remarks
+ * The status tabs above already own that field and default to the validation
+ * queue, which is the first thing a manager should reach. Putting it in the
+ * filter too would be two mechanisms for one value, and the one that lost would
+ * do so silently.
+ */
+const QUOTE_FILTER_SPEC: EntityFilterSpec = {
+  textFields: ['search', 'reference', 'customer_id', 'authored_by'],
+  flagFields: ['is_ongoing', 'auto_renew'],
+  enumFields: {},
+};
+
+/** What is folded away behind "more filters". */
+const QUOTE_DETAILS: FilterDetail[] = [
+  { field: 'reference', label: 'quote.filterReference', kind: 'text' },
+  { field: 'customer_id', label: 'quote.filterCustomer', kind: 'text' },
+  { field: 'authored_by', label: 'quote.filterAuthor', kind: 'text' },
+  {
+    field: 'is_ongoing',
+    label: 'quote.filterOngoing',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'quote.filterOngoingYes' },
+      { value: 'false', label: 'quote.filterOngoingNo' },
+    ],
+  },
+  {
+    field: 'auto_renew',
+    label: 'quote.filterAutoRenew',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'quote.filterAutoRenewYes' },
+      { value: 'false', label: 'quote.filterAutoRenewNo' },
+    ],
+  },
 ];
 
 /**
@@ -54,7 +100,8 @@ export function QuotesPage() {
   const [editing, setEditing] = useState<Quote | null>(null);
   const [writing, setWriting] = useState(false);
   const status = TABS[tab]?.status;
-  const { data, isLoading } = useQuotes(status);
+  const quoteFilter = useEntityFilter(QUOTE_FILTER_SPEC);
+  const { data, isLoading } = useQuotes(status, quoteFilter.filter);
   const { data: customers } = useCustomers();
   // What validating actually did, said once, where the manager is looking.
   // Validation now accepts the quote outright, so the confirmation says the
@@ -92,6 +139,23 @@ export function QuotesPage() {
       renderCell: (params) => <QuoteStatusChip status={params.row.status} />,
     },
     {
+      field: 'planning_feedback',
+      headerName: t('quote.planning'),
+      width: 170,
+      sortable: false,
+      // Only the quotes with a problem carry anything. A column of empty
+      // cells with one chip in it is exactly what makes the one chip visible.
+      renderCell: (params) =>
+        params.row.planning_feedback ? (
+          <Chip
+            size="small"
+            color="warning"
+            label={t('quote.planningReturnedChip')}
+            data-testid={`planning-returned-${params.row.reference}`}
+          />
+        ) : null,
+    },
+    {
       field: 'lines',
       headerName: t('quote.lines'),
       width: 90,
@@ -120,21 +184,27 @@ export function QuotesPage() {
       // buttons on every other line would bury the ones that matter.
       renderCell: (params) => (
         <Stack direction="row" spacing={1}>
-          {/* A manager may edit any quote in the agency — but only while it is
-              a draft. What a customer was sent has to stay what they were
-              sent, and a quote awaiting validation is frozen so the figures a
-              manager rules on are the ones they were shown. */}
+          {/* **Editable at every status**, matching what the service allows.
+              This was drafts only, on the reasoning that what a customer was
+              sent must stay what they were sent — but the planner now sends
+              quotes back to be validated when their work will not fit, and
+              those are past draft by definition. A quote returned for a new
+              date that nobody can change is a dead end.
+
+              The trade is real and worth naming: nothing records what the
+              figures were before an edit, and an edit reprices against the
+              catalogue as it stands now. */}
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={() => setEditing(params.row)}
+            data-testid={`edit-${params.row.reference}`}
+          >
+            {t('quote.edit')}
+          </Button>
           {params.row.status === 'draft' ? (
             <>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<EditIcon />}
-                onClick={() => setEditing(params.row)}
-                data-testid={`edit-${params.row.reference}`}
-              >
-                {t('quote.edit')}
-              </Button>
               {/* Sending accepts the quote: a manager writes one for an
                   arrangement they have already settled with the family, and
                   the hours have to reach the planner. Nothing else in the
@@ -252,6 +322,30 @@ export function QuotesPage() {
             />
           ))}
         </Tabs>
+
+        <Box sx={{ px: 2, pt: 2 }}>
+          <EntityFilterBar
+            state={quoteFilter}
+            testId="quote"
+            searchLabel="quote.search"
+            details={QUOTE_DETAILS}
+          />
+        </Box>
+
+        {/* The explanation sits above the list rather than behind a click.
+            A quote back in the validation queue with no visible reason reads
+            as the system having lost it, and the offered slots are what turn
+            the follow-up call into a decision. */}
+        {(data ?? [])
+          .filter((quote) => quote.planning_feedback)
+          .map((quote) => (
+            <Box key={quote.id ?? quote.reference} sx={{ px: 2, pt: 2 }}>
+              <QuotePlanningFeedback
+                feedback={quote.planning_feedback}
+                quoteId={quote.id ?? undefined}
+              />
+            </Box>
+          ))}
 
         {!isLoading && (data ?? []).length === 0 && status === 'pending-validation' ? (
           <Box sx={{ p: 6, textAlign: 'center' }} data-testid="empty-validation-queue">

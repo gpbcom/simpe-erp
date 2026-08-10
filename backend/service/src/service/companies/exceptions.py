@@ -31,6 +31,19 @@ class MTCompanyRegistrationDisabled(MTInvalidCompanyServiceException):
     """
 
 
+class MTCompanyLogoStorageUnavailable(MTInvalidCompanyServiceException):
+    """Exception raised when a logo operation runs with no object store.
+
+    Notes:
+        Answered as a 503, because it describes the deployment rather than the
+        request: the same call will work once an object store is configured,
+        and nothing the caller can change about the payload will help.
+
+        Raised rather than skipped. Somebody who uploaded an image and got a
+        2xx back would reasonably believe it was kept.
+    """
+
+
 class MTCompanyNotEmpty(MTInvalidCompanyServiceException):
     """Exception raised when an agency still has people attached to it.
 

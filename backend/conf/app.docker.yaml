@@ -81,7 +81,11 @@ planning:
   # or the net truncates every search — the Helm chart shipped that mistake,
   # and both it and the config tests now refuse a net under eight times the
   # budget.
-  solver_time_limit_seconds: 3600.0
+  # A safety net for one **day**, not for the week: the period is solved as
+  # one model per day, so this bounds each of them. Three thousand six
+  # hundred was a week's allowance and is far past pathological for a day.
+  # A solve that reaches it is no longer reproducible and says so at WARNING.
+  solver_time_limit_seconds: 300.0
   # **The setting that decides whether a week's work all gets placed —
   # and a measured trade-off, with neither side of it free.**
   #
@@ -106,8 +110,18 @@ planning:
   #
   # Keep equal to the CPU the process is actually given. More threads than
   # cores and the kernel throttles the whole cgroup under a container limit.
-  solver_workers: 8
+  # One worker per day model, because the models are now small enough
+  # that a second thread buys little — and a single worker is what
+  # makes a re-planned week return the same answer rather than a
+  # different one. Parallelism now comes from solving the days at
+  # once, which does not race: they are independent problems.
+  solver_workers: 1
   solver_seed: 0
+  # How many days are solved simultaneously. **The CPU a run demands
+  # is this times solver_workers**, so keep the product at or below
+  # the cores the process is given: more threads than cores and the
+  # kernel throttles the whole cgroup.
+  solver_day_concurrency: 8
   # The budget that actually stops the search, measured in work rather
   # than in seconds. solver_time_limit_seconds is only a safety net: if
   # it fires, the run logs a WARNING and is no longer reproducible.
@@ -144,7 +158,29 @@ planning:
   # So both moved: the net is now well clear of what the budget costs, and
   # the budget itself is raised by half, because the week that failed is
   # 95 visits where every figure below was measured on 77.
-  solver_deterministic_budget: 150.0
+  # **A budget is spent once per day, not once per period.** The week is
+  # solved as one independent model per day, so the figure below is what
+  # each of them gets. It was 150.0 when one model covered the whole
+  # period; leaving it there made a five-day week cost five times 150
+  # rather than 150, and the decomposition looked like a regression.
+  #
+  # Measured on a 150-visit, 12-assistant, 5-day instance, one worker per
+  # day, days solved in sequence:
+  #     2.0 -> two days found nothing at all (UNKNOWN)
+  #     5.0 -> 120s, every visit placed
+  # Below 5 the search does not reliably reach a first solution, so 5 is
+  # the floor rather than the target; raise it to buy shorter rounds.
+  solver_deterministic_budget: 5.0
+  # The second pass's budget, spent per day once everything is placed.
+  # The first pass answers "does the week fit?" and the second shortens the
+  # driving; splitting them is what lets the first prove its answer quickly,
+  # because "how many visits were left out" has an obvious lower bound of
+  # zero and "how many minutes of driving" does not.
+  #
+  # A run that spends this without proving the travel minimal keeps the
+  # plan it already had and records that it is unoptimised. Nothing is left
+  # unscheduled by a short budget here — only undriven minutes.
+  solver_optimisation_budget: 5.0
   travel_weight: 1
   # Must dominate any realistic travel cost, so leaving a requirement
   # unassigned stays a last resort rather than a cheap way to avoid a drive.
@@ -183,6 +219,7 @@ s3:
   access_key_env: S3_ACCESS_KEY
   secret_key_env: S3_SECRET_KEY
   photo_key_prefix: hca-photos/
+  logo_key_prefix: company-logos/
   max_upload_bytes: 5242880   # 5 MiB
 
 rabbitmq:

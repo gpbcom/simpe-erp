@@ -26,6 +26,9 @@ class CompanyRow(Base):
         rcs_number (Optional[str]): Trade-register entry.
         vat_number (Optional[str]): Intra-community VAT number.
         phone_number (Optional[str]): Contact telephone number.
+        iban (Optional[str]): Account the agency is paid into.
+        bic (Optional[str]): Bank identifier code of that account.
+        logo_url (Optional[str]): URL of the agency's logo in the object store.
         street (Optional[str]): Registered office street.
         postal_code (Optional[str]): Registered office postal code.
         city (Optional[str]): Registered office city.
@@ -45,6 +48,17 @@ class CompanyRow(Base):
         The address is flattened into columns rather than stored as JSON,
         matching every other address in this schema, so a query can filter on a
         city without unpacking a document.
+
+        The IBAN is stored whole and unencrypted, like every other column here.
+        What limits who reads it is the response model the agency routes return
+        — see
+        :class:`~models.schemas.responses.companies.company_view.CompanyView` —
+        not the column, because the administrator it belongs to has to be able
+        to read it back to correct it.
+
+        Only the logo's URL is stored; the image itself lives in the object
+        store. A column wide enough for a signed URL would still be the wrong
+        place to keep an image somebody's browser has to fetch anyway.
     """
 
     __tablename__ = "companies"
@@ -66,6 +80,9 @@ class CompanyRow(Base):
     rcs_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     vat_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     phone_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    iban: Mapped[Optional[str]] = mapped_column(String(34), nullable=True)
+    bic: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     street: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     postal_code: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)

@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './client';
+import { filterQuery } from '@/components/filters/entityFilter';
+import type { EntityFilterRecord } from '@/components/filters/entityFilter';
 import { useSession } from '@/store/session';
 import type {
   AvailabilitySlot,
   NewQuote,
   NewQuoteLine,
+  QuoteHeaderEdit,
   QuoteLinesEdit,
   Certification,
   CertificationType,
@@ -17,7 +20,9 @@ import type {
   Company,
   CompanyProfileUpdate,
   Customer,
+  CustomerFilter,
   NewCustomer,
+  RegistrationStatus,
   Hca,
   HcaPlanning,
   InterventionType,
@@ -31,8 +36,34 @@ import type {
   UserRole,
   Weekday,
   Quote,
+  QuoteReschedule,
   QuoteStatus,
 } from './types';
+
+/**
+ * Serialise a customer filter into a sorted query string.
+ *
+ * @param filter - The filter, or `undefined` for the whole book.
+ * @returns The query string, without a leading `?`, empty when nothing narrows.
+ *
+ * @remarks
+ * One function for two jobs — the request and the cache key — so the two can
+ * never disagree about what a filter means. Two filters narrowing the same way
+ * must produce the same string, which is why the fields are sorted rather than
+ * walked in insertion order: `{city, search}` and `{search, city}` are the same
+ * question and must not be fetched twice.
+ *
+ * `false` is kept and only `undefined` is dropped. A falsy check here would
+ * turn "whose address failed to resolve" into "everybody", which looks like a
+ * filter that does not work rather than a wrong one.
+ */
+export function customerFilterQuery(filter?: CustomerFilter): string {
+  const entries = Object.entries(filter ?? {})
+    .filter(([, value]) => value !== undefined && value !== '')
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([field, value]) => `${field}=${encodeURIComponent(String(value))}`);
+  return entries.join('&');
+}
 
 /**
  * Every query key in one place.
@@ -53,22 +84,40 @@ export const keys = {
   myPlanning: (hcaId: string, from: string, to: string) =>
     ['planning', hcaId, from, to] as const,
   allPlannings: (from: string, to: string) => ['planning', 'all', from, to] as const,
-  quotes: (status?: QuoteStatus, search?: string) =>
-    ['quotes', status ?? 'all', search ?? ''] as const,
-  quote: (id: string) => ['quotes', id] as const,
-  customer: (id: string) => ['customers', id] as const,
-  customerQuotes: (id: string) => ['customers', id, 'quotes'] as const,
+  quotes: (status?: QuoteStatus, filter?: EntityFilterRecord) =>
+    // `list` for the same reason the customer keys carry it: without it a
+    // quote whose identifier happened to equal a filter string would share a
+    // cache entry with the list itself.
+    ['quotes', 'list', status ?? 'all', filterQuery(filter)] as const,
+  quote: (id: string) => ['quotes', 'detail', id] as const,
+  // `detail` is not decoration. Without it, `customer('')` — what the drawer
+  // asks for while it is closed — is `['customers', '']`, which is exactly the
+  // key the *unfiltered list* is cached under. A disabled query still reads
+  // whatever sits at its key, so the drawer was handed the whole array and blew
+  // up dereferencing `.address` on it, blanking the page on first load.
+  customer: (id: string) => ['customers', 'detail', id] as const,
+  customerQuotes: (id: string) => ['customers', 'detail', id, 'quotes'] as const,
   users: ['users'] as const,
   planningRuns: ['planning', 'runs'] as const,
   planningSettings: ['planning', 'settings'] as const,
-  hcas: (search?: string) => ['hcas', search ?? ''] as const,
-  hca: (id: string) => ['hcas', id] as const,
-  customers: (search?: string) => ['customers', search ?? ''] as const,
+  hcas: (search?: string, filter?: EntityFilterRecord) =>
+    ['hcas', 'list', search ?? '', filterQuery(filter)] as const,
+  hca: (id: string) => ['hcas', 'detail', id] as const,
+  customers: (filter?: CustomerFilter) =>
+    // The whole filter is the key, not the search term alone: keyed on search
+    // as it once was, a town filter would silently show the results of the
+    // previous one. `customerFilterQuery` sorts, so two filters that narrow the
+    // same way share a cache entry whatever order the boxes were filled in.
+    //
+    // `list` keeps the filter string in its own namespace, so no filter can
+    // ever spell the same key as a customer identifier — see `customer` above.
+    ['customers', 'list', customerFilterQuery(filter)] as const,
   interventionTypes: ['intervention-types'] as const,
   certificationTypes: ['certification-types'] as const,
   skillTypes: ['skill-types'] as const,
   pricingRules: ['intervention-types', 'pricing-rules'] as const,
-  notifications: ['notifications'] as const,
+  notifications: (filter?: EntityFilterRecord) =>
+    ['notifications', 'list', filterQuery(filter)] as const,
   unreadCount: ['notifications', 'unread'] as const,
 };
 
@@ -111,6 +160,47 @@ export function useUpdateMyCompany() {
   return useMutation({
     mutationFn: (body: CompanyProfileUpdate) =>
       request<Company>('/api/v1/me/company', { method: 'PUT', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myCompany });
+    },
+  });
+}
+
+/**
+ * Replace the agency's logo.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Sent as multipart, never as a URL. The API detects the content type from the
+ * file's magic bytes rather than trusting the header, so the `Content-Type` is
+ * deliberately left for the browser to set with its boundary.
+ *
+ * The response carries the updated agency, but the query is invalidated rather
+ * than written into: the logo lands under a freshly generated key each time, so
+ * the screen has to re-read to learn the new URL — an unchanged one behind a
+ * changed image is how a browser keeps showing the old mark.
+ */
+export function useUploadCompanyLogo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData();
+      body.append('logo', file);
+      return request<Company>('/api/v1/me/company/logo', { method: 'PUT', body });
+    },
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.myCompany });
+    },
+  });
+}
+
+/** Remove the agency's logo. */
+export function useRemoveCompanyLogo() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request<Company>('/api/v1/me/company/logo', { method: 'DELETE' }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myCompany });
     },
@@ -177,12 +267,17 @@ export function useCreateInterventionType() {
  * account screen names the qualifications they hold, and without this it would
  * have to print `DEAES` at them and hope.
  */
-export function useCertificationTypes(includeInactive = false) {
+export function useCertificationTypes(
+  includeInactive = false,
+  filter?: EntityFilterRecord,
+) {
+  const query = filterQuery(filter);
   return useQuery({
-    queryKey: [...keys.certificationTypes, includeInactive] as const,
+    queryKey: [...keys.certificationTypes, includeInactive, query] as const,
     queryFn: () =>
       request<CertificationType[]>(
-        `/api/v1/certifications?size=500&include_inactive=${includeInactive}`,
+        `/api/v1/certifications?size=500&include_inactive=${includeInactive}` +
+          (query ? `&${query}` : ''),
       ),
   });
 }
@@ -265,12 +360,17 @@ export function useDeleteCertificationType() {
  * hidden unless asked for, so the picker offers only what may still be
  * declared.
  */
-export function useSkillTypes(includeInactive = false) {
+export function useSkillTypes(
+  includeInactive = false,
+  filter?: EntityFilterRecord,
+) {
+  const query = filterQuery(filter);
   return useQuery({
-    queryKey: [...keys.skillTypes, includeInactive] as const,
+    queryKey: [...keys.skillTypes, includeInactive, query] as const,
     queryFn: () =>
       request<SkillType[]>(
-        `/api/v1/skills?size=500&include_inactive=${includeInactive}`,
+        `/api/v1/skills?size=500&include_inactive=${includeInactive}` +
+          (query ? `&${query}` : ''),
       ),
   });
 }
@@ -447,6 +547,76 @@ export function useCreateCustomer() {
       request<Customer>('/api/v1/customers', { method: 'POST', json: customer }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+}
+
+/**
+ * Promote a prospect to an active customer.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * **This is what puts a customer into the planning.** A prospect may already
+ * hold accepted, priced work that every run has deliberately left out; nothing
+ * about that work changes here, only the agency's agreement to deliver it.
+ *
+ * The customer's own key is invalidated as well as the prefix, because the
+ * drawer showing the promote button reads `useCustomer` — leaving it stale
+ * would keep the button on screen for somebody who is no longer a prospect.
+ *
+ * A 409 comes back if they were not a prospect. Two managers pressing at once
+ * is the case: the second gets a refusal rather than a silent no-op, so nobody
+ * is left wondering which press took effect.
+ */
+export function usePromoteCustomer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (customerId: string) =>
+      request<Customer>(`/api/v1/customers/${customerId}/promote`, { method: 'POST' }),
+    onSuccess: (customer) => {
+      void client.invalidateQueries({ queryKey: ['customers'] });
+      if (customer.id) {
+        void client.invalidateQueries({ queryKey: keys.customer(customer.id) });
+      }
+    },
+  });
+}
+
+/**
+ * Change a customer's standing with the agency.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The general route, for the transitions promotion does not cover: stopping
+ * somebody who has left, reinstating somebody who came back, and sending a
+ * customer back to prospect when a signature turns out never to have arrived.
+ * Promoting goes through {@link usePromoteCustomer} instead, so the one
+ * transition with a rule has one place enforcing it.
+ *
+ * Stopping a customer does **not** cancel their scheduled visits; it stops the
+ * next run planning new ones.
+ */
+export function useSetCustomerStatus() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      customerId,
+      status,
+    }: {
+      customerId: string;
+      status: RegistrationStatus;
+    }) =>
+      request<Customer>(`/api/v1/customers/${customerId}/status`, {
+        method: 'PATCH',
+        json: { registration_status: status },
+      }),
+    onSuccess: (customer) => {
+      void client.invalidateQueries({ queryKey: ['customers'] });
+      if (customer.id) {
+        void client.invalidateQueries({ queryKey: keys.customer(customer.id) });
+      }
     },
   });
 }
@@ -875,59 +1045,71 @@ export function useChangeInterventionType() {
   });
 }
 
-/** Quotes, optionally narrowed to one status. */
-export function useQuotes(status?: QuoteStatus) {
+/**
+ * Quotes, narrowed by whichever filters the screen holds.
+ *
+ * @remarks
+ * `status` survives as its own argument because callers that want one status
+ * and nothing else — the validation queue — still pass it alone. When a filter
+ * carries one too it wins, which is what the server does with the same pair.
+ */
+export function useQuotes(status?: QuoteStatus, filter?: EntityFilterRecord) {
+  const query = filterQuery({ ...filter, status: filter?.status ?? status });
   return useQuery({
-    queryKey: keys.quotes(status),
+    queryKey: keys.quotes(status, filter),
     queryFn: () =>
-      request<Quote[]>(`/api/v1/quotes?size=200${status ? `&status=${status}` : ''}`),
+      request<Quote[]>(`/api/v1/quotes?size=200${query ? `&${query}` : ''}`),
   });
 }
 
-/** The workforce. */
-export function useHcas(search?: string) {
+/** The workforce, narrowed by whichever filters the screen holds. */
+export function useHcas(search?: string, filter?: EntityFilterRecord) {
+  const query = filterQuery({ ...filter, search: filter?.search ?? search });
   return useQuery({
-    queryKey: keys.hcas(search),
-    queryFn: () =>
-      request<Hca[]>(
-        `/api/v1/hcas?size=200${search ? `&search=${encodeURIComponent(search)}` : ''}`,
-      ),
+    queryKey: keys.hcas(search, filter),
+    queryFn: () => request<Hca[]>(`/api/v1/hcas?size=200${query ? `&${query}` : ''}`),
   });
 }
 
 /** The people served. */
-export function useCustomers(search?: string) {
+export function useCustomers(filter?: CustomerFilter) {
+  const query = customerFilterQuery(filter);
   return useQuery({
-    queryKey: keys.customers(search),
+    queryKey: keys.customers(filter),
     queryFn: () =>
-      request<Customer[]>(
-        `/api/v1/customers?size=200${
-          search ? `&search=${encodeURIComponent(search)}` : ''
-        }`,
-      ),
+      request<Customer[]>(`/api/v1/customers?size=200${query ? `&${query}` : ''}`),
   });
 }
 
 /** The service catalog. */
-export function useInterventionTypes(includeInactive = false) {
+export function useInterventionTypes(
+  includeInactive = false,
+  filter?: EntityFilterRecord,
+) {
+  const query = filterQuery(filter);
   return useQuery({
     // Retired entries are part of the key. Without them the catalogue screen
     // and the quote editor would share one cache entry holding whichever list
     // was fetched first — and a quote could then be built from a service the
     // agency has stopped selling.
-    queryKey: [...keys.interventionTypes, includeInactive] as const,
+    queryKey: [...keys.interventionTypes, includeInactive, query] as const,
     queryFn: () =>
       request<InterventionType[]>(
-        `/api/v1/intervention-types?size=200&include_inactive=${includeInactive}`,
+        `/api/v1/intervention-types?size=200&include_inactive=${includeInactive}` +
+          (query ? `&${query}` : ''),
       ),
   });
 }
 
-/** The caller's notifications. */
-export function useNotifications() {
+/** The caller's notifications, narrowed by whichever filters are held. */
+export function useNotifications(filter?: EntityFilterRecord) {
+  const query = filterQuery(filter);
   return useQuery({
-    queryKey: keys.notifications,
-    queryFn: () => request<Notification[]>('/api/v1/notifications?size=100'),
+    queryKey: keys.notifications(filter),
+    queryFn: () =>
+      request<Notification[]>(
+        `/api/v1/notifications?size=100${query ? `&${query}` : ''}`,
+      ),
   });
 }
 
@@ -965,7 +1147,36 @@ export function useValidateQuote() {
       request<Quote>(`/api/v1/quotes/${quoteId}/validate`, { method: 'POST' }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['quotes'] });
-      void client.invalidateQueries({ queryKey: keys.notifications });
+      void client.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+/**
+ * Move one line of a returned quote onto a time the planner offered.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * **The status deliberately does not change.** The quote came back because its
+ * work would not fit; accepting a slot answers *when*, not *whether*, so it
+ * stays in the validation queue for somebody to validate.
+ *
+ * The whole `['quotes']` family is invalidated rather than one entry: the
+ * server reprices from the day the work lands on — a Sunday costs more than a
+ * Tuesday — so the total in the grid moves too, and it clears the planning
+ * note, which is what makes the warning panel disappear.
+ */
+export function useRescheduleQuoteLine(quoteId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: QuoteReschedule) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}/reschedule`, {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
     },
   });
 }
@@ -1065,6 +1276,35 @@ export function useRefuseQuote() {
  * the latter, which let this send a reference and a customer the server then
  * ignored — a contract nobody could read off the types.
  */
+/**
+ * Change everything about a quote except its lines and its status.
+ *
+ * @remarks
+ * The lines have their own mutation because replacing them reprices the
+ * quote, and the status has one route per transition — "send", "validate" and
+ * "accept" mean different things and are not interchangeable with setting a
+ * field.
+ *
+ * `['planning']` is invalidated as well as the quotes: reassigning a customer
+ * or moving a date changes what the next run will schedule, and the calendars
+ * stop agreeing with the quote until they are refetched.
+ */
+export function useUpdateQuoteHeader() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ quoteId, header }: { quoteId: string; header: QuoteHeaderEdit }) =>
+      request<Quote>(`/api/v1/quotes/${quoteId}`, {
+        method: 'PATCH',
+        json: header,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['quotes'] });
+      void client.invalidateQueries({ queryKey: keys.myQuotes });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
 export function useReplaceQuoteLines(scope: 'manager' | 'own') {
   const client = useQueryClient();
   return useMutation({
@@ -1251,7 +1491,7 @@ export function useMarkAllRead() {
     mutationFn: () =>
       request<{ marked: number }>('/api/v1/notifications/read-all', { method: 'POST' }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.notifications });
+      void client.invalidateQueries({ queryKey: ['notifications'] });
       void client.invalidateQueries({ queryKey: keys.unreadCount });
     },
   });

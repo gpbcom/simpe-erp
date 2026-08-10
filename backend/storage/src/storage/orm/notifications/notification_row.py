@@ -28,18 +28,16 @@ class NotificationRow(Base):
         updated_at (datetime): Last-update timestamp.
 
     Notes:
-        Deleted with its recipient: a notification addressed to an account that
-        no longer exists is unreachable, and keeping it would leave rows nothing
-        can ever read or clear.
-
-        ``quote_id`` carries **no** foreign key, deliberately. The notification
-        is the record that somebody was told something, and it must survive the
-        quote being deleted — otherwise cancelling a quote would erase the
-        evidence that a manager had been asked to approve it.
-
-        ``(recipient_id, is_read, created_at)`` is the index that matters: every
-        read is "my unread notifications, newest first", and the badge count is
-        the same query.
+        - Deleted with its recipient: a notification addressed to an account that
+          no longer exists is unreachable, and keeping it would leave rows nothing
+          can ever read or clear.
+        - ``quote_id`` carries **no** foreign key, deliberately. The notification
+          is the record that somebody was told something, and it must survive the
+          quote being deleted — otherwise cancelling a quote would erase the
+          evidence that a manager had been asked to approve it.
+        - ``(recipient_id, is_read, created_at)`` is the index that matters: every
+          read is "my unread notifications, newest first", and the badge count is
+          the same query.
     """
 
     __tablename__ = "notifications"

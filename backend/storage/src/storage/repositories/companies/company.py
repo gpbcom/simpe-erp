@@ -141,6 +141,45 @@ class CompanyRepository(BaseRepository[CompanyRow]):
         await self.session.flush()
         return self.mapper.to_model(row)
 
+    async def set_logo_url(
+        self, company_id: str, logo_url: Optional[str]
+    ) -> Optional[Company]:
+        """Point an agency's record at a stored logo, or clear it.
+
+        Args:
+            company_id (str): The agency to change.
+            logo_url (Optional[str]): The object-store URL, or ``None`` to
+                remove the logo.
+
+        Returns:
+            Optional[Company]: The updated agency, or ``None`` when absent.
+
+        Notes:
+            A narrow method rather than a call to :meth:`update`. The logo is
+            uploaded on its own endpoint, where the caller holds no copy of the
+            rest of the record — routing it through the general update would
+            let an empty payload blank the trading name and the bank details
+            as a side effect of changing an image.
+        """
+        self.logger.debug("Reading company %s to change its logo.", company_id)
+        row = await self._get_row(company_id)
+        if row is None:
+            self.logger.warning(
+                "Logo link requested for absent company %s.", company_id
+            )
+            return None
+        self.logger.info("Setting the logo of company %s to %s.", company_id, logo_url)
+        row.logo_url = logo_url
+        try:
+            await self.session.flush()
+            await self.session.refresh(row)
+        except SQLAlchemyError as exc:
+            self.logger.error(
+                "Error writing the logo link for company %s: %s.", company_id, exc
+            )
+            raise
+        return self.mapper.to_model(row)
+
     async def count(self, accepting_only: bool = False) -> int:
         """Return how many companies match.
 

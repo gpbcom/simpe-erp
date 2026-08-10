@@ -218,6 +218,20 @@
         "title": "Body_replace_my_photo_api_v1_me_hca_photo_put",
         "type": "object"
       },
+      "Body_upload_my_company_logo_api_v1_me_company_logo_put": {
+        "properties": {
+          "logo": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Logo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "logo"
+        ],
+        "title": "Body_upload_my_company_logo_api_v1_me_company_logo_put",
+        "type": "object"
+      },
       "Body_upload_photo_api_v1_hcas__hca_id__photo_put": {
         "properties": {
           "photo": {
@@ -493,7 +507,7 @@
         "type": "object"
       },
       "Company-Input": {
-        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.",
+        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): Account the agency is paid into.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo in the object store.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.\n    - **The IBAN is the one field here nobody but an administrator reads in\n      full.** It is stored whole, and the routes a manager can reach hand\n      back :meth:`masked_iban` instead \u2014 see\n      :class:`~models.schemas.responses.companies.company_view.CompanyView`.\n      Masking at the boundary rather than in the column keeps the stored\n      value usable for the one caller entitled to it.",
         "properties": {
           "address": {
             "anyOf": [
@@ -505,6 +519,18 @@
               }
             ],
             "description": "The registered office."
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bank identifier code of the account holding the IBAN.",
+            "title": "Bic"
           },
           "contact_email": {
             "anyOf": [
@@ -531,6 +557,18 @@
             ],
             "description": "Creation timestamp.",
             "title": "Created At"
+          },
+          "iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account the agency is paid into, for SEPA transfers.",
+            "title": "Iban"
           },
           "id": {
             "anyOf": [
@@ -561,6 +599,18 @@
             ],
             "description": "Legal form, such as SARL, SAS or Association.",
             "title": "Legal Form"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of the agency's logo in the object store.",
+            "title": "Logo Url"
           },
           "name": {
             "description": "Trading name.",
@@ -652,7 +702,7 @@
         "type": "object"
       },
       "Company-Output": {
-        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.",
+        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): Account the agency is paid into.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo in the object store.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.\n    - **The IBAN is the one field here nobody but an administrator reads in\n      full.** It is stored whole, and the routes a manager can reach hand\n      back :meth:`masked_iban` instead \u2014 see\n      :class:`~models.schemas.responses.companies.company_view.CompanyView`.\n      Masking at the boundary rather than in the column keeps the stored\n      value usable for the one caller entitled to it.",
         "properties": {
           "address": {
             "anyOf": [
@@ -664,6 +714,18 @@
               }
             ],
             "description": "The registered office."
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bank identifier code of the account holding the IBAN.",
+            "title": "Bic"
           },
           "contact_email": {
             "anyOf": [
@@ -690,6 +752,18 @@
             ],
             "description": "Creation timestamp.",
             "title": "Created At"
+          },
+          "iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account the agency is paid into, for SEPA transfers.",
+            "title": "Iban"
           },
           "id": {
             "anyOf": [
@@ -720,6 +794,18 @@
             ],
             "description": "Legal form, such as SARL, SAS or Association.",
             "title": "Legal Form"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of the agency's logo in the object store.",
+            "title": "Logo Url"
           },
           "name": {
             "description": "Trading name.",
@@ -829,7 +915,7 @@
         "type": "object"
       },
       "CompanyProfileUpdateRequest": {
-        "description": "The payload an administrator may send about their own agency.\n\nAttributes:\n    name (str): The trading name.\n    registration_number (Optional[str]): The SIRET, or ``None``.\n    contact_email (Optional[EmailStr]): Where applicants write, or ``None``.\n    address (Optional[PostalAddress]): The registered address, or ``None``.\n    is_accepting_applications (bool): Whether the agency appears on the\n        public list an applicant chooses from.\n\nNotes:\n    **The shape of this model is the permission**, as elsewhere in this\n    package. What it cannot carry matters more than what it can:\n\n    - ``id`` is taken from the caller's own account, so an administrator of\n      one agency cannot address another's. The agency-wide\n      ``PUT /api/v1/companies/{id}`` still exists for the case where an\n      administrator genuinely means to name one.\n    - ``created_at`` and ``updated_at`` are records of what happened.\n\n    ``is_accepting_applications`` *is* here, even though\n    ``PATCH /api/v1/companies/{id}/applications`` can also set it. It is\n    agency information an administrator owns, it sits on the same screen as\n    the rest of it, and both paths call the same service \u2014 so the rule has\n    one implementation and two doors, rather than two implementations.",
+        "description": "The payload an administrator may send about their own agency.\n\nAttributes:\n    name (str): The trading name.\n    registration_number (Optional[str]): The SIRET, or ``None``.\n    iban (Optional[str]): The account the agency is paid into, or ``None``.\n    bic (Optional[str]): That account's bank identifier code, or ``None``.\n    contact_email (Optional[EmailStr]): Where applicants write, or ``None``.\n    address (Optional[PostalAddress]): The registered address, or ``None``.\n    is_accepting_applications (bool): Whether the agency appears on the\n        public list an applicant chooses from.\n\nNotes:\n    **The shape of this model is the permission**, as elsewhere in this\n    package. What it cannot carry matters more than what it can:\n\n    - ``id`` is taken from the caller's own account, so an administrator of\n      one agency cannot address another's. The agency-wide\n      ``PUT /api/v1/companies/{id}`` still exists for the case where an\n      administrator genuinely means to name one.\n    - ``created_at`` and ``updated_at`` are records of what happened.\n    - ``logo_url`` is absent. The logo is written only by\n      ``PUT /api/v1/me/company/logo``, which uploads the object and then\n      records where it put it \u2014 so no hand-crafted profile payload can\n      repoint the field at somebody else's image.\n\n    ``is_accepting_applications`` *is* here, even though\n    ``PATCH /api/v1/companies/{id}/applications`` can also set it. It is\n    agency information an administrator owns, it sits on the same screen as\n    the rest of it, and both paths call the same service \u2014 so the rule has\n    one implementation and two doors, rather than two implementations.",
         "properties": {
           "address": {
             "anyOf": [
@@ -841,6 +927,18 @@
               }
             ],
             "description": "The registered address, or None."
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bank identifier code of that account, or None.",
+            "title": "Bic"
           },
           "contact_email": {
             "anyOf": [
@@ -854,6 +952,18 @@
             ],
             "description": "Where applicants write, or None.",
             "title": "Contact Email"
+          },
+          "iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account the agency is paid into, or None.",
+            "title": "Iban"
           },
           "is_accepting_applications": {
             "default": true,
@@ -1014,6 +1124,203 @@
         "title": "CompanyRegistrationResponse",
         "type": "object"
       },
+      "CompanyView": {
+        "description": "An agency as a caller who is not its administrator may read it.\n\nAttributes:\n    id (Optional[str]): Identifier, as stored.\n    name (str): Trading name.\n    legal_form (Optional[str]): Legal form, such as SARL or Association.\n    share_capital (Optional[Decimal]): Share capital, in euros.\n    rcs_number (Optional[str]): Trade-register entry.\n    vat_number (Optional[str]): Intra-community VAT number.\n    phone_number (Optional[str]): Contact telephone number.\n    registration_number (Optional[str]): Company registration number.\n    contact_email (Optional[str]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): The account number, whole or masked depending on\n        who asked.\n    iban_is_masked (bool): Whether ``iban`` carries bullets rather than the\n        account number.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo.\n    is_accepting_applications (bool): Whether it appears publicly.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - **The shape is the permission**, as with\n      :class:`~models.companies.company_choice.CompanyChoice`. The agency\n      routes a *manager* can reach return this rather than a whole\n      :class:`~models.companies.company.Company`, so however the service\n      changes they cannot hand back a bank account somebody could pay into.\n      An administrator reads their own agency in full at\n      ``GET /api/v1/me/company``.\n    - ``iban_is_masked`` travels with the number rather than being inferred\n      from it. A client deciding by looking for bullets would have to guess,\n      and the one thing it must never do is echo a masked value back into an\n      update \u2014 which would overwrite the real account with its own censoring.\n    - The masking itself belongs to\n      :meth:`~models.companies.company.Company.masked_iban`, not here. One\n      rule in one place, testable without a request.\n    - No validator re-checks the IBAN's shape: by the time it reaches this\n      model it is either a value :class:`Company` already validated or a\n      deliberately malformed mask, and refusing the mask would make the\n      protection unrepresentable.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PostalAddress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The registered office."
+          },
+          "bic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bank identifier code of the account.",
+            "title": "Bic"
+          },
+          "contact_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where an applicant's questions go.",
+            "title": "Contact Email"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Creation timestamp.",
+            "title": "Created At"
+          },
+          "iban": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account number, whole or masked.",
+            "title": "Iban"
+          },
+          "iban_is_masked": {
+            "default": true,
+            "description": "Whether the account number is masked.",
+            "title": "Iban Is Masked",
+            "type": "boolean"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, as stored.",
+            "title": "Id"
+          },
+          "is_accepting_applications": {
+            "default": true,
+            "description": "Whether it appears on the public list.",
+            "title": "Is Accepting Applications",
+            "type": "boolean"
+          },
+          "legal_form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Legal form.",
+            "title": "Legal Form"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URL of the agency's logo.",
+            "title": "Logo Url"
+          },
+          "name": {
+            "description": "Trading name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Contact telephone number.",
+            "title": "Phone Number"
+          },
+          "rcs_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trade-register entry.",
+            "title": "Rcs Number"
+          },
+          "registration_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Company registration number.",
+            "title": "Registration Number"
+          },
+          "share_capital": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share capital, in euros.",
+            "title": "Share Capital"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last-update timestamp.",
+            "title": "Updated At"
+          },
+          "vat_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Intra-community VAT number.",
+            "title": "Vat Number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CompanyView",
+        "type": "object"
+      },
       "ContractType": {
         "description": "Enumeration for the employment contract of a Home Care Assistant.\n\nAttributes:\n    CDI (str): Permanent open-ended contract (contrat \u00e0 dur\u00e9e ind\u00e9termin\u00e9e).\n    CDD (str): Fixed-term contract (contrat \u00e0 dur\u00e9e d\u00e9termin\u00e9e).\n    INTERIM (str): Temporary agency contract.\n    INTERNSHIP (str): Internship (stage).",
         "enum": [
@@ -1026,7 +1333,7 @@
         "type": "string"
       },
       "Customer-Input": {
-        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        currently served.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
+        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        served, in discussion, or stopped. **Defaults to\n        :attr:`~models.enums.RegistrationStatus.PROSPECT`.**\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/PostalAddress",
@@ -1081,8 +1388,8 @@
           },
           "registration_status": {
             "$ref": "#/components/schemas/RegistrationStatus",
-            "default": "active",
-            "description": "Whether the customer is currently served."
+            "default": "prospect",
+            "description": "Whether the customer is served, in discussion, or stopped."
           },
           "updated_at": {
             "anyOf": [
@@ -1109,7 +1416,7 @@
         "type": "object"
       },
       "Customer-Output": {
-        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        currently served.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
+        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        served, in discussion, or stopped. **Defaults to\n        :attr:`~models.enums.RegistrationStatus.PROSPECT`.**\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/PostalAddress",
@@ -1163,8 +1470,8 @@
           },
           "registration_status": {
             "$ref": "#/components/schemas/RegistrationStatus",
-            "default": "active",
-            "description": "Whether the customer is currently served."
+            "default": "prospect",
+            "description": "Whether the customer is served, in discussion, or stopped."
           },
           "updated_at": {
             "anyOf": [
@@ -2673,6 +2980,18 @@
             "description": "Identifier, populated on read from the store.",
             "title": "Id"
           },
+          "is_optimised": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the travel in the stored plan was proved minimal.",
+            "title": "Is Optimised"
+          },
           "period_end": {
             "description": "Last day planned, inclusive.",
             "format": "date",
@@ -2738,6 +3057,14 @@
             },
             "title": "Unassigned Requirement Ids",
             "type": "array"
+          },
+          "unplaced_quotes": {
+            "description": "The quotes whose work could not all be fitted.",
+            "items": {
+              "$ref": "#/components/schemas/UnplacedQuote"
+            },
+            "title": "Unplaced Quotes",
+            "type": "array"
           }
         },
         "required": [
@@ -2750,11 +3077,12 @@
         "type": "object"
       },
       "PlanningRunStatus": {
-        "description": "Enumeration for the lifecycle status of a planning computation.\n\nAttributes:\n    PENDING (str): Accepted and queued, not yet picked up.\n    RUNNING (str): The solver is running.\n    SUCCEEDED (str): The solver finished and the interventions were written.\n    FAILED (str): The run ended on an error; see the run's error message.",
+        "description": "Enumeration for the lifecycle status of a planning computation.\n\nAttributes:\n    PENDING (str): Accepted and queued, not yet picked up.\n    RUNNING (str): The solver is running.\n    SUCCEEDED (str): The solver finished and the interventions were written.\n    PARTIAL (str): A plan was written, but some work could not be fitted.\n    FAILED (str): The run ended on an error; see the run's error message.\n\nNotes:\n    :attr:`PARTIAL` exists because a week that mostly works is worth\n    having. The run used to fail outright the moment one visit could not\n    be placed, which left the agency with the *previous* week's calendar\n    and a wall of text \u2014 safe, but it meant one impossible visit withheld\n    eighty-nine perfectly good ones.\n\n    It is deliberately **not** ``SUCCEEDED``. A calendar missing three\n    visits still looks like a calendar, and the visits quietly dropped are\n    the ones that end with somebody waiting at their door \u2014 so the state\n    has its own name, its own colour on the screen, and a report naming\n    every quote involved.",
         "enum": [
           "pending",
           "running",
           "succeeded",
+          "partial",
           "failed"
         ],
         "title": "PlanningRunStatus",
@@ -3086,6 +3414,17 @@
             "title": "Lines",
             "type": "array"
           },
+          "planning_feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UnplacedQuote"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the last planning could not fit this quote's work."
+          },
           "reference": {
             "description": "Human-facing quote number.",
             "title": "Reference",
@@ -3195,6 +3534,59 @@
           "customer_id"
         ],
         "title": "QuoteCreateRequest",
+        "type": "object"
+      },
+      "QuoteHeaderRequest": {
+        "description": "Everything about a quote except its lines and its status.\n\nAttributes:\n    reference (str): The human-facing quote number.\n    customer_id (str): Who the offer is addressed to.\n    issued_on (Optional[date]): When it was issued.\n    valid_until (Optional[date]): The last day it may be accepted.\n    auto_renew (bool): Whether it renews itself when it runs out.\n\nNotes:\n    - **The lines are not here, and neither is the status.** The lines have\n      their own route because replacing them reprices the quote, and the\n      status has one transition per verb \u2014 send, validate, refuse, accept \u2014\n      each with its own rules about who may do it and what it means. A\n      status that could be set directly would let an operator mark a quote\n      accepted without the customer having accepted anything.\n    - **Changing the customer moves the work.** An accepted quote reassigned\n      to somebody else moves every visit on it to a different address, which\n      the next planning run will route to. That is occasionally exactly what\n      is wanted \u2014 a quote written against the wrong record \u2014 and it is\n      never something to do without noticing, so the service logs it.",
+        "properties": {
+          "auto_renew": {
+            "default": false,
+            "description": "Whether it renews itself when it runs out.",
+            "title": "Auto Renew",
+            "type": "boolean"
+          },
+          "customer_id": {
+            "description": "Who the offer is addressed to.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "issued_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the quote was issued.",
+            "title": "Issued On"
+          },
+          "reference": {
+            "description": "The human-facing quote number.",
+            "title": "Reference",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last day it may be accepted.",
+            "title": "Valid Until"
+          }
+        },
+        "required": [
+          "reference",
+          "customer_id"
+        ],
+        "title": "QuoteHeaderRequest",
         "type": "object"
       },
       "QuoteInterruptionRequest": {
@@ -3534,8 +3926,42 @@
         "title": "QuoteLinesRequest",
         "type": "object"
       },
+      "QuoteRescheduleRequest": {
+        "description": "The slot an operator accepted, for one line of a returned quote.\n\nAttributes:\n    MAX_MINUTE_OF_DAY (ClassVar[int]): The last minute of a day, so a\n        window cannot run past midnight.\n    quote_line_id (str): The line to move.\n    day (date): The day the work should happen on instead.\n    start_minute (int): Earliest it may begin, in minutes from midnight.\n    end_minute (int): Latest it may finish, in the same units.\n\nNotes:\n    - **The shape is the permission.** The payload names a line, a day and\n      a window, and nothing else. It cannot carry a status, so accepting a\n      new time cannot approve the quote; it cannot carry a price, so\n      rescheduling cannot change what is charged \u2014 the server reprices from\n      the day it lands on.\n    - **No assistant.** The offered slot names one, and that is what makes\n      the offer worth reading, but a quote records what is sold and when,\n      never who does it. Accepting a field here would store a preference the\n      planner has no obligation to honour, which is a worse answer than not\n      storing it.\n    - Minutes from midnight rather than a time, matching\n      :class:`~models.planning.planning_run.suggested_slot.SuggestedSlot`.\n      The client echoes back the numbers it was offered rather than\n      reformatting them into a string somebody has to parse again.",
+        "properties": {
+          "day": {
+            "description": "The day the work should happen on instead.",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "end_minute": {
+            "description": "Latest it may finish.",
+            "title": "End Minute",
+            "type": "integer"
+          },
+          "quote_line_id": {
+            "description": "The line to move.",
+            "title": "Quote Line Id",
+            "type": "string"
+          },
+          "start_minute": {
+            "description": "Earliest it may begin.",
+            "title": "Start Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quote_line_id",
+          "day",
+          "start_minute",
+          "end_minute"
+        ],
+        "title": "QuoteRescheduleRequest",
+        "type": "object"
+      },
       "QuoteStatus": {
-        "description": "Enumeration for the lifecycle status of a quote.\n\nAttributes:\n    DRAFT (str): Being composed; lines may still be added or removed.\n    PENDING_VALIDATION (str): Submitted by an assistant and waiting for a\n        manager to validate it.\n    SENT (str): Sent to the customer and awaiting their answer.\n    ACCEPTED (str): Accepted by the customer. Only accepted quotes feed the\n        planning computation.\n    REJECTED (str): Declined by the customer.\n    EXPIRED (str): Its validity date passed before an answer was given.\n\nNotes:\n    ``PENDING_VALIDATION`` sits between the draft and the commitment. An\n    assistant knows what a customer needs but does not set the agency's\n    prices, so a quote they write waits for a manager before its work is\n    committed. It is deliberately a status rather than a flag: a quote is in\n    exactly one place at a time, and a boolean beside the status would allow\n    the nonsense of an accepted quote still awaiting validation.\n\n    ``SENT`` is **no longer produced by any path**. Validation used to stop\n    there, needing a second acceptance that nothing on any screen asked for,\n    so a validated quote's work silently never reached a planning run; both\n    approval paths now end at ``ACCEPTED``. The member is kept because rows\n    stored in it before that change still exist, and the interface keeps its\n    tab and its accept button for exactly them.",
+        "description": "Enumeration for the lifecycle status of a quote.\n\nAttributes:\n    DRAFT (str): Being composed; lines may still be added or removed.\n    PENDING_VALIDATION (str): Submitted by an assistant and waiting for a\n        manager to validate it.\n    SENT (str): Sent to the customer and awaiting their answer.\n    ACCEPTED (str): Accepted by the customer. Only accepted quotes feed the\n        planning computation.\n    REJECTED (str): Declined by the customer.\n    EXPIRED (str): Its validity date passed before an answer was given.\n\nNotes:\n    - ``PENDING_VALIDATION`` sits between the draft and the commitment. An\n      assistant knows what a customer needs but does not set the agency's\n      prices, so a quote they write waits for a manager before its work is\n      committed. It is deliberately a status rather than a flag: a quote is in\n      exactly one place at a time, and a boolean beside the status would allow\n      the nonsense of an accepted quote still awaiting validation.\n    - ``SENT`` is **no longer produced by any path**. Validation used to stop\n      there, needing a second acceptance that nothing on any screen asked for,\n      so a validated quote's work silently never reached a planning run; both\n      approval paths now end at ``ACCEPTED``. The member is kept because rows\n      stored in it before that change still exist, and the interface keeps its\n      tab and its accept button for exactly them.",
         "enum": [
           "draft",
           "pending-validation",
@@ -3680,9 +4106,10 @@
         "type": "object"
       },
       "RegistrationStatus": {
-        "description": "Enumeration for the registration status of a customer.\n\nAttributes:\n    ACTIVE (str): The customer is registered and may be quoted and served.\n    STOPPED (str): The customer has stopped the service; no new quote or\n        intervention may be created for them.",
+        "description": "Enumeration for the registration status of a customer.\n\nAttributes:\n    ACTIVE (str): The customer is registered and served; their accepted\n        work is planned.\n    PROSPECT (str): The agency is in discussion with them. They may be\n        quoted, but no visit is ever planned for them \u2014 see\n        :meth:`can_be_scheduled`.\n    STOPPED (str): The customer has stopped the service; no new quote or\n        intervention may be created for them.\n\nNotes:\n    **A prospect is not a lesser active customer, and not a stopped one.**\n    Somebody who has been quoted but has not signed is exactly the state\n    this enum had no word for: quoting them is the whole point, and routing\n    an assistant to their door before they have agreed is the failure the\n    third member exists to prevent.\n\n    This is the only status a *new* customer is given. Promotion to\n    :attr:`ACTIVE` is a manager's deliberate act.",
         "enum": [
           "active",
+          "prospect",
           "stopped"
         ],
         "title": "RegistrationStatus",
@@ -4102,6 +4529,51 @@
         "title": "StatusUpdateRequest",
         "type": "object"
       },
+      "SuggestedSlot": {
+        "description": "A time somebody qualified is free, offered in place of one that failed.\n\nAttributes:\n    day (date): The day the slot falls on.\n    start_minute (int): When it starts, in minutes from midnight.\n    end_minute (int): When it ends.\n    hca_id (str): The assistant who is free then.\n    hca_name (str): The same person, by name.\n\nNotes:\n    - **An offer, not a booking.** Nothing is reserved by producing one of\n      these: the slot is free at the moment the planning ran, and the person\n      deciding still has to agree it with the customer and re-submit the\n      quote. Two operators acting on the same suggestion would both be told\n      it fits, and the next planning run is what settles it.\n    - That is deliberate. Holding a provisional booking would need an expiry,\n      a release path and a screen showing what is held \u2014 a reservation\n      system, to answer a question an operator resolves in one telephone\n      call.\n    - The assistant is named because \"Tuesday at 14:00\" is only useful if\n      somebody can be asked whether that works. Which of the offered slots\n      is *best* is not decided here either; the agency knows things about its\n      own customers that the solver does not.",
+        "properties": {
+          "MAX_MINUTE_OF_DAY": {
+            "default": 1440,
+            "title": "Max Minute Of Day",
+            "type": "integer"
+          },
+          "day": {
+            "description": "The day the slot falls on.",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "end_minute": {
+            "description": "When it ends, from midnight.",
+            "title": "End Minute",
+            "type": "integer"
+          },
+          "hca_id": {
+            "description": "The assistant who is free then.",
+            "title": "Hca Id",
+            "type": "string"
+          },
+          "hca_name": {
+            "default": "",
+            "description": "The same person, by name.",
+            "title": "Hca Name",
+            "type": "string"
+          },
+          "start_minute": {
+            "description": "When it starts, from midnight.",
+            "title": "Start Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "start_minute",
+          "end_minute",
+          "hca_id"
+        ],
+        "title": "SuggestedSlot",
+        "type": "object"
+      },
       "TemporaryCredentialsResponse": {
         "description": "The one-time credentials handed to an administrator to pass on.\n\nAttributes:\n    user_id (str): The account that was created.\n    email (str): The sign-in address.\n    temporary_password (str): The generated password, in plain text.\n    must_change_password (bool): Always ``True``; stated so the client can\n        say so on screen.\n\nNotes:\n    **This is the only place a password is ever returned by this API, and\n    it happens exactly once.** The stored form is a hash, so an\n    administrator who loses this response regenerates the account's\n    password rather than looking it up.\n\n    ``must_change_password`` is echoed rather than assumed, so the screen\n    showing these credentials can tell the administrator what to say when\n    handing them over: this password works once, to set a real one.\n\n    The value must not be logged by whatever renders it. It is a working\n    credential until its holder replaces it.",
         "properties": {
@@ -4133,6 +4605,148 @@
           "temporary_password"
         ],
         "title": "TemporaryCredentialsResponse",
+        "type": "object"
+      },
+      "UnplacedQuote": {
+        "description": "Everything one quote could not fit into a week, as an operator sees it.\n\nAttributes:\n    quote_reference (str): The quote, as printed on the document.\n    customer_id (str): Whose work it is.\n    customer_name (str): The same person, by name.\n    visits (List[UnplacedRequirement]): The visits that were not placed,\n        each with its own reason.\n    alternatives (List[SuggestedSlot]): Times somebody qualified is free,\n        offered so the person renegotiating has something to propose\n        rather than only a problem to report. Empty when nothing was\n        found, which is itself an answer: the week is full.\n\nNotes:\n    - **The report is grouped by quote because that is the unit somebody can\n      act on.** A list of thirty unplaced visits tells an operator that\n      something is wrong; \"quote DEV-2026-0042 for Marie Durand, three\n      visits, nobody holds DEAES\" tells them who to telephone and what to\n      say. The visit is what the solver failed on, but the quote is what the\n      agency sold, and it is the quote that has to be renegotiated,\n      rescheduled or staffed.\n    - No sentence is built here. The screen assembles one from these fields\n      in the reader's own language; a message composed in the backend would\n      arrive in French for an English operator, and the quote emails already\n      taught this codebase that lesson once.",
+        "properties": {
+          "alternatives": {
+            "description": "Times somebody qualified is free, offered instead.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedSlot"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "customer_id": {
+            "default": "",
+            "description": "Whose work it is.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "customer_name": {
+            "default": "",
+            "description": "Whose work it is, by name.",
+            "title": "Customer Name",
+            "type": "string"
+          },
+          "quote_reference": {
+            "description": "The quote, as printed on it.",
+            "title": "Quote Reference",
+            "type": "string"
+          },
+          "visits": {
+            "description": "The visits from this quote that were not placed.",
+            "items": {
+              "$ref": "#/components/schemas/UnplacedRequirement"
+            },
+            "title": "Visits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "quote_reference",
+          "visits"
+        ],
+        "title": "UnplacedQuote",
+        "type": "object"
+      },
+      "UnplacedReason": {
+        "description": "Why a piece of accepted work could not be scheduled.\n\nAttributes:\n    OUT_OF_RADIUS: No assistant lives within the configured radius of it.\n    NOT_A_WORKING_DAY: Nobody near enough works that day of the week.\n    NO_ASSISTANT_AVAILABLE: Everybody near enough is absent that day.\n    OUTSIDE_WORKING_DAY: Its window falls outside the working day.\n    MISSING_CERTIFICATION: No field employee holds every qualification the\n        work requires, unexpired on the day it happens.\n    MISSING_SKILL: No field employee declares every skill the work\n        requires, unexpired on the day it happens.\n    CUSTOMER_CONFLICT: The customer has overlapping visits that cannot all\n        fit without one starting before another ends.\n    NO_FEASIBLE_SLOT: It could not be fitted around the rest of the plan \u2014\n        travel, lunch and the other visits together leave no room.\n\nNotes:\n    - The reasons are ordered from most to least specific, and the checker\n      reports the first that applies. \"Out of radius\" and \"no feasible slot\"\n      are both true of a visit nobody can reach, but only the first tells a\n      planner what to change.\n    - :attr:`MISSING_CERTIFICATION` is tested **second**, ahead of anything\n      geographical. A visit nobody is qualified for is also a visit nobody\n      within the radius can take, and reporting the distance would send a\n      manager to widen a radius that was never the problem. \"Nobody here\n      holds DEAES\" names a hire, a training course or a wrong requirement \u2014\n      all things somebody can act on this afternoon.\n    - :attr:`MISSING_SKILL` follows it, ahead of anything geographical for\n      the same reason and *behind* the certification for a different one:\n      the two are fixed by different people. A missing certification is a\n      hire or a training course; a missing skill may be nothing more than\n      somebody who can already do the work not having said so on their own\n      screen. Reporting the certification first puts the harder problem in\n      front of the manager, and a run blocked by both is blocked by the\n      certification whatever the skills say.\n    - :attr:`NOT_A_WORKING_DAY` is tested ahead of\n      :attr:`NO_ASSISTANT_AVAILABLE`, and the two are genuinely different\n      answers. \"Nobody works Sundays\" is a recruitment or a rota decision;\n      \"everybody is on leave that week\" resolves itself on its own. Folding\n      them together would report the second when the first is true, and send\n      a manager looking through absence records for a day nobody had ever\n      agreed to work.\n    - What is *not* here: a window narrower than the service it holds has no\n      member, because\n      :class:`~models.planning.intervention.intervention_requirement.InterventionRequirement`\n      refuses to build one. A reason that can never be reported would be a\n      branch nothing exercises.",
+        "enum": [
+          "out-of-radius",
+          "not-a-working-day",
+          "no-assistant-available",
+          "outside-working-day",
+          "missing-certification",
+          "missing-skill",
+          "customer-conflict",
+          "no-feasible-slot"
+        ],
+        "title": "UnplacedReason",
+        "type": "string"
+      },
+      "UnplacedRequirement": {
+        "description": "A piece of accepted work the planner could not schedule, and why.\n\nAttributes:\n    requirement_id (str): The work that could not be placed.\n    name (str): What the service is, for a message a planner can act on.\n    customer_id (str): Whose work it is.\n    customer_name (str): The same person, by name. An identifier is\n        unreadable on a screen and unsearchable in an inbox.\n    quote_reference (str): The quote the work was sold on. This is what an\n        operator has in front of them when a customer telephones, so it is\n        what the report is grouped by.\n    day (date): The day it had to happen on.\n    reason (UnplacedReason): Why it could not be placed.\n    detail (Optional[str]): The specifics \u2014 the distance measured, the\n        visit it clashes with.\n    quote_line_id (Optional[str]): The quote line this work was sold on,\n        so an operator accepting one of the offered slots moves the right\n        line.\n    alternatives (List[SuggestedSlot]): Times somebody qualified is free,\n        offered instead of *this* visit's.\n\nNotes:\n    - This exists so that a failed planning run says *what to change* rather\n      than \"infeasible\". \"No assistant lives within 30 km of Mme Durand\" is a\n      sentence a manager can act on by widening the radius or hiring;\n      \"INFEASIBLE\" is not.\n    - Carries the name and the customer, not just an identifier, because the\n      message is read by somebody who knows their customers by name and has\n      never seen a UUID.\n    - **The offers belong to the visit, not to the quote.** A quote with two\n      unplaced visits has two sets of free times, and one flat list gives an\n      operator no way to tell which slot answers which problem \u2014 nor a screen\n      any way to make them clickable without guessing.\n    - ``quote_line_id`` and ``alternatives`` both default, and that is\n      load-bearing rather than lax: this record is stored as JSON on the\n      quote and re-validated on every read, so a row written before these\n      fields existed has to keep loading. A required field here would take\n      the quotes list down for every quote a planner has ever returned.",
+        "properties": {
+          "alternatives": {
+            "description": "Times somebody qualified is free instead of this visit's.",
+            "items": {
+              "$ref": "#/components/schemas/SuggestedSlot"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "customer_id": {
+            "description": "Whose work it is.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "customer_name": {
+            "default": "",
+            "description": "Whose work it is, by name rather than by identifier.",
+            "title": "Customer Name",
+            "type": "string"
+          },
+          "day": {
+            "description": "The day it had to happen on.",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The specifics behind the reason.",
+            "title": "Detail"
+          },
+          "name": {
+            "description": "What the service is.",
+            "title": "Name",
+            "type": "string"
+          },
+          "quote_line_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The quote line this work was sold on.",
+            "title": "Quote Line Id"
+          },
+          "quote_reference": {
+            "default": "",
+            "description": "The quote it was sold on, as printed on the document.",
+            "title": "Quote Reference",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/UnplacedReason",
+            "description": "Why it could not be placed."
+          },
+          "requirement_id": {
+            "description": "The work that could not be placed.",
+            "title": "Requirement Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requirement_id",
+          "name",
+          "customer_id",
+          "day",
+          "reason"
+        ],
+        "title": "UnplacedRequirement",
         "type": "object"
       },
       "UserResponse": {
@@ -4557,7 +5171,7 @@
     },
     "/api/v1/certifications": {
       "get": {
-        "description": "List the qualifications the agency recognises.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    include_inactive (bool): Whether retired entries are included.\n    service (CertificationTypeService): The catalogue service.\n    _ (User): The authenticated caller.\n\nReturns:\n    List[CertificationType]: The matching entries, ordered by label.\n\nNotes:\n    **Readable by any signed-in caller**, unlike the writes below. An\n    assistant's own account screen shows the qualifications they hold, and\n    it names them by their catalogue label rather than by their code \u2014 a\n    screen that could not read this would have to print ``DEAES`` at\n    somebody and hope.\n\n    Retired entries are hidden unless asked for, so a screen offering a\n    requirement offers only what may still be required.",
+        "description": "List the qualifications the agency recognises.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    include_inactive (bool): Whether retired entries are included.\n    certification_filter (CertificationTypeFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    service (CertificationTypeService): The catalogue service.\n    _ (User): The authenticated caller.\n\nReturns:\n    List[CertificationType]: The matching entries, ordered by label.\n\nNotes:\n    **Readable by any signed-in caller**, unlike the writes below. An\n    assistant's own account screen shows the qualifications they hold, and\n    it names them by their catalogue label rather than by their code \u2014 a\n    screen that could not read this would have to print ``DEAES`` at\n    somebody and hope.\n\n    Retired entries are hidden unless asked for, so a screen offering a\n    requirement offers only what may still be required.",
         "operationId": "list_certification_types_api_v1_certifications_get",
         "parameters": [
           {
@@ -4591,6 +5205,70 @@
               "default": false,
               "title": "Include Inactive",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
             }
           }
         ],
@@ -4755,7 +5433,7 @@
     },
     "/api/v1/companies": {
       "get": {
-        "description": "List companies in full.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    service (CompanyService): The company service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Company]: The companies, contact details included.",
+        "description": "List companies, with the bank account masked for a manager.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    service (CompanyService): The company service.\n    caller (User): The authenticated caller; enforces manager access, and\n        decides whether the IBAN comes back whole.\n\nReturns:\n    List[CompanyView]: The companies, contact details included and the\n    account number masked unless the caller is an administrator.",
         "operationId": "list_companies_api_v1_companies_get",
         "parameters": [
           {
@@ -4788,7 +5466,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/Company-Output"
+                    "$ref": "#/components/schemas/CompanyView"
                   },
                   "title": "Response List Companies Api V1 Companies Get",
                   "type": "array"
@@ -4958,7 +5636,7 @@
         ]
       },
       "get": {
-        "description": "Return one company.\n\nArgs:\n    company_id (str): The company to read.\n    service (CompanyService): The company service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Company: The company.\n\nRaises:\n    MTCompanyNotFound: If no such company exists; answered as a 404.",
+        "description": "Return one company, with the bank account masked for a manager.\n\nArgs:\n    company_id (str): The company to read.\n    service (CompanyService): The company service.\n    caller (User): The authenticated caller; enforces manager access, and\n        decides whether the IBAN comes back whole.\n\nReturns:\n    CompanyView: The company.\n\nRaises:\n    MTCompanyNotFound: If no such company exists; answered as a 404.\n\nNotes:\n    A manager runs the agency's work and needs its address, its telephone\n    number and its registration; they have no reason to read the account\n    it is paid into, and an account number is the one field here that lets\n    a leak become a payment. An administrator reads their own agency whole\n    at ``GET /api/v1/me/company``, and reads any agency whole here.",
         "operationId": "get_company_api_v1_companies__company_id__get",
         "parameters": [
           {
@@ -4976,7 +5654,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Company-Output"
+                  "$ref": "#/components/schemas/CompanyView"
                 }
               }
             },
@@ -5104,7 +5782,7 @@
     },
     "/api/v1/customers": {
       "get": {
-        "description": "List customers.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    search (Optional[str]): Case-insensitive fragment of a name.\n    registration_status (Optional[RegistrationStatus]): Restrict to one\n        status.\n    service (CustomerService): The customer service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Customer]: The matching customers.",
+        "description": "List customers, narrowed by whichever filters were sent.\n\nArgs:\n    customer_filter (CustomerFilter): The filters, bound from the query\n        string. Every field is optional and an absent one narrows nothing.\n    page (int): One-based page number.\n    size (int): Page size.\n    service (CustomerService): The customer service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Customer]: The matching customers.\n\nRaises:\n    MTInvalidCustomerFilterException: If a filter is malformed; answered as\n        a 422.\n\nNotes:\n    - **The filters are a model, not eight parameters.** The signature was\n      already at four and the screen now sends eight; gathering them puts\n      the validation somewhere unit tests can reach without an HTTP client,\n      and stops the router growing a paragraph of ``Query`` defaults.\n    - Bound with ``Depends()`` rather than ``Annotated[..., Query()]``.\n      Both are documented, but only the former **flattens** the model into\n      individual query parameters here \u2014 the latter binds it as one\n      parameter called ``customer_filter`` taking a JSON object, which\n      answers 422 to every request the screen sends. ``Depends()`` also\n      coerces each field before the model sees it, so ``?is_geocoded=false``\n      arrives as a boolean and the model's strict flag validator keeps\n      guarding what it is for: a filter built by hand in Python.\n    - ``?search=`` and ``?status=`` keep the names and meanings they had, so\n      nothing that called this before has to change.\n    - Filtering happens **here**, not in the browser. The grid asks for one\n      page; a client-side filter would search only the rows it happens to\n      hold and silently miss the rest of the book.",
         "operationId": "list_customers_api_v1_customers_get",
         "parameters": [
           {
@@ -5160,6 +5838,102 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "postal_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Postal Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_ongoing_arrangement",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Ongoing Arrangement"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_geocoded",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Geocoded"
             }
           }
         ],
@@ -5373,6 +6147,49 @@
           }
         },
         "summary": "Update Customer",
+        "tags": [
+          "Customers"
+        ]
+      }
+    },
+    "/api/v1/customers/{customer_id}/promote": {
+      "post": {
+        "description": "Promote a prospect to an active customer.\n\nArgs:\n    customer_id (str): The customer to promote.\n    service (CustomerService): The customer service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Customer: The promoted customer.\n\nRaises:\n    MTCustomerNotFound: If no such customer exists; answered as a 404.\n    MTCustomerNotPromotable: If they are not a prospect; answered as a 409.\n\nNotes:\n    - **The act that puts a customer into the planning.** A prospect may\n      already hold accepted, priced work that every run has deliberately\n      left out; this is what enters it into the next one. A named route\n      rather than one value among three on ``PATCH /{id}/status``, so the\n      rule that only a prospect may be promoted lives in one place and the\n      log line says *promoted* rather than *status changed*.\n    - **No payload.** There is exactly one status a promotion can lead to,\n      so a body carrying it would only be a way to ask for a different one.\n    - Manager access, which is manager **and** administrator: roles are\n      ranked and an administrator outranks a manager. Deciding that the\n      agency will serve somebody is running the agency's work, which is\n      what a manager is for.",
+        "operationId": "promote_customer_api_v1_customers__customer_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Customer",
         "tags": [
           "Customers"
         ]
@@ -5729,7 +6546,7 @@
     },
     "/api/v1/hcas": {
       "get": {
-        "description": "List assistants.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    search (Optional[str]): Case-insensitive fragment of a name.\n    contract_type (Optional[ContractType]): Restrict to one contract.\n    service (HcaService): The assistant service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[HcaResponse]: The matching assistants.",
+        "description": "List assistants, narrowed by whichever filters were sent.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    search (Optional[str]): Case-insensitive fragment of a name.\n    contract_type (Optional[ContractType]): Restrict to one contract.\n    hca_filter (HcaFilter): The filters, bound from the query string. Every\n        field is optional and an absent one narrows nothing.\n    service (HcaService): The assistant service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[HcaResponse]: The matching assistants.\n\nRaises:\n    MTInvalidHcaFilterException: If a filter is malformed; answered as a\n        422.\n\nNotes:\n    ``search`` and ``contract_type`` survive as their own parameters\n    because other callers still pass them alone. When both they and the\n    filter are given, the filter wins \u2014 and the store says so in a warning\n    rather than leaving the caller to guess which fragment ran.",
         "operationId": "list_hcas_api_v1_hcas_get",
         "parameters": [
           {
@@ -5785,6 +6602,118 @@
                 }
               ],
               "title": "Contract Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "postal_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Postal Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email"
+            }
+          },
+          {
+            "in": "query",
+            "name": "phone",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Phone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "field_employee",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field Employee"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_geocoded",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Geocoded"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_photo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Photo"
             }
           }
         ],
@@ -6398,7 +7327,7 @@
     },
     "/api/v1/intervention-types": {
       "get": {
-        "description": "List the catalog.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    include_inactive (bool): Whether retired types are included.\n    service (InterventionTypeService): The catalog service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[InterventionType]: The matching types.\n\nNotes:\n    Retired types are hidden unless asked for, so a quote-building screen\n    offers only what may still be sold.",
+        "description": "List the catalog.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    include_inactive (bool): Whether retired types are included.\n    type_filter (InterventionTypeFilter): The filters, bound from the\n        query string. Every field is optional and an absent one\n        narrows nothing.\n    service (InterventionTypeService): The catalog service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[InterventionType]: The matching types.\n\nNotes:\n    Retired types are hidden unless asked for, so a quote-building screen\n    offers only what may still be sold.",
         "operationId": "list_intervention_types_api_v1_intervention_types_get",
         "parameters": [
           {
@@ -6432,6 +7361,86 @@
               "default": false,
               "title": "Include Inactive",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "service_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ServiceCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Service Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
             }
           }
         ],
@@ -6810,7 +7819,7 @@
         ]
       },
       "put": {
-        "description": "Change the details of the agency the caller administers.\n\nArgs:\n    request (CompanyProfileUpdateRequest): The details to store.\n    service (CompanyService): The company service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    Company: The updated agency.\n\nRaises:\n    MTCompanyNotFound: If the agency has since been deleted; 404.\n\nNotes:\n    - Administrator-only, not manager. A manager runs the agency's work; its\n      legal identity \u2014 trading name, SIRET, registered address \u2014 is not part\n      of running the week, and the one field with an outward effect\n      (``is_accepting_applications``) decides whether strangers can apply.\n    - The existing agency is read before the write so the stored identifier\n      and timestamps survive: the payload carries none of them, and building\n      a fresh ``Company`` from it would blank whatever it does not mention.",
+        "description": "Change the details of the agency the caller administers.\n\nArgs:\n    request (CompanyProfileUpdateRequest): The details to store.\n    service (CompanyService): The company service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    Company: The updated agency.\n\nRaises:\n    MTCompanyNotFound: If the agency has since been deleted; 404.\n    MTInvalidCompanyException: If a submitted value does not satisfy the\n        domain model \u2014 a malformed IBAN or VAT number; answered as a 422.\n\nNotes:\n    - Administrator-only, not manager. A manager runs the agency's work; its\n      legal identity \u2014 trading name, SIRET, registered address, and now the\n      account it is paid into \u2014 is not part of running the week, and the one\n      field with an outward effect (``is_accepting_applications``) decides\n      whether strangers can apply.\n    - The existing agency is read before the write so the stored identifier,\n      timestamps and logo survive: the payload carries none of them, and\n      building a fresh ``Company`` from it would blank whatever it does not\n      mention. The merge itself lives on the request model, which knows\n      which fields it owns \u2014 and, crucially, **re-validates**: a\n      ``model_copy`` would have written the payload's values straight past\n      every domain rule.",
         "operationId": "update_my_company_api_v1_me_company_put",
         "requestBody": {
           "content": {
@@ -6845,6 +7854,68 @@
           }
         },
         "summary": "Update My Company",
+        "tags": [
+          "My account"
+        ]
+      }
+    },
+    "/api/v1/me/company/logo": {
+      "delete": {
+        "description": "Remove the logo of the agency the caller administers.\n\nArgs:\n    service (CompanyService): The company service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    Company: The updated agency, with no logo.\n\nRaises:\n    MTCompanyNotFound: If the agency has since been deleted; 404.\n    MTCompanyLogoStorageUnavailable: If the deployment has no object store;\n        answered as a 503.",
+        "operationId": "delete_my_company_logo_api_v1_me_company_logo_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Company-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete My Company Logo",
+        "tags": [
+          "My account"
+        ]
+      },
+      "put": {
+        "description": "Store the logo of the agency the caller administers.\n\nArgs:\n    logo (UploadFile): The uploaded image.\n    service (CompanyService): The company service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    Company: The updated agency, whose ``logo_url`` now points at the\n    stored object.\n\nRaises:\n    MTCompanyNotFound: If the agency has since been deleted; 404.\n    MTCompanyLogoStorageUnavailable: If the deployment has no object store;\n        answered as a 503.\n    MTS3PayloadTooLarge: If the file exceeds the configured limit;\n        answered as a 413.\n    MTS3UnsupportedContentType: If it is not an accepted image; answered\n        as a 415.\n    MTS3EmptyPayload: If it is empty; answered as a 422.\n    MTS3BucketUnavailable: If the object store cannot be reached; answered\n        as a 503.\n    MTS3UploadFailed: If the write itself failed; answered as a 500.\n\nNotes:\n    - **Administrator-only, and the agency comes from the credential.** A\n      logo is how the agency identifies itself on every quote it sends, so\n      the route that sets it must not take an identifier a caller could\n      point at somebody else's letterhead.\n    - The declared ``Content-Type`` is ignored: the store decides the type\n      from the file's own leading bytes, as it does for a photograph. A\n      client controls that header completely, and a bucket serving\n      attacker-chosen content types is how a stored file becomes a stored\n      cross-site-scripting payload.\n    - The accepted formats and the size limit are the photograph's, and\n      are reported by ``GET /api/v1/hcas/photo-constraints``. One bucket,\n      one set of limits \u2014 a second constraints route saying the same\n      numbers would be a second place for them to drift.",
+        "operationId": "upload_my_company_logo_api_v1_me_company_logo_put",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_my_company_logo_api_v1_me_company_logo_put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Company-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload My Company Logo",
         "tags": [
           "My account"
         ]
@@ -7371,7 +8442,7 @@
     },
     "/api/v1/notifications": {
       "get": {
-        "description": "Return the caller's own notifications, newest first.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    unread_only (bool): Restrict to notifications not yet read.\n    notifications (NotificationRepository): The notification store.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[Notification]: The caller's notifications.\n\nNotes:\n    - There is no way to read anybody else's queue, and no parameter that\n      names a recipient. The recipient is the credential.\n    - **This is the delivery path, not a fallback for one.** The event\n      stream carries no notification data \u2014 it says only that something\n      changed \u2014 so every notification a reader ever sees arrives through\n      here. That is what makes an unread notification survive a logout, a\n      closed laptop and a dropped stream alike: the row is the truth, and\n      this reads the row.",
+        "description": "Return the caller's own notifications, newest first.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    unread_only (bool): Restrict to notifications not yet read.\n    notification_filter (NotificationFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    notifications (NotificationRepository): The notification store.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[Notification]: The caller's notifications.\n\nNotes:\n    - There is no way to read anybody else's queue, and no parameter that\n      names a recipient. The recipient is the credential.\n    - **This is the delivery path, not a fallback for one.** The event\n      stream carries no notification data \u2014 it says only that something\n      changed \u2014 so every notification a reader ever sees arrives through\n      here. That is what makes an unread notification survive a logout, a\n      closed laptop and a dropped stream alike: the row is the truth, and\n      this reads the row.",
         "operationId": "list_notifications_api_v1_notifications_get",
         "parameters": [
           {
@@ -7405,6 +8476,54 @@
               "default": false,
               "title": "Unread Only",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/NotificationKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_read",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Read"
             }
           }
         ],
@@ -8029,7 +9148,7 @@
     },
     "/api/v1/quotes": {
       "get": {
-        "description": "List quotes.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    customer_id (Optional[str]): Restrict to one customer.\n    quote_status (Optional[QuoteStatus]): Restrict to one status.\n    authored_by (Optional[str]): Restrict to one author's quotes.\n    service (QuoteService): The quote service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Quote]: The matching quotes.\n\nNotes:\n    Filtering by ``status=pending-validation`` is what the manager's\n    validation queue is: the quotes an assistant has submitted and nobody\n    has ruled on yet.",
+        "description": "List quotes, narrowed by whichever filters were sent.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    customer_id (Optional[str]): Restrict to one customer.\n    quote_status (Optional[QuoteStatus]): Restrict to one status.\n    authored_by (Optional[str]): Restrict to one author's quotes.\n    quote_filter (QuoteFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    service (QuoteService): The quote service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Quote]: The matching quotes.\n\nRaises:\n    MTInvalidQuoteFilterException: If a filter is malformed; answered as a\n        422.\n\nNotes:\n    - Filtering by ``status=pending-validation`` is what the manager's\n      validation queue is: the quotes an assistant has submitted and nobody\n      has ruled on yet.\n    - The three older query parameters stay, and the filter carries the\n      same names. They are passed on separately rather than merged here,\n      because the store is where the rule about which one wins belongs \u2014\n      and for ``authored_by`` that rule is a permission, not a preference.",
         "operationId": "list_quotes_api_v1_quotes_get",
         "parameters": [
           {
@@ -8101,6 +9220,70 @@
                 }
               ],
               "title": "Authored By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reference",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_ongoing",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Ongoing"
+            }
+          },
+          {
+            "in": "query",
+            "name": "auto_renew",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auto Renew"
             }
           }
         ],
@@ -8274,6 +9457,57 @@
           }
         },
         "summary": "Get Quote",
+        "tags": [
+          "Quotes"
+        ]
+      },
+      "patch": {
+        "description": "Change a quote's reference, customer, dates and renewal flag.\n\nArgs:\n    quote_id (str): The quote to change.\n    payload (QuoteHeaderRequest): The header as it should now read.\n    service (QuoteService): The quote service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Quote: The updated quote.\n\nRaises:\n    MTQuoteNotFound: If no such quote exists; answered as a 404.\n\nNotes:\n    Everything a screen shows about a quote is editable somewhere, and\n    this route holds the part that is neither a line nor a status. The\n    lines have their own route because replacing them reprices the quote;\n    the status has one route per transition, because \"send\", \"validate\"\n    and \"accept\" mean different things and are not interchangeable with\n    setting a field.\n\n    Unlike the lines route, this one is **not** restricted by status. A\n    quote the planner sent back for validation is exactly the one somebody\n    needs to correct, and it is past draft by definition.",
+        "operationId": "update_quote_header_api_v1_quotes__quote_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "title": "Quote Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteHeaderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Quote Header",
         "tags": [
           "Quotes"
         ]
@@ -8656,6 +9890,59 @@
         ]
       }
     },
+    "/api/v1/quotes/{quote_id}/reschedule": {
+      "post": {
+        "description": "Move one line onto a time the planner offered, and reprice.\n\nArgs:\n    quote_id (str): The quote to change.\n    request (QuoteRescheduleRequest): The line, the day and the window.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Quote: The repriced quote, still waiting to be validated.\n\nRaises:\n    MTQuoteNotFound: If no such quote exists; answered as a 404.\n    MTQuoteLineNotFound: If the quote no longer carries that line;\n        answered as a 404.\n    MTQuoteLineWindowTooShort: If the window is narrower than the work\n        takes; answered as a 422.\n    MTPricingUnknownInterventionType: If the line names a type that is not\n        in the catalogue; answered as a 422.\n\nNotes:\n    - **This is how the slots on the validation screen become clickable.**\n      A planner that returned a quote also offers the times somebody\n      qualified is free; accepting one here writes the new day and window\n      onto the line it belongs to.\n    - **The status does not move.** Accepting a time answers *when* the\n      work happens, not *whether* the agency has agreed to it \u2014 so the\n      quote stays in the validation queue and a manager still has to\n      validate it.\n    - The offered slot names an assistant and this route ignores it. A\n      quote records what is sold and when; who does it is the planner's to\n      decide on the next run, and storing a preference the run need not\n      honour would be a promise nothing keeps.",
+        "operationId": "reschedule_quote_line_api_v1_quotes__quote_id__reschedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "title": "Quote Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRescheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reschedule Quote Line",
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
     "/api/v1/quotes/{quote_id}/send": {
       "post": {
         "description": "Issue a hand-written quote to the customer, agreed as it goes out.\n\nArgs:\n    quote_id (str): The quote to send.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access and is\n        recorded as the account that agreed to the figures.\n\nReturns:\n    Quote: The issued quote, accepted and schedulable.\n\nRaises:\n    MTQuoteNotFound: If no such quote exists; answered as a 404.\n    MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.\n    MTQuoteNotEditable: If the quote is past draft; answered as a 409.\n\nNotes:\n    Sending accepts the quote, so this is the moment its lines are\n    committed to the planning computation. Manager-gated for that reason:\n    the credential that sends is the one recorded as having agreed.",
@@ -8744,7 +10031,7 @@
     },
     "/api/v1/skills": {
       "get": {
-        "description": "List the skills the agency recognises.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    include_inactive (bool): Whether retired entries are included.\n    service (SkillTypeService): The catalogue service.\n    _ (User): The authenticated caller.\n\nReturns:\n    List[SkillType]: The matching entries, ordered by label.\n\nNotes:\n    **Readable by any signed-in caller, and that matters more here than for\n    the certification catalogue.** An assistant declares their own skills\n    from their own account screen, so this is the list they pick from \u2014\n    a screen that could not read it would leave them typing a code from\n    memory and matching nothing.\n\n    Retired entries are hidden unless asked for, so the picker offers only\n    what may still be declared.",
+        "description": "List the skills the agency recognises.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    include_inactive (bool): Whether retired entries are included.\n    skill_filter (SkillTypeFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    service (SkillTypeService): The catalogue service.\n    _ (User): The authenticated caller.\n\nReturns:\n    List[SkillType]: The matching entries, ordered by label.\n\nNotes:\n    **Readable by any signed-in caller, and that matters more here than for\n    the certification catalogue.** An assistant declares their own skills\n    from their own account screen, so this is the list they pick from \u2014\n    a screen that could not read it would leave them typing a code from\n    memory and matching nothing.\n\n    Retired entries are hidden unless asked for, so the picker offers only\n    what may still be declared.",
         "operationId": "list_skill_types_api_v1_skills_get",
         "parameters": [
           {
@@ -8778,6 +10065,70 @@
               "default": false,
               "title": "Include Inactive",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Label"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Active"
             }
           }
         ],

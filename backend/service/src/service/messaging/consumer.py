@@ -149,9 +149,7 @@ class EventConsumer:
                     "No handler for %s; the message is discarded.",
                     envelope.routing_key,
                 )
-                self._record(
-                    envelope.routing_key, "unhandled", monotonic() - started
-                )
+                self._record(envelope.routing_key, "unhandled", monotonic() - started)
                 return
             self.logger.info("Handling %s.", envelope.routing_key)
             try:

@@ -44,6 +44,10 @@ class PlanningConfig(BaseModel):
             solver. Defaults to ``30.0``.
         solver_workers (int): How many search threads the solver may run.
             Defaults to ``8``.
+        solver_day_concurrency (int): How many of a period's days are solved
+            at once. The CPU a run demands is this times ``solver_workers``.
+        solver_optimisation_budget (float): Search budget for the second
+            phase, which shortens the rounds once everything is placed.
         travel_weight (int): Objective weight applied to a minute of travel.
         unassigned_penalty (int): Objective penalty applied to a requirement
             left unassigned.
@@ -98,13 +102,21 @@ class PlanningConfig(BaseModel):
         default=1,
         description="How many parallel search threads the solver may run.",
     )
+    solver_day_concurrency: int = Field(
+        default=1,
+        description="How many of a period's days are solved at once.",
+    )
     solver_seed: int = Field(
         default=0,
         description="Random seed fixing the solver's tie-breaking.",
     )
     solver_deterministic_budget: float = Field(
-        default=150.0,
-        description="Reproducible search budget, in solver time units.",
+        default=5.0,
+        description="Reproducible search budget for the feasibility phase.",
+    )
+    solver_optimisation_budget: float = Field(
+        default=5.0,
+        description="Reproducible search budget for the travel phase.",
     )
     travel_weight: int = Field(
         default=1,
@@ -229,7 +241,10 @@ class PlanningConfig(BaseModel):
         return coerced
 
     @field_validator(
-        "solver_time_limit_seconds", "solver_deterministic_budget", mode="before"
+        "solver_time_limit_seconds",
+        "solver_deterministic_budget",
+        "solver_optimisation_budget",
+        mode="before",
     )
     def validate_solver_budget(cls, value: Union[int, float, str]) -> float:
         """Validates that a solver budget is strictly positive.
@@ -303,6 +318,48 @@ class PlanningConfig(BaseModel):
             )
         return value
 
+    @field_validator("solver_day_concurrency", mode="before")
+    def validate_solver_day_concurrency(cls, value: Union[int, str]) -> int:
+        """Validates that ``solver_day_concurrency`` is a positive count.
+
+        Args:
+            value (Union[int, str]): Raw count of days solved at once.
+
+        Returns:
+            int: The validated count.
+
+        Raises:
+            MTPlanningConfigInvalidSolverWorkers: If ``value`` is not a
+                strictly positive integer.
+
+        Notes:
+            - **The CPU a planning run demands is this times**
+              :attr:`solver_workers`, not either alone. A week is solved one
+              day at a time, so this many day models are in flight at once and
+              each runs that many search threads. Four days of eight workers
+              is thirty-two threads, and under a container limit that is the
+              throttling the worker-count validator above describes, arrived
+              at from the other side.
+            - Shares :class:`MTPlanningConfigInvalidSolverWorkers` with that
+              validator rather than adding a family of its own, for the reason
+              given on :meth:`validate_solver_seed`: both are the solver's own
+              knobs, and the API maps that family to one status.
+            - One means the days are solved in sequence, which is the slower
+              but entirely safe setting. Zero is refused rather than read as
+              "decide for me": it would plan nothing at all and the run would
+              fail looking like an infeasible week.
+        """
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise MTPlanningConfigInvalidSolverWorkers(
+                f"Invalid solver_day_concurrency: {value!r}. "
+                f"Must be a strictly positive whole number of days."
+            )
+        if value <= 0:
+            raise MTPlanningConfigInvalidSolverWorkers(
+                f"Invalid solver_day_concurrency: {value!r}. Must be strictly positive."
+            )
+        return value
+
     @field_validator("solver_seed", mode="before")
     def validate_solver_seed(cls, value: Union[int, str]) -> int:
         """Validates that ``solver_seed`` is a non-negative integer.
@@ -330,8 +387,7 @@ class PlanningConfig(BaseModel):
         """
         if isinstance(value, bool) or not isinstance(value, int):
             raise MTPlanningConfigInvalidSolverWorkers(
-                f"Invalid solver_seed: {value!r}. "
-                f"Must be a non-negative whole number."
+                f"Invalid solver_seed: {value!r}. Must be a non-negative whole number."
             )
         if value < 0:
             raise MTPlanningConfigInvalidSolverWorkers(

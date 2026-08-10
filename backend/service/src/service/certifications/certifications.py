@@ -9,17 +9,23 @@ from sqlalchemy.exc import IntegrityError
 
 # First-party imports
 from models.catalog.certification_type import CertificationType
+from models.schemas.requests.catalog.certification_type_filter import (
+    CertificationTypeFilter,
+)
 from service.certifications.exceptions import (
     MTCertificationTypeAlreadyExists,
     MTCertificationTypeInUse,
     MTCertificationTypeNotFound,
     MTCertificationTypeUnknownCode,
 )
+
 # isort: off
 from storage.repositories.catalog.certification_type import CertificationTypeRepository  # noqa: E501
-from storage.repositories.catalog.intervention_type import InterventionTypeRepository   # noqa: E501
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository  # noqa: E501
+
 # isort: on
 from storage.repositories.people.hca import HcaRepository
+
 
 class CertificationTypeService:
     """Manages the catalogue of qualifications the agency recognises.
@@ -209,6 +215,7 @@ class CertificationTypeService:
         page: int = 1,
         size: Optional[int] = None,
         include_inactive: bool = False,
+        certification_filter: Optional[CertificationTypeFilter] = None,
     ) -> List[CertificationType]:
         """Return a page of the catalogue.
 
@@ -216,6 +223,7 @@ class CertificationTypeService:
             page (int): One-based page number.
             size (Optional[int]): Page size.
             include_inactive (bool): Whether retired entries are included.
+            certification_filter (Optional[CertificationTypeFilter]): The screen's filter.
 
         Returns:
             List[CertificationType]: The matching entries, ordered by label.
@@ -226,7 +234,10 @@ class CertificationTypeService:
             include_inactive,
         )
         return await self.certifications.list(
-            page=page, size=size, include_inactive=include_inactive
+            page=page,
+            size=size,
+            include_inactive=include_inactive,
+            certification_filter=certification_filter,
         )
 
     async def update(

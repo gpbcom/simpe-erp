@@ -16,9 +16,12 @@ from api.dependencies import (
 )
 from models.auth.user import User
 from models.enums import ContractType
+from models.schemas.requests.hca.hca_filter import HcaFilter
 from models.people.hca import Hca
 from models.planning.planning_run import PlanningRun
-from models.schemas.requests.hca.employment_update_request import EmploymentUpdateRequest
+from models.schemas.requests.hca.employment_update_request import (
+    EmploymentUpdateRequest,
+)
 from models.schemas.responses.hca.hca_response import HcaResponse
 from service.hcas.hcas import HcaService
 from service.messaging.publisher import EventPublisher
@@ -60,25 +63,42 @@ async def list_hcas(
     size: int = Query(default=50, ge=1, le=500),
     search: Optional[str] = Query(default=None),
     contract_type: Optional[ContractType] = Query(default=None),
+    hca_filter: HcaFilter = Depends(),
     service: HcaService = Depends(get_hca_service),
     _: User = Depends(get_manager_user),
 ) -> List[HcaResponse]:
-    """List assistants.
+    """List assistants, narrowed by whichever filters were sent.
 
     Args:
         page (int): One-based page number.
         size (int): Page size.
         search (Optional[str]): Case-insensitive fragment of a name.
         contract_type (Optional[ContractType]): Restrict to one contract.
+        hca_filter (HcaFilter): The filters, bound from the query string. Every
+            field is optional and an absent one narrows nothing.
         service (HcaService): The assistant service.
         _ (User): The authenticated caller; enforces manager access.
 
     Returns:
         List[HcaResponse]: The matching assistants.
+
+    Raises:
+        MTInvalidHcaFilterException: If a filter is malformed; answered as a
+            422.
+
+    Notes:
+        ``search`` and ``contract_type`` survive as their own parameters
+        because other callers still pass them alone. When both they and the
+        filter are given, the filter wins — and the store says so in a warning
+        rather than leaving the caller to guess which fragment ran.
     """
     logger.debug("Listing assistants: page=%d search=%r.", page, search)
     assistants = await service.list(
-        page=page, size=size, search=search, contract_type=contract_type
+        page=page,
+        size=size,
+        search=search,
+        contract_type=contract_type,
+        hca_filter=hca_filter,
     )
     return [HcaResponse.from_hca(assistant) for assistant in assistants]
 

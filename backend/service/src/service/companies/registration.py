@@ -147,16 +147,6 @@ class CompanyRegistrationService:
             role=UserRole.ADMIN,
             company_id=company.id,
         )
-        # Announced so every running worker binds this agency's queues now,
-        # rather than at its next restart. Until they do, the agency's quotes
-        # are published under a routing key nothing is bound to and no
-        # notification is ever written — the product silently doing half its
-        # job for the one agency that just signed up.
-        #
-        # Best-effort, like every other publish here: a broker that is down
-        # does not undo a founded agency. The workers pick it up by enumeration
-        # when they next start, which is exactly the case that enumeration is
-        # there to cover.
         announced = await self.publisher.publish(
             EventRoutingKey.COMPANY_CREATED,
             company.id or "",

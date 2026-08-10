@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { EntityFilterBar } from '@/components/filters/EntityFilterBar';
+import type { FilterDetail } from '@/components/filters/EntityFilterBar';
+import { useEntityFilter } from '@/components/filters/entityFilter';
+import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -11,6 +15,29 @@ import AddIcon from '@mui/icons-material/Add';
 import { useCertificationTypes } from '@/api/queries';
 import { CertificationTypeDialog } from './CertificationTypeDialog';
 import type { CertificationType } from '@/api/types';
+
+
+/** Which of the certification filter's fields are text, flags and closed lists. */
+const CERTIFICATION_FILTER_SPEC: EntityFilterSpec = {
+  textFields: ['search', 'code', 'label'],
+  flagFields: ['is_active'],
+  enumFields: {},
+};
+
+/** What is folded away behind "more filters". */
+const CERTIFICATION_DETAILS: FilterDetail[] = [
+  { field: 'code', label: 'certification.filterCode', kind: 'text' },
+  { field: 'label', label: 'certification.filterLabel', kind: 'text' },
+  {
+    field: 'is_active',
+    label: 'certification.filterActive',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'certification.filterActiveYes' },
+      { value: 'false', label: 'certification.filterActiveNo' },
+    ],
+  },
+];
 
 /**
  * The certification catalogue: which qualifications the agency recognises.
@@ -36,7 +63,8 @@ import type { CertificationType } from '@/api/types';
  */
 export function CertificationsPage() {
   const { t } = useTranslation();
-  const { data: entries, isLoading } = useCertificationTypes(true);
+  const certificationFilter = useEntityFilter(CERTIFICATION_FILTER_SPEC);
+  const { data: entries, isLoading } = useCertificationTypes(true, certificationFilter.filter);
   const [editing, setEditing] = useState<CertificationType | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -104,6 +132,13 @@ export function CertificationsPage() {
           {t('certifications.add')}
         </Button>
       </Box>
+
+      <EntityFilterBar
+        state={certificationFilter}
+        testId="certification"
+        searchLabel="certification.searchFilter"
+        details={CERTIFICATION_DETAILS}
+      />
 
       <Alert severity="info" data-testid="certifications-explained">
         {t('certifications.whatThisIs')}

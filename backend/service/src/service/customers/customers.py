@@ -4,13 +4,18 @@ from __future__ import annotations
 from logging import Logger, getLogger
 from typing import List, Optional
 
+# Third-party imports
+from sqlalchemy.exc import SQLAlchemyError
+
 # First-party imports
 from models.enums import RegistrationStatus
 from models.people.customer import Customer
 from models.quoting.quote import Quote
+from models.schemas.requests.customers.customer_filter import CustomerFilter
 from service.customers.exceptions import (  # noqa: E501
     MTCustomerHasQuotes,
     MTCustomerNotFound,
+    MTCustomerNotPromotable,
 )
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.quoting.quote import QuoteRepository
@@ -109,6 +114,7 @@ class CustomerService:
         size: Optional[int] = None,
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
+        customer_filter: Optional[CustomerFilter] = None,
     ) -> List[Customer]:
         """Return a page of customers.
 
@@ -117,25 +123,45 @@ class CustomerService:
             size (Optional[int]): Page size.
             search (Optional[str]): Case-insensitive fragment of a name.
             status (Optional[RegistrationStatus]): Restrict to one status.
+            customer_filter (Optional[CustomerFilter]): The richer filter the
+                customers screen sends.
 
         Returns:
             List[Customer]: The matching customers.
         """
         self.logger.debug(
-            "Listing customers: page=%d search=%r status=%s.",
+            "Listing customers: page=%d search=%r status=%s filter=%s.",
             page,
             search,
             status.value if status else None,
+            customer_filter.model_dump(exclude_none=True) if customer_filter else None,
         )
-        customers = await self.customers.list(
-            page=page, size=size, search=search, status=status
-        )
+        try:
+            customers = await self.customers.list(
+                page=page,
+                size=size,
+                search=search,
+                status=status,
+                customer_filter=customer_filter,
+            )
+        except SQLAlchemyError:
+            # Named here rather than left to the handler: the filter is eight
+            # fields wide now, and "the customer book failed to load" with no
+            # record of what was asked for is unactionable.
+            self.logger.error(
+                "Reading the customer book failed for filter=%s.",
+                customer_filter.model_dump(exclude_none=True)
+                if customer_filter
+                else None,
+            )
+            raise
         if not customers:
             self.logger.warning(
                 "No customer matches search=%r status=%s.",
                 search,
                 status.value if status else None,
             )
+        self.logger.info("Listed %d customers on page %d.", len(customers), page)
         return customers
 
     async def list_for_hca(
@@ -221,7 +247,7 @@ class CustomerService:
             customer.model_copy(update={"id": customer_id})
         )
         if updated is None:
-            self.logger.warning("Cannot update the absent customer %s.", customer_id)
+            self.logger.warning("Cannot update the absent customer %s.", customer_id)  # noqa: E501
             raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
         return updated
 
@@ -241,23 +267,98 @@ class CustomerService:
             MTCustomerNotFound: If no such customer exists.
 
         Notes:
-            Stopping a customer does not touch their quotes. Work already
-            accepted stays schedulable, which is deliberate — a customer
-            stopping at the end of the month still has this month's visits.
+            - Any transition is accepted here, deliberately: stopping an active
+              customer and reinstating a stopped one are ordinary corrections.
+              The one transition with a rule — promoting a prospect — has its
+              own method, :meth:`promote`.
+            - Changing the status does not touch their quotes. What it changes
+              is whether the planner will *place* them: only an active customer
+              is scheduled, so stopping somebody, or moving them back to
+              prospect, takes their accepted work out of the next run while
+              leaving the quotes themselves intact and readable.
         """
+        self.logger.debug(
+            "Changing customer %s to %s; schedulable=%s.",
+            customer_id,
+            status.value,
+            status.can_be_scheduled(),
+        )
         self.logger.info("Setting customer %s to %s.", customer_id, status.value)
-        updated = await self.customers.set_status(customer_id, status)
+        try:
+            updated = await self.customers.set_status(customer_id, status)
+        except SQLAlchemyError:
+            self.logger.error(
+                "Writing status %s for customer %s failed.", status.value, customer_id
+            )
+            raise
         if updated is None:
             self.logger.warning(
                 "Cannot change the status of the absent customer %s.", customer_id
             )
             raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
-        if status is RegistrationStatus.STOPPED:
+        if not status.can_be_scheduled():
             self.logger.warning(
-                "Customer %s is stopped; their accepted work still stands.",
+                "Customer %s is now %s; their accepted work stands but no "
+                "further visit will be planned for them.",
                 customer_id,
+                status.value,
             )
         return updated
+
+    async def promote(self, customer_id: str) -> Customer:
+        """Promote a prospect to an active customer.
+
+        Args:
+            customer_id (str): The customer to promote.
+
+        Returns:
+            Customer: The promoted customer.
+
+        Raises:
+            MTCustomerNotFound: If no such customer exists.
+            MTCustomerNotPromotable: If they are not a prospect.
+
+        Notes:
+            - **This is the act that makes the planner start routing to their
+              door.** A prospect may already hold accepted, priced work that
+              every run has deliberately left out; promoting them is what puts it
+              into the next one, so it is a named operation rather than one value
+              among three on :meth:`set_status`.
+            - Only from :attr:`~models.enums.RegistrationStatus.PROSPECT`.
+              Promoting an active customer is refused rather than shrugged off:
+              a control that silently succeeds without doing anything is one
+              somebody presses twice. Reinstating a *stopped* customer is a
+              different decision with different consequences, and it goes through
+              :meth:`set_status` where it reads as what it is.
+        """
+        self.logger.debug("Reading customer %s before promoting them.", customer_id)  # noqa: E501
+        existing = await self.get(customer_id)
+        if existing.registration_status is not RegistrationStatus.PROSPECT:
+            self.logger.warning(
+                "Refused to promote customer %s: they are %s, not a prospect.",
+                customer_id,
+                existing.registration_status.value,
+            )
+            raise MTCustomerNotPromotable(
+                f"Customer {customer_id!r} is "
+                f"{existing.registration_status.value}, not a prospect. Only a "
+                f"prospect can be promoted."
+            )
+        self.logger.info("Promoting prospect %s to an active customer.", customer_id)  # noqa: E501
+        promoted = await self.customers.set_status(
+            customer_id, RegistrationStatus.ACTIVE
+        )
+        if promoted is None:
+            self.logger.error(
+                "Customer %s vanished between the read and the promotion.",
+                customer_id,
+            )
+            raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
+        self.logger.info(
+            "Customer %s is active; their accepted work enters the next planning run.",
+            customer_id,
+        )
+        return promoted
 
     async def quotes_for(self, customer_id: str) -> List[Quote]:
         """Return every quote issued to a customer.

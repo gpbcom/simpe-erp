@@ -459,7 +459,53 @@ deliberate: a customer with no address cannot be routed to, and one with no
 telephone number cannot be reached when an assistant is running late. It sends
 **no coordinate** — the server geocodes while it validates, and a home the map
 does not know is still registered with the failure recorded on the address, so
-the dialog closes on success and the routing warning belongs on the file.
+the dialog closes on success and the routing warning belongs on the file. It
+registers a **prospect**, not a customer: the agency has taken the details, not
+agreed to serve them.
+
+**The filters live in the URL**, held by `useCustomerFilter` and written with
+`useSearchParams`. A narrowed book is then a link somebody can send, it survives
+a reload, and the back button undoes a filter — none of which works when the
+same state sits in a `useState`. History entries are **replaced** rather than
+pushed, or leaving the screen would take a press per filter.
+
+Two speeds, because the controls are two gestures. Typing settles for 300 ms
+before the URL moves; a status tab or a flag applies at once, since a click is
+already a finished decision and delaying it reads as the control not working.
+The search box used to fire a request **per keystroke**, and six text filters
+make that materially worse.
+
+The status tabs follow the quotes screen's idiom, with **prospects second** for
+the same reason the validation queue is: it is the list somebody has to act on.
+The other six filters fold away behind a button that carries a count, so a
+hidden filter can never narrow the book invisibly. The two flags are native
+`<select>`s with three options rather than checkboxes, because they have three
+states — a checkbox cannot say "only those *without* an ongoing arrangement",
+which is how a manager finds the families the agency quoted and then forgot.
+
+Filtering runs on the **server**. The grid holds one page, so a filter applied
+in the browser would search the rows it happens to have and silently miss the
+rest of the book.
+
+**Promote is offered only on a prospect**, in the drawer, where their quotes are
+visible — that is the context the decision is taken in. Not disabled everywhere
+else: disabled buttons on all ninety rows would bury the six that are waiting.
+No `hasAtLeast` call either; the nav entry, the route and every customers
+endpoint are already manager-gated, and `hasAtLeast` ranks admin above manager,
+so "admin and manager" *is* the existing guard.
+
+The drawer **re-reads the customer** rather than trusting the row that was
+clicked. The row is whatever the last list fetch held, and promoting from inside
+the drawer changes the record on the server — drawn from the prop, the chip
+would still say *prospect* and the button would still be offered, for somebody
+who is already active.
+
+`CustomerStatusChip` is shared by the grid, the drawer and an assistant's own
+portfolio. Each used to spell its own colour rule, which is exactly how
+`prospect` would have arrived amber in one place and grey in the other two.
+`REGISTRATION_STATUS_COLOUR` in `theme/palette.ts` is exhaustive over the enum,
+so a status added to the backend without a colour is a TypeScript error rather
+than an uninterpretable grey chip.
 
 The two controls that end or extend care live on the arrangement card itself,
 not on a settings screen. Both are decisions taken while looking at what the

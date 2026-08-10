@@ -1,3 +1,8 @@
+from .entity_filter_exceptions import (
+    MTEntityFilterInvalidFlag,
+    MTEntityFilterInvalidFragment,
+    MTInvalidEntityFilterException,
+)
 from .person_exceptions import (
     MTInvalidPersonException,
     MTPersonInvalidAddress,
@@ -11,6 +16,9 @@ from .person_exceptions import (
 )
 
 __all__ = [
+    "MTEntityFilterInvalidFlag",
+    "MTEntityFilterInvalidFragment",
+    "MTInvalidEntityFilterException",
     "MTInvalidPersonException",
     "MTPersonInvalidAddress",
     "MTPersonInvalidDate",

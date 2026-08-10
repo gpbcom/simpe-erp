@@ -9,7 +9,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 # First-party imports
-from models.base.exceptions import MTInvalidPersonException
+from models.base.exceptions import (
+    MTInvalidEntityFilterException,
+    MTInvalidPersonException,
+)
 from models.auth.exceptions import (
     MTInvalidAccessTokenException,
     MTInvalidUserException,
@@ -58,6 +61,8 @@ from models.planning.intervention.exceptions import (
 )
 from models.planning.planning_run.exceptions import (
     MTInvalidPlanningRunException,
+    MTInvalidSuggestedSlotException,
+    MTInvalidUnplacedQuoteException,
     MTInvalidUnplacedRequirementException,
 )
 from models.quoting.exceptions import (
@@ -71,11 +76,14 @@ from models.schemas.exceptions import (
     MTInvalidSkillTypeUpdateRequestException,
     MTInvalidAccountUpdateRequestException,
     MTInvalidCompanyProfileUpdateRequestException,
+    MTInvalidCompanyViewException,
     MTInvalidInterventionTypeChangeRequestException,
     MTInvalidInterventionTypeUpdateRequestException,
     MTInvalidQuoteCreateRequestException,
+    MTInvalidQuoteHeaderRequestException,
     MTInvalidQuoteInterruptionRequestException,
     MTInvalidQuoteLinesRequestException,
+    MTInvalidQuoteRescheduleRequestException,
     MTInvalidActiveUpdateRequestException,
     MTInvalidApplicationDecisionRequestException,
     MTInvalidCompanyRegistrationRequestException,
@@ -94,6 +102,7 @@ from models.schemas.exceptions import (
     MTInvalidPlanningSettingsRequestException,
     MTInvalidReadinessResponseException,
     MTInvalidRegisterRequestException,
+    MTInvalidCustomerFilterException,
     MTInvalidRoleUpdateRequestException,
     MTInvalidStaffAccountRequestException,
     MTInvalidStatusUpdateRequestException,
@@ -116,6 +125,7 @@ from service.auth.exceptions import (
     MTInvalidAuthException,
 )
 from service.companies.exceptions import (
+    MTCompanyLogoStorageUnavailable,
     MTCompanyNameTaken,
     MTCompanyNotAcceptingApplications,
     MTCompanyNotEmpty,
@@ -140,6 +150,7 @@ from service.skills.exceptions import (
 from service.customers.exceptions import (
     MTCustomerHasQuotes,
     MTCustomerNotFound,
+    MTCustomerNotPromotable,
     MTInvalidCustomerServiceException,
 )
 from service.emails.exceptions import (
@@ -180,6 +191,7 @@ from service.quotes.exceptions import (
     MTInvalidPricingException,
     MTPricingUnknownInterventionType,
     MTQuoteForbidden,
+    MTQuoteLineNotFound,
     MTQuoteNotEditable,
     MTQuoteNotFound,
     MTQuoteNotPriced,
@@ -251,6 +263,10 @@ class ExceptionHandlers:
         MTInvalidCompanyProfileUpdateRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        # A 500, not a 422, for the same reason as the pricing-rules family
+        # below: this guards a *projection of an agency already stored*, so a
+        # caller cannot cause one and has nothing to correct.
+        MTInvalidCompanyViewException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidInterventionTypeUpdateRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
@@ -267,7 +283,11 @@ class ExceptionHandlers:
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
         MTInvalidQuoteCreateRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidQuoteHeaderRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidQuoteLinesRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidQuoteRescheduleRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
         # A 500, not a 422. This family guards a *response* built from the
         # running configuration, so a caller cannot cause one and has nothing
         # to correct: it fires only when the deployment's own pricing rules
@@ -299,6 +319,12 @@ class ExceptionHandlers:
         MTInvalidHcaProfileUpdateRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidCustomerFilterException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        # Every list screen's filter, in one row. The concrete families
+        # below it exist so a rejected filter names its own screen; what
+        # they all mean is the same — the caller narrowed by something the
+        # server cannot narrow by, which is theirs to correct.
+        MTInvalidEntityFilterException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidStatusUpdateRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         # People
         MTHcaNotFound: status.HTTP_404_NOT_FOUND,
@@ -306,12 +332,20 @@ class ExceptionHandlers:
         MTSkillNotFound: status.HTTP_404_NOT_FOUND,
         MTCustomerNotFound: status.HTTP_404_NOT_FOUND,
         MTCustomerHasQuotes: status.HTTP_409_CONFLICT,
+        # A conflict rather than a 422: the request is well formed and the
+        # customer exists — they are simply not in the one state this act
+        # applies to, and the caller's own screen may be showing stale data.
+        MTCustomerNotPromotable: status.HTTP_409_CONFLICT,
         MTHcaForbidden: status.HTTP_403_FORBIDDEN,
         # Companies and applications
         MTCompanyNotFound: status.HTTP_404_NOT_FOUND,
         MTCompanyNameTaken: status.HTTP_409_CONFLICT,
         MTCompanyNotEmpty: status.HTTP_409_CONFLICT,
         MTCompanyNotAcceptingApplications: status.HTTP_409_CONFLICT,
+        # 503, not 400: this describes the deployment rather than the request.
+        # The same call works once an object store is configured, and there is
+        # nothing about the payload the caller could change to help.
+        MTCompanyLogoStorageUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
         # 404, not 403: a deployment that has not opted in should be
         # indistinguishable from one without the route at all.
         MTCompanyRegistrationDisabled: status.HTTP_404_NOT_FOUND,
@@ -340,6 +374,11 @@ class ExceptionHandlers:
         MTSkillTypeUnknownCode: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # Quotes and pricing
         MTQuoteNotFound: status.HTTP_404_NOT_FOUND,
+        # 404 too, and separate from the quote's own. The offered slots a
+        # screen shows were computed when the planner last ran, so a line
+        # edited away since is an ordinary stale-offer case rather than a
+        # caller pointing at a quote that does not exist.
+        MTQuoteLineNotFound: status.HTTP_404_NOT_FOUND,
         MTQuoteNotEditable: status.HTTP_409_CONFLICT,
         MTQuoteForbidden: status.HTTP_403_FORBIDDEN,
         MTQuoteNotPriced: status.HTTP_409_CONFLICT,
@@ -413,6 +452,8 @@ class ExceptionHandlers:
         MTInvalidInterventionRequirementException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
+        MTInvalidSuggestedSlotException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidUnplacedQuoteException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidUnplacedRequirementException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidPlanningSettingsException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # A service refusing an operation. The concrete members carry their own
@@ -450,9 +491,7 @@ class ExceptionHandlers:
         MTInvalidEmailConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidWebhookConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidGeocodingConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
-        MTInvalidObservabilityConfigException: (
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ),
+        MTInvalidObservabilityConfigException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
         MTInvalidPlanningConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidPricingConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHolidaySurchargeException: status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -111,7 +111,9 @@ class PlanningRunMapper(BaseMapper[PlanningRun, PlanningRunRow]):
             finished_at=self.timestamps.to_utc(row.finished_at),
             total_travel_minutes=row.total_travel_minutes,
             scheduled_count=row.scheduled_count,
+            is_optimised=row.is_optimised,
             unassigned_requirement_ids=self._split_ids(row.unassigned_requirement_ids),
+            unplaced_quotes=row.unplaced_quotes or [],
             error_message=row.error_message,
         )
 
@@ -136,9 +138,13 @@ class PlanningRunMapper(BaseMapper[PlanningRun, PlanningRunRow]):
         row.finished_at = model.finished_at
         row.total_travel_minutes = model.total_travel_minutes
         row.scheduled_count = model.scheduled_count
+        row.is_optimised = model.is_optimised
         row.unassigned_requirement_ids = self._join_ids(
             model.unassigned_requirement_ids
         )
+        row.unplaced_quotes = [
+            entry.model_dump(mode="json") for entry in model.unplaced_quotes
+        ]
         row.error_message = model.error_message
         if model.unassigned_requirement_ids:
             self.logger.warning(

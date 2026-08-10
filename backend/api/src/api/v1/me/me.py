@@ -20,28 +20,34 @@ from api.dependencies import (
 )
 from models.auth.user import User
 from models.companies.company import Company
+from models.companies.exceptions import MTInvalidCompanyException
 from models.enums import EventRoutingKey
 from models.people.customer import Customer
 from models.people.hca.skill import Skill
 from models.quoting.quote import Quote
-from models.schemas.requests.quoting.quote_create_request import (
-    QuoteCreateRequest,
+from models.schemas.requests.account.account_update_request import (
+    AccountUpdateRequest,  # noqa: E501
 )
-from models.schemas.requests.quoting.quote_lines_request import QuoteLinesRequest
-from models.schemas.requests.account.account_update_request import AccountUpdateRequest
 from models.schemas.requests.companies.company_profile_update_request import (
     CompanyProfileUpdateRequest,
-)
-from models.schemas.requests.hca.skill_create_request import (
-    SkillCreateRequest,
 )
 from models.schemas.requests.hca.hca_profile_update_request import (
     HcaProfileUpdateRequest,
 )
-from models.schemas.responses.hca.hca_response import HcaResponse
+from models.schemas.requests.hca.skill_create_request import (
+    SkillCreateRequest,
+)
+from models.schemas.requests.quoting.quote_create_request import (
+    QuoteCreateRequest,
+)
+from models.schemas.requests.quoting.quote_lines_request import (
+    QuoteLinesRequest,  # noqa: E501
+)
 from models.schemas.responses.auth.user_response import UserResponse
+from models.schemas.responses.hca.hca_response import HcaResponse
 from service.auth.auth import AuthService
 from service.companies.companies import CompanyService
+from service.companies.exceptions import MTInvalidCompanyServiceException
 from service.customers.customers import CustomerService
 from service.hcas.exceptions import MTHcaForbidden
 from service.hcas.hcas import HcaService
@@ -129,35 +135,139 @@ async def update_my_company(
 
     Raises:
         MTCompanyNotFound: If the agency has since been deleted; 404.
+        MTInvalidCompanyException: If a submitted value does not satisfy the
+            domain model — a malformed IBAN or VAT number; answered as a 422.
 
     Notes:
         - Administrator-only, not manager. A manager runs the agency's work; its
-          legal identity — trading name, SIRET, registered address — is not part
-          of running the week, and the one field with an outward effect
-          (``is_accepting_applications``) decides whether strangers can apply.
-        - The existing agency is read before the write so the stored identifier
-          and timestamps survive: the payload carries none of them, and building
-          a fresh ``Company`` from it would blank whatever it does not mention.
+          legal identity — trading name, SIRET, registered address, and now the
+          account it is paid into — is not part of running the week, and the one
+          field with an outward effect (``is_accepting_applications``) decides
+          whether strangers can apply.
+        - The existing agency is read before the write so the stored identifier,
+          timestamps and logo survive: the payload carries none of them, and
+          building a fresh ``Company`` from it would blank whatever it does not
+          mention. The merge itself lives on the request model, which knows
+          which fields it owns — and, crucially, **re-validates**: a
+          ``model_copy`` would have written the payload's values straight past
+          every domain rule.
     """
     logger.info("Administrator %s is updating their own agency.", caller.email)
+    logger.debug("Reading agency %s before merging the payload.", caller.company_id)
     existing = await service.get(caller.company_id)
-    return await service.update(
-        caller.company_id,
-        existing.model_copy(
-            update={
-                "name": request.name,
-                "registration_number": request.registration_number,
-                "legal_form": request.legal_form,
-                "share_capital": request.share_capital,
-                "rcs_number": request.rcs_number,
-                "vat_number": request.vat_number,
-                "phone_number": request.phone_number,
-                "contact_email": request.contact_email,
-                "address": request.address,
-                "is_accepting_applications": request.is_accepting_applications,
-            }
-        ),
-    )
+    if not request.is_accepting_applications and existing.is_accepting_applications:
+        logger.warning(
+            "Agency %s will stop appearing to applicants; its pending "
+            "applications still need deciding.",
+            caller.company_id,
+        )
+    try:
+        merged = request.apply_to(existing)
+    except MTInvalidCompanyException as exc:
+        logger.error(
+            "Administrator %s submitted agency details the model refuses: %s.",
+            caller.email,
+            exc,
+        )
+        raise
+    return await service.update(caller.company_id, merged)
+
+
+@router.put("/company/logo", response_model=Company)
+async def upload_my_company_logo(
+    logo: UploadFile = File(...),
+    service: CompanyService = Depends(get_company_service),
+    caller: User = Depends(get_admin_user),
+) -> Company:
+    """Store the logo of the agency the caller administers.
+
+    Args:
+        logo (UploadFile): The uploaded image.
+        service (CompanyService): The company service.
+        caller (User): The authenticated caller; enforces administrator access.
+
+    Returns:
+        Company: The updated agency, whose ``logo_url`` now points at the
+        stored object.
+
+    Raises:
+        MTCompanyNotFound: If the agency has since been deleted; 404.
+        MTCompanyLogoStorageUnavailable: If the deployment has no object store;
+            answered as a 503.
+        MTS3PayloadTooLarge: If the file exceeds the configured limit;
+            answered as a 413.
+        MTS3UnsupportedContentType: If it is not an accepted image; answered
+            as a 415.
+        MTS3EmptyPayload: If it is empty; answered as a 422.
+        MTS3BucketUnavailable: If the object store cannot be reached; answered
+            as a 503.
+        MTS3UploadFailed: If the write itself failed; answered as a 500.
+
+    Notes:
+        - **Administrator-only, and the agency comes from the credential.** A
+          logo is how the agency identifies itself on every quote it sends, so
+          the route that sets it must not take an identifier a caller could
+          point at somebody else's letterhead.
+        - The declared ``Content-Type`` is ignored: the store decides the type
+          from the file's own leading bytes, as it does for a photograph. A
+          client controls that header completely, and a bucket serving
+          attacker-chosen content types is how a stored file becomes a stored
+          cross-site-scripting payload.
+        - The accepted formats and the size limit are the photograph's, and
+          are reported by ``GET /api/v1/hcas/photo-constraints``. One bucket,
+          one set of limits — a second constraints route saying the same
+          numbers would be a second place for them to drift.
+    """
+    logger.debug("Reading the uploaded logo from administrator %s.", caller.email)
+    payload = await logo.read()
+    if not payload:
+        logger.warning(
+            "Administrator %s uploaded an empty file; the store will refuse it.",
+            caller.email,
+        )
+    logger.info("Administrator %s uploaded a %d-byte logo.", caller.email, len(payload))
+    try:
+        return await service.set_logo(caller.company_id, payload)
+    except MTInvalidCompanyServiceException as exc:
+        logger.error(
+            "Could not store the logo for agency %s: %s.", caller.company_id, exc
+        )
+        raise
+
+
+@router.delete("/company/logo", response_model=Company)
+async def delete_my_company_logo(
+    service: CompanyService = Depends(get_company_service),
+    caller: User = Depends(get_admin_user),
+) -> Company:
+    """Remove the logo of the agency the caller administers.
+
+    Args:
+        service (CompanyService): The company service.
+        caller (User): The authenticated caller; enforces administrator access.
+
+    Returns:
+        Company: The updated agency, with no logo.
+
+    Raises:
+        MTCompanyNotFound: If the agency has since been deleted; 404.
+        MTCompanyLogoStorageUnavailable: If the deployment has no object store;
+            answered as a 503.
+    """
+    logger.debug("Administrator %s asked to clear their agency's logo.", caller.email)
+    try:
+        updated = await service.clear_logo(caller.company_id)
+    except MTInvalidCompanyServiceException as exc:
+        logger.error(
+            "Could not clear the logo of agency %s: %s.", caller.company_id, exc
+        )
+        raise
+    if updated.logo_url is not None:
+        logger.warning(
+            "Agency %s still shows a logo after being cleared.", caller.company_id
+        )
+    logger.info("Administrator %s removed their agency's logo.", caller.email)
+    return updated
 
 
 @router.get("/account", response_model=UserResponse)
@@ -369,9 +479,7 @@ async def update_my_profile(
     return HcaResponse.from_hca(updated)
 
 
-@router.post(
-    "/hca/skills", response_model=Skill, status_code=status.HTTP_201_CREATED
-)
+@router.post("/hca/skills", response_model=Skill, status_code=status.HTTP_201_CREATED)  # noqa: E501
 async def declare_my_skill(
     request: SkillCreateRequest,
     service: HcaService = Depends(get_hca_service),
@@ -435,7 +543,7 @@ async def declare_my_skill(
     return stored
 
 
-@router.delete("/hca/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/hca/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)  # noqa: E501
 async def withdraw_my_skill(
     skill_id: str,
     service: HcaService = Depends(get_hca_service),
@@ -640,7 +748,7 @@ async def list_my_quotes(
     )
 
 
-@router.post("/quotes", response_model=Quote, status_code=status.HTTP_201_CREATED)
+@router.post("/quotes", response_model=Quote, status_code=status.HTTP_201_CREATED)  # noqa: E501
 async def create_my_quote(
     payload: QuoteCreateRequest,
     service: QuoteService = Depends(get_quote_service),

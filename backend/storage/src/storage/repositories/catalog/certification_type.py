@@ -5,11 +5,14 @@ from logging import Logger, getLogger
 from typing import List, Optional, Set, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.catalog.certification_type import CertificationType
+from models.schemas.requests.catalog.certification_type_filter import (
+    CertificationTypeFilter,
+)
 from storage.mappers.catalog.certification_type_mapper import CertificationTypeMapper
 from storage.orm.catalog.certification_type_row import CertificationTypeRow
 from storage.repositories.base import BaseRepository
@@ -52,19 +55,66 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
     ############################
 
     def _build_query(
-        self, include_inactive: bool
+        self,
+        include_inactive: bool,
+        certification_filter: Optional[CertificationTypeFilter] = None,
     ) -> Select[Tuple[CertificationTypeRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
         Args:
             include_inactive (bool): Whether retired entries are included.
+            certification_filter (Optional[CertificationTypeFilter]): The screen's filter.
+            certification_filter (CertificationTypeFilter): The screen's filter, or ``None``.
 
         Returns:
             Select: The filtered statement, without ordering or pagination.
+
+        Notes:
+            **``is_active`` wins over ``include_inactive`` when it is set.**
+            The older switch has two states and no way to ask for the retired
+            entries *on their own*; the filter has three. Unset, the switch
+            still decides, so every caller that predates the filter behaves
+            exactly as it did.
         """
+        applied = certification_filter or CertificationTypeFilter()
+        self.logger.debug(
+            "Building the catalogue query from %s (include_inactive=%s).",
+            applied.model_dump(exclude_none=True),
+            include_inactive,
+        )
         statement = select(CertificationTypeRow)
-        if not include_inactive:
+        if applied.is_active is not None:
+            if include_inactive and applied.is_active:
+                self.logger.warning(
+                    "include_inactive asked for the retired entries and the "
+                    "filter asked for the active ones; the filter wins."
+                )
+            statement = statement.where(
+                CertificationTypeRow.is_active.is_(applied.is_active)
+            )
+        elif not include_inactive:
             statement = statement.where(CertificationTypeRow.is_active.is_(True))
+        else:
+            self.logger.info("Listing the catalogue including retired entries.")
+        if applied.search:
+            pattern = f"%{applied.search.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    CertificationTypeRow.code.ilike(pattern),
+                    CertificationTypeRow.label.ilike(pattern),
+                    CertificationTypeRow.description.ilike(pattern),
+                )
+            )
+        # One column each, unlike ``search``: somebody who has decided the
+        # fragment is a code does not want it matched against a description.
+        for fragment, column in (
+            (applied.code, CertificationTypeRow.code),
+            (applied.label, CertificationTypeRow.label),
+        ):
+            if fragment:
+                statement = statement.where(
+                    column.ilike(f"%{fragment.strip().lower()}%")
+                )
         return statement
 
     ############################
@@ -126,7 +176,7 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
         normalized = code.strip().upper()
         self.logger.debug("Looking up certification type by code %s.", normalized)  # noqa: E501
         row = await self._fetch_one(
-            select(CertificationTypeRow).where(CertificationTypeRow.code == normalized) # noqa: E501
+            select(CertificationTypeRow).where(CertificationTypeRow.code == normalized)  # noqa: E501
         )
         if row is None:
             self.logger.warning("No certification type with code %s.", normalized)  # noqa: E501
@@ -186,7 +236,7 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
             return None
         self.mapper.apply_to_row(row, certification_type)
         await self.session.flush()
-        self.logger.info("Updated certification type %s.", certification_type.id) # noqa: E501
+        self.logger.info("Updated certification type %s.", certification_type.id)  # noqa: E501
         return self.mapper.to_model(row)
 
     async def list(
@@ -194,6 +244,7 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
         page: int = 1,
         size: Optional[int] = None,
         include_inactive: bool = False,
+        certification_filter: Optional[CertificationTypeFilter] = None,
     ) -> List[CertificationType]:
         """Return a page of the catalogue.
 
@@ -216,7 +267,7 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
             page,
             include_inactive,
         )
-        statement = self._build_query(include_inactive).order_by(
+        statement = self._build_query(include_inactive, certification_filter).order_by(
             CertificationTypeRow.label
         )
         rows = await self._fetch_all(self._paginate(statement, page, size))
@@ -224,16 +275,24 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
             self.logger.warning("No certification type matched the query.")
         return self.mapper.to_models(rows)
 
-    async def count(self, include_inactive: bool = False) -> int:
+    async def count(
+        self,
+        include_inactive: bool = False,
+        certification_filter: Optional[CertificationTypeFilter] = None,
+    ) -> int:
         """Return how many catalogue entries match a query.
 
         Args:
             include_inactive (bool): Whether retired entries are counted.
+            certification_filter (Optional[CertificationTypeFilter]): The screen's filter, so a page
+                and its total can never come from different filters.
 
         Returns:
             int: The number of matching entries.
         """
-        return await self._count(self._build_query(include_inactive))
+        return await self._count(
+            self._build_query(include_inactive, certification_filter)
+        )
 
     async def delete(self, type_id: str) -> bool:
         """Remove a catalogue entry outright.

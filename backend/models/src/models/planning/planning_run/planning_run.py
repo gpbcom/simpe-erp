@@ -16,6 +16,7 @@ from pydantic import (
 
 # First-party imports
 from models.enums import PlanningRunStatus
+from models.planning.planning_run.unplaced_quote import UnplacedQuote
 from models.planning.planning_run.exceptions import (
     MTPlanningRunInvalidCount,
     MTPlanningRunInvalidDate,
@@ -79,6 +80,10 @@ class PlanningRun(BaseModel):
         default=None,
         description="Travel time in the solution.",
     )
+    is_optimised: Optional[bool] = Field(
+        default=None,
+        description="Whether the travel in the stored plan was proved minimal.",
+    )
     scheduled_count: Optional[int] = Field(
         default=None,
         description="How many requirements were placed.",
@@ -86,6 +91,10 @@ class PlanningRun(BaseModel):
     unassigned_requirement_ids: List[str] = Field(
         default_factory=list,
         description="What could not be placed.",
+    )
+    unplaced_quotes: List[UnplacedQuote] = Field(
+        default_factory=list,
+        description="The quotes whose work could not all be fitted.",
     )
     error_message: Optional[str] = Field(
         default=None,

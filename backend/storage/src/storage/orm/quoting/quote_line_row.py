@@ -52,17 +52,15 @@ class QuoteLineRow(Base):
         quote (QuoteRow): The owning quote.
 
     Notes:
-        The amounts are **stored**, not recomputed on read. An issued quote
-        must reprint identically after its intervention type is repriced, so
-        the figures are frozen at the moment the quote was priced.
-
-        The intervention-type foreign key restricts. A type is retired with a
-        flag rather than deleted precisely so this reference stays valid; the
-        constraint is what makes that a rule rather than a convention.
-
-        ``position`` exists because a quote is a document. The order the
-        operator entered the services in is what the customer reads, and a
-        natural key ordering would silently reshuffle it.
+        - The amounts are **stored**, not recomputed on read. An issued quote
+          must reprint identically after its intervention type is repriced, so
+          the figures are frozen at the moment the quote was priced.
+        - The intervention-type foreign key restricts. A type is retired with a
+          flag rather than deleted precisely so this reference stays valid; the
+          constraint is what makes that a rule rather than a convention.
+        - ``position`` exists because a quote is a document. The order the
+          operator entered the services in is what the customer reads, and a
+          natural key ordering would silently reshuffle it.
     """
 
     __tablename__ = "quote_lines"
@@ -85,9 +83,6 @@ class QuoteLineRow(Base):
         ForeignKey("intervention_types.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    # Stored on the line rather than read from the catalog entry: the same
-    # service is necessity care for one customer and comfort care for another,
-    # and an issued quote must reprint at the rate it was written at.
     service_category: Mapped[str] = mapped_column(String(16), nullable=False)
     service_date: Mapped[date] = mapped_column(Date, nullable=False)
     earliest_start: Mapped[time] = mapped_column(Time, nullable=False)

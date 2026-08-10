@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from logging import Logger, getLogger
 from typing import ClassVar, Dict, FrozenSet, List, Optional, Tuple
@@ -13,17 +13,19 @@ from models.enums import QuoteStatus
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
+from models.schemas.requests.quoting.quote_filter import QuoteFilter
 from service.certifications.certifications import CertificationTypeService
 from service.certifications.exceptions import MTCertificationTypeUnknownCode
-from service.skills.skills import SkillTypeService
-from service.skills.exceptions import MTSkillTypeUnknownCode
 from service.quotes.exceptions import (
     MTPricingUnknownInterventionType,
     MTQuoteForbidden,
+    MTQuoteLineNotFound,
     MTQuoteNotEditable,
     MTQuoteNotFound,
     MTQuoteNotPriced,
 )
+from service.skills.exceptions import MTSkillTypeUnknownCode
+from service.skills.skills import SkillTypeService
 from storage.repositories.catalog.intervention_type import InterventionTypeRepository
 from storage.repositories.quoting.quote import QuoteRepository
 
@@ -50,29 +52,9 @@ class QuoteService:
           stored amounts are the offer; recomputing them at display time would
           silently reprice an issued quote after its type is repriced.
     """
-
-    # **Every status.** A quote is modifiable wherever it has got to.
-    #
-    # This was drafts only, and the reason it was is worth keeping in view:
-    # an issued quote is what the customer is looking at, so changing it
-    # underneath them is how somebody accepts one thing and is billed for
-    # another. Nothing here records what the figures were before an edit, so
-    # that history is not recoverable from the quote itself — only from the
-    # logs, which say a replacement happened but not what it replaced.
-    #
-    # An edit reprices against the catalogue as it stands *now*, so editing
-    # an old quote can move its amounts even where the lines are untouched.
+    
     EDITABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset(QuoteStatus)
-    # A quote reaches the customer from a draft. It cannot be sent while a
-    # manager still owes it a decision, and re-sending one already sent, or one
-    # the customer has answered, would overwrite the answer with the offer.
-    # Sending accepts it too — see :meth:`send` — so this is also what stops a
-    # second click putting an already-agreed arrangement through again.
     SENDABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset({QuoteStatus.DRAFT})
-
-    # How long an issued offer stands. A policy rather than a preference:
-    # a quote with no expiry is one a customer can accept at last year's
-    # prices.
     VALIDITY_DAYS: ClassVar[int] = 30
     CENTS: ClassVar[Decimal] = Decimal("0.01")
 
@@ -123,17 +105,16 @@ class QuoteService:
                 that is unknown or retired.
 
         Notes:
-            Only the lines that actually override are checked. A line
-            inheriting its catalog entry's requirement carries ``None``, and
-            that entry was already checked when it was saved — re-checking it
-            here would refuse a quote because of a code that has been retired
-            since, which is a change to the catalogue punishing the person
-            writing an unrelated quote.
-
-            No catalogue wired in is only tolerable while nothing overrides.
-            A requirement stored unchecked is worse than a refused write: it
-            fails every planning run it touches, and the message reads as a
-            staffing problem.
+            - Only the lines that actually override are checked. A line
+              inheriting its catalog entry's requirement carries ``None``, and
+              that entry was already checked when it was saved — re-checking it
+              here would refuse a quote because of a code that has been retired
+              since, which is a change to the catalogue punishing the person
+              writing an unrelated quote.
+            - No catalogue wired in is only tolerable while nothing overrides.
+              A requirement stored unchecked is worse than a refused write: it
+              fails every planning run it touches, and the message reads as a
+              staffing problem.
         """
         overridden = [
             code
@@ -327,15 +308,78 @@ class QuoteService:
             line_count=len(bucket),
             total_minutes=sum(line.duration_minutes for line in bucket),
             total_ht=sum((line.total_ht for line in bucket), Decimal("0.00")),
-            vat_amount=sum((line.vat_amount for line in bucket), Decimal("0.00")),
-            total_ttc=sum((line.total_ttc for line in bucket), Decimal("0.00")),
+            vat_amount=sum((line.vat_amount for line in bucket), Decimal("0.00")),  # noqa: E501
+            total_ttc=sum((line.total_ttc for line in bucket), Decimal("0.00")),  # noqa: E501
         )
+
+    async def _renew(self, parent: Quote, today: date) -> Quote:
+        """Write one successor to an expired quote.
+
+        Args:
+            parent (Quote): The quote being succeeded.
+            today (date): The day the renewal runs.
+
+        Returns:
+            Quote: The stored successor.
+
+        Notes:
+            The shift is the parent's own span — first service to last — plus a
+            day, so a four-week arrangement renews into the four weeks that
+            follow rather than overlapping itself.
+        """
+        days = [line.service_date for line in parent.lines]
+        span = (max(days) - min(days)).days + 1 if days else self.VALIDITY_DAYS
+        shift = timedelta(days=span)
+
+        successor = Quote(
+            reference=f"{parent.reference}-R{today:%Y%m}",
+            company_id=parent.company_id,
+            customer_id=parent.customer_id,
+            status=parent.status,
+            authored_by=parent.authored_by,
+            auto_renew=True,
+            renewed_from_id=parent.id,
+            lines=[
+                line.model_copy(
+                    update={
+                        "id": None,
+                        "service_date": line.service_date + shift,
+                        "hourly_rate_ht": None,
+                        "total_ht": None,
+                        "vat_amount": None,
+                        "total_ttc": None,
+                    }
+                )
+                for line in parent.lines
+            ],
+        )
+        catalog = await self.types.get_many(
+            [line.intervention_type_id for line in successor.lines]
+        )
+        priced = self.price_quote(successor, catalog)
+        issued = today
+        stored = await self.quotes.create(
+            priced.model_copy(
+                update={
+                    "issued_on": issued,
+                    "valid_until": issued + timedelta(days=self.VALIDITY_DAYS),
+                }
+            )
+        )
+        self.logger.info(
+            "Quote %s renewed as %s, covering %s onward at %s TTC.",
+            parent.reference,
+            stored.reference,
+            min(line.service_date for line in stored.lines) if stored.lines else "—",  # noqa: E501
+            stored.total_ttc(),
+        )
+        return stored
 
     ############################
     # Publicly Exposed Methods #
     ############################
 
-    async def create(self, quote: Quote, author_id: Optional[str] = None) -> Quote:
+    async def create(self, quote: Quote, author_id: Optional[str] = None) -> Quote:  # noqa: E501
         """Create a quote and price whatever lines it arrives with.
 
         Args:
@@ -437,7 +481,7 @@ class QuoteService:
         """
         removed = await self.quotes.delete(quote_id)
         if not removed:
-            self.logger.warning("Quote %s does not exist; nothing deleted.", quote_id)
+            self.logger.warning("Quote %s does not exist; nothing deleted.", quote_id)  # noqa: E501
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         self.logger.info("Deleted quote %s.", quote_id)
 
@@ -448,6 +492,7 @@ class QuoteService:
         customer_id: Optional[str] = None,
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
+        quote_filter: Optional[QuoteFilter] = None,
     ) -> List[Quote]:
         """Return a page of quotes.
 
@@ -457,9 +502,16 @@ class QuoteService:
             customer_id (Optional[str]): Restrict to one customer.
             status (Optional[QuoteStatus]): Restrict to one status.
             authored_by (Optional[str]): Restrict to one author's quotes.
+            quote_filter (Optional[QuoteFilter]): The screen's filter.
 
         Returns:
             List[Quote]: The matching quotes.
+
+        Notes:
+            ``authored_by`` is passed separately from the filter and stays
+            separate all the way down. It is the caller's scope rather than
+            their preference, and the store is what refuses to let the filter
+            widen it.
         """
         return await self.quotes.list(
             page=page,
@@ -467,6 +519,7 @@ class QuoteService:
             customer_id=customer_id,
             status=status,
             authored_by=authored_by,
+            quote_filter=quote_filter,
         )
 
     async def replace_lines(
@@ -547,6 +600,183 @@ class QuoteService:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         return updated
 
+    async def reschedule_line(
+        self,
+        quote_id: str,
+        quote_line_id: str,
+        day: date,
+        start_minute: int,
+        end_minute: int,
+    ) -> Quote:
+        """Move one line onto a time the planner offered, and reprice.
+
+        Args:
+            quote_id (str): The quote to change.
+            quote_line_id (str): The line to move.
+            day (date): The day the work should happen on instead.
+            start_minute (int): Earliest it may begin, in minutes from midnight.
+            end_minute (int): Latest it may finish, in the same units.
+
+        Returns:
+            Quote: The stored, repriced quote, with its planning note cleared.
+
+        Raises:
+            MTQuoteNotFound: If no such quote exists.
+            MTQuoteLineNotFound: If the quote does not carry that line.
+            MTQuoteLineWindowTooShort: If the offered window is narrower than
+                the work takes; answered as a 422.
+            MTPricingUnknownInterventionType: If the line names a missing type.
+
+        Notes:
+            - **The status is deliberately untouched.** The quote came back to
+              be validated because its work would not fit; accepting a new time
+              answers *when*, not *whether*, so it stays in the queue for
+              somebody to validate. Moving it on here would let a scheduling
+              tweak approve work nobody agreed to.
+            - **It reprices.** A visit moved from a Tuesday to a Sunday, or onto
+              a public holiday, costs more — the surcharge is a property of the
+              day. Leaving the old total would print a document whose figures
+              do not follow from its own dates.
+            - **The planning note is cleared.** Its reasons describe a date that
+              has just changed and its offers were computed against a plan that
+              no longer applies; leaving them on screen invites a second click
+              that silently overwrites the first. The next run re-attaches a
+              fresh one if the work still does not fit.
+            - No assistant is recorded. A quote says what is sold and when, not
+              who does it — the planner assigns that, and a preference stored
+              here would be a promise nothing keeps.
+        """
+        existing = await self.get(quote_id)
+        line = next((item for item in existing.lines if item.id == quote_line_id), None)
+        if line is None:
+            self.logger.warning(
+                "Quote %s carries no line %s to reschedule; the offer was "
+                "probably computed before the quote was last edited.",
+                existing.reference,
+                quote_line_id,
+            )
+            raise MTQuoteLineNotFound(
+                f"Quote {existing.reference!r} has no line {quote_line_id!r}."
+            )
+        self.logger.info(
+            "Moving line %s of quote %s from %s to %s %02d:%02d-%02d:%02d.",
+            quote_line_id,
+            existing.reference,
+            line.service_date,
+            day,
+            start_minute // 60,
+            start_minute % 60,
+            end_minute // 60,
+            end_minute % 60,
+        )
+        moved = line.model_copy(
+            update={
+                "service_date": day,
+                "earliest_start": time(start_minute // 60, start_minute % 60),
+                "latest_end": time(end_minute // 60, end_minute % 60),
+            }
+        )
+        # Rebuilt rather than mutated, so the window check runs: a slot narrower
+        # than the work takes must be refused here rather than stored and left
+        # to fail every planning run afterwards.
+        moved = QuoteLine.model_validate(moved.model_dump())
+        edited = existing.model_copy(
+            update={
+                "lines": [
+                    moved if item.id == quote_line_id else item
+                    for item in existing.lines
+                ],
+                "planning_feedback": None,
+            }
+        )
+        priced = await self._price(edited)
+        updated = await self.quotes.update(priced)
+        if updated is None:
+            self.logger.error(
+                "Quote %s vanished while its line was being rescheduled.",
+                existing.reference,
+            )
+            raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
+        self.logger.debug(
+            "Quote %s rescheduled and still %s.",
+            updated.reference,
+            updated.status.value,
+        )
+        return updated
+
+    async def update_header(
+        self,
+        quote_id: str,
+        reference: str,
+        customer_id: str,
+        issued_on: Optional[date],
+        valid_until: Optional[date],
+        auto_renew: bool,
+    ) -> Quote:
+        """Change everything about a quote except its lines and its status.
+
+        Args:
+            quote_id (str): The quote to change.
+            reference (str): The human-facing quote number.
+            customer_id (str): Who the offer is addressed to.
+            issued_on (Optional[date]): When it was issued.
+            valid_until (Optional[date]): The last day it may be accepted.
+            auto_renew (bool): Whether it renews itself.
+
+        Returns:
+            Quote: The updated quote.
+
+        Raises:
+            MTQuoteNotFound: If no such quote exists.
+
+        Notes:
+            - **The planning note is cleared.** A quote carries the reason its
+              work would not fit and the times that were free instead; the
+              moment somebody edits it, that note describes a quote which no
+              longer exists. Leaving it would send the next reader to
+              renegotiate a date that has already been changed.
+            - Reassigning the customer is logged at WARNING rather than
+              refused. It moves every visit on the quote to a different
+              address, which is occasionally exactly right — a quote written
+              against the wrong record — and never something to do without
+              leaving a trace.
+            - Not repriced. The amounts follow the lines, and the lines are not
+              touched here; a header edit that silently moved the total would
+              change what a customer owes because somebody corrected a date.
+        """
+        existing = await self.get(quote_id)
+        if existing.customer_id != customer_id:
+            self.logger.warning(
+                "Quote %s is reassigned from customer %s to %s; every visit "
+                "on it moves to a different address.",
+                existing.reference,
+                existing.customer_id,
+                customer_id,
+            )
+        if existing.reference != reference:
+            self.logger.info(
+                "Quote %s is renumbered to %s.", existing.reference, reference
+            )
+        self.logger.debug("Updating the header of quote %s.", existing.reference)
+        edited = existing.model_copy(
+            update={
+                "reference": reference,
+                "customer_id": customer_id,
+                "issued_on": issued_on,
+                "valid_until": valid_until,
+                "auto_renew": auto_renew,
+                "planning_feedback": None,
+            }
+        )
+        updated = await self.quotes.update(edited)
+        if updated is None:
+            self.logger.error(
+                "Quote %s vanished while its header was being updated.", quote_id
+            )
+            raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
+        self.logger.info("Quote %s header updated.", updated.reference)
+        return updated
+
     async def reprice(self, quote_id: str) -> Quote:
         """Recompute a draft quote's amounts against the current catalog.
 
@@ -595,21 +825,19 @@ class QuoteService:
                 catalog no longer has.
 
         Notes:
-            **The lines are kept and the total shrinks.** Deleting the
-            cancelled visits would leave nothing to answer a family asking why
-            the invoice came in under the quote they signed. They stay on the
-            record, priced, and stop counting towards the total — which is what
-            :meth:`~models.quoting.quote.Quote.effective_lines` decides and
-            what the aggregates are then built from.
-
-            **Repricing happens here rather than at read time.** An issued
-            quote must reprint identically, so amounts are stored; a total
-            recomputed on every read would drift the first time the catalog
-            changed. Interrupting is the deliberate act that makes a new total
-            correct, so it is the moment to write one.
-
-            The day is inclusive: work on ``last_day`` still happens. A family
-            cancelling "from the 15th" means the 15th is the last visit.
+            - **The lines are kept and the total shrinks.** Deleting the
+              cancelled visits would leave nothing to answer a family asking why
+              the invoice came in under the quote they signed. They stay on the
+              record, priced, and stop counting towards the total — which is what
+              :meth:`~models.quoting.quote.Quote.effective_lines` decides and
+              what the aggregates are then built from.
+            - **Repricing happens here rather than at read time.** An issued
+              quote must reprint identically, so amounts are stored; a total
+              recomputed on every read would drift the first time the catalog
+              changed. Interrupting is the deliberate act that makes a new total
+              correct, so it is the moment to write one.
+            - **The day is inclusive:** work on ``last_day`` still happens. A family
+              cancelling "from the 15th" means the 15th is the last visit.
         """
         self.logger.info("Interrupting quote %s on %s.", quote_id, last_day)
         quote = await self.get(quote_id)
@@ -629,7 +857,9 @@ class QuoteService:
         )
         updated = await self.quotes.update(repriced)
         if updated is None:
-            self.logger.error("Quote %s vanished while being interrupted.", quote_id)
+            self.logger.error(
+                "Quote %s vanished while being interrupted.", quote_id
+            )  # noq
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         return updated
 
@@ -651,13 +881,13 @@ class QuoteService:
             quote actually reaches its validity date, so turning this on and
             off again before then costs nothing.
         """
-        self.logger.info("Setting auto-renewal on quote %s to %s.", quote_id, enabled)
+        self.logger.info("Setting auto-renewal on quote %s to %s.", quote_id, enabled)  # noqa: E501
         quote = await self.get(quote_id)
         updated = await self.quotes.update(
             quote.model_copy(update={"auto_renew": enabled})
         )
         if updated is None:
-            self.logger.error("Quote %s vanished while setting auto-renewal.", quote_id)
+            self.logger.error("Quote %s vanished while setting auto-renewal.", quote_id)  # noqa: E501
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         return updated
 
@@ -671,23 +901,21 @@ class QuoteService:
             List[Quote]: The successor quotes created, newest last.
 
         Notes:
-            **A successor is a new quote, not an extended one.** Extending
-            ``valid_until`` in place would rewrite what the customer accepted
-            and lose the boundary between one period and the next — and the
-            price. A renewal is priced at the catalog as it stands now, so a
-            rate change reaches the next period rather than the one already
-            agreed.
-
-            **Idempotent, and that is the whole design.** ``renewed_from_id``
-            records the parent, and a quote that already has a successor is
-            skipped — so running the sweep twice in a day, or twice because two
-            workers woke up together, creates one successor and not two. Nothing
-            else would be safe to put on a timer.
-
-            The successor's services are the parent's, shifted forward by the
-            length of the period it covered, so a weekly arrangement stays on
-            the same weekdays. An interrupted quote is never renewed: an end
-            date is the customer saying stop.
+            - **A successor is a new quote, not an extended one.** Extending
+              ``valid_until`` in place would rewrite what the customer accepted
+              and lose the boundary between one period and the next — and the
+              price. A renewal is priced at the catalog as it stands now, so a
+              rate change reaches the next period rather than the one already
+              agreed.
+            - **Idempotent, and that is the whole design.** ``renewed_from_id``
+              records the parent, and a quote that already has a successor is
+              skipped — so running the sweep twice in a day, or twice because two
+              workers woke up together, creates one successor and not two. Nothing
+              else would be safe to put on a timer.
+            - The successor's services are the parent's, shifted forward by the
+              length of the period it covered, so a weekly arrangement stays on
+              the same weekdays. An interrupted quote is never renewed: an end
+              date is the customer saying stop.
         """
         today = today or self._utc_now().date()
         self.logger.info("Looking for arrangements to renew as of %s.", today)
@@ -704,76 +932,14 @@ class QuoteService:
                 continue
             if await self.quotes.has_successor(parent.id or ""):
                 self.logger.debug(
-                    "Quote %s has already been renewed; skipping.", parent.reference
+                    "Quote %s has already been renewed; skipping.",
+                    parent.reference,  # noqa: E501
                 )
                 continue
             renewed.append(await self._renew(parent, today))
 
         self.logger.info("Renewed %d arrangement(s).", len(renewed))
         return renewed
-
-    async def _renew(self, parent: Quote, today: date) -> Quote:
-        """Write one successor to an expired quote.
-
-        Args:
-            parent (Quote): The quote being succeeded.
-            today (date): The day the renewal runs.
-
-        Returns:
-            Quote: The stored successor.
-
-        Notes:
-            The shift is the parent's own span — first service to last — plus a
-            day, so a four-week arrangement renews into the four weeks that
-            follow rather than overlapping itself.
-        """
-        days = [line.service_date for line in parent.lines]
-        span = (max(days) - min(days)).days + 1 if days else self.VALIDITY_DAYS
-        shift = timedelta(days=span)
-
-        successor = Quote(
-            reference=f"{parent.reference}-R{today:%Y%m}",
-            company_id=parent.company_id,
-            customer_id=parent.customer_id,
-            status=parent.status,
-            authored_by=parent.authored_by,
-            auto_renew=True,
-            renewed_from_id=parent.id,
-            lines=[
-                line.model_copy(
-                    update={
-                        "id": None,
-                        "service_date": line.service_date + shift,
-                        "hourly_rate_ht": None,
-                        "total_ht": None,
-                        "vat_amount": None,
-                        "total_ttc": None,
-                    }
-                )
-                for line in parent.lines
-            ],
-        )
-        catalog = await self.types.get_many(
-            [line.intervention_type_id for line in successor.lines]
-        )
-        priced = self.price_quote(successor, catalog)
-        issued = today
-        stored = await self.quotes.create(
-            priced.model_copy(
-                update={
-                    "issued_on": issued,
-                    "valid_until": issued + timedelta(days=self.VALIDITY_DAYS),
-                }
-            )
-        )
-        self.logger.info(
-            "Quote %s renewed as %s, covering %s onward at %s TTC.",
-            parent.reference,
-            stored.reference,
-            min(line.service_date for line in stored.lines) if stored.lines else "—",
-            stored.total_ttc(),
-        )
-        return stored
 
     async def send(self, quote_id: str, validator_id: str) -> Quote:
         """Issue a priced draft to the customer, agreed as it goes out.
@@ -792,25 +958,22 @@ class QuoteService:
             MTQuoteNotEditable: If the quote is past draft.
 
         Notes:
-            **Sending lands the quote in ``ACCEPTED``, not ``SENT``.** A quote
-            written by hand is one a manager has already settled with the
-            family, and the manual route had no second step: nothing in the
-            agency ever moved a quote past ``SENT``, so a hand-written
-            arrangement sat outside :attr:`Quote.SCHEDULABLE_STATUSES` and the
-            planner never saw the visits somebody had already promised.
-
-            Sending it *is* the approval, so the sender is recorded as the
-            validator and the offer gets its dates here — an issued quote with
-            no issue date and no expiry is one a customer can hold the agency
-            to for ever.
-
-            **The assistant's route is untouched.** A quote they write still
-            waits at ``PENDING_VALIDATION``, reaches ``SENT`` when a manager
-            approves it, and is accepted separately when the family answers —
-            there, the agency genuinely does not yet know the answer.
-
-            An unpriced or empty quote cannot be sent. Both would reach the
-            customer as an offer of nothing for nothing.
+            - **Sending lands the quote in ``ACCEPTED``, not ``SENT``.** A quote
+              written by hand is one a manager has already settled with the
+              family, and the manual route had no second step: nothing in the
+              agency ever moved a quote past ``SENT``, so a hand-written
+              arrangement sat outside :attr:`Quote.SCHEDULABLE_STATUSES` and the
+              planner never saw the visits somebody had already promised.
+            - Sending it *is* the approval, so the sender is recorded as the
+              validator and the offer gets its dates here — an issued quote with
+              no issue date and no expiry is one a customer can hold the agency
+              to for ever.
+            - **The assistant's route is untouched.** A quote they write still
+              waits at ``PENDING_VALIDATION``, reaches ``SENT`` when a manager
+              approves it, and is accepted separately when the family answers —
+              there, the agency genuinely does not yet know the answer.
+            - An unpriced or empty quote cannot be sent. Both would reach the
+              customer as an offer of nothing for nothing.
         """
         existing = await self.get(quote_id)
         if not existing.is_priced():
@@ -860,7 +1023,7 @@ class QuoteService:
         )
         return sent
 
-    async def submit_for_validation(self, quote_id: str, author_id: str) -> Quote:
+    async def submit_for_validation(self, quote_id: str, author_id: str) -> Quote:  # noqa: E501
         """Put an assistant's draft in front of a manager.
 
         Args:
@@ -912,7 +1075,7 @@ class QuoteService:
                 f"Quote {existing.reference!r} has no priced lines and cannot "
                 f"be submitted for validation."
             )
-        submitted = await self.quotes.record_submission(quote_id, self._utc_now())
+        submitted = await self.quotes.record_submission(quote_id, self._utc_now())  # noqa: E501
         if submitted is None:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         self.logger.info(
@@ -977,10 +1140,6 @@ class QuoteService:
                 f"Quote {existing.reference!r} has no priced lines and cannot "
                 f"be validated."
             )
-        # Validating *is* issuing and committing here — there is no second
-        # button — so the quote gets its dates now. Without them it would carry
-        # no issue date and no expiry, and the customer's copy would show
-        # neither. The seeded data has always set both.
         issued_on = self._utc_now().date()
         validated = await self.quotes.record_validation(
             quote_id,
@@ -1000,7 +1159,7 @@ class QuoteService:
         )
         return validated
 
-    async def refuse_validation(self, quote_id: str, validator_id: str) -> Quote:
+    async def refuse_validation(self, quote_id: str, validator_id: str) -> Quote:  # noqa: E501
         """Send a submitted quote back to its author.
 
         Args:
@@ -1114,7 +1273,9 @@ class QuoteService:
             )
         else:
             self.logger.debug(
-                "Type %s bills its own rate of %s.", intervention_type.code, resolved
+                "Type %s bills its own rate of %s.",
+                intervention_type.code,
+                resolved,  # noqa: E501
             )
         return resolved
 
@@ -1131,7 +1292,9 @@ class QuoteService:
         multiplier = self.config.multiplier_for(service_date)
         if multiplier != Decimal("1"):
             self.logger.info(
-                "%s carries a surcharge: billing at x%s.", service_date, multiplier
+                "%s carries a surcharge: billing at x%s.",
+                service_date,
+                multiplier,  # noqa: E501
             )
         else:
             self.logger.debug("%s carries no surcharge.", service_date)
@@ -1147,15 +1310,14 @@ class QuoteService:
             Decimal: ``0.055`` for necessity care, ``0.20`` for comfort care.
 
         Notes:
-            **Read from the line, not from the catalog entry it sells.** The
-            same service is necessity care for one customer and comfort care
-            for another — help with washing under a care plan is billed at the
-            reduced rate, and the same hour arranged privately is not. Which it
-            is depends on the customer, so it cannot be a property of the
-            service; it is chosen when the quote is written, by the person who
-            knows.
-
-            The catalog still fixes the *rate*. It no longer fixes the tax.
+            - **Read from the line, not from the catalog entry it sells.** The
+              same service is necessity care for one customer and comfort care
+              for another — help with washing under a care plan is billed at the
+              reduced rate, and the same hour arranged privately is not. Which it
+              is depends on the customer, so it cannot be a property of the
+              service; it is chosen when the quote is written, by the person who
+              knows.
+            - The catalog still fixes the *rate*. It no longer fixes the tax.
         """
         rate = line.service_category.vat_rate()
         self.logger.debug(
@@ -1291,11 +1453,13 @@ class QuoteService:
             refuses to price.
         """
         self.logger.info(
-            "Pricing quote %s with %d line(s).", quote.reference, len(quote.lines)
+            "Pricing quote %s with %d line(s).",
+            quote.reference,
+            len(quote.lines),  # noqa: E501
         )
         priced_lines: List[QuoteLine] = []
         for line in quote.lines:
-            intervention_type = intervention_types.get(line.intervention_type_id)
+            intervention_type = intervention_types.get(line.intervention_type_id)  # noqa: E501
             if intervention_type is None:
                 self.logger.error(
                     "Quote %s line %r names the unknown type %s.",

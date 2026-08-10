@@ -41,6 +41,7 @@ import { INTERVENTION_STATUS_COLOUR, PLANNING_HCA_COLOURS } from '@/theme/palett
 import { useSession } from '@/store/session';
 import { formatTime, initialsOf } from '@/utils/format';
 import { planningWindow } from '@/utils/planningWindow';
+import { PlanningRunStatus } from './PlanningRunStatus';
 import type { HcaPlanning, Intervention } from '@/api/types';
 
 /**
@@ -222,29 +223,7 @@ export function TeamPlanningPage() {
         ) : null}
       </Stack>
 
-      {latest ? (
-        <Alert
-          severity={
-            latest.status === 'failed'
-              ? 'error'
-              : latest.status === 'succeeded'
-                ? 'success'
-                : 'info'
-          }
-          data-testid="planning-run-status"
-        >
-          {/* The failure message names every visit the solver could not place
-              and why. It is long, and it is the whole value of a failed run. */}
-          {latest.status === 'failed'
-            ? (latest.error_message ?? t('planning.runFailed'))
-            : latest.status === 'succeeded'
-              ? t('planning.runSucceeded', {
-                  count: latest.scheduled_count ?? 0,
-                  travel: latest.total_travel_minutes ?? 0,
-                })
-              : t('planning.runPending')}
-        </Alert>
-      ) : null}
+      <PlanningRunStatus run={latest ?? null} />
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="stretch">
         <Card sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>

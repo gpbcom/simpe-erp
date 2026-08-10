@@ -1,5 +1,8 @@
 from .company_exceptions import (
+    MTCompanyInvalidBic,
     MTCompanyInvalidDate,
+    MTCompanyInvalidIban,
+    MTCompanyInvalidLogoUrl,
     MTCompanyInvalidEmail,
     MTCompanyInvalidId,
     MTCompanyInvalidIsAcceptingApplications,
@@ -14,11 +17,14 @@ from .company_exceptions import (
 )
 
 __all__ = [
+    "MTCompanyInvalidBic",
     "MTCompanyInvalidDate",
     "MTCompanyInvalidEmail",
+    "MTCompanyInvalidIban",
     "MTCompanyInvalidId",
     "MTCompanyInvalidIsAcceptingApplications",
     "MTCompanyInvalidLegalForm",
+    "MTCompanyInvalidLogoUrl",
     "MTCompanyInvalidName",
     "MTCompanyInvalidPhoneNumber",
     "MTCompanyInvalidRcsNumber",

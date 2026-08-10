@@ -92,8 +92,15 @@ asyncio_mode = "auto"
 # to fall back to a single in-process run when debugging (live output, pdb).
 # ``--timeout`` is a safety net: no unit test should run this long, so a hang
 # (e.g. an unmocked database call) fails fast instead of blocking CI.
-addopts = "-n auto --timeout=60 -m 'not integration'"
+addopts = "-n auto --timeout=60 -m 'not integration and not performance'"
 testpaths = ["tests"]
+# Makes ``tests`` importable as a package, so shared fixtures can live in
+# ``tests/planning_scenarios/`` and be imported by name from any test module.
+# Without it pytest only puts each test file's own directory on the path, and a
+# fixture package shared by several suites has nowhere to live that is not the
+# shipped application — which is the wrong place for instances that exist only
+# to be solved.
+pythonpath = ["."]
 # ``geocoding`` opts a test out of the autouse fixture that neutralises the
 # Nominatim lookup, so it can drive the real code through a stubbed transport.
 markers = [
@@ -102,6 +109,10 @@ markers = [
     # from the default run so `uv run pytest` stays hermetic on a laptop, and
     # selected explicitly by the CI job that starts those services.
     "integration: exercises a real external service rather than a stub",
+    # Minutes of CPU rather than milliseconds, so excluded from the default run
+    # and selected with `-m performance`. These time the solver on week-sized
+    # instances; they are measurements first and assertions second.
+    "performance: times the solver on a week-sized instance",
 ]
 
 [dependency-groups]

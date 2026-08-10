@@ -18,7 +18,9 @@ from models.schemas.exceptions import (
     MTInvalidStatusUpdateRequestException,
     MTStatusUpdateRequestInvalidStatus,
 )
-from models.schemas.requests.hca.employment_update_request import EmploymentUpdateRequest
+from models.schemas.requests.hca.employment_update_request import (
+    EmploymentUpdateRequest,
+)
 from models.schemas.requests.hca.hca_profile_update_request import (
     HcaProfileUpdateRequest,
 )
@@ -276,7 +278,7 @@ class TestEmploymentUpdateRequest:
 
 
 class TestStatusUpdateRequest:
-    """Tests for the payload activating or stopping a customer."""
+    """Tests for the payload activating, stopping or un-signing a customer."""
 
     # ------------------------------------------------------------------ #
     #  Construction
@@ -286,6 +288,7 @@ class TestStatusUpdateRequest:
         "value",
         [
             pytest.param("active", id="Valid - active"),
+            pytest.param("prospect", id="Valid - prospect"),
             pytest.param("stopped", id="Valid - stopped"),
             pytest.param(RegistrationStatus.ACTIVE, id="Valid - already an enum"),
         ],
@@ -293,10 +296,16 @@ class TestStatusUpdateRequest:
     def test_a_known_status_is_accepted(
         self, value: Union[str, RegistrationStatus]
     ) -> None:
-        """Both registration states are accepted.
+        """Every registration state is accepted.
 
         Args:
             value (Union[str, RegistrationStatus]): The status to check.
+
+        Notes:
+            ``prospect`` is reachable here as well as through ``promote``, which
+            only runs the other way. Sending somebody back to prospect is a
+            correction — the signature never arrived — and taking it away from
+            this payload would leave no way to make it.
         """
         assert StatusUpdateRequest(registration_status=value).registration_status
 

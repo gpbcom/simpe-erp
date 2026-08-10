@@ -4,11 +4,13 @@ from __future__ import annotations
 from decimal import Decimal
 from io import BytesIO
 from logging import getLogger
-from typing import ClassVar, Dict, List, Tuple
+from typing import ClassVar, Dict, List, Optional, Tuple
 
 # Third-party imports
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 # First-party imports
@@ -173,6 +175,13 @@ class Formatter:
     QUOTE_STATUS_ROW: ClassVar[int] = 7
     QUOTE_SUMMARY_ROW: ClassVar[int] = 9
     QUOTE_HEADER_ROW: ClassVar[int] = 12
+    #: How large the agency's logo may be drawn, in pixels, and how tall the
+    #: issuer rows are made so it fits between them and the customer block.
+    LOGO_MAX_WIDTH: ClassVar[int] = 200
+    LOGO_MAX_HEIGHT: ClassVar[int] = 56
+    LOGO_ROW_HEIGHT: ClassVar[int] = 22
+    #: How many columns from the right edge the logo is anchored.
+    LOGO_COLUMN_INSET: ClassVar[int] = 2
     TITLE_FILL: ClassVar[str] = "FF1F3864"
     HEADER_FILL: ClassVar[str] = "FF2F5597"
     SUBTITLE_FILL: ClassVar[str] = "FFEDF2F9"
@@ -481,33 +490,33 @@ class Formatter:
             int: The row the grand total was written on.
 
         Notes:
-            **The tax is stated per rate, and that is a legal requirement
-            rather than a courtesy.** Home care is billed at 5.5% for a
-            necessity service and 20% for a comfort one; a single "VAT" line
-            gives the customer no way to check either figure and an accountant
-            no way to post it.
-
-            Laid out as a right-hand stack rather than as a row under the
-            table, which is what a reader expects of a document that ends in an
-            amount — and what makes the grand total the last thing on the page
-            rather than one cell among nine.
-
-            **Summed from the lines printed above, not from the quote's
-            aggregates.** The two agree on a priced quote, but the aggregates
-            are computed by the pricing service and a quote that reached this
-            renderer without them would print a total of zero under a column
-            of real amounts. On a document a customer is asked to sign, a
-            total that disagrees with its own column is the worst failure
-            available — worse than refusing to render at all, because it
-            looks correct.
+            - **The tax is stated per rate, and that is a legal requirement
+              rather than a courtesy.** Home care is billed at 5.5% for a
+              necessity service and 20% for a comfort one; a single "VAT" line
+              gives the customer no way to check either figure and an accountant
+              no way to post it.
+            - Laid out as a right-hand stack rather than as a row under the
+              table, which is what a reader expects of a document that ends in an
+              amount — and what makes the grand total the last thing on the page
+              rather than one cell among nine.
+            - **Summed from the lines printed above, not from the quote's
+              aggregates.** The two agree on a priced quote, but the aggregates
+              are computed by the pricing service and a quote that reached this
+              renderer without them would print a total of zero under a column
+              of real amounts. On a document a customer is asked to sign, a
+              total that disagrees with its own column is the worst failure
+              available — worse than refusing to render at all, because it
+              looks correct.
         """
         label_start = columns - 2
         row = first_row
         untaxed = sum(
-            (line.total_ht or Decimal("0.00") for line in lines), Decimal("0.00")
+            (line.total_ht or Decimal("0.00") for line in lines),
+            Decimal("0.00"),  # noqa: E501
         )
         inclusive = sum(
-            (line.total_ttc or Decimal("0.00") for line in lines), Decimal("0.00")
+            (line.total_ttc or Decimal("0.00") for line in lines),
+            Decimal("0.00"),  # noqa: E501
         )
         entries = [(labels["untaxed_amount"], float(untaxed), False)]
         for rate, _, tax in quote.vat_by_rate():
@@ -567,19 +576,17 @@ class Formatter:
             labels (Dict[str, str]): The label catalogue for the language.
 
         Notes:
-            **A quote without these is not a quote, it is a price list.** French
-            law requires a commercial offer to state how long it stands, when
-            payment falls due, what happens if it does not, and to be returned
-            signed before the work begins — and the customer's signature block
-            is what turns the document into the agreement it claims to be.
-
-            The validity sentence is omitted when the quote carries no
-            ``valid_until``. A draft has none yet, and an offer that promised to
-            stand "until None" would be worse than one that promised nothing.
-
-            The wording is translated, but the obligations are French whatever
-            language the reader chose: the agency is French and so is the
-            contract. → the language decides the words, not the law.
+            - **A quote without these is not a quote, it is a price list.** French
+              law requires a commercial offer to state how long it stands, when
+              payment falls due, what happens if it does not, and to be returned
+              signed before the work begins — and the customer's signature block
+              is what turns the document into the agreement it claims to be.
+            - The validity sentence is omitted when the quote carries no
+              ``valid_until``. A draft has none yet, and an offer that promised to
+              stand "until None" would be worse than one that promised nothing.
+            - The wording is translated, but the obligations are French whatever
+              language the reader chose: the agency is French and so is the
+              contract. → the language decides the words, not the law.
         """
         row = first_row
         heading = sheet.cell(row=row, column=1, value=labels["legal_heading"])
@@ -588,9 +595,7 @@ class Formatter:
         sentences = []
         if quote.valid_until is not None:
             sentences.append(labels["validity"].format(date=quote.valid_until))
-        sentences.append(
-            labels["payment_terms"].format(reference=quote.reference)
-        )
+        sentences.append(labels["payment_terms"].format(reference=quote.reference))
         sentences.append(labels["late_penalty"])
         sentences.append(labels["acceptance"])
 
@@ -614,6 +619,59 @@ class Formatter:
         sheet.row_dimensions[row].height = 46
 
     @staticmethod
+    def anchor_logo(sheet: Worksheet, logo: bytes, anchor: str) -> bool:
+        """Draw the agency's logo on the quote, scaled to fit its corner.
+
+        Args:
+            sheet (Worksheet): The sheet being built.
+            logo (bytes): The image bytes, already fetched by the caller.
+            anchor (str): The cell the image's top-left corner sits on.
+
+        Returns:
+            bool: ``True`` when the logo was drawn, ``False`` when the bytes
+            could not be read as an image.
+
+        Notes:
+            - **Reports rather than raises.** A quote is a document a customer is
+              waiting for, and refusing to produce one because its letterhead is
+              corrupt would be the wrong trade — the caller carries on and the
+              document goes out looking as it did before logos existed.
+            - Scaled down but never up. Enlarging a small logo to fill the space
+              would print it blurred, and an agency that uploaded a 60-pixel mark
+              meant it to be small.
+            - The issuer rows are made taller so the image sits inside them
+              rather than over the customer's address. Openpyxl images float
+              above the grid and do not push anything down.
+        """
+        logger = getLogger(__name__)
+        logger.debug("Anchoring a %d-byte logo at %s.", len(logo), anchor)
+        if not logo:
+            logger.warning("The agency logo is empty; omitting it from the quote.")
+            return False
+        try:
+            image = Image(BytesIO(logo))
+        except Exception as exc:  # noqa: BLE001 - a bad logo must not stop a quote
+            logger.error(
+                "Could not read the agency logo, omitting it: %s. The quote is "
+                "produced without a letterhead rather than not at all.",
+                exc,
+            )
+            return False
+        scale = min(
+            Formatter.LOGO_MAX_WIDTH / image.width,
+            Formatter.LOGO_MAX_HEIGHT / image.height,
+            1,
+        )
+        image.width = int(image.width * scale)
+        image.height = int(image.height * scale)
+        image.anchor = anchor
+        sheet.add_image(image)
+        for row in (Formatter.QUOTE_ISSUER_ROW, Formatter.QUOTE_ISSUER_ROW + 1):
+            sheet.row_dimensions[row].height = Formatter.LOGO_ROW_HEIGHT
+        logger.info("Drew a %dx%d logo at %s.", image.width, image.height, anchor)
+        return True
+
+    @staticmethod
     def trading_name(company: Company) -> str:
         """Return the agency's name followed by its legal form.
 
@@ -625,15 +683,14 @@ class Formatter:
             legal form is recorded.
 
         Notes:
-            The legal form is part of how a French company must identify itself
-            on a commercial document — "Aide et Presence Paris" and "Aide et
-            Presence Paris SARL" are a trading name and a legal person, and
-            only the second is who the customer is contracting with.
-
-            Appended rather than required. An agency that has not filled it in
-            yet prints its name alone, which is what the document said before
-            this field existed; refusing to render would take the quote away
-            from an agency over a field it can fill in afterwards.
+            - The legal form is part of how a French company must identify itself
+              on a commercial document — "Aide et Presence Paris" and "Aide et
+              Presence Paris SARL" are a trading name and a legal person, and
+              only the second is who the customer is contracting with.
+            - Appended rather than required. An agency that has not filled it in
+              yet prints its name alone, which is what the document said before
+              this field existed; refusing to render would take the quote away
+              from an agency over a field it can fill in afterwards.
         """
         if not company.legal_form:
             return company.name
@@ -696,15 +753,14 @@ class Formatter:
             language (Language): The language to write the duration in.
 
         Notes:
-            Four figures, laid out as label/value pairs rather than as a
-            sentence: these are the questions asked of a quote *before* its
-            price — when does this start, when does it end, how many visits is
-            it, and how much care in total — and a reader scanning for one of
-            them should not have to read the other three.
-
-            The period comes from the lines rather than from ``issued_on`` and
-            ``valid_until``. Those two describe the *offer*; a customer asking
-            "when does the care run from and to" is asking about the work.
+            - Four figures, laid out as label/value pairs rather than as a
+              sentence: these are the questions asked of a quote *before* its
+              price — when does this start, when does it end, how many visits is
+              it, and how much care in total — and a reader scanning for one of
+              them should not have to read the other three.
+            - The period comes from the lines rather than from ``issued_on`` and
+              ``valid_until``. Those two describe the *offer*; a customer asking
+              "when does the care run from and to" is asking about the work.
         """
         row = Formatter.QUOTE_SUMMARY_ROW
         first = lines[0].service_date if lines else None
@@ -722,19 +778,13 @@ class Formatter:
                 labels["total_incl_vat"],
                 float(
                     sum(
-                        (
-                            line.total_ttc or Decimal("0.00")
-                            for line in lines
-                        ),
+                        (line.total_ttc or Decimal("0.00") for line in lines),
                         Decimal("0.00"),
                     )
                 ),
             ),
         )
         for index, (target, label, value) in enumerate(pairs):
-            # Two pairs per row: label in A/F, value spanning the columns after
-            # it. Anything narrower clips a date range in the width of a column
-            # sized for a single date.
             label_column, value_start, value_end = (
                 (1, 3, 5) if index % 2 == 0 else (6, 7, 9)
             )
@@ -789,6 +839,7 @@ class Formatter:
         customer: Customer,
         company: Company,
         language: Language = Language.FR,
+        logo: Optional[bytes] = None,
     ) -> bytes:
         """Render a quote as an Excel workbook, in a given language.
 
@@ -797,6 +848,8 @@ class Formatter:
             customer (Customer): The customer it is addressed to.
             company (Company): The agency issuing it.
             language (Language): The language to write the document in.
+            logo (Optional[bytes]): The agency's logo, already fetched, or
+                ``None`` to print without one.
 
         Returns:
             bytes: The ``.xlsx`` document, ready to attach to an email.
@@ -869,12 +922,20 @@ class Formatter:
                 color=Formatter.MUTED_TEXT,
             )
 
+        if logo:
+            # ``get_column_letter`` rather than the cell's own attribute: the
+            # title row is merged, and a merged cell carries no column letter.
+            logo_column = get_column_letter(
+                max(1, columns - Formatter.LOGO_COLUMN_INSET)
+            )
+            Formatter.anchor_logo(
+                sheet, logo, f"{logo_column}{Formatter.QUOTE_ISSUER_ROW}"
+            )
+
         status_row = Formatter.QUOTE_STATUS_ROW
         status_background, status_text = Formatter.STATUS_COLOURS.get(
             quote.status.value, (Formatter.SUBTITLE_FILL, Formatter.MUTED_TEXT)
         )
-        # Merged across three columns: the pill carries a word, and column A is
-        # sized for a date. Written into A alone it is clipped to "tatus: acce".
         sheet.merge_cells(f"A{status_row}:C{status_row}")
         translated = labels.get(f"status_{quote.status.value}", quote.status.value)
         status_cell = sheet.cell(
@@ -915,10 +976,6 @@ class Formatter:
                 row=row, column=1, value=line.service_date
             ).number_format = Formatter.DATE_FORMAT
             sheet.cell(row=row, column=2, value=line.name)
-            # Quantity in hours, not minutes. The unit price is an hourly rate,
-            # so a quantity in minutes would not multiply out to the amount
-            # beside it — a customer checking the arithmetic would find it
-            # wrong by a factor of sixty.
             quantity = sheet.cell(row=row, column=3, value=line.duration_minutes / 60)
             quantity.number_format = Formatter.QUANTITY_FORMAT
             rate = sheet.cell(
@@ -927,9 +984,7 @@ class Formatter:
                 value=float(line.service_category.vat_rate()),
             )
             rate.number_format = Formatter.RATE_FORMAT
-            for column, amount in enumerate(
-                (line.hourly_rate_ht,), start=4
-            ):
+            for column, amount in enumerate((line.hourly_rate_ht,), start=4):
                 cell = sheet.cell(
                     row=row, column=column, value=float(amount) if amount else None
                 )
@@ -954,9 +1009,7 @@ class Formatter:
         total_row = Formatter.write_quote_totals(
             sheet, quote, ordered, header_row + 1 + len(ordered), columns, labels
         )
-        Formatter.write_legal_terms(
-            sheet, quote, total_row + 2, columns, labels
-        )
+        Formatter.write_legal_terms(sheet, quote, total_row + 2, columns, labels)
 
         widths = [12, 34, 14, 20, 12, 18, 14, 18]
         for column, width in enumerate(widths, start=1):

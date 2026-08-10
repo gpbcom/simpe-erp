@@ -46,3 +46,15 @@ class MTCompanyProfileUpdateRequestInvalidRegistrationNumber(
     MTInvalidCompanyProfileUpdateRequestException
 ):
     """Exception raised when the registration number is malformed."""
+
+
+class MTCompanyProfileUpdateRequestInvalidIban(
+    MTInvalidCompanyProfileUpdateRequestException
+):
+    """Exception raised when the submitted IBAN is not a string."""
+
+
+class MTCompanyProfileUpdateRequestInvalidBic(
+    MTInvalidCompanyProfileUpdateRequestException
+):
+    """Exception raised when the submitted BIC is not a string."""

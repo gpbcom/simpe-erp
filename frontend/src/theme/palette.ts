@@ -31,6 +31,22 @@ export const QUOTE_STATUS_COLOUR = {
   expired: 'default',
 } as const;
 
+/**
+ * Colour for one customer's standing with the agency.
+ *
+ * @remarks
+ * `prospect` is the amber one, for the same reason `pending-validation` is: it
+ * is the state waiting on a person. A prospect may already hold accepted,
+ * priced work that every planning run deliberately leaves out, and the only
+ * thing standing between that work and the calendar is somebody pressing
+ * *promote*. Drawn grey it would read as a customer like any other.
+ */
+export const REGISTRATION_STATUS_COLOUR = {
+  active: 'success',
+  prospect: 'warning',
+  stopped: 'default',
+} as const;
+
 /** Colour for one intervention status. */
 export const INTERVENTION_STATUS_COLOUR = {
   planned: '#12A19A',

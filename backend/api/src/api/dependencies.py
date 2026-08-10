@@ -34,17 +34,17 @@ from service.planning.webhook import PlanningWebhook
 from service.quotes.quotes import QuoteService
 from service.observability.metrics import ApplicationMetrics
 from storage.db.connection_manager import DatabaseConnectionManager
-from storage.repositories.catalog.certification_type import CertificationTypeRepository
+from storage.repositories.catalog.certification_type import CertificationTypeRepository  # noqa: E501
 from storage.repositories.catalog.skill_type import SkillTypeRepository
 from storage.repositories.companies.company import CompanyRepository
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
-from storage.repositories.people.hca_application import HcaApplicationRepository
+from storage.repositories.people.hca_application import HcaApplicationRepository  # noqa: E501
 from storage.repositories.planning.intervention import InterventionRepository
-from storage.repositories.catalog.intervention_type import InterventionTypeRepository
-from storage.repositories.notifications.notification import NotificationRepository
+from storage.repositories.catalog.intervention_type import InterventionTypeRepository  # noqa: E501
+from storage.repositories.notifications.notification import NotificationRepository  # noqa: E501
 from storage.repositories.planning.planning_run import PlanningRunRepository
-from storage.repositories.planning.planning_settings import PlanningSettingsRepository
+from storage.repositories.planning.planning_settings import PlanningSettingsRepository  # noqa: E501
 from storage.repositories.quoting.quote import QuoteRepository
 from storage.repositories.auth.user import UserRepository
 from storage.s3.s3_storage import S3Storage
@@ -487,16 +487,19 @@ async def get_customer_service(
 
 
 @lru_cache
-def get_photo_storage() -> S3Storage:
-    """Return the object store holding assistant photographs.
+def get_object_storage() -> S3Storage:
+    """Return the object store holding photographs and company logos.
 
     Returns:
         S3Storage: The store, shared across requests.
 
     Notes:
-        Cached because the underlying boto3 client owns a connection pool.
-        Building one per request would defeat it and re-resolve credentials
-        every time.
+        - Cached because the underlying boto3 client owns a connection pool.
+          Building one per request would defeat it and re-resolve credentials
+          every time.
+        - One store for both kinds of image. They live under separate key
+          prefixes but in the same bucket with the same credentials, so a second
+          provider would be a second connection pool to the same place.
     """
     return S3Storage(config=get_app_config().s3)
 
@@ -512,7 +515,7 @@ def get_email_service() -> EmailService:
         Cached like the object store: it holds configuration and opens a
         connection per message, so there is nothing per-request about it.
     """
-    return EmailService(config=get_app_config().email)
+    return EmailService(config=get_app_config().email, logos=get_object_storage())
 
 
 async def get_hca_service(
@@ -526,7 +529,7 @@ async def get_hca_service(
     Returns:
         HcaService: The service, photograph handling included.
     """
-    return HcaService(hcas=hcas, photos=get_photo_storage())
+    return HcaService(hcas=hcas, photos=get_object_storage())
 
 
 async def get_planning_run_repository(
@@ -715,7 +718,9 @@ async def get_company_service(
     Returns:
         CompanyService: The service.
     """
-    return CompanyService(companies=companies, users=users, hcas=hcas)
+    return CompanyService(
+        companies=companies, users=users, hcas=hcas, logos=get_object_storage()
+    )
 
 
 async def get_hca_application_repository(
@@ -756,7 +761,7 @@ async def get_hca_application_service(
     """
     return HcaService(
         hcas=hcas,
-        photos=get_photo_storage(),
+        photos=get_object_storage(),
         applications=applications,
         companies=companies,
         users=users,
@@ -789,7 +794,7 @@ async def get_auth_service(
         users=users,
         hcas=hcas,
         config=get_app_config().auth,
-        photos=get_photo_storage(),
+        photos=get_object_storage(),
         logger=logger,
     )
 

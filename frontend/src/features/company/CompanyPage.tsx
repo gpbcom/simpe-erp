@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
+import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -12,7 +13,13 @@ import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useMyCompany, useUpdateMyCompany } from '@/api/queries';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import {
+  useMyCompany,
+  useRemoveCompanyLogo,
+  useUpdateMyCompany,
+  useUploadCompanyLogo,
+} from '@/api/queries';
 import { formatDateTime } from '@/utils/format';
 import { useSession } from '@/store/session';
 
@@ -26,6 +33,8 @@ interface CompanyForm {
   vat_number: string;
   phone_number: string;
   contact_email: string;
+  iban: string;
+  bic: string;
   street: string;
   postal_code: string;
   city: string;
@@ -42,12 +51,17 @@ const EMPTY: CompanyForm = {
   vat_number: '',
   phone_number: '',
   contact_email: '',
+  iban: '',
+  bic: '',
   street: '',
   postal_code: '',
   city: '',
   country: 'France',
   is_accepting_applications: true,
 };
+
+/** The image types the object store accepts, as the file picker's filter. */
+const ACCEPTED_LOGO_TYPES = 'image/jpeg,image/png,image/webp';
 
 /**
  * The agency's own record: its identity, and whether it is open to applicants.
@@ -73,10 +87,13 @@ export function CompanyPage() {
   const isAdmin = user?.role === 'admin';
   const { data: company, isLoading, isError } = useMyCompany(isAdmin);
   const update = useUpdateMyCompany();
+  const uploadLogo = useUploadCompanyLogo();
+  const removeLogo = useRemoveCompanyLogo();
 
   const [form, setForm] = useState<CompanyForm>(EMPTY);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const logoInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!company) return;
@@ -89,6 +106,11 @@ export function CompanyPage() {
       vat_number: company.vat_number ?? '',
       phone_number: company.phone_number ?? '',
       contact_email: company.contact_email ?? '',
+      // Safe to prefill: this route is administrator-gated and returns the
+      // account whole. The masked form only ever comes back from the agency
+      // routes a manager can reach, which this screen never calls.
+      iban: company.iban ?? '',
+      bic: company.bic ?? '',
       street: company.address?.street ?? '',
       postal_code: company.address?.postal_code ?? '',
       city: company.address?.city ?? '',
@@ -125,6 +147,8 @@ export function CompanyPage() {
         rcs_number: form.rcs_number.trim() || null,
         vat_number: form.vat_number.trim() || null,
         phone_number: form.phone_number.trim() || null,
+        iban: form.iban.trim() || null,
+        bic: form.bic.trim() || null,
         contact_email: form.contact_email.trim() || null,
         address: hasAddress
           ? {
@@ -232,6 +256,99 @@ export function CompanyPage() {
                 })}
               </Grid>
             </Grid>
+
+            <Divider />
+
+            {/*
+              Where the money goes. Its own section rather than mixed into the
+              legal block: an accountant fills these two in once, from a bank
+              statement rather than from the articles of association.
+            */}
+            <Box>
+              <Typography variant="h3">{t('company.bankDetails')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t('company.bankDetailsHint')}
+              </Typography>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 8 }}>
+                {field('iban', t('company.iban'), {
+                  helperText: t('company.ibanHint'),
+                })}
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                {field('bic', t('company.bic'), {
+                  helperText: t('company.bicHint'),
+                })}
+              </Grid>
+            </Grid>
+
+            <Divider />
+
+            {/*
+              The logo saves on its own, not with the form. It is uploaded to
+              the object store rather than typed, so pretending it were another
+              field would mean a Save button that sometimes wrote a file and
+              sometimes did not.
+            */}
+            <Box>
+              <Typography variant="h3">{t('company.visualIdentity')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t('company.visualIdentityHint')}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Avatar
+                variant="rounded"
+                src={company.logo_url ?? undefined}
+                sx={{ width: 96, height: 96, fontSize: 28 }}
+                data-testid="company-logo"
+              >
+                {form.name.trim().charAt(0).toUpperCase() || '?'}
+              </Avatar>
+              <input
+                ref={logoInput}
+                type="file"
+                accept={ACCEPTED_LOGO_TYPES}
+                hidden
+                data-testid="logo-input"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) uploadLogo.mutate(file);
+                  // Cleared so choosing the same file twice fires a second
+                  // change event; without it a failed upload could not be
+                  // retried with the same image.
+                  event.target.value = '';
+                }}
+              />
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    startIcon={<PhotoCameraIcon />}
+                    onClick={() => logoInput.current?.click()}
+                    disabled={uploadLogo.isPending}
+                    data-testid="upload-logo"
+                  >
+                    {t('company.changeLogo')}
+                  </Button>
+                  {company.logo_url ? (
+                    <Button
+                      size="small"
+                      color="inherit"
+                      onClick={() => removeLogo.mutate()}
+                      disabled={removeLogo.isPending}
+                      data-testid="remove-logo"
+                    >
+                      {t('common.remove')}
+                    </Button>
+                  ) : null}
+                </Stack>
+                <Typography variant="caption" color="text.secondary">
+                  {t('company.logoHint')}
+                </Typography>
+              </Stack>
+            </Stack>
 
             <Divider />
 

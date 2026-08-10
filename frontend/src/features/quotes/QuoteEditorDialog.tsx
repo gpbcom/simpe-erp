@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
@@ -20,14 +22,16 @@ import {
   useCertificationTypes,
   useInterventionTypes,
   usePricingRules,
+  useCustomers,
   useReplaceQuoteLines,
+  useUpdateQuoteHeader,
   useSkillTypes,
 } from '@/api/queries';
 import { QuoteStatusChip } from './QuoteStatusChip';
 import { LineCertifications } from './LineCertifications';
 import { LineSkills } from './LineSkills';
 import { formatMoney } from '@/utils/format';
-import type { NewQuoteLine, Quote } from '@/api/types';
+import type { NewQuoteLine, Quote, QuoteHeaderEdit } from '@/api/types';
 
 /** A line while it is being edited: every field a string, as inputs give them. */
 interface DraftLine {
@@ -122,7 +126,20 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
   const { data: catalogue } = useCertificationTypes();
   const { data: skillCatalogue } = useSkillTypes();
   const replaceLines = useReplaceQuoteLines(scope);
+  const updateHeader = useUpdateQuoteHeader();
+  const { data: customers } = useCustomers();
   const [lines, setLines] = useState<DraftLine[]>([]);
+  // The header is held separately from the lines because the two are saved by
+  // different routes: replacing lines reprices the quote, changing the header
+  // does not. One Save button covers both, so an operator does not have to
+  // know which of their edits went where.
+  const [header, setHeader] = useState<QuoteHeaderEdit>({
+    reference: '',
+    customer_id: '',
+    issued_on: null,
+    valid_until: null,
+    auto_renew: false,
+  });
 
   /**
    * Label the VAT a category implies, using the server's own rate.
@@ -147,6 +164,13 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
   useEffect(() => {
     if (!quote) return;
     setError(null);
+    setHeader({
+      reference: quote.reference,
+      customer_id: quote.customer_id,
+      issued_on: quote.issued_on,
+      valid_until: quote.valid_until,
+      auto_renew: quote.auto_renew,
+    });
     setLines(
       quote.lines.map((line) => ({
         name: line.name,
@@ -222,12 +246,23 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
       required_certification_codes: line.required_certification_codes,
       required_skill_codes: line.required_skill_codes,
     }));
-    replaceLines.mutate(
-      { quoteId: quote.id, lines: payload },
+    const fail = (cause: unknown) =>
+      setError(cause instanceof Error ? cause.message : t('common.error'));
+
+    // Header first, then the lines. The lines route reprices, so if it runs
+    // second the amounts on screen match the header that was just saved; the
+    // other order would leave a repriced quote carrying the old customer for
+    // as long as the second request took.
+    const quoteId = quote.id;
+    updateHeader.mutate(
+      { quoteId, header },
       {
-        onSuccess: onClose,
-        onError: (cause) =>
-          setError(cause instanceof Error ? cause.message : t('common.error')),
+        onSuccess: () =>
+          replaceLines.mutate(
+            { quoteId, lines: payload },
+            { onSuccess: onClose, onError: fail },
+          ),
+        onError: fail,
       },
     );
   };
@@ -238,9 +273,17 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
     (running, line) => running + Number(line.total_ttc ?? 0),
     0,
   );
+  const headerDirty =
+    quote !== null &&
+    (header.reference !== quote.reference ||
+      header.customer_id !== quote.customer_id ||
+      header.issued_on !== quote.issued_on ||
+      header.valid_until !== quote.valid_until ||
+      header.auto_renew !== quote.auto_renew);
   const dirty =
     quote !== null &&
-    (lines.length !== quote.lines.length ||
+    (headerDirty ||
+      lines.length !== quote.lines.length ||
       lines.some(
         (line, index) =>
           line.name !== quote.lines[index]?.name ||
@@ -280,6 +323,94 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
               {error}
             </Alert>
           ) : null}
+
+          {/* The header. Everything the grid shows about a quote is editable
+              here, so an operator correcting a quote the planner sent back
+              does not have to find a different screen for the customer and
+              this one for the dates. The status is not a field: it has one
+              route per transition, and a dropdown would let somebody mark a
+              quote accepted that no customer accepted. */}
+          <Grid container spacing={1.5} data-testid="quote-header-fields">
+            <Grid size={{ xs: 12, md: 3 }}>
+              <TextField
+                fullWidth
+                label={t('quote.reference')}
+                value={header.reference}
+                onChange={(event) =>
+                  setHeader({ ...header, reference: event.target.value })
+                }
+                slotProps={{ htmlInput: { 'data-testid': 'quote-reference' } }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <TextField
+                select
+                fullWidth
+                label={t('quote.customer')}
+                value={header.customer_id}
+                onChange={(event) =>
+                  setHeader({ ...header, customer_id: event.target.value })
+                }
+                slotProps={{
+                  select: { native: true },
+                  inputLabel: { shrink: true },
+                  htmlInput: { 'data-testid': 'quote-customer' },
+                }}
+              >
+                {(customers ?? []).map((customer) => (
+                  <option key={customer.id ?? ''} value={customer.id ?? ''}>
+                    {customer.first_name} {customer.last_name}
+                  </option>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid size={{ xs: 6, md: 2 }}>
+              <TextField
+                fullWidth
+                type="date"
+                label={t('quote.issuedOn')}
+                value={header.issued_on ?? ''}
+                onChange={(event) =>
+                  setHeader({ ...header, issued_on: event.target.value || null })
+                }
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { 'data-testid': 'quote-issued-on' },
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 2 }}>
+              <TextField
+                fullWidth
+                type="date"
+                label={t('quote.validUntil')}
+                value={header.valid_until ?? ''}
+                onChange={(event) =>
+                  setHeader({ ...header, valid_until: event.target.value || null })
+                }
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { 'data-testid': 'quote-valid-until' },
+                }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 2 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={header.auto_renew}
+                    onChange={(event) =>
+                      setHeader({ ...header, auto_renew: event.target.checked })
+                    }
+                    inputProps={
+                      { 'data-testid': 'quote-auto-renew' } as React.InputHTMLAttributes<HTMLInputElement>
+                    }
+                  />
+                }
+                label={t('quote.autoRenew')}
+              />
+            </Grid>
+          </Grid>
 
           {lines.length === 0 ? (
             <Alert severity="info" data-testid="quote-editor-empty">
@@ -480,7 +611,9 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
         <Button
           variant="contained"
           onClick={save}
-          disabled={invalid || !dirty || replaceLines.isPending}
+          disabled={
+            invalid || !dirty || replaceLines.isPending || updateHeader.isPending
+          }
           data-testid="save-quote-lines"
         >
           {t('common.save')}

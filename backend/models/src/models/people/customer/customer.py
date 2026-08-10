@@ -6,6 +6,9 @@ from typing import ClassVar, Type, Union
 # Third-party imports
 from pydantic import Field, field_validator
 
+from models.base.exceptions import MTInvalidPersonException
+from models.base.person import Person
+
 # First-party imports
 from models.enums import RegistrationStatus
 from models.geo.postal_address import PostalAddress
@@ -19,8 +22,6 @@ from models.people.customer.exceptions import (
     MTCustomerInvalidPhoneNumber,
     MTCustomerInvalidRegistrationStatus,
 )
-from models.base.exceptions import MTInvalidPersonException
-from models.base.person import Person
 
 
 class Customer(Person):
@@ -36,7 +37,8 @@ class Customer(Person):
         address (PostalAddress): Where the care is delivered. Inherited, and
             re-declared only to say so.
         registration_status (RegistrationStatus): Whether the customer is
-            currently served.
+            served, in discussion, or stopped. **Defaults to
+            :attr:`~models.enums.RegistrationStatus.PROSPECT`.**
         created_at (Optional[datetime]): Creation timestamp, set by the store.
             Inherited.
         updated_at (Optional[datetime]): Last-update timestamp, set by the
@@ -73,25 +75,26 @@ class Customer(Person):
     INVALID_PHONE_NUMBER: ClassVar[Type[MTInvalidPersonException]] = (
         MTCustomerInvalidPhoneNumber
     )
-    INVALID_EMAIL: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidEmail
-    INVALID_ADDRESS: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidAddress
-    INVALID_DATE: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidDate
+    INVALID_EMAIL: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidEmail  # noqa: E501
+    INVALID_ADDRESS: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidAddress  # noqa: E501
+    INVALID_DATE: ClassVar[Type[MTInvalidPersonException]] = MTCustomerInvalidDate  # noqa: E501
 
     address: PostalAddress = Field(description="Where the care is delivered.")
     registration_status: RegistrationStatus = Field(
-        default=RegistrationStatus.ACTIVE,
-        description="Whether the customer is currently served.",
+        default=RegistrationStatus.PROSPECT,
+        description="Whether the customer is served, "  # noqa: E501
+        "in discussion, or stopped.",
     )
 
     @field_validator("registration_status", mode="before")
     def validate_registration_status(
-        cls, value: Union[str, RegistrationStatus, None]
+        cls, value: Optional[str, RegistrationStatus]
     ) -> RegistrationStatus:
         """Validates that ``registration_status`` is a known status.
 
         Args:
-            value (Union[str, RegistrationStatus, None]): Raw status value.
-                ``None`` falls back to :attr:`RegistrationStatus.ACTIVE`.
+            value (Optional[str, RegistrationStatus]): Raw status value.
+                ``None`` falls back to :attr:`RegistrationStatus.PROSPECT`.
 
         Returns:
             RegistrationStatus: The coerced status.
@@ -99,9 +102,15 @@ class Customer(Person):
         Raises:
             MTCustomerInvalidRegistrationStatus: If ``value`` is not a known
                 registration status.
+
+        Notes:
+            The ``None`` fallback tracks the field default deliberately. A
+            payload that omits the status and one that sends ``null`` mean the
+            same thing — "nobody has said" — and the safe reading of that is
+            *prospect*, because it is the state that schedules nothing.
         """
         if value is None:
-            return RegistrationStatus.ACTIVE
+            return RegistrationStatus.PROSPECT
         if isinstance(value, RegistrationStatus):
             return value
         try:
@@ -113,13 +122,35 @@ class Customer(Person):
             ) from None
 
     def is_active(self) -> bool:
-        """Return whether the customer may be quoted and scheduled.
+        """Return whether the customer is on the books as a served customer.
 
         Returns:
             bool: ``True`` when the registration status is active.
 
         Notes:
-            A stopped customer keeps their history — past quotes and delivered
-            interventions stay readable — but takes no new work.
+            - **This says what state they are in, and nothing more.** It used to
+              claim the customer "may be quoted and scheduled", which was safe
+              while there were two states and became wrong with three: a prospect
+              is not active and yet quoting them is the entire point of the
+              state. Ask :meth:`can_be_scheduled` about the planner, and nothing
+              about quoting — no code enforces that today.
+            - A stopped customer keeps their history — past quotes and delivered
+              interventions stay readable — but takes no new work.
         """
         return self.registration_status is RegistrationStatus.ACTIVE
+
+    def can_be_scheduled(self) -> bool:
+        """Return whether the planner may place visits for this customer.
+
+        Returns:
+            bool: ``True`` only for an active customer.
+
+        Notes:
+            Delegates to
+            :meth:`~models.enums.RegistrationStatus.can_be_scheduled`, where
+            the rule lives. It is restated here because the requirement builder
+            holds a ``Customer`` rather than a status, and
+            ``customer.can_be_scheduled()`` is the sentence that reads correctly
+            at the one call site that matters.
+        """
+        return self.registration_status.can_be_scheduled()

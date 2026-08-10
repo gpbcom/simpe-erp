@@ -6,12 +6,15 @@ from logging import Logger, getLogger
 from typing import Dict, List, Optional, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
 from models.catalog.intervention_type import InterventionType
+from models.schemas.requests.catalog.intervention_type_filter import (
+    InterventionTypeFilter,
+)
 from storage.mappers.planning.intervention_mapper import InterventionMapper
 from storage.orm.catalog.intervention_type_row import InterventionTypeRow
 from storage.repositories.base import BaseRepository
@@ -50,19 +53,70 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
     ############################
 
     def _build_query(
-        self, include_inactive: bool
+        self,
+        include_inactive: bool,
+        type_filter: Optional[InterventionTypeFilter] = None,
     ) -> Select[Tuple[InterventionTypeRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
         Args:
-            include_inactive (bool): Whether retired types are included.
+            include_inactive (bool): Whether retired entries are included.
+            type_filter (Optional[InterventionTypeFilter]): The screen's filter.
+            type_filter (InterventionTypeFilter): The screen's filter, or ``None``.
 
         Returns:
             Select: The filtered statement, without ordering or pagination.
+
+        Notes:
+            **``is_active`` wins over ``include_inactive`` when it is set.**
+            The older switch has two states and no way to ask for the retired
+            entries *on their own*; the filter has three. Unset, the switch
+            still decides, so every caller that predates the filter behaves
+            exactly as it did.
         """
+        applied = type_filter or InterventionTypeFilter()
+        self.logger.debug(
+            "Building the catalogue query from %s (include_inactive=%s).",
+            applied.model_dump(exclude_none=True),
+            include_inactive,
+        )
         statement = select(InterventionTypeRow)
-        if not include_inactive:
-            statement = statement.where(InterventionTypeRow.is_active.is_(True))  # noqa: E501
+        if applied.is_active is not None:
+            if include_inactive and applied.is_active:
+                self.logger.warning(
+                    "include_inactive asked for the retired entries and the "
+                    "filter asked for the active ones; the filter wins."
+                )
+            statement = statement.where(
+                InterventionTypeRow.is_active.is_(applied.is_active)
+            )
+        elif not include_inactive:
+            statement = statement.where(InterventionTypeRow.is_active.is_(True))
+        else:
+            self.logger.info("Listing the catalogue including retired entries.")
+        if applied.search:
+            pattern = f"%{applied.search.strip().lower()}%"
+            statement = statement.where(
+                or_(
+                    InterventionTypeRow.code.ilike(pattern),
+                    InterventionTypeRow.name.ilike(pattern),
+                    InterventionTypeRow.description.ilike(pattern),
+                )
+            )
+        # One column each, unlike ``search``: somebody who has decided the
+        # fragment is a code does not want it matched against a description.
+        for fragment, column in (
+            (applied.code, InterventionTypeRow.code),
+            (applied.name, InterventionTypeRow.name),
+        ):
+            if fragment:
+                statement = statement.where(
+                    column.ilike(f"%{fragment.strip().lower()}%")
+                )
+        if applied.service_category is not None:
+            statement = statement.where(
+                InterventionTypeRow.service_category == applied.service_category.value
+            )
         return statement
 
     ############################
@@ -254,6 +308,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
         page: int = 1,
         size: Optional[int] = None,
         include_inactive: bool = False,
+        type_filter: Optional[InterventionTypeFilter] = None,
     ) -> List[InterventionType]:
         """Return a page of the catalog.
 
@@ -275,7 +330,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
             page,
             include_inactive,
         )
-        statement = self._build_query(include_inactive).order_by(
+        statement = self._build_query(include_inactive, type_filter).order_by(
             InterventionTypeRow.name
         )
         rows = await self._fetch_all(self._paginate(statement, page, size))
@@ -283,7 +338,11 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
             self.logger.warning("No intervention type matched the query.")
         return self.mapper.to_type_models(rows)
 
-    async def count(self, include_inactive: bool = False) -> int:
+    async def count(
+        self,
+        include_inactive: bool = False,
+        type_filter: Optional[InterventionTypeFilter] = None,
+    ) -> int:
         """Return how many types match a query.
 
         Args:
@@ -292,7 +351,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
         Returns:
             int: The number of matching types.
         """
-        return await self._count(self._build_query(include_inactive))
+        return await self._count(self._build_query(include_inactive, type_filter))
 
     async def ensure_indexes(self) -> None:
         """Verify the catalog's uniqueness constraints are in place.

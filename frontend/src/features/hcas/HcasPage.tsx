@@ -13,14 +13,12 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Alert from '@mui/material/Alert';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
-import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import DeleteIcon from '@mui/icons-material/Delete';
-import SearchIcon from '@mui/icons-material/Search';
 import {
   useCertificationTypes,
   useDeleteHca,
@@ -30,12 +28,66 @@ import {
   useUsers,
 } from '@/api/queries';
 import { useSession } from '@/store/session';
+import { EntityFilterBar } from '@/components/filters/EntityFilterBar';
+import type { FilterDetail, FilterTab } from '@/components/filters/EntityFilterBar';
+import { useEntityFilter } from '@/components/filters/entityFilter';
+import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import { AppIcon } from '@/components/icons/AppIcon';
 import { FieldEmployeeToggle } from './FieldEmployeeToggle';
 import { initialsOf } from '@/utils/format';
 import { WEEKDAYS } from '@/api/types';
 import { WorkingDaysDialog } from './WorkingDaysDialog';
 import type { Certification, Hca, User } from '@/api/types';
+
+/** Which of the assistant filter's fields are text, flags and closed lists. */
+const HCA_FILTER_SPEC: EntityFilterSpec = {
+  textFields: ['search', 'city', 'postal_code', 'email', 'phone'],
+  flagFields: ['field_employee', 'is_geocoded', 'has_photo'],
+  enumFields: { contract_type: ['cdi', 'cdd', 'interim'] },
+};
+
+/** The contract tabs, in the order a payroll office thinks of them. */
+const HCA_TABS: FilterTab[] = [
+  { key: 'all', label: 'hca.filter_all' },
+  { key: 'cdi', value: 'cdi', label: 'hca.filter_cdi' },
+  { key: 'cdd', value: 'cdd', label: 'hca.filter_cdd' },
+  { key: 'interim', value: 'interim', label: 'hca.filter_interim' },
+];
+
+/** What is folded away behind "more filters". */
+const HCA_DETAILS: FilterDetail[] = [
+  { field: 'city', label: 'hca.filterCity', kind: 'text' },
+  { field: 'postal_code', label: 'hca.filterPostalCode', kind: 'text' },
+  { field: 'email', label: 'hca.filterEmail', kind: 'text' },
+  { field: 'phone', label: 'hca.filterPhone', kind: 'text' },
+  {
+    field: 'field_employee',
+    label: 'hca.filterFieldEmployee',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'hca.filterFieldEmployeeYes' },
+      { value: 'false', label: 'hca.filterFieldEmployeeNo' },
+    ],
+  },
+  {
+    field: 'is_geocoded',
+    label: 'hca.filterGeocoded',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'hca.filterGeocodedYes' },
+      { value: 'false', label: 'hca.filterGeocodedNo' },
+    ],
+  },
+  {
+    field: 'has_photo',
+    label: 'hca.filterPhoto',
+    kind: 'flag',
+    options: [
+      { value: 'true', label: 'hca.filterPhotoYes' },
+      { value: 'false', label: 'hca.filterPhotoNo' },
+    ],
+  },
+];
 
 /**
  * The workforce, and the one thing a manager may change about them.
@@ -74,8 +126,8 @@ export function HcasPage() {
     await promote.mutateAsync({ userId: account.id, role: 'manager' });
     setPromoting(null);
   };
-  const [search, setSearch] = useState('');
-  const { data, isLoading } = useHcas(search || undefined);
+  const hcaFilter = useEntityFilter(HCA_FILTER_SPEC);
+  const { data, isLoading } = useHcas(undefined, hcaFilter.filter);
   const [editing, setEditing] = useState<Hca | null>(null);
   const [draft, setDraft] = useState<Certification[]>([]);
   const [added, setAdded] = useState('');
@@ -311,19 +363,13 @@ export function HcasPage() {
     <Stack spacing={2}>
       <Typography variant="h1">{t('nav.hcas')}</Typography>
 
-      <TextField
-        placeholder={t('common.search')}
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        sx={{ maxWidth: 420 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon fontSize="small" />
-            </InputAdornment>
-          ),
-        }}
-        inputProps={{ 'data-testid': 'hca-search' }}
+      <EntityFilterBar
+        state={hcaFilter}
+        testId="hca"
+        searchLabel="hca.searchFilter"
+        tabField="contract_type"
+        tabs={HCA_TABS}
+        details={HCA_DETAILS}
       />
 
       <Card>

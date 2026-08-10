@@ -8,11 +8,13 @@ from logging import Logger, getLogger
 import smtplib
 from typing import ClassVar, Dict, List, Optional, Tuple
 
-from models.auth.user import User
-
 # First-party imports
-from models.configuration.email_config import EmailConfig
+# isort: on
+from models.auth.user import User
 from models.companies.company import Company
+
+# isort: off
+from models.configuration.email_config import EmailConfig
 from models.enums import Language
 from models.people.customer import Customer
 from models.people.hca import Hca
@@ -24,6 +26,8 @@ from service.emails.exceptions import (
     MTEmailNotConfigured,
 )
 from service.utils.formatter import Formatter
+from storage.s3.exceptions import MTS3BucketUnavailable
+from storage.s3.s3_storage import S3Storage
 
 
 class EmailService:
@@ -33,6 +37,8 @@ class EmailService:
         SPREADSHEET_TYPE (ClassVar[str]): MIME type of an ``.xlsx`` attachment.
         SPREADSHEET_SUBTYPE (ClassVar[str]): MIME subtype of the same.
         config (EmailConfig): The outbound SMTP settings.
+        logos (Optional[S3Storage]): The object store the quote's letterhead
+            is read from.
         logger (Logger): Logger for delivery operations.
 
     Notes:
@@ -53,16 +59,48 @@ class EmailService:
     SPREADSHEET_SUBTYPE: ClassVar[str] = (
         "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    QUOTE_EMAIL: ClassVar[Dict[Language, Dict[str, str]]] = {
+        Language.EN: {
+            "subject": "Your quote {reference}",
+            "greeting": "Hello {name},",
+            "body": (
+                "Quote {reference} from {company} is attached, totalling "
+                "{total} € including VAT."
+            ),
+            "automatic": "This message was sent automatically.",
+            "filename": "quote-{reference}.xlsx",
+        },
+        Language.FR: {
+            "subject": "Votre devis {reference}",
+            "greeting": "Bonjour {name},",
+            "body": (
+                "Le devis {reference} de {company} est joint à ce message, "
+                "pour un total de {total} € TTC."
+            ),
+            "automatic": "Ce message a été envoyé automatiquement.",
+            "filename": "devis-{reference}.xlsx",
+        },
+    }
 
-    def __init__(self, config: EmailConfig, logger: Optional[Logger] = None) -> None:
+    def __init__(
+        self,
+        config: EmailConfig,
+        logos: Optional[S3Storage] = None,
+        logger: Optional[Logger] = None,
+    ) -> None:
         """Initialize the service.
 
         Args:
             config (EmailConfig): The outbound SMTP settings.
+            logos (Optional[S3Storage]): The object store holding the agency
+                logos, read when a quote is rendered. ``None`` prints quotes
+                without a letterhead, which is what they looked like before
+                agencies could upload one.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
         self.config = config
+        self.logos = logos
         self.logger = logger if logger else getLogger(__name__)
         self.logger.debug(
             "EmailService created for %s:%d (enabled=%s, sender=%s).",
@@ -130,11 +168,13 @@ class EmailService:
             Blocking on purpose — the caller runs this in a worker thread.
         """
         with smtplib.SMTP(
-            self.config.host, self.config.port, timeout=self.config.timeout_seconds
+            self.config.host,
+            self.config.port,
+            timeout=self.config.timeout_seconds,  # noqa: E501
         ) as client:
             if self.config.use_tls:
                 client.starttls()
-            client.login(self.config.get_username(), self.config.get_password())
+            client.login(self.config.get_username(), self.config.get_password())  # noqa: E501
             client.send_message(message)
 
     async def _send(
@@ -243,6 +283,52 @@ class EmailService:
             }
         )
 
+    async def _fetch_logo(self, company: Company) -> Optional[bytes]:
+        """Read the agency's logo, for the quote that prints it.
+
+        Args:
+            company (Company): The agency issuing the quote.
+
+        Returns:
+            Optional[bytes]: The image bytes, or ``None`` when the agency has
+            no logo or the object store could not serve it.
+
+        Notes:
+            Every failure here is a ``None``, never an exception. The customer
+            is waiting for a priced offer; withholding it because a decoration
+            could not be fetched would turn a cosmetic problem into a
+            commercial one.
+        """
+        if self.logos is None or not company.logo_url:
+            self.logger.debug(
+                "No letterhead for company %s; the quote prints without one.",
+                company.name,
+            )
+            return None
+        self.logger.debug("Fetching the logo of company %s.", company.name)
+        try:
+            payload = await self.logos.fetch_logo(company.logo_url)
+        except MTS3BucketUnavailable as exc:
+            self.logger.error(
+                "The object store is unreachable, so company %s loses its "
+                "letterhead on this quote: %s.",
+                company.name,
+                exc,
+            )
+            return None
+        if payload is None:
+            self.logger.warning(
+                "Company %s has a logo at %s that could not be read; the quote "
+                "goes out without it.",
+                company.name,
+                company.logo_url,
+            )
+            return None
+        self.logger.info(
+            "Company %s will print a %d-byte letterhead.", company.name, len(payload)
+        )
+        return payload
+
     ############################
     # Publicly Exposed Methods #
     ############################
@@ -273,7 +359,7 @@ class EmailService:
         await self._send(
             recipient=str(assistant.email),
             subject=(
-                f"Your planning, {planning.period_start} to {planning.period_end}"
+                f"Your planning, {planning.period_start} to {planning.period_end}"  # noqa: E501
             ),
             body=(
                 f"Hello {planning.hca_full_name},\n\n"
@@ -286,29 +372,6 @@ class EmailService:
             filename=f"planning-{planning.hca_id}-{planning.period_start}.xlsx",
             payload=Formatter.format_planning(planning),
         )
-
-    QUOTE_EMAIL: ClassVar[Dict[Language, Dict[str, str]]] = {
-        Language.EN: {
-            "subject": "Your quote {reference}",
-            "greeting": "Hello {name},",
-            "body": (
-                "Quote {reference} from {company} is attached, totalling "
-                "{total} € including VAT."
-            ),
-            "automatic": "This message was sent automatically.",
-            "filename": "quote-{reference}.xlsx",
-        },
-        Language.FR: {
-            "subject": "Votre devis {reference}",
-            "greeting": "Bonjour {name},",
-            "body": (
-                "Le devis {reference} de {company} est joint à ce message, "
-                "pour un total de {total} € TTC."
-            ),
-            "automatic": "Ce message a été envoyé automatiquement.",
-            "filename": "devis-{reference}.xlsx",
-        },
-    }
 
     async def send_quote(
         self,
@@ -333,14 +396,13 @@ class EmailService:
             MTEmailDeliveryFailed: If the SMTP conversation fails.
 
         Notes:
-            The message and the attachment are written in the **same** language,
-            from one catalogue. A French covering note over an English
-            spreadsheet is worse than either on its own: it reads as a mistake
-            in a document the customer is being asked to agree to.
-
-            Even the filename is translated. It is the first thing the
-            recipient sees in their attachment list, and often the only thing
-            they see before deciding whether to open it.
+            - The message and the attachment are written in the **same** language,
+              from one catalogue. A French covering note over an English
+              spreadsheet is worse than either on its own: it reads as a mistake
+              in a document the customer is being asked to agree to.
+            - Even the filename is translated. It is the first thing the
+              recipient sees in their attachment list, and often the only thing
+              they see before deciding whether to open it.
         """
         wording = self.QUOTE_EMAIL[language]
         self.logger.info(
@@ -349,20 +411,25 @@ class EmailService:
             customer.id,
             language.value,
         )
+        logo = await self._fetch_logo(company)
         await self._send(
             recipient=str(customer.email),
             subject=wording["subject"].format(reference=quote.reference),
             body=(
                 f"{wording['greeting'].format(name=customer.full_name())}\n\n"
-                f"{wording['body'].format(
-                    reference=quote.reference,
-                    company=company.name,
-                    total=quote.total_ttc(),
-                )}\n\n"
+                f"{
+                    wording['body'].format(
+                        reference=quote.reference,
+                        company=company.name,
+                        total=quote.total_ttc(),
+                    )
+                }\n\n"
                 f"{wording['automatic']}\n"
             ),
             filename=wording["filename"].format(reference=quote.reference),
-            payload=Formatter.format_quote(quote, customer, company, language),
+            payload=Formatter.format_quote(
+                quote, customer, company, language, logo=logo
+            ),
         )
 
     async def send_team_planning(
@@ -387,7 +454,7 @@ class EmailService:
         """
         first = plannings[0] if plannings else None
         period = (
-            f"{first.period_start} to {first.period_end}" if first else "the period"
+            f"{first.period_start} to {first.period_end}" if first else "the period"  # noqa: E501
         )
         self.logger.info(
             "Emailing the team planning (%d assistant(s), %s) to %s.",
@@ -447,7 +514,7 @@ class EmailService:
         recipients = managers if managers else []
         delivered = 0
         for monday, sunday in self._weeks_of(plannings):
-            weekly = [self._week_of(planning, monday, sunday) for planning in plannings]
+            weekly = [self._week_of(planning, monday, sunday) for planning in plannings]  # noqa: E501
             self.logger.info(
                 "Dispatching the week of %s to %s: %d assistant(s), %d manager(s).",
                 monday,
@@ -486,7 +553,9 @@ class EmailService:
                     MTEmailNotConfigured,
                 ) as exc:
                     self.logger.error(
-                        "Team planning not delivered to %s: %s", manager.id, exc
+                        "Team planning not delivered to %s: %s",
+                        manager.id,
+                        exc,  # noqa: E501
                     )
                     continue
                 delivered += 1
@@ -523,7 +592,8 @@ class EmailService:
             customer = by_id.get(quote.customer_id)
             if customer is None:
                 self.logger.warning(
-                    "No customer record for quote %s; skipping it.", quote.reference
+                    "No customer record for quote %s; skipping it.",
+                    quote.reference,  # noqa: E501
                 )
                 continue
             try:

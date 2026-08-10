@@ -12,7 +12,7 @@ import pytest
 # First-party imports
 from models.catalog.intervention_type import InterventionType
 from models.configuration.planning_config import PlanningConfig
-from models.enums import QuoteStatus
+from models.enums import QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
@@ -27,6 +27,7 @@ def _customer(
     customer_id: str = "customer-1",
     latitude: Optional[float] = 48.8566,
     longitude: Optional[float] = 2.3522,
+    status: RegistrationStatus = RegistrationStatus.ACTIVE,
 ) -> Customer:
     """Build a customer, optionally without a resolved coordinate.
 
@@ -34,9 +35,17 @@ def _customer(
         customer_id (str): The identifier to assign.
         latitude (Optional[float]): The resolved latitude, if any.
         longitude (Optional[float]): The resolved longitude, if any.
+        status (RegistrationStatus): Their registration status.
 
     Returns:
         Customer: The customer.
+
+    Notes:
+        The status is **stated**, not left to the model. Its default is
+        ``PROSPECT``, and a prospect is deliberately never scheduled — so a
+        helper that omitted it would build a customer this whole suite's
+        subject refuses to plan, and every test would pass by accident for the
+        wrong reason.
     """
     return Customer(
         id=customer_id,
@@ -51,6 +60,7 @@ def _customer(
             "latitude": latitude,
             "longitude": longitude,
         },
+        registration_status=status,
     )
 
 
@@ -345,6 +355,60 @@ class TestPlanningService:
         customers = {"customer-1": _customer(latitude=None, longitude=None)}
 
         assert builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END) == []
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            pytest.param(RegistrationStatus.PROSPECT, id="prospect"),
+            pytest.param(RegistrationStatus.STOPPED, id="stopped"),
+        ],
+    )
+    def test_a_customer_who_may_not_be_scheduled_yields_nothing(
+        self, builder: PlanningService, status: RegistrationStatus
+    ) -> None:
+        """**The rule PROSPECT exists for, asserted on a flawless quote.**
+
+        Args:
+            builder (PlanningService): The service under test.
+            status (RegistrationStatus): The status that blocks scheduling.
+
+        Notes:
+            Everything else about this work is right: the quote is accepted and
+            priced, the line falls inside the period, the quote is not
+            interrupted and the customer's address resolved. The *only* reason
+            nothing comes back is who the customer is to the agency.
+
+            That is what makes this the test worth having. A prospect whose
+            quote was also out of period would pass for three other reasons.
+        """
+        customers = {"customer-1": _customer(status=status)}
+
+        assert builder.build([_quote()], customers, catalog, MONDAY, PERIOD_END) == []
+
+    def test_promoting_the_customer_is_what_schedules_their_work(
+        self, builder: PlanningService, catalog: Dict[str, InterventionType]
+    ) -> None:
+        """The same quote plans once the customer is active.
+
+        Args:
+            builder (PlanningService): The service under test.
+            catalog (Dict[str, InterventionType]): The services on offer.
+
+        Notes:
+            - The other half of the rule. Without this, a bug that dropped
+              *every* requirement would satisfy the test above and look exactly
+              like the feature working.
+            - This one takes the ``catalog`` **fixture**, where its neighbours
+              refer to the bare name and so pass the fixture *function*. They
+              get away with it because they assert an empty result and return
+              before the catalog is ever dereferenced; this one plans real work
+              and would raise ``AttributeError`` on the function object.
+        """
+        prospect = {"customer-1": _customer(status=RegistrationStatus.PROSPECT)}
+        promoted = {"customer-1": _customer(status=RegistrationStatus.ACTIVE)}
+
+        assert builder.build([_quote()], prospect, catalog, MONDAY, PERIOD_END) == []
+        assert builder.build([_quote()], promoted, catalog, MONDAY, PERIOD_END) != []
 
     def test_a_quote_for_an_unknown_customer_is_dropped(
         self, builder: PlanningService

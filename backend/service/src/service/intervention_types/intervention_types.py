@@ -10,6 +10,9 @@ from sqlalchemy.exc import IntegrityError
 
 # First-party imports
 from models.catalog.intervention_type import InterventionType
+from models.schemas.requests.catalog.intervention_type_filter import (
+    InterventionTypeFilter,
+)
 from service.certifications.certifications import CertificationTypeService
 from service.certifications.exceptions import MTCertificationTypeUnknownCode
 from service.skills.skills import SkillTypeService
@@ -308,6 +311,7 @@ class InterventionTypeService:
         page: int = 1,
         size: Optional[int] = None,
         include_inactive: bool = False,
+        type_filter: Optional[InterventionTypeFilter] = None,
     ) -> List[InterventionType]:
         """Return a page of the catalog.
 
@@ -325,7 +329,10 @@ class InterventionTypeService:
             include_inactive,
         )
         types = await self.types.list(
-            page=page, size=size, include_inactive=include_inactive
+            page=page,
+            size=size,
+            include_inactive=include_inactive,
+            type_filter=type_filter,
         )
         if not types:
             self.logger.warning(

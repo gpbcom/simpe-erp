@@ -11,6 +11,9 @@ import pytest
 from models.companies.company import Company
 from models.companies.company_choice import CompanyChoice
 from models.companies.exceptions import (
+    MTCompanyInvalidBic,
+    MTCompanyInvalidIban,
+    MTCompanyInvalidLogoUrl,
     MTCompanyInvalidLegalForm,
     MTCompanyInvalidPhoneNumber,
     MTCompanyInvalidRcsNumber,
@@ -23,6 +26,7 @@ from models.companies.exceptions import (
     MTCompanyInvalidRegistrationNumber,
     MTInvalidCompanyException,
 )
+from models.configuration.s3_config import S3Config
 
 
 class TestCompany:
@@ -297,9 +301,9 @@ class TestCompanyLegalIdentity:
             ``10000.50`` as a float is not ``10000.50``, and the difference
             reaches a document the customer is asked to sign.
         """
-        assert Company(
-            name="X", share_capital="10000.50"
-        ).share_capital == Decimal("10000.50")
+        assert Company(name="X", share_capital="10000.50").share_capital == Decimal(
+            "10000.50"
+        )
 
     @pytest.mark.parametrize(
         "value",
@@ -394,5 +398,222 @@ class TestCompanyLegalIdentity:
             MTCompanyInvalidRcsNumber,
             MTCompanyInvalidVatNumber,
             MTCompanyInvalidPhoneNumber,
+        ):
+            assert issubclass(exception, MTInvalidCompanyException)
+
+
+class TestCompanyBankingDetails:
+    """Tests for the account a customer is asked to pay into."""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            pytest.param(
+                "FR76 3000 6000 0112 3456 7890 189",
+                "FR7630006000011234567890189",
+                id="Valid - grouped as a bank prints it",
+            ),
+            pytest.param(
+                "fr7630006000011234567890189",
+                "FR7630006000011234567890189",
+                id="Valid - lower case",
+            ),
+            pytest.param(
+                "DE89370400440532013000",
+                "DE89370400440532013000",
+                id="Valid - not French",
+            ),
+        ],
+    )
+    def test_an_iban_is_normalised_before_it_is_stored(
+        self, raw: str, expected: str
+    ) -> None:
+        """The grouped form and the unbroken form are the same account.
+
+        Args:
+            raw (str): The number as somebody types it off a statement.
+            expected (str): What is stored.
+
+        Notes:
+            Normalising on the way in is what makes two spellings of one
+            account compare equal. Stored as typed, the same agency could hold
+            two IBANs that differ only in spacing.
+        """
+        assert Company(name="X", iban=raw).iban == expected
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param(
+                "FR7630006000011234567890188", id="Invalid - check digits wrong"
+            ),
+            pytest.param(
+                "FR7630006000011234567809189", id="Invalid - two digits transposed"
+            ),
+            pytest.param("FR76", id="Invalid - too short"),
+            pytest.param("7630006000011234567890189", id="Invalid - no country code"),
+            pytest.param("F" * 40, id="Invalid - longer than any IBAN"),
+            pytest.param(12345, id="Invalid - not a string"),
+        ],
+    )
+    def test_an_unusable_iban_is_refused(self, value: Any) -> None:
+        """A wrong account number must fail here, not at the bank.
+
+        Args:
+            value (Any): The rejected value.
+
+        Notes:
+            The transposition case is the one that matters. It satisfies every
+            shape rule and fails only the checksum — which is exactly the error
+            a human makes copying twenty-seven characters by hand, and exactly
+            what the two check digits exist to catch.
+        """
+        with pytest.raises(MTCompanyInvalidIban):
+            Company(name="X", iban=value)
+
+    @pytest.mark.parametrize(
+        "value", [pytest.param(None, id="None"), pytest.param("  ", id="Blank")]
+    )
+    def test_no_account_is_none_rather_than_empty(self, value: Optional[str]) -> None:
+        """An untouched form field must not become a stored empty string.
+
+        Args:
+            value (Optional[str]): The absent value.
+        """
+        assert Company(name="X", iban=value).iban is None
+        assert Company(name="X", bic=value).bic is None
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            pytest.param("bnpafrpp", "BNPAFRPP", id="Valid - eight characters"),
+            pytest.param("BNPA FR PP XXX", "BNPAFRPPXXX", id="Valid - with a branch"),
+        ],
+    )
+    def test_a_bic_is_normalised(self, raw: str, expected: str) -> None:
+        """Eight or eleven characters, upper-cased and unspaced.
+
+        Args:
+            raw (str): The code as typed.
+            expected (str): What is stored.
+        """
+        assert Company(name="X", bic=raw).bic == expected
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("BNPAFRP", id="Invalid - seven characters"),
+            pytest.param("BNPAFRPPXX", id="Invalid - ten characters"),
+            pytest.param("1NPAFRPP", id="Invalid - digit in the bank code"),
+            pytest.param(99, id="Invalid - not a string"),
+        ],
+    )
+    def test_an_unusable_bic_is_refused(self, value: Any) -> None:
+        """A BIC has two lengths and no others.
+
+        Args:
+            value (Any): The rejected value.
+        """
+        with pytest.raises(MTCompanyInvalidBic):
+            Company(name="X", bic=value)
+
+    def test_a_bic_is_not_required_alongside_an_iban(self) -> None:
+        """Inside SEPA the IBAN alone routes the transfer.
+
+        Notes:
+            Deliberately not a conditional rule. Demanding a BIC would refuse a
+            complete answer for missing something the payment does not need.
+        """
+        company = Company(name="X", iban="FR7630006000011234567890189")
+
+        assert company.iban is not None
+        assert company.bic is None
+
+    def test_masking_keeps_the_country_and_the_last_four(self) -> None:
+        """Enough to recognise the account, not enough to pay into it.
+
+        Notes:
+            The same trade a bank statement makes. A manager checking which
+            account is on file can, somebody reading over their shoulder
+            cannot.
+        """
+        company = Company(name="X", iban="FR7630006000011234567890189")
+
+        masked = company.masked_iban()
+
+        assert masked is not None
+        assert masked.startswith("FR76")
+        assert masked.endswith("0189")
+        assert "300060000112345678" not in masked
+        assert len(masked) == len(company.iban or "")
+
+    def test_masking_an_absent_account_yields_nothing(self) -> None:
+        """No account is ``None``, not a row of bullets."""
+        assert Company(name="X").masked_iban() is None
+
+
+class TestCompanyVisualIdentity:
+    """Tests for the logo an agency prints on its documents."""
+
+    def test_a_logo_this_application_stored_is_accepted(self) -> None:
+        """A URL under the logo prefix is one the object store can own."""
+        url = "https://s3.example/simple-erp/company-logos/c-1/abc.png"
+
+        assert Company(name="X", logo_url=url).logo_url == url
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("https://evil.example/tracker.png", id="Invalid - elsewhere"),
+            pytest.param(
+                "https://s3.example/simple-erp/hca-photos/h-1/a.png",
+                id="Invalid - the photo prefix, not the logo one",
+            ),
+            pytest.param("ftp://s3.example/company-logos/a.png", id="Invalid - scheme"),
+            pytest.param(7, id="Invalid - not a string"),
+        ],
+    )
+    def test_a_logo_from_anywhere_else_is_refused(self, value: Any) -> None:
+        """The prefix check is what stops a third-party URL being stored.
+
+        Args:
+            value (Any): The rejected value.
+
+        Notes:
+            The logo is rendered on every screen and on the quote, so a remote
+            one would report every viewer to whoever hosts it — and the object
+            store could not own the object it is later asked to remove.
+        """
+        with pytest.raises(MTCompanyInvalidLogoUrl):
+            Company(name="X", logo_url=value)
+
+    @pytest.mark.parametrize(
+        "value", [pytest.param(None, id="None"), pytest.param("  ", id="Blank")]
+    )
+    def test_no_logo_is_none(self, value: Optional[str]) -> None:
+        """An agency without a logo carries ``None``, not an empty string.
+
+        Args:
+            value (Optional[str]): The absent value.
+        """
+        assert Company(name="X", logo_url=value).logo_url is None
+
+    def test_the_model_prefix_matches_the_configured_one(self) -> None:
+        """The two copies of the prefix must not drift.
+
+        Notes:
+            The model cannot read configuration, so it carries its own copy of
+            the prefix — exactly as ``PortraitHolder`` does. Asserting they are
+            equal is what keeps a change to one from silently rejecting every
+            URL the other writes.
+        """
+        assert Company.LOGO_KEY_PREFIX == S3Config.DEFAULT_LOGO_KEY_PREFIX
+
+    def test_the_new_leaves_share_the_company_base(self) -> None:
+        """One except clause still catches everything this model raises."""
+        for exception in (
+            MTCompanyInvalidIban,
+            MTCompanyInvalidBic,
+            MTCompanyInvalidLogoUrl,
         ):
             assert issubclass(exception, MTInvalidCompanyException)

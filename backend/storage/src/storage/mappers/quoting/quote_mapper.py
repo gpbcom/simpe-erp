@@ -6,6 +6,7 @@ from typing import ClassVar, List, Optional
 from uuid import uuid4
 
 # First-party imports
+from models.planning.planning_run.unplaced_quote import UnplacedQuote
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
@@ -220,6 +221,11 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
             submitted_at=self.timestamps.to_utc(row.submitted_at),
             validated_by=row.validated_by,
             validated_at=self.timestamps.to_utc(row.validated_at),
+            planning_feedback=(
+                UnplacedQuote.model_validate(row.planning_feedback)
+                if row.planning_feedback
+                else None
+            ),
             interrupted_on=row.interrupted_on,
             auto_renew=row.auto_renew,
             renewed_from_id=row.renewed_from_id,
@@ -253,6 +259,11 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
         row.submitted_at = model.submitted_at
         row.validated_by = model.validated_by
         row.validated_at = model.validated_at
+        row.planning_feedback = (
+            model.planning_feedback.model_dump(mode="json")
+            if model.planning_feedback is not None
+            else None
+        )
         row.interrupted_on = model.interrupted_on
         row.auto_renew = model.auto_renew
         row.renewed_from_id = model.renewed_from_id

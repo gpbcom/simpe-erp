@@ -246,11 +246,39 @@ middleware and refuses a session token. → [11](11-security.md)
 ## People and workforce
 
 **Customers** — `/api/v1/customers`, all `manager`: full CRUD, plus
-`PATCH /{id}/status` and `GET /{id}/quotes`. `DELETE` answers **202** with the
-replan it queued, or **204** when the customer had no future visit — and it
-takes **every quote written for them** with it. Erasing commercial history is
-irreversible, so the screen counts the quotes before it asks; stopping the
-customer remains the reversible answer for one who was really served.
+`PATCH /{id}/status`, `POST /{id}/promote` and `GET /{id}/quotes`. `DELETE`
+answers **202** with the replan it queued, or **204** when the customer had no
+future visit — and it takes **every quote written for them** with it. Erasing
+commercial history is irreversible, so the screen counts the quotes before it
+asks; stopping the customer remains the reversible answer for one who was
+really served.
+
+`POST /{id}/promote` takes **no payload** — there is exactly one status a
+promotion leads to, so a body carrying it would only be a way to ask for a
+different one. It answers **409** for anybody who is not a `prospect`, rather
+than succeeding silently: a control that does nothing on the second press is one
+somebody presses twice and then wonders about. A named route rather than one
+value among three on `PATCH /{id}/status`, so the rule lives in one place and
+the log line says *promoted*.
+
+`GET /customers` takes eight optional filters, bound as one `CustomerFilter`
+model: `search`, `status`, `city`, `postal_code`, `email`, `phone`,
+`has_ongoing_arrangement`, `is_geocoded`. An absent field narrows nothing; a
+blank string is the same as absent; a status the system has no word for is
+**422** rather than an empty page, because an empty page is what a valid filter
+matching nobody looks like.
+
+The flags are three-state — `true`, `false`, or absent. `is_geocoded=false` is a
+question worth asking: those are the customers no planning run can ever route
+to. `has_ongoing_arrangement` is defined **server-side** as an accepted quote
+that has not been interrupted on or before today; note this is narrower than the
+drawer's client-side "live" set, which also counts `sent` and
+`pending-validation` because it answers "what is in flight" rather than "who are
+we serving".
+
+The filter model is bound with `Depends()`, not `Annotated[..., Query()]`. Only
+the former flattens it into individual query parameters; the latter binds it as
+one parameter taking a JSON object, which 422s every request the screen sends.
 
 **Assistants** — `/api/v1/hcas`, all `manager`: `POST`, `GET` (with `search`,
 `contract_type`), `GET /{id}`, `DELETE`, and

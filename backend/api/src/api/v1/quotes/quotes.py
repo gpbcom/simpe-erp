@@ -20,7 +20,14 @@ from models.quoting.quote import Quote
 from models.schemas.requests.quoting.quote_create_request import (
     QuoteCreateRequest,
 )
+from models.schemas.requests.quoting.quote_filter import QuoteFilter
+from models.schemas.requests.quoting.quote_header_request import (
+    QuoteHeaderRequest,
+)
 from models.schemas.requests.quoting.quote_lines_request import QuoteLinesRequest
+from models.schemas.requests.quoting.quote_reschedule_request import (
+    QuoteRescheduleRequest,
+)
 from models.schemas.requests.quoting.quote_interruption_request import (
     QuoteInterruptionRequest,
 )
@@ -71,10 +78,11 @@ async def list_quotes(
     customer_id: Optional[str] = Query(default=None),
     quote_status: Optional[QuoteStatus] = Query(default=None, alias="status"),
     authored_by: Optional[str] = Query(default=None),
+    quote_filter: QuoteFilter = Depends(),
     service: QuoteService = Depends(get_quote_service),
     _: User = Depends(get_manager_user),
 ) -> List[Quote]:
-    """List quotes.
+    """List quotes, narrowed by whichever filters were sent.
 
     Args:
         page (int): One-based page number.
@@ -82,22 +90,33 @@ async def list_quotes(
         customer_id (Optional[str]): Restrict to one customer.
         quote_status (Optional[QuoteStatus]): Restrict to one status.
         authored_by (Optional[str]): Restrict to one author's quotes.
+        quote_filter (QuoteFilter): The filters, bound from the query string.
+            Every field is optional and an absent one narrows nothing.
         service (QuoteService): The quote service.
         _ (User): The authenticated caller; enforces manager access.
 
     Returns:
         List[Quote]: The matching quotes.
 
+    Raises:
+        MTInvalidQuoteFilterException: If a filter is malformed; answered as a
+            422.
+
     Notes:
-        Filtering by ``status=pending-validation`` is what the manager's
-        validation queue is: the quotes an assistant has submitted and nobody
-        has ruled on yet.
+        - Filtering by ``status=pending-validation`` is what the manager's
+          validation queue is: the quotes an assistant has submitted and nobody
+          has ruled on yet.
+        - The three older query parameters stay, and the filter carries the
+          same names. They are passed on separately rather than merged here,
+          because the store is where the rule about which one wins belongs —
+          and for ``authored_by`` that rule is a permission, not a preference.
     """
     return await service.list(
         page=page,
         size=size,
         customer_id=customer_id,
         status=quote_status,
+        quote_filter=quote_filter,
         authored_by=authored_by,
     )
 
@@ -128,6 +147,63 @@ async def run_renewals(
     """
     logger.info("Running the renewal sweep.")
     return await service.renew_due()
+
+
+@router.post("/{quote_id}/reschedule", response_model=Quote)
+async def reschedule_quote_line(
+    quote_id: str,
+    request: QuoteRescheduleRequest,
+    service: QuoteService = Depends(get_quote_service),
+    caller: User = Depends(get_manager_user),
+) -> Quote:
+    """Move one line onto a time the planner offered, and reprice.
+
+    Args:
+        quote_id (str): The quote to change.
+        request (QuoteRescheduleRequest): The line, the day and the window.
+        service (QuoteService): The quote service.
+        caller (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        Quote: The repriced quote, still waiting to be validated.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteLineNotFound: If the quote no longer carries that line;
+            answered as a 404.
+        MTQuoteLineWindowTooShort: If the window is narrower than the work
+            takes; answered as a 422.
+        MTPricingUnknownInterventionType: If the line names a type that is not
+            in the catalogue; answered as a 422.
+
+    Notes:
+        - **This is how the slots on the validation screen become clickable.**
+          A planner that returned a quote also offers the times somebody
+          qualified is free; accepting one here writes the new day and window
+          onto the line it belongs to.
+        - **The status does not move.** Accepting a time answers *when* the
+          work happens, not *whether* the agency has agreed to it — so the
+          quote stays in the validation queue and a manager still has to
+          validate it.
+        - The offered slot names an assistant and this route ignores it. A
+          quote records what is sold and when; who does it is the planner's to
+          decide on the next run, and storing a preference the run need not
+          honour would be a promise nothing keeps.
+    """
+    logger.info(
+        "%s is moving line %s of quote %s to %s.",
+        caller.email,
+        request.quote_line_id,
+        quote_id,
+        request.day,
+    )
+    return await service.reschedule_line(
+        quote_id=quote_id,
+        quote_line_id=request.quote_line_id,
+        day=request.day,
+        start_minute=request.start_minute,
+        end_minute=request.end_minute,
+    )
 
 
 @router.post("/{quote_id}/interrupt", response_model=Quote)
@@ -272,6 +348,49 @@ async def replace_quote_lines(
         on the customer's behalf.
     """
     return await service.replace_lines(quote_id, payload.lines)
+
+
+@router.patch("/{quote_id}", response_model=Quote)
+async def update_quote_header(
+    quote_id: str,
+    payload: QuoteHeaderRequest,
+    service: QuoteService = Depends(get_quote_service),
+    _: User = Depends(get_manager_user),
+) -> Quote:
+    """Change a quote's reference, customer, dates and renewal flag.
+
+    Args:
+        quote_id (str): The quote to change.
+        payload (QuoteHeaderRequest): The header as it should now read.
+        service (QuoteService): The quote service.
+        _ (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        Quote: The updated quote.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists; answered as a 404.
+
+    Notes:
+        Everything a screen shows about a quote is editable somewhere, and
+        this route holds the part that is neither a line nor a status. The
+        lines have their own route because replacing them reprices the quote;
+        the status has one route per transition, because "send", "validate"
+        and "accept" mean different things and are not interchangeable with
+        setting a field.
+
+        Unlike the lines route, this one is **not** restricted by status. A
+        quote the planner sent back for validation is exactly the one somebody
+        needs to correct, and it is past draft by definition.
+    """
+    return await service.update_header(
+        quote_id,
+        payload.reference,
+        payload.customer_id,
+        payload.issued_on,
+        payload.valid_until,
+        payload.auto_renew,
+    )
 
 
 @router.post("/{quote_id}/price", response_model=Quote)

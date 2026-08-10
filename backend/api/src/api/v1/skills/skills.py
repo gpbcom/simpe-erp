@@ -15,6 +15,7 @@ from api.dependencies import (
 )
 from models.auth.user import User
 from models.catalog.skill_type import SkillType
+from models.schemas.requests.catalog.skill_type_filter import SkillTypeFilter
 from models.schemas.requests.catalog.skill_type_update_request import (
     SkillTypeUpdateRequest,
 )
@@ -30,6 +31,7 @@ async def list_skill_types(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=100, ge=1, le=500),
     include_inactive: bool = Query(default=False),
+    skill_filter: SkillTypeFilter = Depends(),
     service: SkillTypeService = Depends(get_skill_type_service),
     _: User = Depends(get_current_user),
 ) -> List[SkillType]:
@@ -39,6 +41,8 @@ async def list_skill_types(
         page (int): One-based page number.
         size (int): Page size.
         include_inactive (bool): Whether retired entries are included.
+        skill_filter (SkillTypeFilter): The filters, bound from the query string.
+            Every field is optional and an absent one narrows nothing.
         service (SkillTypeService): The catalogue service.
         _ (User): The authenticated caller.
 
@@ -55,7 +59,12 @@ async def list_skill_types(
         Retired entries are hidden unless asked for, so the picker offers only
         what may still be declared.
     """
-    return await service.list(page=page, size=size, include_inactive=include_inactive)
+    return await service.list(
+        page=page,
+        size=size,
+        include_inactive=include_inactive,
+        skill_filter=skill_filter,
+    )
 
 
 @router.post("", response_model=SkillType, status_code=status.HTTP_201_CREATED)
@@ -159,7 +168,5 @@ async def delete_skill_type(
         would leave a requirement pointing at nothing, and a requirement
         pointing at nothing fails every planning run it touches.
     """
-    logger.info(
-        "Deleting skill type %s at the request of %s.", type_id, caller.email
-    )
+    logger.info("Deleting skill type %s at the request of %s.", type_id, caller.email)
     await service.delete(type_id)

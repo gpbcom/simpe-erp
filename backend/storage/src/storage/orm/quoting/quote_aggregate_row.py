@@ -36,17 +36,15 @@ class QuoteAggregateRow(Base):
         quote (QuoteRow): The owning quote.
 
     Notes:
-        Derived from the lines, but persisted. A reprinted quote must show what
-        it showed when issued, and recomputing would pick up a type that has
-        since been renamed or repriced.
-
-        The type's name is a **copy**, and there is deliberately no foreign key
-        on ``intervention_type_id`` here: the aggregate is a printed figure,
-        not a live reference, and the line table already holds the constraint.
-
-        ``(quote_id, intervention_type_id, iso_year, iso_week)`` is unique —
-        one row per type per week is the whole point, and a duplicate would
-        double a subtotal on the printed quote.
+        - Derived from the lines, but persisted. A reprinted quote must show what
+          it showed when issued, and recomputing would pick up a type that has
+          since been renamed or repriced.
+        - The type's name is a **copy**, and there is deliberately no foreign key
+          on ``intervention_type_id`` here: the aggregate is a printed figure,
+          not a live reference, and the line table already holds the constraint.
+        - ``(quote_id, intervention_type_id, iso_year, iso_week)`` is unique —
+          one row per type per week is the whole point, and a duplicate would
+          double a subtotal on the printed quote.
     """
 
     __tablename__ = "quote_type_week_aggregates"

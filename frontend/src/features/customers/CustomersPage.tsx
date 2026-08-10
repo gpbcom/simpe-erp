@@ -2,24 +2,23 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import IconButton from '@mui/material/IconButton';
-import InputAdornment from '@mui/material/InputAdornment';
 import Stack from '@mui/material/Stack';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
-import SearchIcon from '@mui/icons-material/Search';
 import { useCustomerQuotes, useCustomers, useDeleteCustomer } from '@/api/queries';
 import { CustomerDetailDrawer } from './CustomerDetailDrawer';
 import { CustomerDialog } from './CustomerDialog';
+import { CustomerFilterBar } from './CustomerFilterBar';
+import { CustomerStatusChip } from './CustomerStatusChip';
+import { useCustomerFilter } from './useCustomerFilter';
 import type { Customer } from '@/api/types';
 
 /**
@@ -42,13 +41,18 @@ import type { Customer } from '@/api/types';
  * not already on file. A manager taking a telephone enquiry looks the family up
  * first; putting the button anywhere else would mean leaving the one screen that
  * can answer "do we already know them?" in order to say that we do not.
+ *
+ * **The filters live in the URL**, not in this component's state, so a narrowed
+ * book is a link somebody can send. They are applied by the server: the grid
+ * holds one page, and a filter run in the browser would search the rows it
+ * happens to have and quietly miss the rest.
  */
 export function CustomersPage() {
   const { t } = useTranslation();
-  const [search, setSearch] = useState('');
+  const filter = useCustomerFilter();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Customer | null>(null);
-  const { data: customers, isLoading } = useCustomers(search || undefined);
+  const { data: customers, isLoading } = useCustomers(filter.filter);
   const [removing, setRemoving] = useState<Customer | null>(null);
   const [removalError, setRemovalError] = useState<string | null>(null);
   const remove = useDeleteCustomer();
@@ -93,12 +97,9 @@ export function CustomersPage() {
       width: 140,
       sortable: false,
       renderCell: (params) => (
-        <Chip
-          size="small"
-          variant={params.row.registration_status === 'active' ? 'filled' : 'outlined'}
-          color={params.row.registration_status === 'active' ? 'success' : 'default'}
-          label={t(`customer.status_${params.row.registration_status}`)}
-          data-testid={`customer-status-${params.row.id}`}
+        <CustomerStatusChip
+          status={params.row.registration_status}
+          testId={`customer-status-${params.row.id}`}
         />
       ),
     },
@@ -134,27 +135,13 @@ export function CustomersPage() {
       <Typography variant="h1">{t('nav.customers')}</Typography>
 
       <Stack
-        direction={{ xs: 'column', sm: 'row' }}
+        direction={{ xs: 'column', md: 'row' }}
         spacing={2}
-        alignItems={{ sm: 'center' }}
+        alignItems={{ md: 'flex-start' }}
       >
-        <TextField
-          placeholder={t('customer.search')}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          sx={{ maxWidth: 420, flexGrow: 1 }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            },
-            htmlInput: { 'data-testid': 'customer-search' },
-          }}
-        />
-        <Box sx={{ flexGrow: 1 }} />
+        <Box sx={{ flexGrow: 1 }}>
+          <CustomerFilterBar filter={filter} />
+        </Box>
         <Button
           variant="contained"
           startIcon={<PersonAddIcon />}
@@ -240,7 +227,7 @@ export function CustomersPage() {
         onCreated={(customer) => setSelected(customer)}
       />
 
-      <CustomerDetailDrawer customer={selected} onClose={() => setSelected(null)} />
+      <CustomerDetailDrawer selected={selected} onClose={() => setSelected(null)} />
     </Stack>
   );
 }

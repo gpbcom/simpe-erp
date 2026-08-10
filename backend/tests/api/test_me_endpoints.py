@@ -943,3 +943,186 @@ class TestMyQuotes:
         )
 
         assert response.status_code == 403
+
+
+class TestMyCompanyBankingDetails:
+    """Tests for the bank account an administrator records on their agency."""
+
+    def test_an_iban_and_bic_reach_the_service(self) -> None:
+        """A customer told what to pay has to be told where to send it."""
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=_company())
+        companies.update = AsyncMock(side_effect=lambda _id, company: company)
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company",
+            json={
+                "name": "Aide Domicile Paris",
+                "iban": "FR76 3000 6000 0112 3456 7890 189",
+                "bic": "bnpafrpp",
+            },
+        )
+
+        assert response.status_code == 200
+        written = companies.update.await_args.args[1]
+        assert written.iban == "FR7630006000011234567890189"
+        assert written.bic == "BNPAFRPP"
+
+    def test_an_iban_that_fails_its_checksum_is_refused(self) -> None:
+        """The model's rule is what the route enforces, and it answers 422.
+
+        Notes:
+            The digits are transposed, not missing — the payload satisfies
+            every shape rule and fails only the check digits, which is exactly
+            the mistake somebody makes copying an account number by hand.
+        """
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=_company())
+        companies.update = AsyncMock(side_effect=lambda _id, company: company)
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company",
+            json={"name": "Aide Domicile Paris", "iban": "FR7630006000011234567809189"},
+        )
+
+        assert response.status_code == 422
+        companies.update.assert_not_awaited()
+
+    def test_the_administrator_reads_their_own_account_whole(self) -> None:
+        """**The one route that hands back an unmasked IBAN.**
+
+        Notes:
+            An administrator has to be able to read it back to correct it. The
+            agency routes a manager can reach return a masked projection
+            instead — see the company-endpoint tests.
+        """
+        companies = MagicMock()
+        companies.get = AsyncMock(
+            return_value=_company().model_copy(
+                update={"iban": "FR7630006000011234567890189"}
+            )
+        )
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).get(
+            "/api/v1/me/company"
+        )
+
+        assert response.json()["iban"] == "FR7630006000011234567890189"
+
+    def test_the_payload_cannot_carry_a_logo_url(self) -> None:
+        """**The logo is written only by the route that uploads it.**
+
+        Notes:
+            Accepting one here would let a hand-crafted payload point the field
+            at an image this application does not own — and the delete path
+            would then be asked to remove an object belonging to somebody else.
+        """
+        existing = _company()
+        companies = MagicMock()
+        companies.get = AsyncMock(return_value=existing)
+        companies.update = AsyncMock(side_effect=lambda _id, company: company)
+
+        _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company",
+            json={"name": "Renamed", "logo_url": "https://evil.example/x.png"},
+        )
+
+        assert companies.update.await_args.args[1].logo_url is None
+
+
+class TestMyCompanyLogo:
+    """Tests for the agency's visual identity."""
+
+    def test_an_upload_is_handed_to_the_service_as_bytes(self) -> None:
+        """The route reads the file and lets the service place it."""
+        stored = _company().model_copy(
+            update={
+                "logo_url": (
+                    "https://minio.internal/simple-erp/company-logos/company-1/a.png"
+                )
+            }
+        )
+        companies = MagicMock()
+        companies.set_logo = AsyncMock(return_value=stored)
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company/logo",
+            files={
+                "logo": ("mark.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 8, "image/png")
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["logo_url"] == stored.logo_url
+        assert companies.set_logo.await_args.args[0] == "company-1"
+        assert companies.set_logo.await_args.args[1].startswith(b"\x89PNG")
+
+    def test_a_logo_can_be_removed(self) -> None:
+        """Clearing hands back the agency with no image."""
+        companies = MagicMock()
+        companies.clear_logo = AsyncMock(return_value=_company())
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).delete(
+            "/api/v1/me/company/logo"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["logo_url"] is None
+        companies.clear_logo.assert_awaited_once_with("company-1")
+
+    @pytest.mark.parametrize(
+        "failure,expected",
+        [
+            pytest.param(MTS3PayloadTooLarge("too big"), 413, id="Too large"),
+            pytest.param(
+                MTS3UnsupportedContentType("not an image"), 415, id="Not an image"
+            ),
+        ],
+    )
+    def test_a_refused_upload_carries_its_own_status(
+        self, failure: Exception, expected: int
+    ) -> None:
+        """The object store's refusals reach the client as themselves.
+
+        Args:
+            failure (Exception): What the service raises.
+            expected (int): The status the handler maps it to.
+        """
+        companies = MagicMock()
+        companies.set_logo = AsyncMock(side_effect=failure)
+
+        response = _client(_user(UserRole.ADMIN), companies=companies).put(
+            "/api/v1/me/company/logo",
+            files={"logo": ("x.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        )
+
+        assert response.status_code == expected
+
+    @pytest.mark.parametrize("method", ["PUT", "DELETE"])
+    def test_both_logo_routes_are_administrator_gated(self, method: str) -> None:
+        """**A logo is how the agency identifies itself on every quote.**
+
+        Args:
+            method (str): The verb under test.
+
+        Notes:
+            Asserted against the route's declared dependencies, as the sibling
+            company test explains: ``get_admin_user`` reads the account from
+            request state, so calling the route on a bare client would answer
+            500 for a reason that has nothing to do with the role.
+        """
+        matching = [
+            route
+            for route in me_router.routes
+            if getattr(route, "path", None) == "/api/v1/me/company/logo"
+            and method in getattr(route, "methods", set())
+        ]
+        assert matching, f"No {method} /api/v1/me/company/logo route is registered."
+
+        guards = {
+            dependency.call
+            for dependency in matching[0].dependant.dependencies
+            if dependency.call is not None
+        }
+        assert get_admin_user in guards
+        assert get_current_user not in guards

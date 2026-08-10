@@ -37,7 +37,11 @@ from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.quoting.quote import Quote
-from service.customers.exceptions import MTCustomerHasQuotes, MTCustomerNotFound
+from service.customers.exceptions import (
+    MTCustomerHasQuotes,
+    MTCustomerNotFound,
+    MTCustomerNotPromotable,
+)
 from service.hcas.exceptions import MTHcaForbidden, MTHcaNotFound
 
 CUSTOMER_PAYLOAD = {
@@ -181,6 +185,7 @@ def customers() -> AsyncMock:
     stub.list.return_value = [_customer()]
     stub.update.return_value = _customer()
     stub.set_status.return_value = _customer()
+    stub.promote.return_value = _customer()
     stub.quotes_for.return_value = [
         Quote(
             company_id="company-1",
@@ -355,6 +360,189 @@ class TestCustomerEndpoints:
             date(2026, 8, 10),
             date(2026, 8, 14),
         )
+
+
+class TestCustomerFiltering:
+    """Tests for what the customers screen sends in the query string.
+
+    Notes:
+        The filters are a Pydantic model bound with ``Depends()``, which is what
+        flattens them into individual query parameters. Bound the other
+        documented way they would arrive as one parameter taking a JSON object
+        and every request here would answer 422 — so these tests are as much
+        about the binding as about the filters.
+    """
+
+    def test_the_status_filter_reaches_the_service(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """``?status=prospect`` arrives as the enum member."""
+        response = _client(customers, hcas).get("/api/v1/customers?status=prospect")
+
+        assert response.status_code == 200
+        applied = customers.list.await_args.kwargs["customer_filter"]
+        assert applied.status is RegistrationStatus.PROSPECT
+
+    def test_every_filter_survives_the_query_string(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """All eight arrive together and none of them is dropped.
+
+        Args:
+            customers (AsyncMock): The stubbed customer service.
+            hcas (AsyncMock): The stubbed assistant service.
+
+        Notes:
+            Sent as one request rather than eight, because what has actually
+            broken here is the *binding* — a model bound the wrong way fails for
+            all of them at once, and a per-filter test would say so eight times.
+        """
+        response = _client(customers, hcas).get(
+            "/api/v1/customers?search=Durand&status=active&city=Paris"
+            "&postal_code=75004&email=example.com&phone=0612"
+            "&has_ongoing_arrangement=true&is_geocoded=false"
+        )
+
+        assert response.status_code == 200
+        assert customers.list.await_args.kwargs["customer_filter"].model_dump() == {
+            "search": "Durand",
+            "status": RegistrationStatus.ACTIVE,
+            "city": "Paris",
+            "postal_code": "75004",
+            "email": "example.com",
+            "phone": "0612",
+            "has_ongoing_arrangement": True,
+            "is_geocoded": False,
+        }
+
+    def test_a_false_flag_is_a_filter_rather_than_an_absence(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """**``?is_geocoded=false`` must not read as "no filter".**
+
+        Args:
+            customers (AsyncMock): The stubbed customer service.
+            hcas (AsyncMock): The stubbed assistant service.
+
+        Notes:
+            "Whose address failed to resolve" is the question this filter exists
+            to answer — those are the customers nothing can ever be planned for.
+            Read as an absence it would return the whole book instead, which
+            looks like a filter that does not work rather than a wrong one.
+        """
+        _client(customers, hcas).get("/api/v1/customers?is_geocoded=false")
+
+        assert customers.list.await_args.kwargs["customer_filter"].is_geocoded is False
+
+    def test_an_unfiltered_list_narrows_nothing(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """Opening the screen shows the whole book."""
+        _client(customers, hcas).get("/api/v1/customers")
+
+        assert customers.list.await_args.kwargs["customer_filter"].is_empty()
+
+    def test_an_unknown_status_answers_422(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A status the system has no word for is refused, not ignored.
+
+        Args:
+            customers (AsyncMock): The stubbed customer service.
+            hcas (AsyncMock): The stubbed assistant service.
+
+        Notes:
+            422 rather than an empty page: an empty page is what a valid filter
+            matching nobody looks like, and the two must not be confusable.
+        """
+        response = _client(customers, hcas).get("/api/v1/customers?status=lapsed")
+
+        assert response.status_code == 422
+        customers.list.assert_not_awaited()
+
+
+class TestCustomerPromotion:
+    """Tests for the route that puts a customer into the planning."""
+
+    def test_promoting_a_prospect_answers_200(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """The ordinary case works, and needs no payload."""
+        response = _client(customers, hcas).post("/api/v1/customers/customer-1/promote")
+
+        assert response.status_code == 200
+        customers.promote.assert_awaited_once_with("customer-1")
+
+    def test_promoting_somebody_who_is_not_a_prospect_answers_409(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A refused transition is a conflict, not a bad request.
+
+        Args:
+            customers (AsyncMock): The stubbed customer service.
+            hcas (AsyncMock): The stubbed assistant service.
+
+        Notes:
+            The request is well formed and the caller is allowed to make it;
+            what refuses is the customer's current state. 400 would send the
+            screen looking for a mistake in what it sent.
+        """
+        customers.promote.side_effect = MTCustomerNotPromotable("already active")
+
+        response = _client(customers, hcas).post("/api/v1/customers/customer-1/promote")
+
+        assert response.status_code == 409
+
+    def test_promoting_an_absent_customer_answers_404(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A typo in the identifier is reported as such."""
+        customers.promote.side_effect = MTCustomerNotFound("no such customer")
+
+        response = _client(customers, hcas).post("/api/v1/customers/ghost/promote")
+
+        assert response.status_code == 404
+
+    def test_the_promote_route_is_mounted(self) -> None:
+        """A route written but never included would pass every test above.
+
+        Notes:
+            The tests above mount the router by hand; this reads the real
+            application, where a missing ``include_router`` is the one failure
+            a hand-built app cannot see.
+        """
+        from api.main import app
+
+        assert "/api/v1/customers/{customer_id}/promote" in app.openapi()["paths"]
+
+    def test_only_a_manager_may_promote(self) -> None:
+        """**The guard is asserted on the route, not on an override.**
+
+        Notes:
+            Every test above overrides ``get_manager_user``, which is what lets
+            them run without an authentication stack — and which means none of
+            them would notice the guard being dropped. This reads the dependency
+            graph of the very router object the application includes. Manager
+            access is manager *and* administrator: the roles are ranked and an
+            administrator outranks a manager.
+
+            Read from the router rather than from ``app.routes``, because this
+            FastAPI represents an included router as one opaque entry and the
+            leaf routes are not reachable from the application object.
+        """
+        matching = [
+            route
+            for route in customers_router.routes
+            if getattr(route, "path", None) == "/api/v1/customers/{customer_id}/promote"
+        ]
+        assert matching, "The promote route is not on the router."
+
+        guards = {
+            dependency.call
+            for dependency in matching[0].dependant.dependencies
+            if dependency.call is not None
+        }
+        assert get_manager_user in guards
 
 
 class TestHcaEndpoints:

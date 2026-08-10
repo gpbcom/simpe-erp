@@ -23,6 +23,7 @@ from models.people.hca.certification import Certification
 from models.people.hca.driving_license import DrivingLicense
 from models.people.hca.skill import Skill
 from models.people.hca import Hca
+from models.schemas.requests.hca.hca_filter import HcaFilter
 from models.people.hca_application import HcaApplication
 from service.auth.auth import AuthService
 from service.companies.exceptions import (
@@ -367,6 +368,7 @@ class HcaService:
         size: Optional[int] = None,
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
+        hca_filter: Optional[HcaFilter] = None,
     ) -> List[Hca]:
         """Return a page of assistants.
 
@@ -375,13 +377,18 @@ class HcaService:
             size (Optional[int]): Page size.
             search (Optional[str]): Case-insensitive fragment.
             contract_type (Optional[ContractType]): Restrict to one contract.
+            hca_filter (Optional[HcaFilter]): The screen's filter.
 
         Returns:
             List[Hca]: The matching assistants.
         """
         self.logger.debug("Listing assistants: page=%d search=%r.", page, search)
         return await self.hcas.list(
-            page=page, size=size, search=search, contract_type=contract_type
+            page=page,
+            size=size,
+            search=search,
+            contract_type=contract_type,
+            hca_filter=hca_filter,
         )
 
     async def set_employment(

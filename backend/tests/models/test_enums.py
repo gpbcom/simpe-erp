@@ -191,9 +191,31 @@ class TestEnums:
         """The contract catalog is exactly CDI, CDD, interim and internship."""
         assert set(ContractType.values()) == {"cdi", "cdd", "interim", "internship"}
 
-    def test_registration_statuses_are_active_and_stopped(self) -> None:
-        """A customer is either active or stopped."""
-        assert set(RegistrationStatus.values()) == {"active", "stopped"}
+    def test_registration_statuses_are_active_prospect_and_stopped(self) -> None:
+        """A customer is active, a prospect, or stopped."""
+        assert set(RegistrationStatus.values()) == {"active", "prospect", "stopped"}
+
+    @pytest.mark.parametrize(
+        ("status", "expected"),
+        [
+            pytest.param(RegistrationStatus.ACTIVE, True, id="active"),
+            pytest.param(RegistrationStatus.PROSPECT, False, id="prospect"),
+            pytest.param(RegistrationStatus.STOPPED, False, id="stopped"),
+        ],
+    )
+    def test_can_be_scheduled(self, status: RegistrationStatus, expected: bool) -> None:
+        """Only an active customer may be given planned visits.
+
+        Args:
+            status (RegistrationStatus): The status under test.
+            expected (bool): Whether the planner may place their work.
+
+        Notes:
+            A prospect is the member this predicate exists for: they may be
+            quoted, and their accepted work is still left out of every run
+            until somebody promotes them.
+        """
+        assert status.can_be_scheduled() is expected
 
     def test_quote_statuses_include_accepted(self) -> None:
         """Accepted is the status the planning computation selects on."""

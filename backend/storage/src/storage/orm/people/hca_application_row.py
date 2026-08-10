@@ -40,19 +40,17 @@ class HcaApplicationRow(Base):
         updated_at (datetime): Last-update timestamp.
 
     Notes:
-        ``email`` is **not** unique here, unlike on ``users``. Somebody
-        declined by one agency may apply to another, and somebody whose
-        application lapsed may apply again; a unique index would refuse both.
-        Uniqueness is enforced where it belongs, on the account created at
-        approval.
-
-        ``company_id`` restricts on delete rather than cascading. A company
-        with applications against it has a decision history, and removing the
-        row would silently take that with it.
-
-        ``hashed_password`` holds a hash, never a password. An application can
-        wait days for a decision, and a plaintext credential waiting days is a
-        plaintext credential in every backup taken meanwhile.
+        - ``email`` is **not** unique here, unlike on ``users``. Somebody
+          declined by one agency may apply to another, and somebody whose
+          application lapsed may apply again; a unique index would refuse both.
+          Uniqueness is enforced where it belongs, on the account created at
+          approval.
+        - ``company_id`` restricts on delete rather than cascading. A company
+          with applications against it has a decision history, and removing the
+          row would silently take that with it.
+        - ``hashed_password`` holds a hash, never a password. An application can
+          wait days for a decision, and a plaintext credential waiting days is a
+          plaintext credential in every backup taken meanwhile.
     """
 
     __tablename__ = "hca_applications"

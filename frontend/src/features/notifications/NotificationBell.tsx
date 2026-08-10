@@ -51,7 +51,7 @@ export function NotificationBell() {
   useEffect(() => {
     if (!user) return undefined;
     return openNotificationStream(() => {
-      void client.invalidateQueries({ queryKey: keys.notifications });
+      void client.invalidateQueries({ queryKey: ['notifications'] });
       void client.invalidateQueries({ queryKey: keys.unreadCount });
     });
   }, [client, user]);
@@ -62,7 +62,7 @@ export function NotificationBell() {
       void request(`/api/v1/notifications/${notification.id}/read`, {
         method: 'POST',
       }).then(() => {
-        void client.invalidateQueries({ queryKey: keys.notifications });
+        void client.invalidateQueries({ queryKey: ['notifications'] });
         void client.invalidateQueries({ queryKey: keys.unreadCount });
       });
     }

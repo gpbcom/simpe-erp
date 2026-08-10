@@ -77,13 +77,12 @@ workerPlanning:
     queuePattern: "^planning-runs\\.(?!.*\\.dlx$).*"
     messagesPerReplica: 2
     pollingInterval: 15
-    # Longer than the solver's budget, so a draining queue does not evict a pod
-    # part-way through a solve. This said 120, which was written when a solve
-    # was assumed to take thirty seconds; a budget of 150.0 at about fourteen
-    # seconds a unit is nearer forty minutes, so the old value could evict a
-    # pod eighteen times over inside one run — and each eviction repeats the
-    # whole solve on another replica rather than losing it.
-    cooldownPeriod: 2700
+    # Longer than a whole run, so a draining queue does not evict a pod
+    # part-way through one — each eviction repeats the solve on another
+    # replica rather than losing it. A measured 150-visit week now takes
+    # about a minute, so five is generous without being the forty minutes
+    # this had to allow for before the days were solved separately.
+    cooldownPeriod: 300
     scaleDownStabilizationSeconds: 300
   resources:
     # Guaranteed QoS: requests equal limits. The solver's budget is wall-clock,
@@ -91,26 +90,31 @@ workerPlanning:
     # cgroup and thirty seconds of budget takes a minute of real time.
     requests: {cpu: 8, memory: 2Gi}
     limits: {cpu: 8, memory: 2Gi}
-  # Must equal the CPU above. There is a test in the chart that fails if it
-  # does not.
-  #
-  # Eight, not two, and the cores above were raised to match. One worker
-  # cannot place the seeded week at any budget tried, and two is nearer to
-  # one than to eight; the measurements in backend/conf/app.yaml record
-  # eight workers placing it every time and roughly halving the travel. A
-  # chart that renders is not the same as a chart that plans, and this
-  # shipped a worker count measured to fail.
-  solverWorkers: 8
-  # The reproducible search budget, in solver work units. This is the setting
-  # that decides whether a week's work all gets placed, and it is the one the
-  # chart used to omit entirely — see templates/common/config.yaml. Keep it in
-  # step with backend/conf/app.yaml, which carries the sizing measurements.
-  solverDeterministicBudget: 150.0
-  # The wall-clock safety net. It must stay above the time the budget above
-  # actually takes, or every solve is truncated at the net instead of finishing
-  # its budget, and no two runs of one week agree — which is exactly what the
-  # config files shipped, at 900.0 against a budget costing some 1440s.
-  solverTimeLimitSeconds: 3600.0
+  # Search threads **per day model**, not per run. One, because the models
+  # are now one day each and small enough that a second thread buys little —
+  # and because a single worker is what makes a re-planned week return the
+  # same answer instead of a different one. Parallelism comes from
+  # solverDayConcurrency below, which does not race: the days are
+  # independent problems, so solving them at once cannot change the answer.
+  solverWorkers: 1
+  # How many days are solved at once. The CPU a run demands is this times
+  # solverWorkers, and the guard checks that product against the limit above.
+  solverDayConcurrency: 8
+  # The reproducible search budget, in solver work units, **spent once per
+  # day**. It was 150.0 when one model covered the whole period; left there,
+  # a five-day week cost five times 150. Keep it in step with
+  # backend/conf/app.yaml, which carries the sizing measurements.
+  solverDeterministicBudget: 5.0
+  # The second pass's budget: shortening the rounds once everything is
+  # placed. Spending it without proving the travel minimal keeps the
+  # plan and records it as unoptimised; nothing goes unscheduled.
+  solverOptimisationBudget: 5.0
+  # The wall-clock safety net for **one day**. It must stay above what the
+  # budget above actually costs, or every solve is truncated at the net
+  # instead of finishing its budget and no two runs of one week agree —
+  # which is exactly what shipped once, at 900.0 against a budget costing
+  # some 1440s.
+  solverTimeLimitSeconds: 300.0
   solverSeed: 0
   # The default is thirty seconds, which is exactly the solve budget — so
   # Kubernetes would SIGKILL mid-solve on every scale-down.
