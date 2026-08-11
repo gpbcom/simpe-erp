@@ -582,6 +582,72 @@ class TestInterventionRepository:
         )
         assert sorted(hca_ids) == sorted([first, second])
 
+    async def test_a_customer_s_visits_are_readable_over_a_period(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """What billing charges for: the hours actually worked, and by whom.
+
+        Notes:
+            Scoped by customer *and* by period, which is what keeps it inside
+            the rule the repository sets for itself — there is deliberately no
+            "every intervention" query. This is :meth:`list_for_hca` with the
+            other party named.
+        """
+        first = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        second = await _hca(session, hca_kwargs, "ana.lopez@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            "company-1",
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(first, run.id, start=time(11, 0), name="Courses"),
+                _visit(second, run.id, start=time(9, 0), name="Toilette"),
+            ],
+        )
+
+        visits = await repository.list_for_customer(
+            "customer-1", MONDAY, date(2026, 8, 9)
+        )
+
+        assert [visit.name for visit in visits] == ["Toilette", "Courses"]
+        assert visits[0].hca_full_name == "Luc Martin"
+
+    async def test_another_customer_s_visits_are_not_returned(
+        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+    ) -> None:
+        """One customer's invoice must never charge for another's care."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+
+        assert (
+            await repository.list_for_customer("customer-2", MONDAY, date(2026, 8, 9))
+            == []
+        )
+
+    async def test_a_customer_with_no_planned_visit_reads_as_empty(
+        self, session: AsyncSession
+    ) -> None:
+        """A period nobody planned is empty, not an error.
+
+        Notes:
+            Billing still issues an invoice for such a period — the work was
+            sold whether or not the solver ever placed it — so this has to be a
+            usable answer rather than a failure.
+        """
+        assert (
+            await InterventionRepository(session).list_for_customer(
+                "customer-1", MONDAY, date(2026, 8, 9)
+            )
+            == []
+        )
+
     async def test_a_visit_cannot_name_an_absent_assistant(
         self, session: AsyncSession
     ) -> None:

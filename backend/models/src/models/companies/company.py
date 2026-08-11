@@ -28,6 +28,7 @@ from models.companies.exceptions import (
     MTCompanyInvalidRcsNumber,
     MTCompanyInvalidRegistrationNumber,
     MTCompanyInvalidShareCapital,
+    MTCompanyInvalidSapDeclarationNumber,
     MTCompanyInvalidVatNumber,
 )
 from models.geo.postal_address import PostalAddress
@@ -83,6 +84,7 @@ class Company(BaseModel):
     MAX_REGISTRATION_LENGTH: ClassVar[int] = 64
     MAX_LEGAL_FORM_LENGTH: ClassVar[int] = 64
     MAX_RCS_LENGTH: ClassVar[int] = 64
+    MAX_SAP_DECLARATION_LENGTH: ClassVar[int] = 64
     #: The longest IBAN any country issues.
     MAX_IBAN_LENGTH: ClassVar[int] = 34
     VAT_NUMBER_PATTERN: ClassVar[str] = r"^[A-Z]{2}[0-9A-Z]{2}[0-9]{9}$"
@@ -111,6 +113,11 @@ class Company(BaseModel):
     vat_number: Optional[str] = Field(
         default=None,
         description="Intra-community VAT number, such as FR12345678901.",
+    )
+    sap_declaration_number: Optional[str] = Field(
+        default=None,
+        description="Services-à-la-personne declaration number, printed on "
+        "invoices so a customer may claim their tax credit.",
     )
     phone_number: Optional[str] = Field(
         default=None,
@@ -493,6 +500,47 @@ class Company(BaseModel):
             raise MTCompanyInvalidVatNumber(
                 f"Invalid vat_number: {value!r}. Must be a country code, a "
                 f"two-character key and nine digits, such as FR12345678901."
+            )
+        return cleaned
+
+    @field_validator("sap_declaration_number", mode="before")
+    def validate_sap_declaration_number(cls, value: Optional[str]) -> Optional[str]:
+        """Validates the services-à-la-personne declaration number.
+
+        Args:
+            value (Optional[str]): Raw ``sap_declaration_number`` value.
+
+        Returns:
+            Optional[str]: The number, upper-cased and stripped of spaces, or
+            ``None``.
+
+        Raises:
+            MTCompanyInvalidSapDeclarationNumber: If the value is not a string,
+                or is longer than a declaration number can be.
+
+        Notes:
+            - Normalised but **not pattern-checked**, unlike the VAT number.
+              The declaration number's format has changed more than once and
+              varies by département, so a shape check would refuse valid numbers
+              — which on this field means silently dropping the line that lets a
+              customer claim their tax credit. Length is the one thing that can
+              be asserted without guessing.
+            - An agency that has not registered simply leaves it unset, and the
+              invoice prints without the mention rather than with an empty one.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise MTCompanyInvalidSapDeclarationNumber(
+                f"Invalid sap_declaration_number: {value!r}. Must be a string or None."
+            )
+        cleaned = value.replace(" ", "").upper()
+        if not cleaned:
+            return None
+        if len(cleaned) > cls.MAX_SAP_DECLARATION_LENGTH:
+            raise MTCompanyInvalidSapDeclarationNumber(
+                f"Invalid sap_declaration_number: {value!r}. Must be at most "
+                f"{cls.MAX_SAP_DECLARATION_LENGTH} characters."
             )
         return cleaned
 

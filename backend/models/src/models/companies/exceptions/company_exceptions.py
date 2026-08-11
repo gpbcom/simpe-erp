@@ -78,3 +78,14 @@ class MTCompanyInvalidLogoUrl(MTInvalidCompanyException):
         remote one would report every viewer to whoever hosts it, and the
         object store could not own the object it is later asked to remove.
     """
+
+
+class MTCompanyInvalidSapDeclarationNumber(MTInvalidCompanyException):
+    """Exception raised when an invalid SAP declaration number is provided.
+
+    Notes:
+        The *services à la personne* declaration number is what lets a customer
+        claim the tax credit an invoice for home care entitles them to, so a
+        malformed one is not a cosmetic defect: it is the one line on the
+        document the customer will be asked to justify.
+    """

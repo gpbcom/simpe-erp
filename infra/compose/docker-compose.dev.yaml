@@ -28,6 +28,7 @@ services:
     environment:
       SIMPLE_ERP_CONFIG: conf/app.dev.yaml
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-simple-erp-dev-webhook}
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-simple-erp-dev-billing-webhook}
       SIMPLE_ERP_LOGGER: ${SIMPLE_ERP_LOGGER:-conf/logger.k8s.yaml}
     depends_on:
       otel-collector:
@@ -59,6 +60,7 @@ services:
     environment:
       SIMPLE_ERP_CONFIG: conf/app.dev.yaml
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-simple-erp-dev-webhook}
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-simple-erp-dev-billing-webhook}
       SIMPLE_ERP_LOGGER: ${SIMPLE_ERP_LOGGER:-conf/logger.k8s.yaml}
     ports:
       - "9101:9100"
@@ -74,9 +76,24 @@ services:
     environment:
       SIMPLE_ERP_CONFIG: conf/app.dev.yaml
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-simple-erp-dev-webhook}
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-simple-erp-dev-billing-webhook}
       SIMPLE_ERP_LOGGER: ${SIMPLE_ERP_LOGGER:-conf/logger.k8s.yaml}
     ports:
       - "9102:9100"
+    volumes:
+      - ../../backend/api/src:/app/api/src
+      - ../../backend/models/src:/app/models/src
+      - ../../backend/service/src:/app/service/src
+      - ../../backend/storage/src:/app/storage/src
+      - ../../backend/worker/src:/app/worker/src
+      - ../../backend/conf:/app/conf
+  worker-billing:
+    environment:
+      SIMPLE_ERP_CONFIG: conf/app.dev.yaml
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-simple-erp-dev-billing-webhook}
+      SIMPLE_ERP_LOGGER: ${SIMPLE_ERP_LOGGER:-conf/logger.k8s.yaml}
+    ports:
+      - "9103:9100"
     volumes:
       - ../../backend/api/src:/app/api/src
       - ../../backend/models/src:/app/models/src

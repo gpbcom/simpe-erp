@@ -22,6 +22,10 @@ Customer ──── Quote ──── QuoteLine ──── InterventionType
 
 PlanningRun ──── Intervention  (one per placed QuoteLine)
 
+BillingRun ───── Bill ──── BillLine ┈┈quote_line_id┈┈▶ QuoteLine
+                   │                ┈┈intervention_id┈▶ Intervention
+                   └──▶ Customer  (RESTRICT)
+
 Notification ──▶ User
 ```
 
@@ -392,6 +396,83 @@ run, and the run's `started_at` is when it came into being.
 
 **`HcaPlanning`** — one assistant's diary over a period.
 
+## Billing
+
+Four tables, written by migration `0023_billing`: `bills`, `bill_lines`,
+`billing_runs` and `billing_settings`.
+
+**`Bill`** (`bills`) — one invoice, for one customer, covering one period. It
+carries its own totals (`total_ht`, `total_vat`, `total_ttc`), the dates that
+matter commercially (`issued_on`, `due_on`, `paid_on`), and a `BillStatus`
+walking `to-be-validated → accepted → waiting-payment → paid`.
+
+**The customer's name and address are copied onto the invoice**, exactly as an
+`Intervention` copies them. Same reason, with more force: an invoice is a
+document that was *sent*, and a household that moves house must not retroactively
+change the address on a bill already in an accountant's file. `customer_id` is
+still there, and its foreign key is `ON DELETE RESTRICT` — the one relationship
+in the schema that refuses to cascade. Everything else about a customer can be
+erased with them; their invoices cannot, because deleting them would destroy the
+agency's accounting record.
+
+Three unique indexes carry three separate rules:
+
+| Index | Rule it enforces |
+|---|---|
+| `ix_bills_number_unique` on `number` | No two invoices share a human-facing number |
+| `ix_bills_sequence_unique` on `(company_id, sequence_year, sequence)` | The yearly series has no gaps and no duplicates, per agency |
+| `ix_bills_customer_period_unique` on `(customer_id, period_start, period_end)` | **A customer is billed once for a period.** This is what makes a re-run safe: a second run over March cannot double-bill, because the database refuses the row |
+
+That third one is the load-bearing one. It is why the billing run can be
+retried after a partial failure without anybody reconciling by hand.
+
+`number` and `sequence` are separate fields on purpose. The sequence is the
+integer the law cares about — unbroken, per year, per agency — and the number is
+what a human reads. Deriving one from the other at read time would make a
+formatting change rewrite invoices that have already been sent.
+
+**`BillLine`** (`bill_lines`) — one charge. `ON DELETE CASCADE` from its bill: a
+line means nothing without the invoice it is on.
+
+It points at `quote_line_id` (what was sold) and optionally
+`intervention_id` (the visit that delivered it), but neither is a foreign key
+with teeth — the line carries its own `name`, `service_date`, `duration_minutes`,
+`hourly_rate_ht`, `vat_rate` and `hca_full_name`, so the invoice still prints
+correctly after a quote is re-priced or a planning run is deleted and recomputed.
+`intervention_id` is nullable because a service can be billed as sold without a
+visit ever having been planned for it.
+
+The VAT rate is **on the line**, not looked up. See the chapter's closing note:
+the same service is necessity care for one customer and comfort care for
+another, so the rate depends on who was billed and when — and an invoice must
+reproduce the tax it actually charged.
+
+**`BillingRun`** (`billing_runs`) — one execution of the billing computation,
+the exact counterpart of `PlanningRun`. It records `reference_date` (the day
+that decides the period), the resolved `period_start`/`period_end`, the
+`bill_ids` it produced and the `failed_customer_ids` it could not bill.
+
+`BillingRunStatus` has five values, and `partial` is the interesting one:
+`pending → running → succeeded | partial | failed`. **This is where billing
+deliberately differs from planning.** A planning run that cannot place
+everything fails outright, because a half-built round sends somebody to the
+wrong door. A billing run that cannot bill three customers out of ninety
+records those three in `failed_customer_ids`, keeps the eighty-seven invoices it
+did produce, and reports `partial` — invoices are independent of one another,
+and withholding eighty-seven correct ones to punish three failures would cost
+the agency a month of cash flow.
+
+**`BillingSettings`** (`billing_settings`) — the agency's invoicing rules, and a
+**singleton row**, like `PlanningSettings`: `periodicity`, `payment_terms_days`,
+`late_penalty_multiplier`, `recovery_indemnity_eur` and `escompte_offered`. The
+last three are French statutory mentions that must appear on every invoice;
+they live in configuration rather than in a template so that a change in the law
+is a form field rather than a deployment.
+
+Settings are read when a bill is *generated* and then copied onto it —
+`due_on` is a stored date, not `issued_on + payment_terms_days` computed at
+read time. Changing the terms must not silently re-date invoices already sent.
+
 ## Notifications
 
 **`Notification`** — something that happened, addressed to **one** account.
@@ -430,6 +511,9 @@ From `backend/models/src/models/enums.py`.
 | `PlanningRunStatus` | `pending`, `running`, `succeeded`, `failed` |
 | `UnplacedReason` | `out-of-radius`, `not-a-working-day`, `no-assistant-available`, `outside-working-day`, `missing-certification`, `missing-skill`, `customer-conflict`, `no-feasible-slot` |
 | `HcaApplicationStatus` | `pending`, `approved`, `rejected` |
+| `BillingPeriodicity` | `weekly`, `monthly`, `yearly` |
+| `BillStatus` | `to-be-validated`, `accepted`, `waiting-payment`, `paid`, with `is_terminal()` |
+| `BillingRunStatus` | `pending`, `running`, `succeeded`, `partial`, `failed`, with `is_terminal()` |
 | `NotificationKind` | `quote-submitted`, `quote-validated`, `quote-refused`, `planning-completed`, `skill-added` |
 | `EventRoutingKey` | `quote.submitted`, `quote.validated`, `quote.refused`, `planning.run.requested`, `planning.run.completed`, `company.created`, `skill.added`, `notification.created` |
 | `Weekday` | `monday` … `sunday` |
@@ -462,6 +546,11 @@ you build a screen around it.
 | 0018 | The agency's legal identity: form, share capital, RCS, VAT number, telephone |
 | 0016 | `company_id` on quotes, planning runs and interventions — the planning computation's own scoping |
 | 0017 | The skill catalogue, self-declared skills, and their requirements |
+| 0019 | The agency's bank details and its logo |
+| 0020 | Whether a planning run's solution was proven optimal |
+| 0021 | The quotes a planning run could not place |
+| 0022 | Planning feedback recorded on the quote |
+| 0023 | Billing: `bills`, `bill_lines`, `billing_runs`, `billing_settings` |
 
 The widening in 0006 is the one to remember. `status` was `String(16)`, sized
 when `accepted` was the longest value; `pending-validation` is eighteen

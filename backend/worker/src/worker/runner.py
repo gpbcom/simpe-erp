@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # First-party imports
 from models.configuration.app_config import AppConfig
 from models.enums import (
+    BillingRunStatus,
     EventRoutingKey,
     NotificationKind,
     PlanningRunStatus,
@@ -20,6 +21,8 @@ from models.enums import (
 )
 from models.messaging.event_envelope import EventEnvelope
 from models.notifications.notification import Notification
+from service.billing.billings import BillingService
+from service.billing.webhook import BillingWebhook
 from service.messaging.consumer import EventConsumer
 from service.messaging.publisher import EventPublisher
 from service.observability.metrics import ApplicationMetrics
@@ -28,6 +31,11 @@ from service.planning.plannings import PlanningService
 from service.planning.webhook import PlanningWebhook
 from storage.db.connection_manager import DatabaseConnectionManager
 from storage.repositories.auth.user import UserRepository
+from storage.repositories.billing.bill import BillRepository
+from storage.repositories.billing.billing_run import BillingRunRepository
+from storage.repositories.billing.billing_settings import (
+    BillingSettingsRepository,
+)
 from storage.repositories.catalog.intervention_type import (
     InterventionTypeRepository,  # noqa: E501
 )
@@ -43,6 +51,7 @@ from storage.repositories.planning.planning_settings import (
     PlanningSettingsRepository,  # noqa: E501
 )
 from storage.repositories.quoting.quote import QuoteRepository
+from storage.s3.s3_storage import S3Storage
 
 
 class WorkerRunner:
@@ -52,16 +61,20 @@ class WorkerRunner:
         PLANNING_QUEUE (ClassVar[str]): Base name of the planning queue.
         NOTIFICATION_QUEUE (ClassVar[str]): Base name of the notification
             queue.
+        BILLING_QUEUE (ClassVar[str]): Base name of the billing queue.
         NOTIFICATION_KEYS (ClassVar[tuple]): The topics the notification queue
             binds.
         config (AppConfig): The whole application configuration.
         publisher (EventPublisher): Announces finished runs and written
             notifications.
         webhook (PlanningWebhook): Announces a finished run to the dispatcher.
+        billing_webhook (BillingWebhook): Announces an approved invoice to
+            whatever emails it.
         manager (DatabaseConnectionManager): The pool every handler draws its
             session from.
         planning (EventConsumer): Consumer for the planning queues.
         notifications (EventConsumer): Consumer for the notification queues.
+        billing (EventConsumer): Consumer for the billing queues.
         lifecycle (EventConsumer): Consumer for ``company.created``.
         logger (Logger): Logger for the worker's lifecycle and its handlers.
 
@@ -69,8 +82,12 @@ class WorkerRunner:
         - **A queue per agency per kind of work.** The planning solve pins a
           core for thirty seconds; sharing a queue with the notification
           fan-out would leave a manager waiting half a minute to be told a
-          quote needs looking at. Splitting again by agency means one agency's
-          backlog or poison message is its own, rather than something every
+          quote needs looking at. Billing is a third shape again — I/O-bound
+          but long, since a monthly close renders and uploads one document per
+          customer — so it gets its own queue rather than parking a month's
+          work at the head of either of the others. Splitting again by agency
+          means one agency's backlog or poison message is its own, rather than
+          something every
           other agency waits behind.
         - The agencies are enumerated once at startup and then kept current by
           the ``company.created`` announcement, so an agency founded through
@@ -117,12 +134,15 @@ class WorkerRunner:
 
     PLANNING_QUEUE: ClassVar[str] = "planning-runs"
     NOTIFICATION_QUEUE: ClassVar[str] = "quote-notifications"
+    BILLING_QUEUE: ClassVar[str] = "billing-runs"
     NOTIFICATION_KEYS: ClassVar[tuple] = (
         EventRoutingKey.QUOTE_SUBMITTED,
         EventRoutingKey.QUOTE_VALIDATED,
         EventRoutingKey.QUOTE_REFUSED,
         EventRoutingKey.PLANNING_RUN_COMPLETED,
         EventRoutingKey.SKILL_ADDED,
+        EventRoutingKey.BILLING_RUN_COMPLETED,
+        EventRoutingKey.BILL_ACCEPTED,
     )
 
     def __init__(
@@ -141,7 +161,7 @@ class WorkerRunner:
                 named after this module.
 
         Notes:
-            Both consumers are constructed whatever the role, and only the one
+            Every consumer is constructed whatever the role, and only the one
             this process serves is ever started. Building them conditionally
             would put a ``None`` behind every attribute and a check in front of
             every use; an unstarted consumer holds no connection and costs
@@ -152,6 +172,7 @@ class WorkerRunner:
         self.logger = logger if logger else getLogger(__name__)
         self.publisher = EventPublisher(config=config.rabbitmq)
         self.webhook = PlanningWebhook(config=config.webhook)
+        self.billing_webhook = BillingWebhook(config=config.billing_webhook)
         self.manager = DatabaseConnectionManager(config=config.database)
         self.metrics = ApplicationMetrics(logger=self.logger)
         self.planning = EventConsumer(
@@ -161,6 +182,12 @@ class WorkerRunner:
             logger=self.logger,
         )
         self.notifications = EventConsumer(
+            config=config.rabbitmq,
+            metrics=self.metrics,
+            role=role.value,
+            logger=self.logger,
+        )
+        self.billing = EventConsumer(
             config=config.rabbitmq,
             metrics=self.metrics,
             role=role.value,
@@ -198,6 +225,8 @@ class WorkerRunner:
         """
         if self.role is WorkerRole.PLANNING:
             self.planning.on(EventRoutingKey.PLANNING_RUN_REQUESTED, self.run_planning)  # noqa: E501
+        elif self.role is WorkerRole.BILLING:
+            self.billing.on(EventRoutingKey.BILLING_RUN_REQUESTED, self.run_billing)
         else:
             self.notifications.on(EventRoutingKey.QUOTE_SUBMITTED, self.quote_submitted)  # noqa: E501
             self.notifications.on(EventRoutingKey.QUOTE_VALIDATED, self.quote_validated)  # noqa: E501
@@ -206,7 +235,39 @@ class WorkerRunner:
                 EventRoutingKey.PLANNING_RUN_COMPLETED, self.planning_completed
             )
             self.notifications.on(EventRoutingKey.SKILL_ADDED, self.skill_added)
+            self.notifications.on(
+                EventRoutingKey.BILLING_RUN_COMPLETED, self.billing_completed
+            )
+            self.notifications.on(EventRoutingKey.BILL_ACCEPTED, self.bill_accepted)
         self.lifecycle.on(EventRoutingKey.COMPANY_CREATED, self.company_created)  # noqa: E501
+
+    def _billing_service(self, session: AsyncSession) -> BillingService:
+        """Build the billing service over one session.
+
+        Args:
+            session (AsyncSession): The session the run's writes go through.
+
+        Returns:
+            BillingService: The service.
+
+        Notes:
+            Assembled here by hand rather than taken from the API's dependency
+            module, because the worker must never import ``api``. That is also
+            why :class:`~service.billing.webhook.BillingWebhook` lives in
+            ``service``.
+        """
+        return BillingService(
+            bills=BillRepository(session=session),
+            runs=BillingRunRepository(session=session),
+            settings=BillingSettingsRepository(session=session),
+            quotes=QuoteRepository(session=session),
+            interventions=InterventionRepository(session=session),
+            customers=CustomerRepository(session=session),
+            companies=CompanyRepository(session=session),
+            config=self.config.billing,
+            documents=S3Storage(config=self.config.s3, logger=self.logger),
+            logger=self.logger,
+        )
 
     async def _wait_for_a_signal(self) -> None:
         """Block until the process is asked to stop.
@@ -484,6 +545,135 @@ class WorkerRunner:
             {"run_id": run_id, "status": run.status.value, "company_id": company_id},  # noqa: E501
         )
 
+    async def run_billing(self, envelope: EventEnvelope) -> None:
+        """Generate the invoices for a period the API asked to bill.
+
+        Args:
+            envelope (EventEnvelope): The message, carrying ``run_id`` and
+                ``company_id``.
+
+        Raises:
+            Exception: Whatever the generation raises, so the message is
+                dead-lettered and the failure is visible.
+
+        Notes:
+            - **This role's whole job**, and the reason it is a role. A monthly
+              close over three hundred customers is three hundred documents
+              rendered and three hundred objects uploaded — minutes of I/O-bound
+              work. On the notifications queue it would sit at the head for that
+              whole time and every quote badge would wait behind it; on the
+              planning queue it would contend with a CPU-pinned solve and
+              inherit a replica count scaled for one.
+            - The session is opened here and closed before the completion is
+              published, exactly as :meth:`run_planning` does: the announcement
+              must find the invoices already committed.
+            - **Nothing is emailed.** Every invoice is written waiting for a
+              manager; validation is what sends it.
+        """
+        run_id = envelope.string_field("run_id")
+        if run_id is None:
+            self.logger.error("A billing message named no run; discarding it.")
+            return
+        self.logger.info("Generating the invoices of billing run %s.", run_id)
+        async with self.manager.session() as session:
+            service = self._billing_service(session)
+            run = await service.execute_run(run_id)
+        self.logger.info(
+            "Billing run %s finished as %s with %d invoice(s).",
+            run_id,
+            run.status.value,
+            run.bill_count(),
+        )
+        company_id = envelope.string_field("company_id")
+        if not company_id:
+            self.logger.error(
+                "Billing run %s carried no agency; its completion cannot be "
+                "announced to one and is dropped.",
+                run_id,
+            )
+            return
+        await self.publisher.publish(
+            EventRoutingKey.BILLING_RUN_COMPLETED,
+            company_id,
+            {
+                "run_id": run_id,
+                "status": run.status.value,
+                "company_id": company_id,
+                "bill_count": run.bill_count(),
+            },
+        )
+
+    async def billing_completed(self, envelope: EventEnvelope) -> None:
+        """Tell the supervisors that a period has invoices to validate.
+
+        Args:
+            envelope (EventEnvelope): The message, carrying ``run_id``,
+                ``status``, ``company_id`` and ``bill_count``.
+
+        Notes:
+            - **Unlike a planning run, a successful one is announced.** A
+              planning rewrites calendars everybody can see, so a routine
+              success needs no badge. A billing run leaves invoices nobody has
+              approved and nothing has been sent from — a run nobody hears about
+              is a month quietly unbilled, which is the failure the notification
+              exists to prevent.
+            - Nothing is emailed to a customer here. This tells the agency it
+              has work to do; the customer hears from the bill-accepted webhook,
+              after a manager approves each invoice.
+            - Told to **that agency's** supervisors, named by the message, for
+              the reason the planning notification is: a badge on every other
+              agency's managers naming a run they cannot open is noise they
+              learn to ignore.
+        """
+        run_id = envelope.string_field("run_id")
+        status = envelope.string_field("status")
+        company_id = envelope.string_field("company_id")
+        count = envelope.string_field("bill_count") or "0"
+        if status == BillingRunStatus.FAILED.value:
+            title = "Échec de la facturation"
+            body = (
+                f"La génération des factures {run_id} a échoué. Aucune facture "
+                f"n'a été émise pour cette période."
+            )
+        else:
+            title = "Factures à valider"
+            body = (
+                f"{count} facture(s) ont été générées et attendent votre "
+                f"validation. Rien n'a encore été envoyé aux bénéficiaires."
+            )
+        async with self.manager.session() as session:
+            recipients = await self._notify_supervisors(
+                session,
+                company_id=company_id,
+                kind=NotificationKind.BILLS_TO_VALIDATE,
+                title=title,
+                body=body,
+            )
+        await self._announce(company_id, recipients)
+
+    async def bill_accepted(self, envelope: EventEnvelope) -> None:
+        """Send an invoice a manager has just approved.
+
+        Args:
+            envelope (EventEnvelope): The message, carrying ``bill_id``.
+
+        Notes:
+            **This is the step that reaches a customer.** The announcement is
+            handed to the webhook, which fetches the stored document and emails
+            it — the same arrangement the planning dispatch has, and for the
+            same reason: the sending runs as an ordinary authenticated request
+            with the handlers and logging every other request has, rather than
+            inside a worker nobody can see into.
+        """
+        bill_id = envelope.string_field("bill_id")
+        if bill_id is None:
+            self.logger.error(
+                "A bill-accepted message named no invoice; discarding it."
+            )
+            return
+        self.logger.info("Invoice %s was approved; announcing it.", bill_id)
+        await self.billing_webhook.announce(bill_id)
+
     async def quote_submitted(self, envelope: EventEnvelope) -> None:
         """Tell the agency's supervisors that a quote needs validating.
 
@@ -619,8 +809,7 @@ class WorkerRunner:
         described = f"{skill_name} ({skill_code})" if skill_code else skill_name
         if skill_code is None:
             self.logger.warning(
-                "%s declared %r with no catalogue code; no requirement can "
-                "match it.",
+                "%s declared %r with no catalogue code; no requirement can match it.",
                 hca_name,
                 skill_name,
             )
@@ -698,6 +887,13 @@ class WorkerRunner:
                 company_id,
             )
             return
+        if self.role is WorkerRole.BILLING:
+            await self.billing.consume_for_company(
+                self.BILLING_QUEUE,
+                [EventRoutingKey.BILLING_RUN_REQUESTED],
+                company_id,
+            )
+            return
         await self.notifications.consume_for_company(
             self.NOTIFICATION_QUEUE,
             list(self.NOTIFICATION_KEYS),
@@ -720,10 +916,12 @@ class WorkerRunner:
               connection by design, so checking both would report every worker
               unready for ever.
         """
-        consumer = (
-            self.planning if self.role is WorkerRole.PLANNING else self.notifications  # noqa: E501
-        )
-        connection = consumer.connection
+        consumers = {
+            WorkerRole.PLANNING: self.planning,
+            WorkerRole.NOTIFICATIONS: self.notifications,
+            WorkerRole.BILLING: self.billing,
+        }
+        connection = consumers[self.role].connection
         return connection is not None and not connection.is_closed
 
     async def start(self) -> List[str]:
@@ -752,6 +950,8 @@ class WorkerRunner:
         self._register_handlers()
         if self.role is WorkerRole.PLANNING:
             await self.planning.start()
+        elif self.role is WorkerRole.BILLING:
+            await self.billing.start()
         else:
             await self.notifications.start()
         await self.lifecycle.start()
@@ -781,5 +981,6 @@ class WorkerRunner:
         await self.lifecycle.close()
         await self.planning.close()
         await self.notifications.close()
+        await self.billing.close()
         await self.publisher.close()
         await self.manager.disconnect()

@@ -13,6 +13,11 @@ from models.base.exceptions import (
     MTInvalidEntityFilterException,
     MTInvalidPersonException,
 )
+from models.billing.exceptions import (
+    MTInvalidBillException,
+    MTInvalidBillLineException,
+    MTInvalidBillingRunException,
+)
 from models.auth.exceptions import (
     MTInvalidAccessTokenException,
     MTInvalidUserException,
@@ -25,6 +30,7 @@ from models.catalog.exceptions import (
 from models.companies.exceptions import MTInvalidCompanyException
 from models.configuration.exceptions import (
     MTInvalidAppConfigException,
+    MTInvalidBillingConfigException,
     MTInvalidAuthConfigException,
     MTInvalidDatabaseConfigException,
     MTInvalidEmailConfigException,
@@ -71,6 +77,12 @@ from models.quoting.exceptions import (
     MTInvalidQuoteTypeWeekAggregateException,
 )
 from models.schemas.exceptions import (
+    MTInvalidBillAcceptedRequestException,
+    MTInvalidBillDispatchResponseException,
+    MTInvalidBillFilterException,
+    MTInvalidBillGenerationRequestException,
+    MTInvalidBillingSettingsRequestException,
+    MTInvalidBillStatusRequestException,
     MTInvalidCertificationTypeUpdateRequestException,
     MTInvalidSkillCreateRequestException,
     MTInvalidSkillTypeUpdateRequestException,
@@ -109,7 +121,10 @@ from models.schemas.exceptions import (
     MTInvalidTemporaryCredentialsResponseException,
     MTInvalidUserResponseException,
 )
-from models.settings.exceptions import MTInvalidPlanningSettingsException
+from models.settings.exceptions import (
+    MTInvalidBillingSettingsException,
+    MTInvalidPlanningSettingsException,
+)
 from service.auth.exceptions import (
     MTAuthEmailAlreadyRegistered,
     MTAuthHcaLinkRequired,
@@ -132,6 +147,19 @@ from service.companies.exceptions import (
     MTCompanyNotFound,
     MTCompanyRegistrationDisabled,
     MTInvalidCompanyServiceException,
+)
+from service.billing.exceptions import (
+    MTBillAlreadyIssued,
+    MTBillDocumentStorageUnavailable,
+    MTBillDocumentUnavailable,
+    MTBillingForbidden,
+    MTBillingPeriodInFuture,
+    MTBillingRunNotFound,
+    MTBillingSettingsUnavailable,
+    MTBillNotFound,
+    MTBillNothingToBill,
+    MTBillTransitionNotAllowed,
+    MTInvalidBillingServiceException,
 )
 from service.certifications.exceptions import (
     MTCertificationTypeAlreadyExists,
@@ -196,6 +224,7 @@ from service.quotes.exceptions import (
     MTQuoteNotFound,
     MTQuoteNotPriced,
 )
+from service.utils.exceptions import MTInvalidInvoiceRendererException
 from storage.db.exceptions import MTInvalidDatabaseConnectionException
 from storage.mappers.exceptions import MTInvalidMapperException
 from storage.s3.exceptions import (
@@ -320,6 +349,16 @@ class ExceptionHandlers:
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
         MTInvalidCustomerFilterException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        # Billing payloads. The filter family is registered on its own even
+        # though it also descends from MTInvalidEntityFilterException below,
+        # so a rejected bill filter names the screen it came from.
+        MTInvalidBillFilterException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidBillGenerationRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidBillStatusRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidBillingSettingsRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidBillAcceptedRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         # Every list screen's filter, in one row. The concrete families
         # below it exist so a rejected filter names its own screen; what
         # they all mean is the same — the caller narrowed by something the
@@ -372,6 +411,25 @@ class ExceptionHandlers:
         MTSkillTypeAlreadyExists: status.HTTP_409_CONFLICT,
         MTSkillTypeInUse: status.HTTP_409_CONFLICT,
         MTSkillTypeUnknownCode: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # Billing
+        MTBillNotFound: status.HTTP_404_NOT_FOUND,
+        MTBillingRunNotFound: status.HTTP_404_NOT_FOUND,
+        # Conflicts rather than 422s: the request is well formed and the
+        # invoice or the period exists — it is simply not in the state the
+        # act applies to, and the caller's screen may be showing stale data.
+        MTBillAlreadyIssued: status.HTTP_409_CONFLICT,
+        MTBillNothingToBill: status.HTTP_409_CONFLICT,
+        MTBillTransitionNotAllowed: status.HTTP_409_CONFLICT,
+        # A period that has not finished is the caller's to correct: care
+        # that has not happened cannot be invoiced.
+        MTBillingPeriodInFuture: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTBillingForbidden: status.HTTP_403_FORBIDDEN,
+        # 503, not 500: these describe the deployment rather than the
+        # request. The same call works once the rules are seeded or the
+        # object store answers, and there is nothing the caller can change.
+        MTBillingSettingsUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
+        MTBillDocumentUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
+        MTBillDocumentStorageUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
         # Quotes and pricing
         MTQuoteNotFound: status.HTTP_404_NOT_FOUND,
         # 404 too, and separate from the quote's own. The offered slots a
@@ -456,6 +514,10 @@ class ExceptionHandlers:
         MTInvalidUnplacedQuoteException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidUnplacedRequirementException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidPlanningSettingsException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidBillingSettingsException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidBillException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidBillLineException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidBillingRunException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # A service refusing an operation. The concrete members carry their own
         # meaning above; a new one defaults to "refused", never to a 500, which
         # would blame this deployment for the caller's request.
@@ -468,8 +530,13 @@ class ExceptionHandlers:
         MTInvalidSkillCatalogException: status.HTTP_400_BAD_REQUEST,
         MTInvalidPricingException: status.HTTP_400_BAD_REQUEST,
         MTInvalidPlanningException: status.HTTP_400_BAD_REQUEST,
+        MTInvalidBillingServiceException: status.HTTP_400_BAD_REQUEST,
         # A response model that will not build is **our** bug: the caller asked
         # for something reasonable and we could not describe the answer.
+        # A document that would not lay out is **our** bug, like a response
+        # model that will not build: the caller asked for an invoice they
+        # were entitled to and we could not produce it.
+        MTInvalidInvoiceRendererException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidUserResponseException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHcaResponseException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHealthResponseException: status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -483,9 +550,11 @@ class ExceptionHandlers:
         MTInvalidEmailDispatchResponseException: (
             status.HTTP_500_INTERNAL_SERVER_ERROR
         ),
+        MTInvalidBillDispatchResponseException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
         # A misconfigured deployment. Nothing the caller can do about it, and
         # the message is replaced below rather than published.
         MTInvalidAppConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTInvalidBillingConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidAuthConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidDatabaseConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidEmailConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 # Standard library imports
 import json
-from time import monotonic
 from logging import Logger, getLogger
+from time import monotonic
 from typing import Awaitable, Callable, ClassVar, Dict, List, Optional
 
 # Third-party imports
@@ -13,8 +13,8 @@ import aio_pika
 from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.enums import EventRoutingKey
 from models.messaging.event_envelope import EventEnvelope
-from service.observability.metrics import ApplicationMetrics
 from service.messaging.exceptions import MTConsumerNotStarted
+from service.observability.metrics import ApplicationMetrics
 
 EventHandler = Callable[[EventEnvelope], Awaitable[None]]
 
@@ -46,13 +46,6 @@ class EventConsumer:
     """
 
     DEAD_LETTER_SUFFIX: ClassVar[str] = ".dlx"
-
-    #: How many times a quorum queue redelivers a message before dead-lettering
-    #: it itself. This is protection against a message that poisons the
-    #: *process* rather than the handler: a handler that raises already
-    #: dead-letters, but one that is killed — an out-of-memory solve, say —
-    #: never returns to reject anything, and without a limit the broker
-    #: redelivers it for ever, taking a worker down on each attempt.
     DELIVERY_LIMIT: ClassVar[int] = 5
 
     def __init__(
@@ -104,15 +97,14 @@ class EventConsumer:
             seconds (float): How long the attempt took.
 
         Notes:
-            Four outcomes rather than two, because they need different answers.
-            ``failed`` is a handler that raised and a message that
-            dead-lettered; ``unreadable`` is a message this version cannot
-            parse, which usually means a deployment in progress; ``unhandled``
-            is a topic bound to a queue nothing answers, which is a topology
-            mistake and is silent without this.
-
-            Guarded, because a consumer given no metrics records nothing rather
-            than failing. Losing a figure must not lose a message.
+            - Four outcomes rather than two, because they need different answers.
+              ``failed`` is a handler that raised and a message that
+              dead-lettered; ``unreadable`` is a message this version cannot
+              parse, which usually means a deployment in progress; ``unhandled``
+              is a topic bound to a queue nothing answers, which is a topology
+              mistake and is silent without this.
+            - Guarded, because a consumer given no metrics records nothing rather
+              than failing. Losing a figure must not lose a message.
         """
         if self.metrics is None:
             return
@@ -155,9 +147,6 @@ class EventConsumer:
             try:
                 await handler(envelope)
             except Exception:
-                # Counted before it is re-raised, because re-raising is what
-                # dead-letters the message — and the rate of that is the single
-                # figure worth alerting on here.
                 self._record(envelope.routing_key, "failed", monotonic() - started)
                 raise
             self._record(envelope.routing_key, "handled", monotonic() - started)
@@ -218,21 +207,19 @@ class EventConsumer:
             routing_keys (List[EventRoutingKey]): The topics this role handles.
 
         Notes:
-            **One per role rather than one per agency.** The per-agency
-            arrangement it replaces read well and did not scale: at a few
-            hundred agencies it was a few hundred extra queues holding failures
-            that arrive at a rate of nearly none.
-
-            Bound to each of this role's topics across every agency, rather than
-            to ``#``. The dead-letter exchange is shared, so ``#`` would collect
-            the other role's failures too and a reader could not tell which
-            worker had given up on what. The agency is still the last field of
-            every key, so one agency's failures remain one selector away.
-
-            Classic and durable rather than quorum. It holds a handful of
-            messages that are read by a person, so replication buys little; and
-            the whole point of consolidating it was to stop paying for a Raft
-            cluster per agency.
+            - **One per role rather than one per agency.** The per-agency
+              arrangement it replaces read well and did not scale: at a few
+              hundred agencies it was a few hundred extra queues holding failures
+              that arrive at a rate of nearly none.
+            - Bound to each of this role's topics across every agency, rather than
+              to ``#``. The dead-letter exchange is shared, so ``#`` would collect
+              the other role's failures too and a reader could not tell which
+              worker had given up on what. The agency is still the last field of
+              every key, so one agency's failures remain one selector away.
+            - Classic and durable rather than quorum. It holds a handful of
+              messages that are read by a person, so replication buys little; and
+              the whole point of consolidating it was to stop paying for a Raft
+              cluster per agency.
         """
         if self.channel is None:
             raise MTConsumerNotStarted("start() must be called before consuming.")
@@ -268,8 +255,7 @@ class EventConsumer:
               durable classic queue on a cluster lives on exactly one node and
               goes with it — taking every planning run nobody had picked up yet.
               A quorum queue is replicated by Raft.
-
-              **This cannot be changed on an existing queue.** Redeclaring one
+            - **This cannot be changed on an existing queue.** Redeclaring one
               with a different ``x-queue-type`` is a ``PRECONDITION_FAILED``,
               not an upgrade, so an existing deployment needs the queues drained
               and deleted once — which is why it is done now rather than later,

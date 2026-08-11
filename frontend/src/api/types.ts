@@ -898,3 +898,130 @@ export interface QuoteLinesEdit {
   /** The services that replace the stored ones. */
   lines: NewQuoteLine[];
 }
+
+/** How often an agency invoices its customers. */
+export type BillingPeriodicity = 'weekly' | 'monthly' | 'yearly';
+
+/**
+ * Where an invoice has reached commercially.
+ *
+ * @remarks
+ * A lifecycle, not a set of flags: a bill is in exactly one of these at a time,
+ * and it moves one step at a time. Whether a document exists is
+ * `Bill.document_key`; whether generation failed is on the run.
+ */
+export type BillStatus =
+  | 'to-be-validated'
+  | 'accepted'
+  | 'waiting-payment'
+  | 'paid';
+
+/** Where a bill-generation run has got to. */
+export type BillingRunStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'partial'
+  | 'failed';
+
+/**
+ * One charged visit on an invoice.
+ *
+ * @remarks
+ * `quote_line_id` is provenance and is never rendered: the specification is
+ * explicit that a bill lists interventions and not quotes. `day`, the times and
+ * the assistant are `null` for a service the planner never placed — still
+ * billed, because it was sold and delivered.
+ */
+export interface BillLine {
+  id: string | null;
+  quote_line_id: string;
+  intervention_id: string | null;
+  name: string;
+  service_category: 'necessity' | 'comfort';
+  service_date: string;
+  day: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  hca_full_name: string | null;
+  duration_minutes: number;
+  hourly_rate_ht: string;
+  total_ht: string;
+  vat_rate: string;
+  vat_amount: string;
+  total_ttc: string;
+}
+
+/**
+ * One invoice.
+ *
+ * @remarks
+ * Unlike `Quote`, the totals are real fields rather than methods, so they are
+ * on the wire and the screen never re-sums them. `customer_full_name` and the
+ * address are the copies taken when it was issued.
+ */
+export interface Bill {
+  id: string | null;
+  company_id: string;
+  customer_id: string;
+  billing_run_id: string | null;
+  number: string;
+  sequence: number;
+  sequence_year: number;
+  periodicity: BillingPeriodicity;
+  period_start: string;
+  period_end: string;
+  issued_on: string;
+  due_on: string;
+  status: BillStatus;
+  customer_full_name: string;
+  customer_address: PostalAddress;
+  lines: BillLine[];
+  total_ht: string;
+  total_vat: string;
+  total_ttc: string;
+  document_key: string | null;
+  generated_by: string | null;
+  validated_by: string | null;
+  validated_at: string | null;
+  sent_at: string | null;
+  paid_on: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** One request to bill a period, and what came of it. */
+export interface BillingRun {
+  id: string | null;
+  company_id: string;
+  requested_by: string | null;
+  status: BillingRunStatus;
+  reference_date: string;
+  periodicity: BillingPeriodicity;
+  period_start: string;
+  period_end: string;
+  bill_ids: string[];
+  failed_customer_ids: string[];
+  error: string | null;
+  requested_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/**
+ * The invoicing rules a manager owns.
+ *
+ * @remarks
+ * Every field is printed on the invoice — that is the test for whether a
+ * setting belongs here.
+ */
+export interface BillingSettings {
+  id: string;
+  periodicity: BillingPeriodicity;
+  payment_terms_days: number;
+  late_penalty_multiplier: number;
+  recovery_indemnity_eur: string;
+  escompte_offered: boolean;
+  updated_by: string | null;
+  updated_at: string | null;
+}

@@ -180,6 +180,760 @@
         "title": "AvailabilitySlot",
         "type": "object"
       },
+      "Bill": {
+        "description": "One invoice: what a customer owes for the visits made in one period.\n\nAttributes:\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    CURRENCY (ClassVar[str]): The currency every amount is expressed in.\n    MIN_SEQUENCE_YEAR (ClassVar[int]): Earliest year a series may run in.\n    MAX_SEQUENCE_YEAR (ClassVar[int]): Latest year a series may run in.\n    MONEY_FIELDS (ClassVar[Tuple[str, ...]]): The fields holding a total.\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency that issued it.\n    customer_id (str): The customer it is addressed to.\n    billing_run_id (Optional[str]): The run that produced it.\n    number (str): Human-facing invoice number.\n    sequence (int): Position in the agency's series for the year.\n    sequence_year (int): The year the series belongs to.\n    periodicity (BillingPeriodicity): The rule the window came from.\n    period_start (date): First day billed.\n    period_end (date): Last day billed.\n    issued_on (date): The invoice date.\n    due_on (date): The day payment falls due.\n    status (BillStatus): Where the bill has reached commercially.\n    customer_full_name (str): The customer's name, as addressed.\n    customer_address (PostalAddress): Where the invoice was addressed.\n    lines (List[BillLine]): The visits charged.\n    total_ht (Decimal): Invoice total excluding tax.\n    total_vat (Decimal): Total tax.\n    total_ttc (Decimal): Invoice total including tax.\n    document_key (Optional[str]): Where the rendered document is stored.\n    generated_by (Optional[str]): The account that ran the generation.\n    validated_by (Optional[str]): The account that approved it.\n    validated_at (Optional[datetime]): When it was approved.\n    sent_at (Optional[datetime]): When it was emailed to the customer.\n    paid_on (Optional[date]): The day it was settled.\n    created_at (Optional[datetime]): When the record was written.\n    updated_at (Optional[datetime]): When it last changed.\n\nNotes:\n    - **The bill lists visits, never quotes.** Each line names a service, a\n      day and \u2014 where a planning run placed it \u2014 an assistant and the hours\n      worked. No quote reference and no quote total appears anywhere,\n      because a customer's question is \"what was done for me in March\", and\n      a document answering \"quote D-2648, 1 240 \u20ac\" answers a different one.\n    - **The totals are stored, not computed.** :class:`~models.quoting.quote.Quote`\n      computes its own, which is exactly why they are absent from its\n      serialised form. An invoice must reprint identically for ever and its\n      totals must be readable by a client, so they are persisted \u2014 the same\n      reasoning that already stores a quote *line*'s four money fields. What\n      makes that safe is :meth:`check_totals`, which proves they agreed with\n      the lines at the moment they were written.\n    - **The customer's name and address are copies**, like the assistant's\n      name on an intervention. A customer who moves must not retroactively\n      change where last quarter's invoice was addressed.\n    - **``number`` and ``sequence`` are the legal series.** French invoicing\n      requires an unbroken, chronological sequence per issuer, which is why\n      the position is a stored integer and not something derived from a\n      creation timestamp: a row inserted out of order would leave a gap\n      nobody could explain.\n    - There is no cancelled state. A mistaken invoice is corrected by a\n      credit note, which is a document of its own, because a number\n      withdrawn from the series is exactly the gap the series forbids.",
+        "properties": {
+          "billing_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The run that produced it.",
+            "title": "Billing Run Id"
+          },
+          "company_id": {
+            "description": "The agency that issued it.",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the record was written.",
+            "title": "Created At"
+          },
+          "customer_address": {
+            "$ref": "#/components/schemas/PostalAddress",
+            "description": "Where the invoice was addressed."
+          },
+          "customer_full_name": {
+            "description": "The customer's name.",
+            "title": "Customer Full Name",
+            "type": "string"
+          },
+          "customer_id": {
+            "description": "The customer it is addressed to.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "document_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the rendered document is stored.",
+            "title": "Document Key"
+          },
+          "due_on": {
+            "description": "The day payment falls due.",
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "generated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account that ran the generation.",
+            "title": "Generated By"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, populated on read from the store.",
+            "title": "Id"
+          },
+          "issued_on": {
+            "description": "The invoice date.",
+            "format": "date",
+            "title": "Issued On",
+            "type": "string"
+          },
+          "lines": {
+            "description": "The visits charged.",
+            "items": {
+              "$ref": "#/components/schemas/BillLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "number": {
+            "description": "Human-facing invoice number.",
+            "title": "Number",
+            "type": "string"
+          },
+          "paid_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The day it was settled.",
+            "title": "Paid On"
+          },
+          "period_end": {
+            "description": "Last day billed.",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "First day billed.",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "periodicity": {
+            "$ref": "#/components/schemas/BillingPeriodicity",
+            "description": "The rule the billed window came from."
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was emailed to the customer.",
+            "title": "Sent At"
+          },
+          "sequence": {
+            "description": "Position in the agency's yearly series.",
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "sequence_year": {
+            "description": "The year the series belongs to.",
+            "title": "Sequence Year",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BillStatus",
+            "default": "to-be-validated",
+            "description": "Where the bill has reached commercially."
+          },
+          "total_ht": {
+            "description": "Invoice total excluding tax.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Ht",
+            "type": "string"
+          },
+          "total_ttc": {
+            "description": "Invoice total including tax.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Ttc",
+            "type": "string"
+          },
+          "total_vat": {
+            "description": "Total tax.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Vat",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it last changed.",
+            "title": "Updated At"
+          },
+          "validated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was approved.",
+            "title": "Validated At"
+          },
+          "validated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account that approved it.",
+            "title": "Validated By"
+          }
+        },
+        "required": [
+          "company_id",
+          "customer_id",
+          "number",
+          "sequence",
+          "sequence_year",
+          "periodicity",
+          "period_start",
+          "period_end",
+          "issued_on",
+          "due_on",
+          "customer_full_name",
+          "customer_address",
+          "total_ht",
+          "total_vat",
+          "total_ttc"
+        ],
+        "title": "Bill",
+        "type": "object"
+      },
+      "BillAcceptedRequest": {
+        "description": "The payload announcing that a validated bill is ready to be sent.\n\nAttributes:\n    bill_id (str): The bill a manager approved.\n\nNotes:\n    Carries an identifier and nothing else, exactly as the planning webhook\n    does. The endpoint re-reads the bill, so a payload carrying its amounts\n    would be a second copy of the invoice travelling over the wire \u2014 one that\n    could disagree with the stored one and decide what a customer is emailed.",
+        "properties": {
+          "bill_id": {
+            "description": "The bill a manager approved.",
+            "title": "Bill Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bill_id"
+        ],
+        "title": "BillAcceptedRequest",
+        "type": "object"
+      },
+      "BillDispatchResponse": {
+        "description": "What the bill webhook reports about sending one invoice.\n\nAttributes:\n    bill_id (str): The bill the dispatch was for.\n    sent (bool): Whether the customer received it.\n\nNotes:\n    - The flag is what actually happened, not what was attempted. A bill\n      whose delivery failed answers ``False`` and stays awaiting its\n      approval's effect, so a manager reading the list sees an invoice\n      approved but not yet out \u2014 which is the truth, and is actionable.\n    - A failed delivery is **not** an error response. The invoice is written,\n      numbered and downloadable; the customer's mail server being unreachable\n      is not a reason to answer a 5xx and have the announcement retried until\n      it dead-letters.",
+        "properties": {
+          "bill_id": {
+            "description": "The bill the dispatch was for.",
+            "title": "Bill Id",
+            "type": "string"
+          },
+          "sent": {
+            "default": false,
+            "description": "Whether the customer received it.",
+            "title": "Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bill_id"
+        ],
+        "title": "BillDispatchResponse",
+        "type": "object"
+      },
+      "BillGenerationRequest": {
+        "description": "The payload asking for a period to be billed.\n\nAttributes:\n    reference_date (date): Any day inside the period to bill.\n    customer_ids (Optional[List[str]]): Bill only these customers.\n\nNotes:\n    - **A day, not a window.** The period is resolved from the agency's own\n      periodicity, so a caller cannot ask for a fortnight the settings do not\n      describe and produce an invoice whose window nobody could reproduce.\n      Sending the day also means the same request means different things\n      under different settings, which is the intent: \"bill the month\n      containing this day\".\n    - ``customer_ids`` is for re-running one customer whose first attempt\n      failed. Omitted, every customer with billable work is billed; an\n      **empty list** is refused rather than read as \"everybody\", because the\n      two readings differ by a whole month's invoicing.",
+        "properties": {
+          "customer_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bill only these customers, or all of them when omitted.",
+            "title": "Customer Ids"
+          },
+          "reference_date": {
+            "description": "Any day inside the period to bill.",
+            "format": "date",
+            "title": "Reference Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference_date"
+        ],
+        "title": "BillGenerationRequest",
+        "type": "object"
+      },
+      "BillLine": {
+        "description": "One charged visit on an invoice, and what was actually delivered.\n\nAttributes:\n    MAX_DURATION_MINUTES (ClassVar[int]): Longest single service accepted,\n        a full day.\n    MONEY_FIELDS (ClassVar[Tuple[str, ...]]): The fields holding an amount.\n    id (Optional[str]): Identifier, populated on read from the store.\n    quote_line_id (str): The quote line this charge came from.\n    intervention_id (Optional[str]): The visit that delivered it, when one\n        was ever planned.\n    name (str): What the service is, as written on the quote.\n    service_category (ServiceCategory): What kind of care this is.\n    service_date (date): The day the service was sold for.\n    day (Optional[date]): The day it was actually delivered.\n    start_time (Optional[time]): When the delivered visit began.\n    end_time (Optional[time]): When the delivered visit ended.\n    hca_full_name (Optional[str]): Who delivered it.\n    duration_minutes (int): How long the service takes.\n    hourly_rate_ht (Decimal): Rate billed, surcharge included.\n    total_ht (Decimal): Line total excluding tax.\n    vat_rate (Decimal): The rate the tax was charged at.\n    vat_amount (Decimal): Tax on the line.\n    total_ttc (Decimal): Line total including tax.\n\nNotes:\n    - **The money is required, where a quote line's is not.** A quote line is\n      legitimately unpriced while a quote is being composed. A bill line that\n      is not priced must not exist: an invoice with a blank amount column is\n      a legal defect, and refusing to build the model is where that is caught\n      rather than on a page already in the post.\n    - **The amounts are copied from the quote line, never recomputed.** A\n      customer is not re-billed for work already quoted, so a rate that has\n      moved in the catalogue since must not reach an invoice for work sold\n      before it moved.\n    - **``vat_rate`` is stored rather than derived from\n      ``service_category``.** If the statutory reduced rate changes, a\n      reprinted 2026 invoice must still show the 5.5% it was issued at. The\n      same argument :class:`~models.quoting.quote_line.QuoteLine` makes for\n      storing its money, one field further.\n    - ``quote_line_id`` is provenance and is **never printed**. The\n      specification is explicit that a bill lists interventions and not\n      quotes, so the identifier exists to answer \"where did this charge come\n      from\" in a support conversation, not to appear on the document.\n    - ``intervention_id`` is a **snapshot reference, not a foreign key**.\n      Re-planning a period deletes and rewrites every intervention in it, so\n      a real key would either take the invoice line with it or block the\n      replan. The delivered day, hours and assistant are copied here for the\n      same reason the visit copies the customer's address.\n    - A line with no ``day`` was sold but never placed by a planning run. It\n      is still billed: the visit was agreed and delivered whether or not the\n      solver ever saw it, and dropping it would silently forgive work the\n      agency did.",
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The day it was actually delivered.",
+            "title": "Day"
+          },
+          "duration_minutes": {
+            "description": "How long the service takes.",
+            "title": "Duration Minutes",
+            "type": "integer"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the delivered visit ended.",
+            "title": "End Time"
+          },
+          "hca_full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who delivered it.",
+            "title": "Hca Full Name"
+          },
+          "hourly_rate_ht": {
+            "description": "Rate billed, surcharge included.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Hourly Rate Ht",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, populated on read from the store.",
+            "title": "Id"
+          },
+          "intervention_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The visit that delivered it, when one was planned.",
+            "title": "Intervention Id"
+          },
+          "name": {
+            "description": "What the service is.",
+            "title": "Name",
+            "type": "string"
+          },
+          "quote_line_id": {
+            "description": "The quote line this charge is for.",
+            "title": "Quote Line Id",
+            "type": "string"
+          },
+          "service_category": {
+            "$ref": "#/components/schemas/ServiceCategory",
+            "description": "What kind of care this is."
+          },
+          "service_date": {
+            "description": "The day the service was sold for.",
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the delivered visit began.",
+            "title": "Start Time"
+          },
+          "total_ht": {
+            "description": "Line total excluding tax.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Ht",
+            "type": "string"
+          },
+          "total_ttc": {
+            "description": "Line total including tax.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Ttc",
+            "type": "string"
+          },
+          "vat_amount": {
+            "description": "Tax on the line.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Vat Amount",
+            "type": "string"
+          },
+          "vat_rate": {
+            "description": "The rate the tax was charged at.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Vat Rate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote_line_id",
+          "name",
+          "service_category",
+          "service_date",
+          "duration_minutes",
+          "hourly_rate_ht",
+          "total_ht",
+          "vat_rate",
+          "vat_amount",
+          "total_ttc"
+        ],
+        "title": "BillLine",
+        "type": "object"
+      },
+      "BillStatus": {
+        "description": "Enumeration for where a bill has reached commercially.\n\nAttributes:\n    TO_BE_VALIDATED (str): Generated, with its document, and waiting for a\n        manager to approve it. Nothing has reached the customer.\n    ACCEPTED (str): Approved by a manager. Approval is what sends it.\n    WAITING_PAYMENT (str): Sent to the customer; the money is outstanding.\n    PAID (str): Settled.\n\nNotes:\n    - **Only a manager or an administrator moves a bill.** The status is a\n      statement about money owed, and an assistant who could set one would\n      be writing the agency's accounts.\n    - Two things this enumeration deliberately does **not** record: whether\n      a document exists \u2014 that is ``Bill.document_key`` \u2014 and whether\n      generation failed, which is\n      :class:`BillingRunStatus`. Folding a generation outcome in here would\n      make \"waiting payment\" mean two unrelated things, and a manager\n      reading the list could not tell a bill nobody has paid from one nobody\n      managed to produce.\n    - There is no ``CANCELLED``. French invoice numbering forbids both reuse\n      and gaps, so a mistaken invoice is corrected by a credit note rather\n      than withdrawn \u2014 and a credit note is a document in its own right, not\n      a status on this one.",
+        "enum": [
+          "to-be-validated",
+          "accepted",
+          "waiting-payment",
+          "paid"
+        ],
+        "title": "BillStatus",
+        "type": "string"
+      },
+      "BillStatusRequest": {
+        "description": "The payload moving a bill along its commercial lifecycle.\n\nAttributes:\n    status (BillStatus): The status the bill is being moved to.\n\nNotes:\n    - The payload names only the destination. Whether the move is legal is\n      decided against the bill's *current* status by\n      :meth:`~models.enums.BillStatus.can_move_to`, which the caller cannot\n      be trusted to have read \u2014 a screen showing a stale row would otherwise\n      send a transition that was legal when it was rendered.\n    - There is no reason field. Who moved it and when are recorded on the\n      bill; why is a conversation, not a column, and a free-text field on a\n      financial record is one nobody fills in truthfully.",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/BillStatus",
+            "description": "The status the bill is being moved to."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "BillStatusRequest",
+        "type": "object"
+      },
+      "BillingPeriodicity": {
+        "description": "Enumeration for how often an agency invoices its customers.\n\nAttributes:\n    WEEKLY (str): One bill per ISO week, Monday to Sunday.\n    MONTHLY (str): One bill per calendar month.\n    YEARLY (str): One bill per calendar year.\n\nNotes:\n    - The member decides a **window**, and the window is the whole of what\n      the specification calls a time pro-rata. A\n      :class:`~models.quoting.quote_line.QuoteLine` carries one\n      ``service_date``, not a range: it is a single dated visit. No line can\n      therefore straddle a period boundary, and \"only the part of the quote\n      inside the window is billed\" reduces exactly to a date filter, with no\n      fractional amount computed anywhere. Lines dated after the window are\n      simply absent from this bill; the next period has a different window\n      and picks them up unchanged.\n    - **Both bounds are inclusive**, matching every other period in the\n      application: ``QuoteRepository.list_schedulable``,\n      ``InterventionRepository.replace_for_period`` and\n      :meth:`~models.quoting.quote.Quote.covers` all read that way. An\n      exclusive end here would be the one period that behaved differently,\n      and the symptom would be a day's care quietly unbilled every month.\n    - Stored in the database rather than in ``app.yaml``, because the\n      specification puts it in the hands of a manager and a YAML value would\n      need a deployment to change. See\n      :class:`~models.settings.billing_settings.BillingSettings`.",
+        "enum": [
+          "weekly",
+          "monthly",
+          "yearly"
+        ],
+        "title": "BillingPeriodicity",
+        "type": "string"
+      },
+      "BillingRun": {
+        "description": "One request to bill a period, and what came of it.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency whose customers are being billed.\n    requested_by (Optional[str]): The account that asked for the run.\n    status (BillingRunStatus): Where the run has got to.\n    reference_date (date): The day the window was resolved from.\n    periodicity (BillingPeriodicity): The rule the window came from.\n    period_start (date): First day billed.\n    period_end (date): Last day billed.\n    bill_ids (List[str]): The bills the run wrote.\n    failed_customer_ids (List[str]): The customers it could not bill.\n    error (Optional[str]): Why the run failed, when it did.\n    requested_at (Optional[datetime]): When it was asked for.\n    started_at (Optional[datetime]): When a worker picked it up.\n    finished_at (Optional[datetime]): When it reached a terminal status.\n\nNotes:\n    - The record is written **before** the work is queued, so the identifier\n      a caller is handed back is real even when the broker is unreachable \u2014\n      the same reason a planning run is recorded first.\n    - Both outcome lists are kept, not just the successes. A partial run is\n      only actionable if it says *which* customers went unbilled; a count\n      would leave somebody comparing two lists by hand to find them.\n    - The window is stored rather than recomputed from ``reference_date`` and\n      ``periodicity`` on read. An agency that changes its periodicity between\n      the run and the day somebody reads it would otherwise see a run\n      claiming to have billed a period it never touched.",
+        "properties": {
+          "bill_ids": {
+            "description": "The bills the run wrote.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Bill Ids",
+            "type": "array"
+          },
+          "company_id": {
+            "description": "The agency being billed for.",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the run failed, when it did.",
+            "title": "Error"
+          },
+          "failed_customer_ids": {
+            "description": "The customers it could not bill.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Customer Ids",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it reached a terminal status.",
+            "title": "Finished At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, populated on read from the store.",
+            "title": "Id"
+          },
+          "period_end": {
+            "description": "Last day billed.",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "First day billed.",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "periodicity": {
+            "$ref": "#/components/schemas/BillingPeriodicity",
+            "description": "The rule the window came from."
+          },
+          "reference_date": {
+            "description": "The day the window was resolved from.",
+            "format": "date",
+            "title": "Reference Date",
+            "type": "string"
+          },
+          "requested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was asked for.",
+            "title": "Requested At"
+          },
+          "requested_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account that asked for the run.",
+            "title": "Requested By"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When a worker picked it up.",
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BillingRunStatus",
+            "default": "pending",
+            "description": "Where the run has got to."
+          }
+        },
+        "required": [
+          "company_id",
+          "reference_date",
+          "periodicity",
+          "period_start",
+          "period_end"
+        ],
+        "title": "BillingRun",
+        "type": "object"
+      },
+      "BillingRunStatus": {
+        "description": "Enumeration for the lifecycle status of a bill-generation run.\n\nAttributes:\n    PENDING (str): Accepted and queued, not yet picked up.\n    RUNNING (str): Bills are being generated.\n    SUCCEEDED (str): Every customer with billable work was billed.\n    PARTIAL (str): Some customers were billed and some failed.\n    FAILED (str): The run ended on an error; see the run's error message.\n\nNotes:\n    Deliberately not :class:`PlanningRunStatus`, whose members mean\n    something else: there, :attr:`PARTIAL` describes visits that could not\n    be placed. Here it describes customers who could not be billed, and one\n    enumeration answering to two vocabularies is how a status chip ends up\n    telling somebody the wrong thing.",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "partial",
+          "failed"
+        ],
+        "title": "BillingRunStatus",
+        "type": "string"
+      },
+      "BillingSettings": {
+        "description": "The invoicing rules an administrator or manager may change at runtime.\n\nAttributes:\n    SINGLETON_ID (ClassVar[str]): The identifier of the one settings row.\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    MIN_PAYMENT_TERMS_DAYS (ClassVar[int]): Shortest terms accepted.\n    MAX_PAYMENT_TERMS_DAYS (ClassVar[int]): The statutory ceiling on agreed\n        payment terms.\n    MIN_PENALTY_MULTIPLIER (ClassVar[int]): The statutory floor on the\n        late-payment rate.\n    MAX_PENALTY_MULTIPLIER (ClassVar[int]): Highest multiplier accepted.\n    MAX_INDEMNITY (ClassVar[Decimal]): Highest recovery indemnity accepted.\n    TERMS (ClassVar[...]): The sentence describing the terms, per language.\n    id (str): Identifier; always :attr:`SINGLETON_ID`.\n    periodicity (BillingPeriodicity): How often customers are invoiced.\n    payment_terms_days (int): How long a customer has to pay.\n    late_penalty_multiplier (int): How many times the legal interest rate a\n        late payment is charged at.\n    recovery_indemnity_eur (Decimal): The fixed recovery indemnity.\n    escompte_offered (bool): Whether a discount for early settlement is\n        offered.\n    updated_by (Optional[str]): The account that last changed these.\n    updated_at (Optional[datetime]): When they were last changed.\n\nNotes:\n    - **Every field here is printed on the invoice.** That is the test for\n      whether a setting belongs in this model rather than in ``app.yaml``:\n      these are statements the agency makes to its customers, and changing\n      one is a commercial decision a manager takes, not a deployment.\n    - **One row, fixed identifier**, exactly as the planning rules are. These\n      are agency-wide, and a table able to hold two of them invites the\n      question of which one an invoice was issued under \u2014 a question a\n      printed document cannot answer afterwards.\n    - The configuration file still carries the defaults; they seed the row\n      the first time it is read.\n    - Changing any of these affects the **next** generation run. An invoice\n      already issued keeps the terms it was printed with, because the terms\n      are part of what the customer was told, not a live lookup.\n    - ``escompte_offered`` exists because saying nothing is itself a\n      non-conformity: a French invoice must state the discount for early\n      settlement *or* state that there is none, so the flag decides which\n      sentence is printed and never whether one is.",
+        "properties": {
+          "escompte_offered": {
+            "default": false,
+            "description": "Whether a discount for early settlement is offered.",
+            "title": "Escompte Offered",
+            "type": "boolean"
+          },
+          "id": {
+            "default": "billing-settings",
+            "description": "Identifier; always the singleton row.",
+            "title": "Id",
+            "type": "string"
+          },
+          "late_penalty_multiplier": {
+            "default": 3,
+            "description": "Times the legal interest rate a late payment is charged at.",
+            "title": "Late Penalty Multiplier",
+            "type": "integer"
+          },
+          "payment_terms_days": {
+            "default": 30,
+            "description": "How long a customer has to pay.",
+            "title": "Payment Terms Days",
+            "type": "integer"
+          },
+          "periodicity": {
+            "$ref": "#/components/schemas/BillingPeriodicity",
+            "default": "monthly",
+            "description": "How often customers are invoiced."
+          },
+          "recovery_indemnity_eur": {
+            "default": "40.00",
+            "description": "The fixed recovery indemnity.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Recovery Indemnity Eur",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When they were last changed.",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account that last changed these.",
+            "title": "Updated By"
+          }
+        },
+        "title": "BillingSettings",
+        "type": "object"
+      },
+      "BillingSettingsRequest": {
+        "description": "The payload changing the invoicing rules.\n\nAttributes:\n    periodicity (BillingPeriodicity): How often customers are invoiced.\n    payment_terms_days (int): How long a customer has to pay.\n    late_penalty_multiplier (int): How many times the legal interest rate a\n        late payment is charged at.\n    recovery_indemnity_eur (Decimal): The fixed recovery indemnity.\n    escompte_offered (bool): Whether a discount for early settlement is\n        offered.\n\nNotes:\n    - The bounds repeat those on\n      :class:`~models.settings.billing_settings.BillingSettings` rather than\n      deferring to them, so a bad payload is refused as a 422 naming the\n      field instead of surfacing from deeper in the stack as something\n      vaguer. The stored model still enforces them \u2014 this is the outer of two\n      gates, not a replacement for the inner one.\n    - **Every field carries a default matching the stored model's**, and the\n      whole rule set is sent on every save. A manager changing only the\n      periodicity should not have to restate the payment terms, and a\n      partial payload without defaults would silently reset the fields it\n      omitted \u2014 on a document that goes to customers.",
+        "properties": {
+          "escompte_offered": {
+            "default": false,
+            "description": "Whether a discount for early settlement is offered.",
+            "title": "Escompte Offered",
+            "type": "boolean"
+          },
+          "late_penalty_multiplier": {
+            "default": 3,
+            "description": "Times the legal interest rate a late payment is charged at.",
+            "title": "Late Penalty Multiplier",
+            "type": "integer"
+          },
+          "payment_terms_days": {
+            "default": 30,
+            "description": "How long a customer has to pay, in days.",
+            "title": "Payment Terms Days",
+            "type": "integer"
+          },
+          "periodicity": {
+            "$ref": "#/components/schemas/BillingPeriodicity",
+            "default": "monthly",
+            "description": "How often customers are invoiced."
+          },
+          "recovery_indemnity_eur": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "40.00",
+            "description": "The fixed recovery indemnity, in euros.",
+            "title": "Recovery Indemnity Eur"
+          }
+        },
+        "title": "BillingSettingsRequest",
+        "type": "object"
+      },
       "Body_reject_application_api_v1_hca_applications__application_id__reject_post": {
         "properties": {
           "reason": {
@@ -653,6 +1407,18 @@
             "description": "Company registration number.",
             "title": "Registration Number"
           },
+          "sap_declaration_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Services-\u00e0-la-personne declaration number, printed on invoices so a customer may claim their tax credit.",
+            "title": "Sap Declaration Number"
+          },
           "share_capital": {
             "anyOf": [
               {
@@ -847,6 +1613,18 @@
             ],
             "description": "Company registration number.",
             "title": "Registration Number"
+          },
+          "sap_declaration_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Services-\u00e0-la-personne declaration number, printed on invoices so a customer may claim their tax credit.",
+            "title": "Sap Declaration Number"
           },
           "share_capital": {
             "anyOf": [
@@ -2865,13 +3643,14 @@
         "type": "object"
       },
       "NotificationKind": {
-        "description": "Enumeration for what a notification is about.\n\nAttributes:\n    QUOTE_SUBMITTED (str): An assistant sent a quote for validation.\n    QUOTE_VALIDATED (str): A manager approved a submitted quote.\n    QUOTE_REFUSED (str): A manager sent a submitted quote back.\n    PLANNING_COMPLETED (str): A planning run finished and calendars moved.\n    SKILL_ADDED (str): An assistant declared a new skill about themselves.\n\nNotes:\n    - The kind is what a client keys its icon, colour and deep link off, so\n      it is an enumeration rather than free text. A notification whose kind\n      nothing recognises is one the interface cannot route the reader\n      anywhere useful from.\n    - :attr:`SKILL_ADDED` is the one kind raised by something a *subordinate*\n      did rather than by the quote workflow or the solver. It exists because\n      a skill is self-declared and immediately affects who the planner may\n      assign: somebody adding one silently widens what they can be sent to,\n      and a supervisor who never hears about it has no opportunity to\n      challenge it before the next run acts on it.",
+        "description": "Enumeration for what a notification is about.\n\nAttributes:\n    QUOTE_SUBMITTED (str): An assistant sent a quote for validation.\n    QUOTE_VALIDATED (str): A manager approved a submitted quote.\n    QUOTE_REFUSED (str): A manager sent a submitted quote back.\n    PLANNING_COMPLETED (str): A planning run finished and calendars moved.\n    SKILL_ADDED (str): An assistant declared a new skill about themselves.\n    BILLS_TO_VALIDATE (str): A billing run wrote bills nobody has approved\n        yet, and no customer has been sent anything.\n\nNotes:\n    - The kind is what a client keys its icon, colour and deep link off, so\n      it is an enumeration rather than free text. A notification whose kind\n      nothing recognises is one the interface cannot route the reader\n      anywhere useful from.\n    - :attr:`SKILL_ADDED` is the one kind raised by something a *subordinate*\n      did rather than by the quote workflow or the solver. It exists because\n      a skill is self-declared and immediately affects who the planner may\n      assign: somebody adding one silently widens what they can be sent to,\n      and a supervisor who never hears about it has no opportunity to\n      challenge it before the next run acts on it.\n    - :attr:`BILLS_TO_VALIDATE` is the one kind that reports **inaction\n      required before anything leaves the building**. A billing run renders\n      every invoice and then stops; until a manager approves them no\n      customer is sent anything, so a run nobody hears about is a month\n      quietly unbilled. It carries no identifier of its own, for the same\n      reason the planning kind does not \u2014 the reader goes to the list.",
         "enum": [
           "quote-submitted",
           "quote-validated",
           "quote-refused",
           "planning-completed",
-          "skill-added"
+          "skill-added",
+          "bills-to-validate"
         ],
         "title": "NotificationKind",
         "type": "string"
@@ -3077,7 +3856,7 @@
         "type": "object"
       },
       "PlanningRunStatus": {
-        "description": "Enumeration for the lifecycle status of a planning computation.\n\nAttributes:\n    PENDING (str): Accepted and queued, not yet picked up.\n    RUNNING (str): The solver is running.\n    SUCCEEDED (str): The solver finished and the interventions were written.\n    PARTIAL (str): A plan was written, but some work could not be fitted.\n    FAILED (str): The run ended on an error; see the run's error message.\n\nNotes:\n    :attr:`PARTIAL` exists because a week that mostly works is worth\n    having. The run used to fail outright the moment one visit could not\n    be placed, which left the agency with the *previous* week's calendar\n    and a wall of text \u2014 safe, but it meant one impossible visit withheld\n    eighty-nine perfectly good ones.\n\n    It is deliberately **not** ``SUCCEEDED``. A calendar missing three\n    visits still looks like a calendar, and the visits quietly dropped are\n    the ones that end with somebody waiting at their door \u2014 so the state\n    has its own name, its own colour on the screen, and a report naming\n    every quote involved.",
+        "description": "Enumeration for the lifecycle status of a planning computation.\n\nAttributes:\n    PENDING (str): Accepted and queued, not yet picked up.\n    RUNNING (str): The solver is running.\n    SUCCEEDED (str): The solver finished and the interventions were written.\n    PARTIAL (str): A plan was written, but some work could not be fitted.\n    FAILED (str): The run ended on an error; see the run's error message.\n\nNotes:\n    - :attr:`PARTIAL` exists because a week that mostly works is worth\n      having. The run used to fail outright the moment one visit could not\n      be placed, which left the agency with the *previous* week's calendar\n      and a wall of text \u2014 safe, but it meant one impossible visit withheld\n      eighty-nine perfectly good ones.\n    - It is deliberately **not** ``SUCCEEDED``. A calendar missing three\n      visits still looks like a calendar, and the visits quietly dropped are\n      the ones that end with somebody waiting at their door \u2014 so the state\n      has its own name, its own colour on the screen, and a report naming\n     every quote involved.",
         "enum": [
           "pending",
           "running",
@@ -5166,6 +5945,585 @@
         "summary": "Issue Stream Token",
         "tags": [
           "Authentication"
+        ]
+      }
+    },
+    "/api/v1/billing/settings": {
+      "get": {
+        "description": "Return the agency's invoicing rules.\n\nArgs:\n    service (BillingService): The billing service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    BillingSettings: The stored rules.\n\nRaises:\n    MTBillingSettingsUnavailable: When the rules can neither be read nor\n        seeded; answered as a 503 by the central handler.\n\nNotes:\n    Seeds the row from ``app.yaml`` on the first read, the way the planning\n    rules do. A screen asking for them before anybody has saved any gets the\n    configured defaults rather than a 404 it would have to interpret.",
+        "operationId": "get_billing_settings_api_v1_billing_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Billing Settings",
+        "tags": [
+          "Billing settings"
+        ]
+      },
+      "put": {
+        "description": "Replace the agency's invoicing rules.\n\nArgs:\n    request (BillingSettingsRequest): The whole rule set.\n    service (BillingService): The billing service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    BillingSettings: The stored rules.\n\nRaises:\n    MTBillingSettingsUnavailable: When the rules are not seeded; answered\n        as a 503 by the central handler.\n\nNotes:\n    - **The whole rule set, never a partial body.** Every field on the\n      request carries a default matching the stored model's, so a payload\n      omitting one would silently reset it \u2014 on values printed on every\n      invoice the agency sends.\n    - A change applies to the **next** generation run. An invoice already\n      issued keeps the terms it was printed with, because those terms are\n      part of what the customer was told rather than a live lookup.\n    - Manager-gated, which is the specification's own rule: the periodicity\n      is a setting a manager or an administrator owns.",
+        "operationId": "update_billing_settings_api_v1_billing_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Billing Settings",
+        "tags": [
+          "Billing settings"
+        ]
+      }
+    },
+    "/api/v1/bills": {
+      "get": {
+        "description": "List an agency's invoices, most recent period first.\n\nArgs:\n    page (int): One-based page number.\n    size (Optional[int]): Page size.\n    search (Optional[str]): Fragment matched against the invoice number.\n    number (Optional[str]): Fragment of the invoice number.\n    customer_id (Optional[str]): Restrict to one customer's invoices.\n    bill_status (Optional[str]): Restrict to one commercial status.\n    is_sent (Optional[bool]): Restrict by whether the customer was\n        emailed.\n    period_start (Optional[str]): Only windows starting on or after this\n        day.\n    period_end (Optional[str]): Only windows ending on or before this day.\n    service (BillingService): The billing service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Bill]: The matching invoices.\n\nNotes:\n    - The **enum and the date** parameters arrive as strings and are\n      coerced by\n      :class:`~models.schemas.requests.billing.bill_filter.BillFilter`,\n      which is what lets a cleared control submit ``\"\"`` and mean \"not\n      applied\". Declared as the enum or the date, FastAPI would reject the\n      empty string before the filter's own validator ever ran, and the\n      screen would answer 422 every time somebody cleared a box.\n    - **The flag is the exception and is typed**, so FastAPI coerces\n      ``?is_sent=true`` before it reaches the shared\n      :meth:`~models.base.entity_filter.EntityFilter.validate_flag`, which\n      accepts only a boolean or nothing. A cleared flag is dropped from the\n      query rather than emptied \u2014 the contract every other list screen\n      already has.\n    - The agency comes from the credential and is applied in the statement.\n      A filter that could widen its own scope would show one customer's\n      money to a manager entitled to another's.",
+        "operationId": "list_bills_api_v1_bills_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "number",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_sent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Is Sent"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Bill"
+                  },
+                  "title": "Response List Bills Api V1 Bills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Bills",
+        "tags": [
+          "Bills"
+        ]
+      }
+    },
+    "/api/v1/bills/customers/{customer_id}": {
+      "post": {
+        "description": "Bill a single customer for the period containing a day.\n\nArgs:\n    customer_id (str): The customer to bill.\n    reference_date (date): Any day inside the period.\n    service (BillingService): The billing service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Bill: The issued invoice.\n\nRaises:\n    MTBillAlreadyIssued: When the period is billed already; answered as a\n        409.\n    MTBillNothingToBill: When the customer owes nothing; answered as a 409.\n\nNotes:\n    - Behind a **static** ``customers`` segment, not ``/{customer_id}``\n      directly. A bare identifier there would be matched by the same pattern\n      as ``/{bill_id}``, and the router would resolve whichever it met\n      first \u2014 a collision invisible until somebody's customer identifier\n      started returning an invoice.\n    - Synchronous, unlike a whole run, because it produces one document and\n      a caller who named one customer is waiting for the answer. It is also\n      the one path where an empty or already-billed period is an **error**\n      rather than a customer to pass over: a run over everybody skips both\n      silently, since most customers have no work in most weeks.",
+        "operationId": "bill_one_customer_api_v1_bills_customers__customer_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reference_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Reference Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bill One Customer",
+        "tags": [
+          "Bills"
+        ]
+      }
+    },
+    "/api/v1/bills/runs": {
+      "get": {
+        "description": "List an agency's billing runs, most recently requested first.\n\nArgs:\n    page (int): One-based page number.\n    size (Optional[int]): Page size.\n    service (BillingService): The billing service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[BillingRun]: The runs.\n\nNotes:\n    Scoped to the caller's own agency in the service, not filtered\n    afterwards: a page of runs narrowed after it is read has already loaded\n    somebody else's month.",
+        "operationId": "list_billing_runs_api_v1_bills_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 200,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BillingRun"
+                  },
+                  "title": "Response List Billing Runs Api V1 Bills Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Billing Runs",
+        "tags": [
+          "Billing runs"
+        ]
+      },
+      "post": {
+        "description": "Bill the period containing a day.\n\nArgs:\n    request (BillGenerationRequest): The day inside the period to bill.\n    service (BillingService): The billing service.\n    publisher (EventPublisher): Queues the generation for a worker.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    BillingRun: The pending run, with the identifier to poll.\n\nRaises:\n    MTBillingPeriodInFuture: When the period has not finished; answered as\n        a 422 by the central handler.\n    MTBillingSettingsUnavailable: When the invoicing rules cannot be read;\n        answered as a 503.\n\nNotes:\n    - Answers **202**, not 200. A monthly close over three hundred customers\n      is three hundred documents rendered and three hundred objects\n      uploaded; holding the request open for that would tie up a connection\n      and time out the client. Poll ``GET /runs/{id}`` until the status is\n      terminal.\n    - The run is **recorded before it is queued**, and the record is what\n      the caller is given. If the broker is unreachable the run stays\n      ``pending`` rather than vanishing: the identifier is real either way,\n      and the work can be re-queued without anybody reconstructing what was\n      asked for.\n    - **A manager, not an administrator.** Billing is a manager's routine\n      monthly job, where a planning run rewrites every assistant's calendar.\n    - The caller names a **day**, never a window. The period is resolved\n      from the agency's own periodicity, so nobody can invoice a fortnight\n      the settings do not describe and produce a window no one could\n      reproduce afterwards.\n    - **Nothing is emailed by this.** The run renders every invoice and\n      stops; each one waits for a manager to validate it, and validation is\n      what sends it.",
+        "operationId": "start_billing_run_api_v1_bills_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Billing Run",
+        "tags": [
+          "Billing runs"
+        ]
+      }
+    },
+    "/api/v1/bills/runs/{run_id}": {
+      "get": {
+        "description": "Return one billing run, so a caller can poll it.\n\nArgs:\n    run_id (str): The run to read.\n    service (BillingService): The billing service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    BillingRun: The run.\n\nRaises:\n    MTBillingRunNotFound: When there is no such run; answered as a 404 by\n        the central handler.\n\nNotes:\n    Poll until :meth:`~models.billing.billing_run.BillingRun.is_terminal`.\n    A **partial** run is finished \u2014 the invoices that could be written are\n    written \u2014 so a client that kept polling would wait for ever.",
+        "operationId": "get_billing_run_api_v1_bills_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Billing Run",
+        "tags": [
+          "Billing runs"
+        ]
+      }
+    },
+    "/api/v1/bills/{bill_id}": {
+      "get": {
+        "description": "Return one invoice with its charges.\n\nArgs:\n    bill_id (str): The invoice to read.\n    service (BillingService): The billing service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Bill: The invoice.\n\nRaises:\n    MTBillNotFound: When there is no such invoice; answered as a 404 by the\n        central handler.",
+        "operationId": "get_bill_api_v1_bills__bill_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bill_id",
+            "required": true,
+            "schema": {
+              "title": "Bill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Bill",
+        "tags": [
+          "Bills"
+        ]
+      }
+    },
+    "/api/v1/bills/{bill_id}/document": {
+      "get": {
+        "description": "Stream one invoice's PDF.\n\nArgs:\n    bill_id (str): The invoice to download.\n    service (BillingService): The billing service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Response: The document, as an attachment.\n\nRaises:\n    MTBillNotFound: When there is no such invoice; answered as a 404.\n    MTBillDocumentUnavailable: When the document cannot be read; answered\n        as a 503.\n\nNotes:\n    - **Streamed through this endpoint rather than served from the bucket.**\n      The objects are written under a private prefix precisely so the bearer\n      guard is the only way to them; redirecting to a presigned URL would\n      put a customer's invoice outside it.\n    - ``response_model=None`` because the body is bytes: without it FastAPI\n      tries to serialise the PDF as JSON. The ``responses`` block is what\n      keeps the OpenAPI schema honest about the content type, since there is\n      no model to infer it from.\n    - The filename is derived from the invoice number by the service, never\n      from anything the caller sends.",
+        "operationId": "download_bill_document_api_v1_bills__bill_id__document_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bill_id",
+            "required": true,
+            "schema": {
+              "title": "Bill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Bill Document",
+        "tags": [
+          "Bills"
+        ]
+      }
+    },
+    "/api/v1/bills/{bill_id}/status": {
+      "patch": {
+        "description": "Move an invoice along its commercial lifecycle.\n\nArgs:\n    bill_id (str): The invoice to move.\n    request (BillStatusRequest): The status to move it to.\n    service (BillingService): The billing service.\n    publisher (EventPublisher): Announces an approved invoice.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Bill: The updated invoice.\n\nRaises:\n    MTBillNotFound: When there is no such invoice; answered as a 404.\n    MTBillTransitionNotAllowed: When the move skips a step; answered as a\n        409.\n\nNotes:\n    - **Manager or administrator only**, which is the specification's own\n      rule: the status is a statement about money owed, and an assistant who\n      could set one would be writing the agency's accounts.\n    - **Moving to ``accepted`` is what sends the invoice.** The event is\n      published after the record says a human approved it, never before \u2014\n      which is the whole reason a generation run leaves every invoice\n      waiting rather than emailing as it goes.\n    - A failed publish is logged and the call still succeeds. The approval\n      is real and stored; the invoice simply stays at ``accepted``, which\n      reads as \"approved but not yet out\" and is actionable.",
+        "operationId": "set_bill_status_api_v1_bills__bill_id__status_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bill_id",
+            "required": true,
+            "schema": {
+              "title": "Bill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bill"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Bill Status",
+        "tags": [
+          "Bills"
         ]
       }
     },
@@ -8989,7 +10347,7 @@
         ]
       },
       "post": {
-        "description": "Start a planning computation over a period.\n\nArgs:\n    period_start (date): First day to plan, inclusive.\n    period_end (date): Last day to plan, inclusive.\n    service (PlanningService): The planning service.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    PlanningRun: The pending run, with the identifier to poll.\n\nRaises:\n    MTPlanningPeriodTooLong: When the period runs backwards; answered as a\n        422 by the central handler.\n\nNotes:\n    Answers **202**, not 200. The solve is CPU-bound and runs for the\n    configured budget in a separate worker process, so holding the request\n    open for it would tie up a connection and time out the client. Poll\n    ``GET /runs/{id}`` until the status is terminal.\n\n    The run is **recorded before it is queued**, and the record is what the\n    caller is given. If the broker is unreachable the run stays ``pending``\n    rather than vanishing: the identifier the caller polls is real either\n    way, and the work can be re-queued without anybody having to reconstruct\n    what was asked for. That is the whole reason this moved off a FastAPI\n    background task \u2014 one lost the run entirely on a restart.\n\n    Running the computation is administrator-only: it rewrites every\n    assistant's calendar for the period.",
+        "description": "Start a planning computation over a period.\n\nArgs:\n    period_start (date): First day to plan, inclusive.\n    period_end (date): Last day to plan, inclusive.\n    service (PlanningService): The planning service.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    PlanningRun: The pending run, with the identifier to poll.\n\nRaises:\n    MTPlanningPeriodTooLong: When the period runs backwards; answered as a\n        422 by the central handler.\n\nNotes:\n    - Answers **202**, not 200. The solve is CPU-bound and runs for the\n      configured budget in a separate worker process, so holding the request\n      open for it would tie up a connection and time out the client. Poll\n      ``GET /runs/{id}`` until the status is terminal.\n    - The run is **recorded before it is queued**, and the record is what the\n      caller is given. If the broker is unreachable the run stays ``pending``\n      rather than vanishing: the identifier the caller polls is real either\n      way, and the work can be re-queued without anybody having to reconstruct\n      what was asked for. That is the whole reason this moved off a FastAPI\n      background task \u2014 one lost the run entirely on a restart.\n    - Running the computation is administrator-only: it rewrites every\n    assistant's calendar for the period.",
         "operationId": "start_planning_run_api_v1_planning_runs_post",
         "parameters": [
           {
@@ -10507,6 +11865,66 @@
         "summary": "Promote User",
         "tags": [
           "Users"
+        ]
+      }
+    },
+    "/api/v1/webhooks/bill-accepted": {
+      "post": {
+        "description": "Email a validated invoice to the customer it is addressed to.\n\nArgs:\n    request (BillAcceptedRequest): Names the invoice a manager approved.\n    x_webhook_token (Optional[str]): The shared secret, as a header.\n    emails (EmailService): Sends the document.\n    billing (BillingService): Reads the invoice and its stored PDF.\n    customers (CustomerService): Supplies the customer's address.\n    companies (CompanyRepository): Names the agency on the covering note.\n\nReturns:\n    BillDispatchResponse: Whether the customer received it.\n\nRaises:\n    HTTPException: 401 when the shared secret is missing or wrong.\n    MTBillNotFound: If the invoice does not exist; answered as a 404.\n    MTBillDocumentUnavailable: If the stored PDF cannot be read; answered\n        as a 503.\n\nNotes:\n    - **This is what puts an invoice in a customer's inbox**, and it fires\n      only after a manager moved the bill to accepted. A generation run\n      renders every document and stops; nothing reaches anybody until the\n      record says a human approved it.\n    - **Not** behind the bearer-token middleware: a webhook has no signed-in\n      user. Its own secret is what authenticates it, compared with\n      :func:`~secrets.compare_digest` so a wrong token cannot be found one\n      character at a time by timing the answer. Both refusals answer with\n      the same text, so a caller cannot tell an unset secret from a wrong\n      one.\n    - **The bytes emailed are the bytes stored**, read back from the object\n      store rather than re-rendered. What the customer receives and what the\n      agency can re-download are then provably the same file.\n    - A delivery failure is reported, not raised. The invoice is written,\n      numbered and downloadable; the bill simply stays at accepted, which\n      reads as \"approved but not yet out\" \u2014 the truth, and actionable.",
+        "operationId": "bill_accepted_api_v1_webhooks_bill_accepted_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-webhook-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Webhook-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillAcceptedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillDispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bill Accepted",
+        "tags": [
+          "Webhooks"
         ]
       }
     },

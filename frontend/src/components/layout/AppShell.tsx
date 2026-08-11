@@ -85,6 +85,7 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
     headingKey: 'nav.operations',
     entries: [
       { to: '/quotes', labelKey: 'nav.quotes', icon: 'quote', minimum: 'manager' },
+      { to: '/bills', labelKey: 'nav.bills', icon: 'bill', minimum: 'manager' },
       { to: '/hcas', labelKey: 'nav.hcas', icon: 'hca', minimum: 'manager' },
       {
         to: '/plannings',
@@ -128,6 +129,12 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
         to: '/skills',
         labelKey: 'nav.skills',
         icon: 'skill',
+        minimum: 'manager',
+      },
+      {
+        to: '/billing-settings',
+        labelKey: 'nav.billingSettings',
+        icon: 'bill',
         minimum: 'manager',
       },
       {

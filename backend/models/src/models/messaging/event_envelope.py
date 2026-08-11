@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import datetime
-from typing import ClassVar, Dict, FrozenSet, Optional, Union
+from typing import ClassVar, Dict, FrozenSet, Optional
 
 # Third-party imports
 from pydantic import BaseModel, Field, JsonValue, field_serializer, field_validator
@@ -52,9 +52,6 @@ class EventEnvelope(BaseModel):
           switched off, still parses.
     """
 
-    #: The W3C ``traceparent`` shape: ``version-traceid-spanid-flags``, with
-    #: those field lengths, in lower-case hexadecimal. Constants rather than
-    #: literals in the validator so the message can name them back.
     TRACEPARENT_FIELDS: ClassVar[int] = 4
     VERSION_LENGTH: ClassVar[int] = 2
     TRACE_ID_LENGTH: ClassVar[int] = 32
@@ -111,18 +108,16 @@ class EventEnvelope(BaseModel):
                 nor a well-formed ``traceparent``.
 
         Notes:
-            The shape is fixed by the W3C specification: four hyphen-separated
-            fields — version, a 32-character trace id, a 16-character span id
-            and two flag characters, all lower-case hexadecimal.
-
-            Checked rather than trusted, because a malformed one is not inert.
-            The extractor would ignore it and start a *new* trace, so the solve
-            would appear to have begun on its own with no request behind it —
-            which reads as a complete picture and is not one.
-
-            An all-zero trace or span id is refused for the same reason: the
-            specification says both are invalid, and a collector that follows it
-            drops the span without telling anybody.
+            - The shape is fixed by the W3C specification: four hyphen-separated
+              fields — version, a 32-character trace id, a 16-character span id
+              and two flag characters, all lower-case hexadecimal.
+            - Checked rather than trusted, because a malformed one is not inert.
+              The extractor would ignore it and start a *new* trace, so the solve
+              would appear to have begun on its own with no request behind it —
+              which reads as a complete picture and is not one.
+            - An all-zero trace or span id is refused for the same reason: the
+              specification says both are invalid, and a collector that follows it
+              drops the span without telling anybody.
         """
         if value is None:
             return None
@@ -150,10 +145,11 @@ class EventEnvelope(BaseModel):
                 f"{cls.VERSION_LENGTH}, {cls.TRACE_ID_LENGTH}, "
                 f"{cls.SPAN_ID_LENGTH} and {cls.FLAGS_LENGTH} characters."
             )
-        if any(character not in cls.HEX_DIGITS for character in stripped.replace("-", "")):
+        if any(
+            character not in cls.HEX_DIGITS for character in stripped.replace("-", "")
+        ):
             raise MTEventEnvelopeInvalidTraceparent(
-                f"Invalid traceparent: {stripped!r}. "
-                f"Must be lower-case hexadecimal."
+                f"Invalid traceparent: {stripped!r}. Must be lower-case hexadecimal."
             )
         if set(trace_id) == {"0"} or set(span_id) == {"0"}:
             raise MTEventEnvelopeInvalidTraceparent(
@@ -187,15 +183,15 @@ class EventEnvelope(BaseModel):
 
     @field_validator("occurred_at", mode="before")
     def validate_occurred_at(
-        cls, value: Union[str, datetime, None]
-    ) -> Union[str, datetime, None]:
+        cls, value: Optional[str, datetime,]
+    ) -> Optional[str, datetime,]:
         """Validates that ``occurred_at`` is datetime-like or ``None``.
 
         Args:
-            value (Union[str, datetime, None]): Raw timestamp.
+            value (Optional[str, datetime,]): Raw timestamp.
 
         Returns:
-            Union[str, datetime, None]: The value handed back for Pydantic.
+            Optional[str, datetime,]: The value handed back for Pydantic.
 
         Raises:
             MTEventEnvelopeInvalidTimestamp: If ``value`` is neither ``None``
@@ -211,7 +207,7 @@ class EventEnvelope(BaseModel):
         )
 
     @field_serializer("occurred_at")
-    def serialize_occurred_at(self, value: Optional[datetime]) -> Optional[str]:
+    def serialize_occurred_at(self, value: Optional[datetime]) -> Optional[str]:  # noqa: E501
         """Serialize the timestamp to an ISO-8601 string.
 
         Args:

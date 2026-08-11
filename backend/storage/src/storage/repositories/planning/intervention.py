@@ -273,6 +273,60 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             )
         return [self.mapper.to_model(row) for row in rows]
 
+    async def list_for_customer(
+        self, customer_id: str, period_start: date, period_end: date
+    ) -> List[Intervention]:
+        """Return one customer's visits over a period.
+
+        Args:
+            customer_id (str): The customer whose visits are being read.
+            period_start (date): First day of interest, inclusive.
+            period_end (date): Last day of interest, inclusive.
+
+        Returns:
+            List[Intervention]: Their visits, in day and time order.
+
+        Notes:
+            - Scoped by customer **and** by period, which is what keeps it
+              inside the rule the class docstring sets: there is deliberately no
+              "every intervention" method, and this is the same shape as
+              :meth:`list_for_hca` with the other party named.
+            - Written for billing, which needs the hours actually worked and the
+              assistant who worked them so an invoice can say more than "one
+              service, 9 March". A customer with quote lines but no visits here
+              is a period that was never planned — worth seeing in the log
+              beside the invoice it produced, which is why the empty case is a
+              warning rather than silence.
+            - Served by ``ix_interventions_customer``, which already existed for
+              a query nothing had yet written.
+        """
+        self.logger.debug(
+            "Loading the visits of customer %s from %s to %s.",
+            customer_id,
+            period_start,
+            period_end,
+        )
+        statement = (
+            select(InterventionRow)
+            .where(
+                InterventionRow.customer_id == customer_id,
+                InterventionRow.day >= period_start,
+                InterventionRow.day <= period_end,
+            )
+            .order_by(InterventionRow.day, InterventionRow.start_time)
+        )
+        rows = await self._fetch_all(statement)
+        if not rows:
+            self.logger.warning(
+                "Customer %s has no visit between %s and %s; anything billed "
+                "for them was never placed by a planning run.",
+                customer_id,
+                period_start,
+                period_end,
+            )
+        self.logger.info("Loaded %d visit(s) for customer %s.", len(rows), customer_id)
+        return [self.mapper.to_model(row) for row in rows]
+
     async def list_hca_ids_for_period(
         self, period_start: date, period_end: date
     ) -> List[str]:

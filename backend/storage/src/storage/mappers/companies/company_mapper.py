@@ -15,14 +15,13 @@ class CompanyMapper(BaseMapper[Company, CompanyRow]):
     """Converts between :class:`Company` and :class:`CompanyRow`.
 
     Notes:
-        The address is optional on a company, unlike on a person, so it is
-        rebuilt only when a street was stored. Building an empty
-        :class:`~models.geo.postal_address.PostalAddress` instead would send a
-        blank address to Nominatim on every read.
-
-        A stored address is handed both its coordinate and, where it failed,
-        the recorded error. That combination is what marks it resolved, so
-        re-reading a company never calls the geocoder again.
+        - The address is optional on a company, unlike on a person, so it is
+          rebuilt only when a street was stored. Building an empty
+          :class:`~models.geo.postal_address.PostalAddress` instead would send a
+          blank address to Nominatim on every read.
+        - A stored address is handed both its coordinate and, where it failed,
+          the recorded error. That combination is what marks it resolved, so
+          re-reading a company never calls the geocoder again.
     """
 
     def __init__(self, logger: Optional[Logger] = None) -> None:
@@ -32,7 +31,7 @@ class CompanyMapper(BaseMapper[Company, CompanyRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after the base mapper's module.
         """
-        super().__init__(model_class=Company, row_class=CompanyRow, logger=logger)
+        super().__init__(model_class=Company, row_class=CompanyRow)
 
     ############################
     # Internal Helpers Methods #
@@ -82,6 +81,7 @@ class CompanyMapper(BaseMapper[Company, CompanyRow]):
             share_capital=row.share_capital,
             rcs_number=row.rcs_number,
             vat_number=row.vat_number,
+            sap_declaration_number=row.sap_declaration_number,
             phone_number=row.phone_number,
             iban=row.iban,
             bic=row.bic,
@@ -102,11 +102,12 @@ class CompanyMapper(BaseMapper[Company, CompanyRow]):
         self.logger.debug("Applying company %s to its row.", model.name)
         row.name = model.name
         row.registration_number = model.registration_number
-        row.contact_email = str(model.contact_email) if model.contact_email else None
+        row.contact_email = str(model.contact_email) if model.contact_email else None  # noqa: E501
         row.legal_form = model.legal_form
         row.share_capital = model.share_capital
         row.rcs_number = model.rcs_number
         row.vat_number = model.vat_number
+        row.sap_declaration_number = model.sap_declaration_number
         row.phone_number = model.phone_number
         row.iban = model.iban
         row.bic = model.bic

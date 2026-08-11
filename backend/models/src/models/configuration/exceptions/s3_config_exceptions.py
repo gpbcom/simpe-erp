@@ -30,6 +30,17 @@ class MTS3ConfigInvalidLogoPrefix(MTInvalidS3ConfigException):
     """Exception raised when an invalid ``logo_key_prefix`` is provided."""
 
 
+class MTS3ConfigInvalidInvoicePrefix(MTInvalidS3ConfigException):
+    """Exception raised when an invalid ``invoice_key_prefix`` is provided.
+
+    Notes:
+        Its own class rather than a shared one, for the reason the photo and
+        logo prefixes have theirs: the API's exception-to-status map is keyed on
+        the class, and a rejected invoice prefix reporting itself as a bad photo
+        prefix would send whoever is fixing the deployment to the wrong line.
+    """
+
+
 class MTS3ConfigInvalidMaxUploadBytes(MTInvalidS3ConfigException):
     """Exception raised when an invalid ``max_upload_bytes`` is provided."""
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import UTC, datetime
 from logging import Logger, getLogger
 from secrets import compare_digest
 from typing import List, Optional
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 # First-party imports
 from api.dependencies import (
+    get_billing_service,
     get_app_config,
     get_customer_service,
     get_email_service,
@@ -20,17 +22,25 @@ from api.dependencies import (
     get_user_repository,
 )
 from models.auth.user import User
-from models.enums import QuoteStatus, UserRole
+from models.enums import BillStatus, QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.quoting.quote import Quote
+from models.schemas.requests.billing.bill_accepted_request import (
+    BillAcceptedRequest,
+)
 from models.schemas.requests.planning.planning_completed_request import (
     PlanningCompletedRequest,  # noqa: E501
+)
+from models.schemas.responses.billing.bill_dispatch_response import (
+    BillDispatchResponse,
 )
 from models.schemas.responses.messaging.email_dispatch_response import (
     EmailDispatchResponse,  # noqa: E501
 )
+from service.billing.billings import BillingService
 from service.customers.customers import CustomerService
 from service.emails.emails import EmailService
+from service.emails.exceptions import MTInvalidEmailException
 from service.hcas.hcas import HcaService
 from service.planning.plannings import PlanningService
 from service.quotes.quotes import QuoteService
@@ -172,8 +182,7 @@ async def planning_completed(
     )
 
     logger.info(
-        "Planning run %s dispatched: %d planning(s), %d quote(s) in %s, "
-        "issued by %s.",
+        "Planning run %s dispatched: %d planning(s), %d quote(s) in %s, issued by %s.",
         run.id,
         plannings_sent,
         quotes_sent,
@@ -185,3 +194,103 @@ async def planning_completed(
         plannings_sent=plannings_sent,
         quotes_sent=quotes_sent,
     )
+
+
+@router.post("/bill-accepted", response_model=BillDispatchResponse)
+async def bill_accepted(
+    request: BillAcceptedRequest,
+    x_webhook_token: Optional[str] = Header(default=None),
+    emails: EmailService = Depends(get_email_service),
+    billing: BillingService = Depends(get_billing_service),
+    customers: CustomerService = Depends(get_customer_service),
+    companies: CompanyRepository = Depends(get_company_repository),
+) -> BillDispatchResponse:
+    """Email a validated invoice to the customer it is addressed to.
+
+    Args:
+        request (BillAcceptedRequest): Names the invoice a manager approved.
+        x_webhook_token (Optional[str]): The shared secret, as a header.
+        emails (EmailService): Sends the document.
+        billing (BillingService): Reads the invoice and its stored PDF.
+        customers (CustomerService): Supplies the customer's address.
+        companies (CompanyRepository): Names the agency on the covering note.
+
+    Returns:
+        BillDispatchResponse: Whether the customer received it.
+
+    Raises:
+        HTTPException: 401 when the shared secret is missing or wrong.
+        MTBillNotFound: If the invoice does not exist; answered as a 404.
+        MTBillDocumentUnavailable: If the stored PDF cannot be read; answered
+            as a 503.
+
+    Notes:
+        - **This is what puts an invoice in a customer's inbox**, and it fires
+          only after a manager moved the bill to accepted. A generation run
+          renders every document and stops; nothing reaches anybody until the
+          record says a human approved it.
+        - **Not** behind the bearer-token middleware: a webhook has no signed-in
+          user. Its own secret is what authenticates it, compared with
+          :func:`~secrets.compare_digest` so a wrong token cannot be found one
+          character at a time by timing the answer. Both refusals answer with
+          the same text, so a caller cannot tell an unset secret from a wrong
+          one.
+        - **The bytes emailed are the bytes stored**, read back from the object
+          store rather than re-rendered. What the customer receives and what the
+          agency can re-download are then provably the same file.
+        - A delivery failure is reported, not raised. The invoice is written,
+          numbered and downloadable; the bill simply stays at accepted, which
+          reads as "approved but not yet out" — the truth, and actionable.
+    """
+    configured = get_app_config().billing_webhook.get_token()
+    if not configured or not x_webhook_token:
+        logger.warning("Refused a bill-accepted webhook with no secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This webhook requires a shared secret.",
+        )
+    if not compare_digest(x_webhook_token, configured):
+        logger.warning("Refused a bill-accepted webhook with a wrong secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This webhook requires a shared secret.",
+        )
+
+    bill = await billing.get(request.bill_id)
+    payload, _ = await billing.document(bill.id or request.bill_id)
+    customer = await customers.get(bill.customer_id)
+    company = await companies.get(bill.company_id)
+    if company is None:
+        logger.error(
+            "Invoice %s names agency %s, which no longer exists; it cannot be "
+            "sent because the covering note has nobody to come from.",
+            bill.number,
+            bill.company_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The agency that issued this invoice no longer exists.",
+        )
+    logger.info("Dispatching invoice %s to customer %s.", bill.number, bill.customer_id)
+    try:
+        await emails.send_bill(bill, customer, company, payload)
+    except MTInvalidEmailException as exc:
+        logger.error(
+            "Could not email invoice %s to customer %s: %s. It stays approved "
+            "and un-sent.",
+            bill.number,
+            bill.customer_id,
+            exc,
+        )
+        return BillDispatchResponse(bill_id=request.bill_id, sent=False)
+
+    sent_at = datetime.now(UTC)
+    await billing.mark_sent(bill.id or request.bill_id, sent_at)
+    if bill.status.can_move_to(BillStatus.WAITING_PAYMENT):
+        await billing.set_status(
+            bill.id or request.bill_id,
+            BillStatus.WAITING_PAYMENT,
+            actor="bill-webhook@simple-erp.system",
+        )
+    logger.info("Invoice %s reached customer %s.", bill.number, bill.customer_id)
+    return BillDispatchResponse(bill_id=request.bill_id, sent=True)

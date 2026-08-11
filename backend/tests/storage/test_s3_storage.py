@@ -20,6 +20,7 @@ from storage.s3.s3_storage import S3Storage
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+PDF = b"%PDF-1.4" + b"\x00" * 64
 WEBP = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 64
 WAV = b"RIFF\x00\x00\x00\x00WAVE" + b"\x00" * 64
 
@@ -608,3 +609,179 @@ class TestCompanyLogos:
 
         assert storage.key_for_url(photo) == "hca-photos/h-1/a.jpg"
         assert storage.key_for_url(photo, prefix="company-logos/") is None
+
+
+class TestInvoiceDocuments:
+    """Tests for the private prefix generated invoices are written under."""
+
+    def test_a_pdf_is_accepted_by_the_document_sniffer(
+        self, storage: S3Storage
+    ) -> None:
+        """The invoice path recognises what the image path refuses."""
+        assert storage.detect_document_type(PDF) == "application/pdf"
+
+    def test_the_image_sniffer_still_refuses_a_pdf(self, storage: S3Storage) -> None:
+        """**The two sniffers stay apart, and this is why.**
+
+        Notes:
+            Widening ``detect_content_type`` to admit a document would have
+            admitted it for photographs and logos too — which is exactly how a
+            bucket serving browser-facing files becomes a delivery mechanism.
+            The invoice path is parallel, never a relaxation.
+        """
+        with pytest.raises(MTS3UnsupportedContentType):
+            storage.detect_content_type(PDF)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param(PNG, id="Invalid - a PNG"),
+            pytest.param(JPEG, id="Invalid - a JPEG"),
+            pytest.param(b"<html>error</html>", id="Invalid - an error page"),
+        ],
+    )
+    def test_anything_that_is_not_a_pdf_is_refused(
+        self, storage: S3Storage, payload: bytes
+    ) -> None:
+        """A renderer that returned an error page must not be stored.
+
+        Args:
+            payload (bytes): The refused document.
+
+        Notes:
+            The check costs five bytes of comparison and catches the one
+            failure that would otherwise be filed under a legal invoice number
+            and emailed to a customer.
+        """
+        with pytest.raises(MTS3UnsupportedContentType):
+            storage.detect_document_type(payload)
+
+    def test_an_empty_document_is_refused(self, storage: S3Storage) -> None:
+        """Nothing rendered is not a document."""
+        with pytest.raises(MTS3EmptyPayload):
+            storage.detect_document_type(b"")
+
+    def test_the_key_is_random_not_derived_from_the_number(
+        self, storage: S3Storage
+    ) -> None:
+        """**The invoice number is printed; the key must not be guessable.**
+
+        Notes:
+            A key built from the number would be derivable by anybody who has
+            ever received an invoice from the agency, and these objects are its
+            whole billing history.
+        """
+        first = storage.build_invoice_key("company-1", "FA-2026-000001")
+        second = storage.build_invoice_key("company-1", "FA-2026-000001")
+
+        assert first != second
+        assert "FA-2026-000001" not in first
+        assert first.startswith("invoices/company-1/")
+        assert first.endswith(".pdf")
+
+    async def test_an_invoice_is_stored_privately(self, storage: S3Storage) -> None:
+        """Written with no public cache header, unlike an image."""
+        key = await storage.upload_invoice("company-1", "FA-2026-000001", PDF)
+
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        written = client.puts[0]
+        assert written["Key"] == key
+        assert written["ContentType"] == "application/pdf"
+        assert written["CacheControl"] == "private, no-store"
+
+    async def test_uploading_returns_a_key_and_not_a_url(
+        self, storage: S3Storage
+    ) -> None:
+        """**There is no public URL for an invoice, so none is built.**
+
+        Notes:
+            The two image paths return a URL because a browser fetches those
+            objects directly. An invoice is streamed through an authenticated
+            endpoint, and storing a URL would invite somebody to use it.
+        """
+        key = await storage.upload_invoice("company-1", "FA-2026-000001", PDF)
+
+        assert not key.startswith("http")
+        assert key.startswith("invoices/")
+
+    async def test_an_oversized_document_is_refused(self, storage: S3Storage) -> None:
+        """The size limit applies to a rendered document as to an upload."""
+        with pytest.raises(MTS3PayloadTooLarge):
+            await storage.upload_invoice(
+                "company-1", "FA-2026-000001", PDF + b"\x00" * 2048
+            )
+
+    async def test_an_upload_failure_is_raised_not_swallowed(
+        self, storage: S3Storage
+    ) -> None:
+        """A number burnt on a document that never landed is a gap."""
+        storage.client = _FakeS3Client(
+            failure=ClientError({"Error": {"Code": "AccessDenied"}}, "PutObject")
+        )
+
+        with pytest.raises(MTS3UploadFailed):
+            await storage.upload_invoice("company-1", "FA-2026-000001", PDF)
+
+    async def test_a_stored_invoice_reads_back(self, storage: S3Storage) -> None:
+        """What the download endpoint streams."""
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        client.stored = PDF
+
+        assert await storage.fetch_invoice("invoices/company-1/abc.pdf") == PDF
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            pytest.param("hca-photos/h-1/a.jpg", id="Invalid - a photograph"),
+            pytest.param("company-logos/c-1/a.png", id="Invalid - a logo"),
+            pytest.param("../../etc/passwd", id="Invalid - a traversal"),
+            pytest.param("", id="Invalid - empty"),
+        ],
+    )
+    async def test_a_key_outside_the_prefix_is_refused(
+        self, storage: S3Storage, key: str
+    ) -> None:
+        """A key from anywhere else must not read the rest of the bucket.
+
+        Args:
+            key (str): The refused key.
+        """
+        assert await storage.fetch_invoice(key) is None
+        assert await storage.delete_invoice(key) is False
+
+    async def test_an_unreadable_invoice_is_reported_not_raised(
+        self, storage: S3Storage
+    ) -> None:
+        """The download endpoint answers "unavailable", not a stack trace."""
+        storage.client = _FakeS3Client(
+            failure=ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        )
+
+        assert await storage.fetch_invoice("invoices/company-1/abc.pdf") is None
+
+    async def test_a_zero_byte_invoice_is_treated_as_absent(
+        self, storage: S3Storage
+    ) -> None:
+        """An empty object is a failed write, not a document."""
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        client.stored = b""
+
+        assert await storage.fetch_invoice("invoices/company-1/abc.pdf") is None
+
+    async def test_a_superseded_document_can_be_removed(
+        self, storage: S3Storage
+    ) -> None:
+        """For the object a re-render leaves behind — never for the record.
+
+        Notes:
+            The invoice row itself is never deleted: a number taken out of the
+            series is the gap French invoicing forbids.
+        """
+        assert await storage.delete_invoice("invoices/company-1/abc.pdf") is True
+
+        client = storage.client
+        assert isinstance(client, _FakeS3Client)
+        assert client.deletes[0]["Key"] == "invoices/company-1/abc.pdf"

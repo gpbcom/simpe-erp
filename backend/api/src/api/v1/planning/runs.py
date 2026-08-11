@@ -53,19 +53,17 @@ async def start_planning_run(
             422 by the central handler.
 
     Notes:
-        Answers **202**, not 200. The solve is CPU-bound and runs for the
-        configured budget in a separate worker process, so holding the request
-        open for it would tie up a connection and time out the client. Poll
-        ``GET /runs/{id}`` until the status is terminal.
-
-        The run is **recorded before it is queued**, and the record is what the
-        caller is given. If the broker is unreachable the run stays ``pending``
-        rather than vanishing: the identifier the caller polls is real either
-        way, and the work can be re-queued without anybody having to reconstruct
-        what was asked for. That is the whole reason this moved off a FastAPI
-        background task — one lost the run entirely on a restart.
-
-        Running the computation is administrator-only: it rewrites every
+        - Answers **202**, not 200. The solve is CPU-bound and runs for the
+          configured budget in a separate worker process, so holding the request
+          open for it would tie up a connection and time out the client. Poll
+          ``GET /runs/{id}`` until the status is terminal.
+        - The run is **recorded before it is queued**, and the record is what the
+          caller is given. If the broker is unreachable the run stays ``pending``
+          rather than vanishing: the identifier the caller polls is real either
+          way, and the work can be re-queued without anybody having to reconstruct
+          what was asked for. That is the whole reason this moved off a FastAPI
+          background task — one lost the run entirely on a restart.
+        - Running the computation is administrator-only: it rewrites every
         assistant's calendar for the period.
     """
     if period_end < period_start:

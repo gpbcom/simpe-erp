@@ -47,12 +47,24 @@ services:
     environment:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+    # The bucket is private, and only the two *image* prefixes are opened to
+    # anonymous readers. Photographs and logos are fetched straight from the
+    # bucket by a browser, which needs them public; invoices are not, and are
+    # streamed through `GET /api/v1/bills/{id}/document` behind the bearer
+    # guard instead.
+    #
+    # `anonymous set none` runs first and is not redundant: a bucket created by
+    # an earlier version of this file carries a bucket-wide download policy,
+    # and adding the prefix rules without clearing that would leave every
+    # invoice readable by anybody who obtained its key.
     entrypoint: >
       sh -c "
         mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
         mc mb --ignore-existing local/simple-erp &&
-        mc anonymous set download local/simple-erp &&
-        echo 'Bucket simple-erp is ready.'
+        mc anonymous set none local/simple-erp &&
+        mc anonymous set download local/simple-erp/hca-photos &&
+        mc anonymous set download local/simple-erp/company-logos &&
+        echo 'Bucket simple-erp is ready; invoices are private.'
       "
     networks: [simple-erp]
 
@@ -139,6 +151,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-}
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -196,12 +209,36 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      # The notifications role is what announces an approved invoice, so it
+      # carries the secret the bill-accepted endpoint compares against.
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     command: ["worker", "notifications"]
+    networks: [simple-erp]
+
+  worker-billing:
+    build:
+      context: ../../backend
+    image: simple-erp-backend:local
+    environment:
+      SIMPLE_ERP_CONFIG: conf/app.docker.yaml
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simple_erp_dev}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-simple_erp_dev}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-simple_erp_dev}
+      BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-simple-erp-dev-billing-webhook}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: ["worker", "billing"]
     networks: [simple-erp]
 
   frontend:

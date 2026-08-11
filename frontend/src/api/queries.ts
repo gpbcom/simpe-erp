@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from './client';
+import { request, requestBlob } from './client';
 import { filterQuery } from '@/components/filters/entityFilter';
 import type { EntityFilterRecord } from '@/components/filters/entityFilter';
+import { saveBlob } from '@/utils/download';
 import { useSession } from '@/store/session';
 import type {
+  Bill,
+  BillingPeriodicity,
+  BillingRun,
+  BillingSettings,
+  BillStatus,
   AvailabilitySlot,
   NewQuote,
   NewQuoteLine,
@@ -119,6 +125,16 @@ export const keys = {
   notifications: (filter?: EntityFilterRecord) =>
     ['notifications', 'list', filterQuery(filter)] as const,
   unreadCount: ['notifications', 'unread'] as const,
+  // `list` and `detail` for the reason the customer keys carry them: without
+  // the segment, `bill('')` — what a closed drawer asks for — spells the same
+  // key as the unfiltered list, and a disabled query still reads whatever sits
+  // at its key.
+  bills: (filter?: EntityFilterRecord) =>
+    ['bills', 'list', filterQuery(filter)] as const,
+  bill: (id: string) => ['bills', 'detail', id] as const,
+  billingRuns: ['billing', 'runs'] as const,
+  billingRun: (id: string) => ['billing', 'runs', 'detail', id] as const,
+  billingSettings: ['billing', 'settings'] as const,
 };
 
 /**
@@ -1493,6 +1509,199 @@ export function useMarkAllRead() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['notifications'] });
       void client.invalidateQueries({ queryKey: keys.unreadCount });
+    },
+  });
+}
+
+
+/**
+ * An agency's invoices, most recent period first.
+ *
+ * @param filter - What the filter bar is narrowing by.
+ * @returns The query.
+ *
+ * @remarks
+ * The agency is not a parameter: the server takes it from the credential, so a
+ * client cannot widen its own scope by asking.
+ */
+export function useBills(filter?: EntityFilterRecord) {
+  return useQuery({
+    queryKey: keys.bills(filter),
+    queryFn: () => {
+      const query = filterQuery(filter);
+      return request<Bill[]>(`/api/v1/bills${query ? `?${query}` : ''}`);
+    },
+  });
+}
+
+/**
+ * One invoice with its charges.
+ *
+ * @param id - The invoice to read, or `''` while the drawer is closed.
+ * @returns The query.
+ *
+ * @remarks
+ * The drawer re-reads rather than trusting the grid row, which is a snapshot
+ * taken when the page loaded.
+ */
+export function useBill(id: string) {
+  return useQuery({
+    queryKey: keys.bill(id),
+    queryFn: () => request<Bill>(`/api/v1/bills/${id}`),
+    enabled: Boolean(id),
+  });
+}
+
+/** An agency's bill-generation runs, most recently requested first. */
+export function useBillingRuns() {
+  return useQuery({
+    queryKey: keys.billingRuns,
+    queryFn: () => request<BillingRun[]>('/api/v1/bills/runs'),
+  });
+}
+
+/**
+ * One generation run, polled while it is working.
+ *
+ * @param id - The run to poll, or `''` when nothing is running.
+ * @returns The query.
+ *
+ * @remarks
+ * Refetches every two seconds until the run is terminal, then stops. A
+ * **partial** run is terminal: the invoices that could be written are written,
+ * so polling on would wait for ever.
+ */
+export function useBillingRun(id: string) {
+  return useQuery({
+    queryKey: keys.billingRun(id),
+    queryFn: () => request<BillingRun>(`/api/v1/bills/runs/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      const finished =
+        status === 'succeeded' || status === 'partial' || status === 'failed';
+      return finished ? false : 2000;
+    },
+  });
+}
+
+/**
+ * Ask for a period to be billed.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Answers 202 with a run to poll; the invoices are written by a worker. Both
+ * the run list and the bill list are invalidated, because the run will produce
+ * rows in the second.
+ */
+export function useStartBillingRun() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { reference_date: string }) =>
+      request<BillingRun>('/api/v1/bills/runs', { method: 'POST', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.billingRuns });
+      void client.invalidateQueries({ queryKey: ['bills'] });
+    },
+  });
+}
+
+/**
+ * Move an invoice along its commercial lifecycle.
+ *
+ * @param billId - The invoice being moved.
+ * @returns The mutation.
+ *
+ * @remarks
+ * **Moving to `accepted` is what sends the invoice.** The server publishes the
+ * announcement after the record says a manager approved it, so this is not a
+ * cosmetic status change — it is the act that emails a customer.
+ *
+ * Whether a move is legal is the server's decision, taken against the *stored*
+ * status. A row rendered a minute ago may have moved since, so the screen
+ * offers the neighbours it believes in and lets a 409 correct it.
+ */
+export function useSetBillStatus(billId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { status: BillStatus }) =>
+      request<Bill>(`/api/v1/bills/${billId}/status`, {
+        method: 'PATCH',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.bill(billId) });
+      void client.invalidateQueries({ queryKey: ['bills'] });
+    },
+  });
+}
+
+/**
+ * Download an invoice's PDF.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * A **mutation**, not a query. A download has a side effect on the user's disk,
+ * and a query would re-fire it on every window refocus — handing somebody a
+ * second copy of the same invoice for coming back to the tab.
+ *
+ * The filename comes back with the bytes, from the server's own
+ * `Content-Disposition`. Derived here it would be the route path.
+ */
+export function useDownloadBill() {
+  return useMutation({
+    mutationFn: async (bill: { id: string; number: string }) => {
+      const { blob, filename } = await requestBlob(
+        `/api/v1/bills/${bill.id}/document`,
+        `${bill.number}.pdf`,
+      );
+      saveBlob(blob, filename);
+      return filename;
+    },
+  });
+}
+
+/** The agency's invoicing rules, seeded by the server on first read. */
+export function useBillingSettings() {
+  return useQuery({
+    queryKey: keys.billingSettings,
+    queryFn: () => request<BillingSettings>('/api/v1/billing/settings'),
+  });
+}
+
+/**
+ * Change the invoicing rules.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The whole rule set is sent, not the field that changed. Every field on the
+ * server's payload carries a default, so a partial body would silently reset
+ * the others — on values printed on every invoice the agency sends.
+ *
+ * **A change re-issues nothing.** It applies to the next generation run, so the
+ * cached bills are deliberately left alone: an invoice already issued keeps the
+ * terms it was printed with, because those terms are part of what the customer
+ * was told.
+ */
+export function useUpdateBillingSettings() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      periodicity: BillingPeriodicity;
+      payment_terms_days: number;
+      late_penalty_multiplier: number;
+      recovery_indemnity_eur: string;
+      escompte_offered: boolean;
+    }) =>
+      request<BillingSettings>('/api/v1/billing/settings', {
+        method: 'PUT',
+        json: body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.billingSettings });
     },
   });
 }

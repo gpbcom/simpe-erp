@@ -9,6 +9,10 @@ missing relation long after the migration that should have made it.
 
 from .base import Base
 from .auth.user_row import UserRow
+from .billing.bill_line_row import BillLineRow
+from .billing.bill_row import BillRow
+from .billing.billing_run_row import BillingRunRow
+from .billing.billing_settings_row import BillingSettingsRow
 from .catalog.certification_type_row import CertificationTypeRow
 from .catalog.intervention_type_row import InterventionTypeRow
 from .catalog.skill_type_row import SkillTypeRow
@@ -30,6 +34,10 @@ from .quoting.quote_row import QuoteRow
 __all__ = [
     "AvailabilityRow",
     "Base",
+    "BillLineRow",
+    "BillRow",
+    "BillingRunRow",
+    "BillingSettingsRow",
     "CertificationRow",
     "CertificationTypeRow",
     "CompanyRow",

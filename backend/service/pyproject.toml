@@ -14,6 +14,11 @@ dependencies = [
     # imports PIL to read the picture's dimensions. Only the quote's letterhead
     # needs it, but without it that import fails at module load, not at use.
     "pillow>=11.0.0",
+    # Invoices are PDFs, and nothing else here produces one. A pure-Python
+    # wheel with no system libraries behind it, so the container is unchanged;
+    # `pillow` above is what it uses to embed the agency's logo, which is why
+    # that dependency now has two reasons to be here.
+    "reportlab>=4.2.0",
     "aio-pika>=9.5.0",
     # The metrics registry and the exposition format. A small, stable
     # dependency: it is the format Prometheus scrapes and KEDA reads, so

@@ -12,6 +12,7 @@ from models.configuration.exceptions import (
     MTS3ConfigInvalidBucket,
     MTS3ConfigInvalidCredentialEnv,
     MTS3ConfigInvalidEndpointUrl,
+    MTS3ConfigInvalidInvoicePrefix,
     MTS3ConfigInvalidLogoPrefix,
     MTS3ConfigInvalidMaxUploadBytes,
     MTS3ConfigInvalidPhotoPrefix,
@@ -59,6 +60,7 @@ class S3Config(BaseModel):
 
     DEFAULT_PHOTO_KEY_PREFIX: ClassVar[str] = "hca-photos/"
     DEFAULT_LOGO_KEY_PREFIX: ClassVar[str] = "company-logos/"
+    DEFAULT_INVOICE_KEY_PREFIX: ClassVar[str] = "invoices/"
     ALLOWED_PHOTO_CONTENT_TYPES: ClassVar[Tuple[str, ...]] = (
         "image/jpeg",
         "image/png",
@@ -91,6 +93,10 @@ class S3Config(BaseModel):
     logo_key_prefix: str = Field(
         default=DEFAULT_LOGO_KEY_PREFIX,
         description="Key prefix every company logo is written under.",
+    )
+    invoice_key_prefix: str = Field(
+        default=DEFAULT_INVOICE_KEY_PREFIX,
+        description="Key prefix every generated invoice is written under.",
     )
     max_upload_bytes: int = Field(
         default=5 * 1024 * 1024,
@@ -205,7 +211,12 @@ class S3Config(BaseModel):
             )
         return value.strip()
 
-    @field_validator("photo_key_prefix", "logo_key_prefix", mode="before")
+    @field_validator(
+        "photo_key_prefix",
+        "logo_key_prefix",
+        "invoice_key_prefix",
+        mode="before",
+    )
     def validate_key_prefix(cls, value: Optional[str], info: ValidationInfo) -> str:
         """Validates that a key prefix is slash-terminated and relative.
 
@@ -222,6 +233,8 @@ class S3Config(BaseModel):
             MTS3ConfigInvalidPhotoPrefix: If ``photo_key_prefix`` is neither
                 ``None`` nor a non-empty string, or if it starts with a slash.
             MTS3ConfigInvalidLogoPrefix: The same, for ``logo_key_prefix``.
+            MTS3ConfigInvalidInvoicePrefix: The same, for
+                ``invoice_key_prefix``.
 
         Notes:
             A leading slash is rejected because S3 would treat it as an empty
@@ -231,18 +244,28 @@ class S3Config(BaseModel):
             The trailing slash is added rather than demanded, so a prefix
             configured without one still groups its objects into a folder.
 
-            One rule, two exceptions. The check is identical for both fields,
+            One rule, three exceptions. The check is identical for every field,
             but the API's exception-to-status map is keyed on the class, and a
             rejected logo prefix reporting itself as a bad photo prefix would
             send whoever is fixing the deployment to the wrong line.
+
+            The invoice prefix shares the rule and nothing else: objects under
+            it are written private and are never handed to a browser, so it is
+            the one prefix whose contents a wrong value would expose rather than
+            merely misplace.
         """
-        is_logo = info.field_name == "logo_key_prefix"
-        refuse = (
-            MTS3ConfigInvalidLogoPrefix if is_logo else MTS3ConfigInvalidPhotoPrefix
-        )
-        default = (
-            cls.DEFAULT_LOGO_KEY_PREFIX if is_logo else cls.DEFAULT_PHOTO_KEY_PREFIX
-        )
+        refusals = {
+            "photo_key_prefix": MTS3ConfigInvalidPhotoPrefix,
+            "logo_key_prefix": MTS3ConfigInvalidLogoPrefix,
+            "invoice_key_prefix": MTS3ConfigInvalidInvoicePrefix,
+        }
+        defaults = {
+            "photo_key_prefix": cls.DEFAULT_PHOTO_KEY_PREFIX,
+            "logo_key_prefix": cls.DEFAULT_LOGO_KEY_PREFIX,
+            "invoice_key_prefix": cls.DEFAULT_INVOICE_KEY_PREFIX,
+        }
+        refuse = refusals[str(info.field_name)]
+        default = defaults[str(info.field_name)]
         if value is None:
             return default
         if not isinstance(value, str) or not value.strip():

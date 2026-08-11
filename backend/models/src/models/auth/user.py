@@ -24,8 +24,8 @@ from models.auth.exceptions import (
     MTUserInvalidFullName,
     MTUserInvalidHashedPassword,
     MTUserInvalidHcaId,
-    MTUserInvalidLanguage,
     MTUserInvalidId,
+    MTUserInvalidLanguage,
     MTUserInvalidMustChangePassword,
     MTUserInvalidPhoneNumber,
     MTUserInvalidPhotoUrl,
@@ -85,15 +85,15 @@ class User(Person, PortraitHolder):
     """
 
     INVALID_ID: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidId
-    INVALID_FIRST_NAME: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidFullName
-    INVALID_LAST_NAME: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidFullName
+    INVALID_FIRST_NAME: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidFullName  # noqa: E501
+    INVALID_LAST_NAME: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidFullName  # noqa: E501
     INVALID_PHONE_NUMBER: ClassVar[Type[MTInvalidPersonException]] = (
         MTUserInvalidPhoneNumber
     )
-    INVALID_EMAIL: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidEmail
-    INVALID_ADDRESS: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidAddress
+    INVALID_EMAIL: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidEmail  # noqa: E501
+    INVALID_ADDRESS: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidAddress  # noqa: E501
     INVALID_DATE: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidDate
-    INVALID_PHOTO_URL: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidPhotoUrl
+    INVALID_PHOTO_URL: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidPhotoUrl  # noqa: E501
     phone_number: Optional[PhoneNumber] = Field(
         default=None,
         description="Contact telephone number, when one has been recorded.",

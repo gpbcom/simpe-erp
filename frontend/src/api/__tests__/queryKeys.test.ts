@@ -64,3 +64,56 @@ describe('customer query keys', () => {
     );
   });
 });
+
+/**
+ * The billing keys.
+ *
+ * The same collision the customer keys were namespaced against: a disabled
+ * query still reads whatever sits at its key, so `bill('')` — what the closed
+ * drawer asks for — must not spell the unfiltered list.
+ */
+describe('billing query keys', () => {
+  it('keeps a closed drawer from reading the list', () => {
+    expect(keys.bill('')).not.toEqual(keys.bills(undefined));
+  });
+
+  it('keeps one invoice distinct from another', () => {
+    expect(keys.bill('bill-1')).not.toEqual(keys.bill('bill-2'));
+  });
+
+  it('gives two filters that narrow the same way one entry', () => {
+    expect(keys.bills({ status: 'paid', search: 'FA' })).toEqual(
+      keys.bills({ search: 'FA', status: 'paid' }),
+    );
+  });
+
+  it('gives two different filters two entries', () => {
+    expect(keys.bills({ status: 'paid' })).not.toEqual(
+      keys.bills({ status: 'accepted' }),
+    );
+  });
+
+  it('keeps every bill key under one prefix, so invalidation still works', () => {
+    // Starting a run invalidates `['bills']` wholesale. Namespacing the leaves
+    // must not put any of them outside that prefix.
+    for (const key of [
+      keys.bills(undefined),
+      keys.bills({ status: 'paid' }),
+      keys.bill('bill-1'),
+    ]) {
+      expect(key[0]).toBe('bills');
+    }
+  });
+
+  it('keeps the runs and the settings apart from each other', () => {
+    expect(keys.billingRuns).not.toEqual(keys.billingSettings);
+    expect(keys.billingRun('run-1')).not.toEqual(keys.billingRuns);
+  });
+
+  it('keeps the billing keys off the planning prefix', () => {
+    // Both are "settings" and "runs"; sharing a prefix would mean a planning
+    // mutation quietly emptying the billing caches.
+    expect(keys.billingSettings[0]).toBe('billing');
+    expect(keys.planningSettings[0]).toBe('planning');
+  });
+});

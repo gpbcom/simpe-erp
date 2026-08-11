@@ -22,6 +22,8 @@ import { QuotesPage } from '@/features/quotes/QuotesPage';
 import { HcasPage } from '@/features/hcas/HcasPage';
 import { InterventionMapPage } from '@/features/map/InterventionMapPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
+import { BillingSettingsPage } from '@/features/bills/BillingSettingsPage';
+import { BillsPage } from '@/features/bills/BillsPage';
 import { PlanningSettingsPage } from '@/features/plannings/PlanningSettingsPage';
 import { TeamPlanningPage } from '@/features/plannings/TeamPlanningPage';
 import { buildTheme } from '@/theme/theme';
@@ -137,6 +139,22 @@ export function App() {
               element={
                 <RoleRoute minimum="manager">
                   <TeamPlanningPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/bills"
+              element={
+                <RoleRoute minimum="manager">
+                  <BillsPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/billing-settings"
+              element={
+                <RoleRoute minimum="manager">
+                  <BillingSettingsPage />
                 </RoleRoute>
               }
             />

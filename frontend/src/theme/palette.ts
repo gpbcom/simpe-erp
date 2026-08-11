@@ -22,6 +22,23 @@ export const BRAND = {
 } as const;
 
 /** Colour and label for one quote status. */
+/**
+ * Colour for one invoice's commercial status.
+ *
+ * @remarks
+ * `to-be-validated` is the amber one, for the same reason a quote awaiting
+ * validation is: it is the only state waiting on a person, and nothing has
+ * reached the customer while an invoice sits in it. `waiting-payment` is
+ * informational rather than a warning — the agency has done its part and the
+ * money is simply outstanding.
+ */
+export const BILL_STATUS_COLOUR = {
+  'to-be-validated': 'warning',
+  accepted: 'info',
+  'waiting-payment': 'primary',
+  paid: 'success',
+} as const;
+
 export const QUOTE_STATUS_COLOUR = {
   draft: 'default',
   'pending-validation': 'warning',

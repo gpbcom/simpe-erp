@@ -345,6 +345,37 @@ the period from the caller's own screen; the two person deletions derive theirs
 from the days that person was due to work. All four record the run before
 publishing it, so a 202 always hands back an identifier that already exists.
 
+## Billing — `/api/v1/bills` and `/api/v1/billing`
+
+Three routers, all under `api/v1/bills/`, all `manager`.
+
+| Method | Path | |
+|---|---|---|
+| POST | `/bills/runs` | **202.** Records the run, publishes it, returns the identifier to poll |
+| GET | `/bills/runs` · `/bills/runs/{id}` | Poll until `status.is_terminal()` — which includes `partial` |
+| GET | `/bills` | The invoice book, narrowed by `search`, `number`, `customer_id`, `status`, `is_sent`, `period_start`, `period_end` |
+| GET | `/bills/{id}` | One invoice, with its lines |
+| PATCH | `/bills/{id}/status` | Move it along the `BillStatus` chain |
+| GET | `/bills/{id}/document` | The PDF, as `application/pdf` |
+| POST | `/bills/customers/{customer_id}?reference_date=` | Bill one customer for the period containing that day |
+| GET | `/billing/settings` · PUT | The agency's invoicing rules |
+
+**Two prefixes, one folder.** `api/v1/billing/` and `api/v1/bills/` were merged
+into `api/v1/bills/`, but the settings routes keep `/api/v1/billing/settings`
+and that is deliberate: `/api/v1/bills/settings` has the same shape as
+`/api/v1/bills/{bill_id}`, so mounting order would decide whether asking for the
+rules looked up a bill numbered "settings". They are the agency's invoicing
+*rules* rather than one of its bills, and the URL says so.
+
+**Mounting order is load-bearing** for the same reason. `main.py` includes the
+run router **before** the bill router, because `/bills/runs` and
+`/bills/{bill_id}` also collide — reversed, the run list would 404 as a missing
+bill named "runs".
+
+A run answers **202** and can finish `partial`: some customers billed, some in
+`failed_customer_ids`. Unlike a planning run, that is a success worth keeping —
+see [02](02-domain-model.md#billing).
+
 ## Other
 
 `GET /health`, `GET /ready` — unauthenticated probes.

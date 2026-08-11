@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 # Standard library imports
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum, unique
-from typing import Tuple
+from typing import Tuple, Union
 
 # First-party imports
 from models.exceptions.enum_exceptions import (
+    MTInvalidBillingPeriodicity,
     MTInvalidWeekday,
     MTRoutingKeyMissingCompany,
 )
@@ -301,6 +303,235 @@ class QuoteStatus(StrEnum):
 
 
 @unique
+class BillingPeriodicity(StrEnum):
+    """Enumeration for how often an agency invoices its customers.
+
+    Attributes:
+        WEEKLY (str): One bill per ISO week, Monday to Sunday.
+        MONTHLY (str): One bill per calendar month.
+        YEARLY (str): One bill per calendar year.
+
+    Notes:
+        - The member decides a **window**, and the window is the whole of what
+          the specification calls a time pro-rata. A
+          :class:`~models.quoting.quote_line.QuoteLine` carries one
+          ``service_date``, not a range: it is a single dated visit. No line can
+          therefore straddle a period boundary, and "only the part of the quote
+          inside the window is billed" reduces exactly to a date filter, with no
+          fractional amount computed anywhere. Lines dated after the window are
+          simply absent from this bill; the next period has a different window
+          and picks them up unchanged.
+        - **Both bounds are inclusive**, matching every other period in the
+          application: ``QuoteRepository.list_schedulable``,
+          ``InterventionRepository.replace_for_period`` and
+          :meth:`~models.quoting.quote.Quote.covers` all read that way. An
+          exclusive end here would be the one period that behaved differently,
+          and the symptom would be a day's care quietly unbilled every month.
+        - Stored in the database rather than in ``app.yaml``, because the
+          specification puts it in the hands of a manager and a YAML value would
+          need a deployment to change. See
+          :class:`~models.settings.billing_settings.BillingSettings`.
+    """
+
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every billing-periodicity value.
+
+        Returns:
+            Tuple[str, ...]: ``("weekly", "monthly", "yearly")``.
+        """
+        return tuple(periodicity.value for periodicity in cls)
+
+    def window_for(self, day: Union[date, datetime]) -> Tuple[date, date]:
+        """Return the billing window that contains a day.
+
+        Args:
+            day (Union[date, datetime]): Any day inside the wanted period.
+
+        Returns:
+            Tuple[date, date]: The first and last day of the period, **both
+            inclusive**.
+
+        Raises:
+            MTInvalidBillingPeriodicity: If ``day`` is not a date.
+
+        Notes:
+            - The month's last day is computed as "the first of next month,
+              minus one day" rather than by asking how long the month is, so
+              February and a leap year need no special case and there is one
+              arithmetic path instead of twelve.
+            - The week is anchored on Monday, the same anchoring
+              :meth:`~service.quotes.quotes.QuoteService._monday_of` derives
+              from 4 January, so a weekly bill and a weekly quote aggregate
+              cover the same seven days.
+        """
+        if not isinstance(day, date):
+            raise MTInvalidBillingPeriodicity(f"Invalid day: {day!r}. Must be a date.")
+        if isinstance(day, datetime):
+            day = day.date()
+        if self is BillingPeriodicity.WEEKLY:
+            start = day - timedelta(days=day.isoweekday() - 1)
+            return start, start + timedelta(days=6)
+        if self is BillingPeriodicity.MONTHLY:
+            start = day.replace(day=1)
+            next_month = date(day.year + day.month // 12, day.month % 12 + 1, 1)
+            return start, next_month - timedelta(days=1)
+        return date(day.year, 1, 1), date(day.year, 12, 31)
+
+    def previous_window(self, day: Union[date, datetime]) -> Tuple[date, date]:
+        """Return the window that ends immediately before the one holding a day.
+
+        Args:
+            day (Union[date, datetime]): Any day inside the current period.
+
+        Returns:
+            Tuple[date, date]: The previous period's first and last day.
+
+        Raises:
+            MTInvalidBillingPeriodicity: If ``day`` is not a date.
+
+        Notes:
+            "Bill last month" is what an agency actually asks for — a period is
+            invoiced once it has been delivered — and the arithmetic is one day
+            back from the current window's start rather than a month subtracted
+            from ``day``, which would land on 28 February from 31 March. Doing
+            it here stops every caller getting that wrong separately.
+        """
+        start, _ = self.window_for(day)
+        return self.window_for(start - timedelta(days=1))
+
+
+@unique
+class BillStatus(StrEnum):
+    """Enumeration for where a bill has reached commercially.
+
+    Attributes:
+        TO_BE_VALIDATED (str): Generated, with its document, and waiting for a
+            manager to approve it. Nothing has reached the customer.
+        ACCEPTED (str): Approved by a manager. Approval is what sends it.
+        WAITING_PAYMENT (str): Sent to the customer; the money is outstanding.
+        PAID (str): Settled.
+
+    Notes:
+        - **Only a manager or an administrator moves a bill.** The status is a
+          statement about money owed, and an assistant who could set one would
+          be writing the agency's accounts.
+        - Two things this enumeration deliberately does **not** record: whether
+          a document exists — that is ``Bill.document_key`` — and whether
+          generation failed, which is
+          :class:`BillingRunStatus`. Folding a generation outcome in here would
+          make "waiting payment" mean two unrelated things, and a manager
+          reading the list could not tell a bill nobody has paid from one nobody
+          managed to produce.
+        - There is no ``CANCELLED``. French invoice numbering forbids both reuse
+          and gaps, so a mistaken invoice is corrected by a credit note rather
+          than withdrawn — and a credit note is a document in its own right, not
+          a status on this one.
+    """
+
+    TO_BE_VALIDATED = "to-be-validated"
+    ACCEPTED = "accepted"
+    WAITING_PAYMENT = "waiting-payment"
+    PAID = "paid"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every bill-status value.
+
+        Returns:
+            Tuple[str, ...]: The four supported statuses, in the order reached.
+        """
+        return tuple(status.value for status in cls)
+
+    def is_terminal(self) -> bool:
+        """Return whether the bill has nothing further to reach.
+
+        Returns:
+            bool: ``True`` only for :attr:`PAID`.
+        """
+        return self is BillStatus.PAID
+
+    def can_move_to(self, target: BillStatus) -> bool:
+        """Return whether a manager may move a bill from here to ``target``.
+
+        Args:
+            target (BillStatus): The status being asked for.
+
+        Returns:
+            bool: ``True`` when ``target`` is the next status or the previous
+            one.
+
+        Notes:
+            **One step, either way.** Forward is the lifecycle; backward is the
+            correction, and a manager who marked the wrong row paid needs it —
+            an irreversible status would leave them editing the database.
+            Anything further is refused: a bill going straight from
+            :attr:`TO_BE_VALIDATED` to :attr:`PAID` would skip the record of it
+            ever having been approved, and of it ever having been sent, which is
+            the audit trail the four statuses exist to keep.
+        """
+        order = tuple(BillStatus)
+        return abs(order.index(target) - order.index(self)) == 1
+
+
+@unique
+class BillingRunStatus(StrEnum):
+    """Enumeration for the lifecycle status of a bill-generation run.
+
+    Attributes:
+        PENDING (str): Accepted and queued, not yet picked up.
+        RUNNING (str): Bills are being generated.
+        SUCCEEDED (str): Every customer with billable work was billed.
+        PARTIAL (str): Some customers were billed and some failed.
+        FAILED (str): The run ended on an error; see the run's error message.
+
+    Notes:
+        Deliberately not :class:`PlanningRunStatus`, whose members mean
+        something else: there, :attr:`PARTIAL` describes visits that could not
+        be placed. Here it describes customers who could not be billed, and one
+        enumeration answering to two vocabularies is how a status chip ends up
+        telling somebody the wrong thing.
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every billing-run-status value.
+
+        Returns:
+            Tuple[str, ...]: The five supported statuses.
+        """
+        return tuple(status.value for status in cls)
+
+    def is_terminal(self) -> bool:
+        """Return whether no further status change can follow this one.
+
+        Returns:
+            bool: ``True`` for :attr:`SUCCEEDED`, :attr:`PARTIAL` and
+            :attr:`FAILED`.
+
+        Notes:
+            Clients poll a run until this returns ``True``. A partial run is
+            finished — the bills that could be written are written — so a client
+            that kept polling would wait forever.
+        """
+        return self in (
+            BillingRunStatus.SUCCEEDED,
+            BillingRunStatus.PARTIAL,
+            BillingRunStatus.FAILED,
+        )
+
+
+@unique
 class InterventionStatus(StrEnum):
     """Enumeration for the lifecycle status of a scheduled intervention.
 
@@ -442,17 +673,16 @@ class PlanningRunStatus(StrEnum):
         FAILED (str): The run ended on an error; see the run's error message.
 
     Notes:
-        :attr:`PARTIAL` exists because a week that mostly works is worth
-        having. The run used to fail outright the moment one visit could not
-        be placed, which left the agency with the *previous* week's calendar
-        and a wall of text — safe, but it meant one impossible visit withheld
-        eighty-nine perfectly good ones.
-
-        It is deliberately **not** ``SUCCEEDED``. A calendar missing three
-        visits still looks like a calendar, and the visits quietly dropped are
-        the ones that end with somebody waiting at their door — so the state
-        has its own name, its own colour on the screen, and a report naming
-        every quote involved.
+        - :attr:`PARTIAL` exists because a week that mostly works is worth
+          having. The run used to fail outright the moment one visit could not
+          be placed, which left the agency with the *previous* week's calendar
+          and a wall of text — safe, but it meant one impossible visit withheld
+          eighty-nine perfectly good ones.
+        - It is deliberately **not** ``SUCCEEDED``. A calendar missing three
+          visits still looks like a calendar, and the visits quietly dropped are
+          the ones that end with somebody waiting at their door — so the state
+          has its own name, its own colour on the screen, and a report naming
+         every quote involved.
     """
 
     PENDING = "pending"
@@ -692,6 +922,8 @@ class NotificationKind(StrEnum):
         QUOTE_REFUSED (str): A manager sent a submitted quote back.
         PLANNING_COMPLETED (str): A planning run finished and calendars moved.
         SKILL_ADDED (str): An assistant declared a new skill about themselves.
+        BILLS_TO_VALIDATE (str): A billing run wrote bills nobody has approved
+            yet, and no customer has been sent anything.
 
     Notes:
         - The kind is what a client keys its icon, colour and deep link off, so
@@ -704,6 +936,12 @@ class NotificationKind(StrEnum):
           assign: somebody adding one silently widens what they can be sent to,
           and a supervisor who never hears about it has no opportunity to
           challenge it before the next run acts on it.
+        - :attr:`BILLS_TO_VALIDATE` is the one kind that reports **inaction
+          required before anything leaves the building**. A billing run renders
+          every invoice and then stops; until a manager approves them no
+          customer is sent anything, so a run nobody hears about is a month
+          quietly unbilled. It carries no identifier of its own, for the same
+          reason the planning kind does not — the reader goes to the list.
     """
 
     QUOTE_SUBMITTED = "quote-submitted"
@@ -711,13 +949,14 @@ class NotificationKind(StrEnum):
     QUOTE_REFUSED = "quote-refused"
     PLANNING_COMPLETED = "planning-completed"
     SKILL_ADDED = "skill-added"
+    BILLS_TO_VALIDATE = "bills-to-validate"
 
     @classmethod
     def values(cls) -> Tuple[str, ...]:
         """Return every notification-kind value.
 
         Returns:
-            Tuple[str, ...]: The five supported kinds.
+            Tuple[str, ...]: The six supported kinds.
         """
         return tuple(kind.value for kind in cls)
 
@@ -751,9 +990,10 @@ class WorkerRole(StrEnum):
         PLANNING (str): Consumes ``planning-runs``, and solves.
         NOTIFICATIONS (str): Consumes ``quote-notifications``, and writes
             notifications and emails.
+        BILLING (str): Consumes ``billing-runs``, and renders invoices.
 
     Notes:
-        - **One image, two deployments.** The two consumers are unlike each other
+        - **One image, three deployments.** The consumers are unlike each other
           in the way that matters to a scheduler: a solve is CPU-bound and pins
           its cores for a thirty-second budget, while a notification fan-out is
           I/O-bound and finishes in milliseconds. Sharing a process means the
@@ -761,24 +1001,35 @@ class WorkerRole(StrEnum):
           manager waits half a minute to be told a quote needs looking at because
           the pod is mid-solve.
         - Split, each scales on its own queue depth, gets its own resources, and
-          can be put on its own node pool — which is also what makes room for a
-          third role later without disturbing either.
-        - **Neither role owns the control plane.** ``company.created`` is consumed
-          by *both*, on an exclusive queue each, because each has its own queues to
-          declare when an agency is founded. It is deliberately not a third role:
-          one process hearing the announcement would leave the other serving every
-          agency but the new one.
+          can be put on its own node pool.
+        - :attr:`BILLING` is the third role the split was leaving room for, and it
+          earns its own deployment on the same criterion. Generating bills is
+          neither CPU-pinned like a solve nor millisecond-quick like a badge: it
+          is I/O-bound but **long**, because a monthly close over three hundred
+          customers is three hundred documents rendered and three hundred objects
+          uploaded. On the notifications role that close would sit at the head of
+          ``quote-notifications`` for minutes and every quote badge would queue
+          behind it — the very failure the first split exists to prevent,
+          reproduced one level over. On the planning role it would contend with
+          the solve and inherit a replica count scaled on solve latency, when its
+          own queue spikes once a month and is empty the rest of the time.
+        - **No role owns the control plane.** ``company.created`` is consumed by
+          *all* of them, on an exclusive queue each, because each has its own
+          queues to declare when an agency is founded. It is deliberately not a
+          role of its own: one process hearing the announcement would leave the
+          others serving every agency but the new one.
     """
 
     PLANNING = "planning"
     NOTIFICATIONS = "notifications"
+    BILLING = "billing"
 
     @classmethod
     def values(cls) -> Tuple[str, ...]:
         """Return every worker-role value.
 
         Returns:
-            Tuple[str, ...]: The two supported roles.
+            Tuple[str, ...]: The three supported roles.
         """
         return tuple(role.value for role in cls)
 
@@ -797,6 +1048,9 @@ class EventRoutingKey(StrEnum):
         SKILL_ADDED (str): An assistant declared a new skill about themselves.
         NOTIFICATION_CREATED (str): Notifications were written and their
             recipients may be holding an open event stream.
+        BILLING_RUN_REQUESTED (str): A period was asked to be billed.
+        BILLING_RUN_COMPLETED (str): The bills for a period have been written.
+        BILL_ACCEPTED (str): A manager validated a bill, which is what sends it.
 
     Notes:
         - An enumeration rather than string literals scattered across the
@@ -817,6 +1071,13 @@ class EventRoutingKey(StrEnum):
           carries recipient identifiers rather than the notifications
           themselves — the reader fetches those over HTTP, from the same
           endpoint it would have used had the push never arrived.
+        - ``BILL_ACCEPTED`` is a separate topic from ``BILLING_RUN_COMPLETED``
+          rather than a status carried on it, because the two have different
+          payloads and different consequences. A completed run tells the agency
+          it has invoices to look at; an accepted bill puts one in a customer's
+          inbox. Folding them together would mean a run's completion could
+          post an invoice nobody had approved, which is the whole reason a bill
+          is generated waiting for validation.
     """
 
     QUOTE_SUBMITTED = "quote.submitted"
@@ -827,6 +1088,9 @@ class EventRoutingKey(StrEnum):
     COMPANY_CREATED = "company.created"
     SKILL_ADDED = "skill.added"
     NOTIFICATION_CREATED = "notification.created"
+    BILLING_RUN_REQUESTED = "billing.run.requested"
+    BILLING_RUN_COMPLETED = "billing.run.completed"
+    BILL_ACCEPTED = "bill.accepted"
 
     def scoped_to(self, company_id: str) -> str:
         """Return the routing key this event takes for one agency.
@@ -861,7 +1125,7 @@ class EventRoutingKey(StrEnum):
         """Return every routing key.
 
         Returns:
-            Tuple[str, ...]: The eight supported routing keys.
+            Tuple[str, ...]: The eleven supported routing keys.
         """
         return tuple(key.value for key in cls)
 

@@ -10,6 +10,9 @@ import pytest
 
 from models.enums import (
     AvailabilityKind,
+    BillingPeriodicity,
+    BillingRunStatus,
+    BillStatus,
     ContractType,
     InterventionStatus,
     PlanningRunStatus,
@@ -25,6 +28,9 @@ from models.exceptions.enum_exceptions import MTInvalidWeekday
 
 ALL_ENUMS = (
     AvailabilityKind,
+    BillingPeriodicity,
+    BillingRunStatus,
+    BillStatus,
     ContractType,
     InterventionStatus,
     PlanningRunStatus,

@@ -18,6 +18,7 @@ from models.companies.exceptions import (
     MTCompanyInvalidPhoneNumber,
     MTCompanyInvalidRcsNumber,
     MTCompanyInvalidShareCapital,
+    MTCompanyInvalidSapDeclarationNumber,
     MTCompanyInvalidVatNumber,
     MTCompanyInvalidEmail,
     MTCompanyInvalidId,
@@ -333,6 +334,56 @@ class TestCompanyLegalIdentity:
             Company(name="X", vat_number="fr 123 456 789 01").vat_number
             == "FR12345678901"
         )
+
+    def test_a_sap_declaration_number_is_normalised(self) -> None:
+        """Spaces removed and letters upper-cased, like the VAT number."""
+        assert (
+            Company(
+                name="X", sap_declaration_number="sap 123 456 789"
+            ).sap_declaration_number
+            == "SAP123456789"
+        )
+
+    def test_a_sap_declaration_number_is_not_pattern_checked(self) -> None:
+        """**Deliberately looser than the VAT number.**
+
+        Notes:
+            The declaration number's format has changed more than once and
+            varies by département. A shape check would refuse valid numbers, and
+            on this field that means silently dropping the line that lets a
+            customer claim their tax credit — a worse failure than storing
+            something odd.
+        """
+        assert (
+            Company(
+                name="X", sap_declaration_number="SAP/2026/0042-B"
+            ).sap_declaration_number
+            == "SAP/2026/0042-B"
+        )
+
+    def test_an_absent_sap_declaration_number_is_allowed(self) -> None:
+        """An agency that has not registered prints without the mention."""
+        assert Company(name="X").sap_declaration_number is None
+        assert (
+            Company(name="X", sap_declaration_number="   ").sap_declaration_number
+            is None
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("S" * 65, id="Invalid - longer than the column"),
+            pytest.param(12345, id="Invalid - not a string"),
+        ],
+    )
+    def test_an_unusable_sap_declaration_number_is_refused(self, value: object) -> None:
+        """Length is the one thing that can be asserted without guessing.
+
+        Args:
+            value (object): The rejected value.
+        """
+        with pytest.raises(MTCompanyInvalidSapDeclarationNumber):
+            Company(name="X", sap_declaration_number=value)
 
     @pytest.mark.parametrize(
         "value",

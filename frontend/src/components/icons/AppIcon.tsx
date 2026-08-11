@@ -14,6 +14,9 @@ import SvgIcon, { type SvgIconProps } from '@mui/material/SvgIcon';
  * visible.
  */
 const PATHS = {
+  /** A document with a torn receipt foot and a euro stroke: the invoice. */
+  bill:
+    'M6 3h9l3 3v13.5l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2V4a1 1 0 0 1 1-1Z M15 3v3h3 M14 10.5h-3.2a1.8 1.8 0 0 0 0 3.6h1.6a1.8 1.8 0 0 1 0 3.6H9 M8 12.3h4.5',
   /** A document with a price line: the quote. */
   quote:
     'M6 3h8l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z M14 3v4h4 M8.5 13h7 M8.5 17h4',

@@ -54,7 +54,7 @@ def resolve_role(argv: Optional[List[str]] = None) -> WorkerRole:
         SystemExit: If no role was given, or the one given is not a role.
 
     Notes:
-        - **Required, with no default.** The two roles want different replica
+        - **Required, with no default.** The roles want different replica
           counts, different resources and different node pools, so a process that
           guessed would be one somebody had to notice was doing the wrong job —
           and the way they would notice is a queue that never drains.
@@ -92,8 +92,10 @@ def setup_logging(config_path: Optional[str] = None) -> None:
         the whole HTTP layer to read one YAML file would make the dependency
         graph a ring. Fifteen lines is the cheaper price.
     """
-    chosen = config_path if config_path else os.environ.get(
-        LOGGER_PATH_ENV, DEFAULT_LOGGER_PATH
+    chosen = (
+        config_path
+        if config_path
+        else os.environ.get(LOGGER_PATH_ENV, DEFAULT_LOGGER_PATH)
     )
     resolved = Path(chosen)
     if not resolved.exists():

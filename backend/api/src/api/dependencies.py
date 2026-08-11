@@ -36,6 +36,14 @@ from service.observability.metrics import ApplicationMetrics
 from storage.db.connection_manager import DatabaseConnectionManager
 from storage.repositories.catalog.certification_type import CertificationTypeRepository  # noqa: E501
 from storage.repositories.catalog.skill_type import SkillTypeRepository
+from service.billing.billings import BillingService
+from service.billing.webhook import BillingWebhook
+from service.utils.invoice_renderer import InvoiceRenderer
+from storage.repositories.billing.bill import BillRepository
+from storage.repositories.billing.billing_run import BillingRunRepository
+from storage.repositories.billing.billing_settings import (
+    BillingSettingsRepository,
+)
 from storage.repositories.companies.company import CompanyRepository
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
@@ -953,6 +961,121 @@ def get_manager_user(request: Request) -> User:
         )
     logger.debug("Manager gate passed for account %s.", user.id)
     return user
+
+
+async def get_bill_repository(
+    session: AsyncSession = Depends(get_session),
+) -> BillRepository:
+    """Return the invoice repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        BillRepository: The repository.
+    """
+    return BillRepository(session=session)
+
+
+async def get_billing_run_repository(
+    session: AsyncSession = Depends(get_session),
+) -> BillingRunRepository:
+    """Return the billing-run repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        BillingRunRepository: The repository.
+    """
+    return BillingRunRepository(session=session)
+
+
+async def get_billing_settings_repository(
+    session: AsyncSession = Depends(get_session),
+) -> BillingSettingsRepository:
+    """Return the billing-settings repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        BillingSettingsRepository: The repository.
+    """
+    return BillingSettingsRepository(session=session)
+
+
+@lru_cache
+def get_invoice_renderer() -> InvoiceRenderer:
+    """Return the renderer that lays an invoice out as a PDF.
+
+    Returns:
+        InvoiceRenderer: The renderer, built once per process.
+
+    Notes:
+        Cached because it is stateless and its stylesheet is worth building
+        once, the same reason :func:`get_object_storage` is cached. It holds no
+        session and no request-scoped state.
+    """
+    return InvoiceRenderer(logger=logger)
+
+
+async def get_billing_service(
+    bills: BillRepository = Depends(get_bill_repository),
+    runs: BillingRunRepository = Depends(get_billing_run_repository),
+    settings: BillingSettingsRepository = Depends(get_billing_settings_repository),
+    quotes: QuoteRepository = Depends(get_quote_repository),
+    interventions: InterventionRepository = Depends(get_intervention_repository),
+    customers: CustomerRepository = Depends(get_customer_repository),
+    companies: CompanyRepository = Depends(get_company_repository),
+) -> BillingService:
+    """Return the billing service.
+
+    Args:
+        bills (BillRepository): Where invoices are stored.
+        runs (BillingRunRepository): Where generation runs are recorded.
+        settings (BillingSettingsRepository): The agency's invoicing rules.
+        quotes (QuoteRepository): Where the prices come from.
+        interventions (InterventionRepository): Where the delivered hours come
+            from.
+        customers (CustomerRepository): Who invoices are addressed to.
+        companies (CompanyRepository): Who issues them.
+
+    Returns:
+        BillingService: The service.
+
+    Notes:
+        The object store is the same one that holds photographs and logos —
+        same bucket, same credentials — but invoices are written under their own
+        prefix with their own cache headers and are never handed to a browser.
+    """
+    return BillingService(
+        bills=bills,
+        runs=runs,
+        settings=settings,
+        quotes=quotes,
+        interventions=interventions,
+        customers=customers,
+        companies=companies,
+        config=get_app_config().billing,
+        documents=get_object_storage(),
+        renderer=get_invoice_renderer(),
+        logger=logger,
+    )
+
+
+def get_billing_webhook() -> BillingWebhook:
+    """Return the announcer that sends a validated invoice.
+
+    Returns:
+        BillingWebhook: The announcer.
+
+    Notes:
+        Built per call rather than cached: it holds only its configuration, and
+        the configuration object is already cached behind
+        :func:`get_app_config`.
+    """
+    return BillingWebhook(config=get_app_config().billing_webhook, logger=logger)
 
 
 def get_admin_user(request: Request) -> User:

@@ -207,6 +207,11 @@ s3:
   secret_key_env: S3_SECRET_KEY
   photo_key_prefix: hca-photos/
   logo_key_prefix: company-logos/
+  # Generated invoices. Written private and never handed to a
+  # browser: the bill stores this key, not a public URL, and the
+  # document is only ever read back through the authenticated
+  # download endpoint.
+  invoice_key_prefix: invoices/
   max_upload_bytes: 5242880   # 5 MiB
 
 email:
@@ -266,3 +271,35 @@ observability:
   tracing_enabled: false
   otlp_endpoint: http://localhost:4317
   export_timeout_seconds: 10.0
+
+billing:
+  # Seeds for the invoicing rules, written into the billing_settings row the
+  # first time it is read and ignored ever afterwards: the rules themselves
+  # live in the database because the specification puts them in a manager's
+  # hands, and a YAML value would need a deployment to change.
+  #
+  # These defaults are what a conforming French invoice carries when nobody has
+  # configured anything.
+  periodicity: monthly
+  payment_terms_days: 30
+  # "Trois fois le taux d'intérêt légal" (code de commerce, art. L441-10).
+  late_penalty_multiplier: 3
+  # The fixed recovery indemnity (art. D441-5), printed on its own line.
+  recovery_indemnity_eur: 40.00
+  # Stated either way: an invoice silent about the early-settlement discount is
+  # itself non-conforming, so this decides which sentence is printed.
+  escompte_offered: false
+
+billing_webhook:
+  # Called when a manager validates a bill, which is what sends it: the
+  # endpoint it names fetches the rendered PDF and emails it to the customer.
+  # A generation run renders every invoice and stops, so nothing reaches
+  # anybody until this fires.
+  #
+  # Its own block, and its own secret. Sharing the planning webhook's would
+  # mean one leaked token could both re-send every planning and post every
+  # invoice.
+  enabled: false
+  url: http://localhost:8000/api/v1/webhooks/bill-accepted
+  token_env: BILLING_WEBHOOK_TOKEN
+  timeout_seconds: 10.0

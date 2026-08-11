@@ -26,11 +26,11 @@ def runner(request: pytest.FixtureRequest) -> WorkerRunner:
         disabled and whose consumers hold no connection.
 
     Notes:
-        **Parametrised over both roles**, so every ordering and shutdown rule
-        below is asserted for each of them. The two are separate deployments
-        that share one image, and a start-up ordering that only held for the
-        planning worker would be a bug nobody saw until a notification queue
-        started dead-lettering.
+        **Parametrised over every role**, so every ordering and shutdown rule
+        below is asserted for each of them. They are separate deployments
+        sharing one image, and a start-up ordering that only held for the
+        planning worker would be a bug nobody saw until another queue started
+        dead-lettering.
 
         Nothing in ``__init__`` reaches the network: the publisher connects
         lazily, the consumers connect in ``start()``, and the pool connects when
@@ -48,11 +48,13 @@ def consumer_name(runner: WorkerRunner) -> str:
         runner (WorkerRunner): The worker under test.
 
     Returns:
-        str: ``"planning"`` or ``"notifications"``.
+        str: The attribute holding this role's own consumer.
     """
-    return (
-        "planning" if runner.role is WorkerRole.PLANNING else "notifications"
-    )
+    return {
+        WorkerRole.PLANNING: "planning",
+        WorkerRole.NOTIFICATIONS: "notifications",
+        WorkerRole.BILLING: "billing",
+    }[runner.role]
 
 
 @pytest.fixture
@@ -88,7 +90,7 @@ def calls(monkeypatch: pytest.MonkeyPatch, runner: WorkerRunner) -> List[str]:
     monkeypatch.setattr(runner.manager, "connect", record("manager.connect"))
     monkeypatch.setattr(runner.manager, "disconnect", record("manager.disconnect"))
     monkeypatch.setattr(runner.publisher, "close", record("publisher.close"))
-    for name in ("planning", "notifications", "lifecycle"):
+    for name in ("planning", "notifications", "billing", "lifecycle"):
         consumer = getattr(runner, name)
         monkeypatch.setattr(consumer, "start", record(f"{name}.start"))
         monkeypatch.setattr(consumer, "close", record(f"{name}.close"))
@@ -142,8 +144,47 @@ class TestHandlerRegistration:
             "quote.refused": "quote_refused",
             "planning.run.completed": "planning_completed",
             "skill.added": "skill_added",
+            "billing.run.completed": "billing_completed",
+            "bill.accepted": "bill_accepted",
         }
         assert runner.planning.handlers == {}
+        assert runner.billing.handlers == {}
+
+    def test_the_billing_role_answers_only_billing_runs(self) -> None:
+        """The third queue, and nothing on either of the others.
+
+        Notes:
+            A monthly close is minutes of I/O-bound work. On the notification
+            queue it would sit at the head for all of it and every quote badge
+            would wait behind it; on the planning queue it would contend with a
+            CPU-pinned solve and inherit a replica count scaled for one. That is
+            the whole argument for a third role, and this is the wiring it rests
+            on.
+        """
+        runner = WorkerRunner(config=AppConfig(), role=WorkerRole.BILLING)
+
+        runner._register_handlers()
+
+        assert {
+            key: handler.__name__ for key, handler in runner.billing.handlers.items()
+        } == {"billing.run.requested": "run_billing"}
+        assert runner.planning.handlers == {}
+        assert runner.notifications.handlers == {}
+
+    def test_the_customer_is_told_by_the_notifications_role(self) -> None:
+        """**Generating an invoice and sending it are different jobs.**
+
+        Notes:
+            The billing role writes the invoices and stops. Announcing an
+            approved one to whatever emails it belongs to the notifications
+            role, so a long monthly close never delays a customer's document —
+            and so a manager's validation is answered in milliseconds.
+        """
+        runner = WorkerRunner(config=AppConfig(), role=WorkerRole.NOTIFICATIONS)
+
+        runner._register_handlers()
+
+        assert "bill.accepted" in runner.notifications.handlers
 
     def test_both_roles_hear_a_new_agency(self, runner: WorkerRunner) -> None:
         """**Neither role owns the control plane.**
@@ -245,6 +286,7 @@ class TestShutdown:
             "lifecycle.close",
             "planning.close",
             "notifications.close",
+            "billing.close",
             "publisher.close",
             "manager.disconnect",
         ]

@@ -25,6 +25,8 @@ class CompanyRow(Base):
         share_capital (Optional[Decimal]): Share capital, in euros.
         rcs_number (Optional[str]): Trade-register entry.
         vat_number (Optional[str]): Intra-community VAT number.
+        sap_declaration_number (Optional[str]): Services-à-la-personne
+            declaration number, printed on invoices.
         phone_number (Optional[str]): Contact telephone number.
         iban (Optional[str]): Account the agency is paid into.
         bic (Optional[str]): Bank identifier code of that account.
@@ -79,6 +81,9 @@ class CompanyRow(Base):
     )
     rcs_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     vat_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    sap_declaration_number: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
     phone_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     iban: Mapped[Optional[str]] = mapped_column(String(34), nullable=True)
     bic: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)

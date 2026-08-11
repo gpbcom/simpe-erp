@@ -179,6 +179,81 @@ export async function request<T>(
   return payload as T;
 }
 
+/** A document fetched from the API, with the name it should be saved under. */
+export interface BlobResponse {
+  /** The bytes. */
+  blob: Blob;
+  /** The filename the server asked for it to be saved as. */
+  filename: string;
+}
+
+/** Pull the filename out of a `Content-Disposition` header. */
+const FILENAME_PATTERN = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i;
+
+/**
+ * Call the API for a document rather than for JSON.
+ *
+ * @param path - The path, beginning with a slash.
+ * @param fallbackName - Saved-as name when the server names none.
+ * @returns The bytes and the filename.
+ * @throws ApiError - When the API answers 4xx or 5xx.
+ *
+ * @remarks
+ * A sibling of `request`, not a variant of it. That one calls `response.json()`
+ * unconditionally, which on a PDF throws and is then swallowed by its own
+ * `catch`, handing the caller a bogus object typed as whatever they asked for.
+ * A binary body needs its own path.
+ *
+ * Three differences beyond reading a blob, each of which bites if it is missed:
+ *
+ * 1. **An error body is JSON but a success body is not.** The text is read
+ *    first and parsed inside a `try`, so a failure still reports the server's
+ *    own `detail` while a success never attempts to parse a document.
+ * 2. **The filename comes back with the bytes.** Derived at the call site it
+ *    would be the route path, and an invoice would save as `document`.
+ * 3. The bearer header and the 401 handling are shared with `request`, because
+ *    a download is as much a credentialed call as any other — the objects are
+ *    stored privately precisely so this endpoint is the only way to them.
+ */
+export async function requestBlob(
+  path: string,
+  fallbackName = 'document',
+): Promise<BlobResponse> {
+  const token = readToken();
+  const response = await fetch(`${BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '');
+    let detail = response.statusText;
+    let mustChangePassword = false;
+    try {
+      const body = JSON.parse(raw) as {
+        detail?: string;
+        must_change_password?: boolean;
+      };
+      detail = body.detail ?? detail;
+      mustChangePassword = Boolean(body.must_change_password);
+    } catch {
+      // A non-JSON error body is possible — a proxy's own 502 page, say — and
+      // the status text is a better answer than the page's markup.
+    }
+    if (response.status === 401) {
+      clearToken();
+      onUnauthorized();
+    }
+    throw new ApiError(response.status, detail, mustChangePassword);
+  }
+
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const matched = FILENAME_PATTERN.exec(disposition);
+  return {
+    blob: await response.blob(),
+    filename: matched?.[1] ? decodeURIComponent(matched[1]) : fallbackName,
+  };
+}
+
 /** Sign in and store the resulting token. */
 export async function signIn(email: string, password: string): Promise<AccessToken> {
   const token = await request<AccessToken>('/api/v1/auth/login', {

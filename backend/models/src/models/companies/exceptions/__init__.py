@@ -7,6 +7,7 @@ from .company_exceptions import (
     MTCompanyInvalidId,
     MTCompanyInvalidIsAcceptingApplications,
     MTCompanyInvalidName,
+    MTCompanyInvalidSapDeclarationNumber,
     MTCompanyInvalidVatNumber,
     MTCompanyInvalidShareCapital,
     MTCompanyInvalidRcsNumber,
@@ -30,6 +31,7 @@ __all__ = [
     "MTCompanyInvalidRcsNumber",
     "MTCompanyInvalidRegistrationNumber",
     "MTCompanyInvalidShareCapital",
+    "MTCompanyInvalidSapDeclarationNumber",
     "MTCompanyInvalidVatNumber",
     "MTInvalidCompanyException",
 ]

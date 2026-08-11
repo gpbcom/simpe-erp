@@ -11,6 +11,7 @@ from typing import ClassVar, Dict, List, Optional, Tuple
 # First-party imports
 # isort: on
 from models.auth.user import User
+from models.billing.bill import Bill
 from models.companies.company import Company
 
 # isort: off
@@ -59,6 +60,8 @@ class EmailService:
     SPREADSHEET_SUBTYPE: ClassVar[str] = (
         "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    PDF_TYPE: ClassVar[str] = "application"
+    PDF_SUBTYPE: ClassVar[str] = "pdf"
     QUOTE_EMAIL: ClassVar[Dict[Language, Dict[str, str]]] = {
         Language.EN: {
             "subject": "Your quote {reference}",
@@ -79,6 +82,31 @@ class EmailService:
             ),
             "automatic": "Ce message a été envoyé automatiquement.",
             "filename": "devis-{reference}.xlsx",
+        },
+    }
+
+    BILL_EMAIL: ClassVar[Dict[Language, Dict[str, str]]] = {
+        Language.EN: {
+            "subject": "Your invoice {number}",
+            "greeting": "Hello {name},",
+            "body": (
+                "Invoice {number} from {company} is attached, covering "
+                "{period} and totalling {total} € including VAT. Payment is "
+                "due by {due}."
+            ),
+            "automatic": "This message was sent automatically.",
+            "filename": "invoice-{number}.pdf",
+        },
+        Language.FR: {
+            "subject": "Votre facture {number}",
+            "greeting": "Bonjour {name},",
+            "body": (
+                "La facture {number} de {company} est jointe à ce message. "
+                "Elle couvre la période {period} pour un total de {total} € "
+                "TTC, à régler avant le {due}."
+            ),
+            "automatic": "Ce message a été envoyé automatiquement.",
+            "filename": "facture-{number}.pdf",
         },
     }
 
@@ -121,18 +149,29 @@ class EmailService:
         body: str,
         filename: str,
         payload: bytes,  # noqa: E501
+        maintype: Optional[str] = None,
+        subtype: Optional[str] = None,
     ) -> EmailMessage:
-        """Build a message carrying one spreadsheet.
+        """Build a message carrying one document.
 
         Args:
             recipient (str): Where the message goes.
             subject (str): The subject line.
             body (str): The plain-text body.
             filename (str): Name the attachment is saved under.
-            payload (bytes): The workbook itself.
+            payload (bytes): The document itself.
+            maintype (Optional[str]): MIME main type. Defaults to a spreadsheet.
+            subtype (Optional[str]): MIME subtype. Defaults to a spreadsheet.
 
         Returns:
             EmailMessage: The message, ready to hand to the SMTP client.
+
+        Notes:
+            The two MIME arguments are **defaulted to the spreadsheet pair**, so
+            adding invoices did not touch a single existing call site. A mail
+            client decides whether it can open an attachment from these; a PDF
+            announced as a workbook is a file the recipient is told to download
+            rather than one they can read.
         """
         message = EmailMessage()
         message["Subject"] = subject
@@ -141,8 +180,8 @@ class EmailService:
         message.set_content(body)
         message.add_attachment(
             payload,
-            maintype=self.SPREADSHEET_TYPE,
-            subtype=self.SPREADSHEET_SUBTYPE,
+            maintype=maintype if maintype else self.SPREADSHEET_TYPE,
+            subtype=subtype if subtype else self.SPREADSHEET_SUBTYPE,
             filename=filename,
         )
         self.logger.debug(
@@ -184,6 +223,8 @@ class EmailService:
         body: str,
         filename: str,
         payload: bytes,  # noqa: E501
+        maintype: Optional[str] = None,
+        subtype: Optional[str] = None,
     ) -> None:
         """Send one message, or explain why it could not be sent.
 
@@ -192,7 +233,9 @@ class EmailService:
             subject (str): The subject line.
             body (str): The plain-text body.
             filename (str): Name the attachment is saved under.
-            payload (bytes): The workbook itself.
+            payload (bytes): The document itself.
+            maintype (Optional[str]): MIME main type. Defaults to a spreadsheet.
+            subtype (Optional[str]): MIME subtype. Defaults to a spreadsheet.
 
         Raises:
             MTEmailNotConfigured: If outbound email is disabled or the
@@ -213,7 +256,9 @@ class EmailService:
             raise MTEmailNotConfigured(
                 "Outbound email is disabled or its credentials are not set."
             )
-        message = self._build_message(recipient, subject, body, filename, payload)  # noqa: E501
+        message = self._build_message(
+            recipient, subject, body, filename, payload, maintype, subtype
+        )
         try:
             await asyncio.to_thread(self._deliver, message)
         except (smtplib.SMTPException, OSError) as exc:
@@ -430,6 +475,71 @@ class EmailService:
             payload=Formatter.format_quote(
                 quote, customer, company, language, logo=logo
             ),
+        )
+
+    async def send_bill(
+        self,
+        bill: Bill,
+        customer: Customer,
+        company: Company,
+        document: bytes,
+        language: Language = Language.FR,
+    ) -> None:
+        """Send a customer their invoice as a PDF.
+
+        Args:
+            bill (Bill): The invoice being sent.
+            customer (Customer): The customer it is addressed to; supplies the
+                address.
+            company (Company): The agency issuing it.
+            document (bytes): The rendered invoice.
+            language (Language): The language to write the message in.
+
+        Raises:
+            MTEmailNotConfigured: If outbound email is not usable.
+            MTEmailNoRecipient: If the customer has no email address.
+            MTEmailDeliveryFailed: If the SMTP conversation fails.
+
+        Notes:
+            - **The document is passed in, not rendered here.** It is the exact
+              bytes already stored under the invoice's number, so what the
+              customer receives and what the agency can re-download are the same
+              file. Re-rendering would produce a second document that could
+              differ from the one the record points at.
+            - The recipient is read off the stored customer, never off an
+              argument — the property every method here keeps, so an invoice
+              cannot be redirected by anything a caller passes in.
+            - The filename is translated, like the quote's. It is the first
+              thing the recipient sees in their attachment list, and on a
+              financial document it is often what they file it under.
+        """
+        wording = self.BILL_EMAIL[language]
+        self.logger.info(
+            "Emailing invoice %s to customer %s in %s.",
+            bill.number,
+            customer.id,
+            language.value,
+        )
+        await self._send(
+            recipient=str(customer.email),
+            subject=wording["subject"].format(number=bill.number),
+            body=(
+                f"{wording['greeting'].format(name=customer.full_name())}\n\n"
+                f"{
+                    wording['body'].format(
+                        number=bill.number,
+                        company=company.name,
+                        period=bill.describe_period(),
+                        total=bill.total_ttc,
+                        due=f'{bill.due_on:%d/%m/%Y}',
+                    )
+                }\n\n"
+                f"{wording['automatic']}\n"
+            ),
+            filename=wording["filename"].format(number=bill.number),
+            payload=document,
+            maintype=self.PDF_TYPE,
+            subtype=self.PDF_SUBTYPE,
         )
 
     async def send_team_planning(

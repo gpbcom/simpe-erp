@@ -27,6 +27,9 @@ from api.middleware.auth_middleware import AuthMiddleware
 from api.middleware.transaction_middleware import TransactionMiddleware
 from api.observability import router as observability_router
 from api.v1.auth.accounts import router as accounts_router
+from api.v1.bills.settings import router as billing_settings_router
+from api.v1.bills.bills import router as bills_router
+from api.v1.bills.runs import router as billing_runs_router
 from api.v1.auth.auth import router as auth_router
 from api.v1.certifications.certifications import (
     router as certifications_router,
@@ -36,8 +39,8 @@ from api.v1.customers.customers import router as customers_router
 from api.v1.hcas.applications import router as hca_applications_router
 from api.v1.hcas.availability import router as availability_router
 from api.v1.hcas.hcas import router as hcas_router
-from api.v1.hcas.skills import router as hca_skills_router
 from api.v1.hcas.photos import router as hca_photos_router
+from api.v1.hcas.skills import router as hca_skills_router
 from api.v1.intervention_types.intervention_types import (
     router as intervention_types_router,
 )
@@ -94,7 +97,9 @@ def setup_logging(config_path: Optional[str] = None) -> None:
     except (OSError, yaml.YAMLError, ValueError) as exc:
         logging.basicConfig(level=logging.INFO)
         logging.getLogger(__name__).error(
-            "Falling back to basic logging; could not read %s: %s.", resolved, exc
+            "Falling back to basic logging; could not read %s: %s.",
+            resolved,
+            exc,  # noqa: E501
         )
 
 
@@ -146,7 +151,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:  # noqa: BLE001 - the API must still start
         # The object store being unreachable is not a reason to refuse traffic:
         # everything that is not a photograph still works.
-        started_logger.error("Could not prepare the photograph bucket: %s.", exc)
+        started_logger.error("Could not prepare the photograph bucket: %s.", exc)  # noqa: E501
     await start_notification_relay()
     yield
     logging.getLogger(__name__).info("Application shutting down.")
@@ -166,12 +171,6 @@ app = FastAPI(
     docs_url="/docs",
     lifespan=lifespan,
 )
-
-# Added outermost-last: CORS must wrap the authentication middleware so a
-# rejected credential still carries the CORS headers, or the browser reports an
-# opaque network error instead of the 401.
-# Added first, so it sits innermost: it must see the response the router
-# produced, with the request's session still open.
 app.add_middleware(TransactionMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
@@ -181,12 +180,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# Every domain exception is translated to its HTTP answer here rather than in
-# the endpoints. See :class:`~api.exception_handlers.ExceptionHandlers`.
 ExceptionHandlers(logger=logger).register(app)
-
 
 app.include_router(observability_router)
 app.include_router(auth_router)
@@ -195,11 +189,6 @@ app.include_router(accounts_router)
 app.include_router(companies_router)
 app.include_router(hca_applications_router)
 app.include_router(customers_router)
-# The photograph router is included **before** the assistant router, and the
-# order is load-bearing: both are mounted under /api/v1/hcas, and the assistant
-# router's ``GET /{hca_id}`` would otherwise swallow the literal
-# ``GET /photo-constraints`` — answering "no assistant 'photo-constraints'
-# exists" for a route that has nothing to do with an assistant.
 app.include_router(hca_photos_router)
 app.include_router(hcas_router)
 app.include_router(availability_router)
@@ -209,14 +198,18 @@ app.include_router(certifications_router)
 app.include_router(skills_router)
 app.include_router(quotes_router)
 app.include_router(notifications_router)
-# Mounted after the manager-facing routers: /api/v1/me is a distinct prefix,
-# so the order is not load-bearing, but keeping the self-service surface last
-# keeps the list reading as 'what staff do' then 'what I do'.
 app.include_router(me_router)
 app.include_router(planning_runs_router)
 app.include_router(planning_settings_router)
 app.include_router(plannings_router)
 app.include_router(interventions_router)
+# The run router is mounted **before** the bill router, and the order is
+# load-bearing: `/api/v1/bills/runs` and `/api/v1/bills/{bill_id}` match the
+# same shape, so whichever is registered first wins. Reversed, asking for
+# the run list would look up a bill numbered "runs" and answer 404.
+app.include_router(billing_runs_router)
+app.include_router(bills_router)
+app.include_router(billing_settings_router)
 app.include_router(webhooks_router)
 
 

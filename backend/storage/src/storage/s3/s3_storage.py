@@ -33,7 +33,13 @@ class S3Storage:
             accepted content type.
         MAGIC_SIGNATURES (ClassVar[Tuple[Tuple[bytes, str], ...]]): Leading
             bytes identifying each accepted image format.
-        CACHE_CONTROL (ClassVar[str]): Cache header written with every object.
+        CACHE_CONTROL (ClassVar[str]): Cache header written with every image.
+        DOCUMENT_SIGNATURE (ClassVar[bytes]): Leading bytes identifying a
+            PDF.
+        DOCUMENT_CONTENT_TYPE (ClassVar[str]): The only type stored under
+            the invoice prefix.
+        DOCUMENT_CACHE_CONTROL (ClassVar[str]): Cache header written with
+            every invoice.
         config (S3Config): Bucket and credential settings.
         logger (Logger): Logger for object-store operations.
 
@@ -54,6 +60,13 @@ class S3Storage:
           but they share the sniffing, the size limit and the key resolution.
           A second class for logos would have meant a second copy of the checks
           that make this one safe.
+        - **Invoices are the exception, and deliberately so.** They live under a
+          third prefix with their own sniffer, their own cache headers and no
+          public URL at all: the two image paths exist to serve a browser, and
+          an invoice is only ever read back server-side and streamed through an
+          authenticated endpoint. Widening the image allow-list to admit a
+          document would have admitted it for photographs too — the shared rule
+          is the thing that must not be shared here.
     """
 
     CONTENT_TYPE_EXTENSIONS: ClassVar[Dict[str, str]] = {
@@ -67,6 +80,9 @@ class S3Storage:
         (b"RIFF", "image/webp"),
     )
     CACHE_CONTROL: ClassVar[str] = "public, max-age=31536000, immutable"
+    DOCUMENT_SIGNATURE: ClassVar[bytes] = b"%PDF-"
+    DOCUMENT_CONTENT_TYPE: ClassVar[str] = "application/pdf"
+    DOCUMENT_CACHE_CONTROL: ClassVar[str] = "private, no-store"
 
     def __init__(self, config: S3Config, logger: Optional[Logger] = None) -> None:  # noqa: E501
         """Initialize the storage without opening a connection.
@@ -438,6 +454,230 @@ class S3Storage:
         self.logger.info("Read %d bytes of logo from %s.", len(payload), key)
         return payload
 
+    def detect_document_type(self, payload: bytes) -> str:
+        """Return the document type a payload actually is.
+
+        Args:
+            payload (bytes): The rendered document bytes.
+
+        Returns:
+            str: ``"application/pdf"``.
+
+        Raises:
+            MTS3EmptyPayload: If ``payload`` carries no bytes.
+            MTS3UnsupportedContentType: If the leading bytes are not a PDF's.
+
+        Notes:
+            - **A parallel sniffer, deliberately not a relaxation of
+              :meth:`detect_content_type`.** That one guards a bucket serving
+              images to a browser, and widening its allow-list to admit a document
+              would admit it for photographs and logos too — which is exactly how
+              a stored file becomes a stored payload. Invoices get their own
+              check, their own prefix and their own cache headers.
+            - Checked at all even though this application generated the bytes
+              itself: the check costs five bytes of comparison and catches a
+              renderer that returned an error page, which would otherwise be
+              stored under a legal invoice number and emailed to a customer.
+        """
+        if not payload:
+            self.logger.warning("Refused an empty document.")
+            raise MTS3EmptyPayload("The document is empty.")
+        if not payload.startswith(self.DOCUMENT_SIGNATURE):
+            self.logger.warning(
+                "Refused a document whose leading bytes are not a PDF's."
+            )
+            raise MTS3UnsupportedContentType(
+                "The document is not a PDF. Only "
+                f"{self.DOCUMENT_CONTENT_TYPE} is stored under the invoice "
+                "prefix."
+            )
+        self.logger.debug("Detected a document of type %s.", self.DOCUMENT_CONTENT_TYPE)  # noqa: E501
+        return self.DOCUMENT_CONTENT_TYPE
+
+    def build_invoice_key(self, company_id: str, number: str) -> str:
+        """Return the object key an invoice document is written under.
+
+        Args:
+            company_id (str): The agency that issued the invoice.
+            number (str): The invoice number, used only for the log.
+
+        Returns:
+            str: The key, under the configured invoice prefix.
+
+        Notes:
+            **The key is random, not derived from the invoice number.** The
+            number is printed on a document a customer holds, so a key built
+            from it would be guessable by anybody who has ever received one —
+            and these objects are the agency's whole billing history. The number
+            stays the human-facing identity; the key stays unguessable.
+        """
+        if not company_id.strip():
+            self.logger.warning(
+                "Building an invoice key for an unnamed company; the object "
+                "would land directly under %s and no record could claim it.",
+                self.config.invoice_key_prefix,
+            )
+        key = f"{self.config.invoice_key_prefix}{company_id}/{uuid4().hex}.pdf"
+        self.logger.info("Invoice %s will be written to %s.", number, key)
+        return key
+
+    async def upload_invoice(self, company_id: str, number: str, payload: bytes) -> str:
+        """Store an invoice document and return its object key.
+
+        Args:
+            company_id (str): The agency that issued the invoice.
+            number (str): The invoice number, used for the log and the key.
+            payload (bytes): The rendered PDF.
+
+        Returns:
+            str: The **object key**, not a URL.
+
+        Raises:
+            MTS3EmptyPayload: If the document carries no bytes.
+            MTS3UnsupportedContentType: If the document is not a PDF.
+            MTS3PayloadTooLarge: If the document exceeds the configured size.
+            MTS3BucketUnavailable: If the client cannot be built.
+            MTS3UploadFailed: If the object could not be written.
+
+        Notes:
+            - **Returns a key and never a URL**, unlike the photograph and logo
+              paths. Those objects are fetched by a browser; an invoice is only
+              ever read back server-side and streamed through an authenticated
+              endpoint, so there is no public URL to build and storing one would
+              invite somebody to use it.
+            - Written with ``private, no-store`` rather than the year-long
+              immutable cache the images carry. A financial document sitting in
+              an intermediary cache is the same exposure by another route.
+        """
+        if len(payload) > self.config.max_upload_bytes:
+            self.logger.warning(
+                "Refused a %d-byte invoice document for %s; the limit is %d.",
+                len(payload),
+                number,
+                self.config.max_upload_bytes,
+            )
+            raise MTS3PayloadTooLarge(
+                f"The document is {len(payload)} bytes; the limit is "
+                f"{self.config.max_upload_bytes}."
+            )
+        content_type = self.detect_document_type(payload)
+        key = self.build_invoice_key(company_id, number)
+        client = self.get_client()
+        self.logger.info(
+            "Uploading a %d-byte document for invoice %s to %s.",
+            len(payload),
+            number,
+            key,
+        )
+        try:
+            await asyncio.to_thread(
+                client.put_object,
+                Bucket=self.config.bucket,
+                Key=key,
+                Body=payload,
+                ContentType=content_type,
+                CacheControl=self.DOCUMENT_CACHE_CONTROL,
+            )
+        except (BotoCoreError, ClientError) as exc:
+            self.logger.error(
+                "Failed to upload the document for invoice %s: %s.", number, exc
+            )
+            raise MTS3UploadFailed(
+                f"Could not store the invoice document: {exc}."
+            ) from exc
+        self.logger.info("Stored the document for invoice %s at %s.", number, key)
+        return key
+
+    async def fetch_invoice(self, document_key: str) -> Optional[bytes]:
+        """Read a stored invoice document back.
+
+        Args:
+            document_key (str): The object key the document was written under.
+
+        Returns:
+            Optional[bytes]: The PDF bytes, or ``None`` when the key is not an
+            invoice in this bucket or the object could not be read.
+
+        Notes:
+            - Takes a **key**, not a URL, because that is what
+              :meth:`upload_invoice` returns and what the bill stores. The
+              prefix is still checked: a key arriving from anywhere else must
+              not be able to read an assistant's photograph out of the same
+              bucket.
+            - Reports rather than raises, like :meth:`fetch_logo`, so the
+              download endpoint answers a clean "the document is unavailable"
+              instead of a stack trace.
+        """
+        if not isinstance(document_key, str) or not document_key.strip():
+            self.logger.warning("Cannot fetch an invoice without a key.")
+            return None
+        key = document_key.strip()
+        if not key.startswith(self.config.invoice_key_prefix):
+            self.logger.warning(
+                "Refused to fetch %r: it is not under %s.",
+                key,
+                self.config.invoice_key_prefix,
+            )
+            return None
+        self.logger.debug("Fetching the invoice document at %s.", key)
+        try:
+            client = self.get_client()
+            response = await asyncio.to_thread(
+                client.get_object, Bucket=self.config.bucket, Key=key
+            )
+            payload = await asyncio.to_thread(response["Body"].read)
+        except (BotoCoreError, ClientError, MTS3BucketUnavailable, KeyError) as exc:  # noqa: E501
+            self.logger.error("Could not read the invoice document %s: %s.", key, exc)
+            return None
+        if not payload:
+            self.logger.warning(
+                "The invoice document at %s is a zero-byte object; treating it "
+                "as absent.",
+                key,
+            )
+            return None
+        self.logger.info("Read %d bytes of invoice from %s.", len(payload), key)  # noqa: E501
+        return payload
+
+    async def delete_invoice(self, document_key: str) -> bool:
+        """Remove a stored invoice document.
+
+        Args:
+            document_key (str): The object key the document was written under.
+
+        Returns:
+            bool: ``True`` when the object was removed.
+
+        Notes:
+            Exists for the superseded document a re-render leaves behind, not
+            for withdrawing an invoice: a number taken out of the series is the
+            gap French invoicing forbids, and the record itself is never
+            deleted. The prefix check is what stops a stray key reaching a
+            photograph.
+        """
+        if not isinstance(document_key, str) or not document_key.strip():
+            self.logger.warning("Cannot delete an invoice without a key.")
+            return False
+        key = document_key.strip()
+        if not key.startswith(self.config.invoice_key_prefix):
+            self.logger.warning(
+                "Refused to delete %r: it is not under %s.",
+                key,
+                self.config.invoice_key_prefix,
+            )
+            return False
+        self.logger.info("Deleting the invoice document at %s.", key)
+        try:
+            client = self.get_client()
+            await asyncio.to_thread(
+                client.delete_object, Bucket=self.config.bucket, Key=key
+            )
+        except (BotoCoreError, ClientError, MTS3BucketUnavailable) as exc:
+            self.logger.error("Could not delete the invoice document %s: %s.", key, exc)
+            return False
+        self.logger.debug("Deleted the invoice document at %s.", key)
+        return True
+
     async def delete_photo(self, photo_url: str) -> bool:
         """Remove a stored photograph.
 
@@ -502,7 +742,7 @@ class S3Storage:
               chances for one of them to be relaxed.
         """
         expected = prefix if prefix else self.config.photo_key_prefix
-        self.logger.debug("Resolving %r against the %s prefix.", object_url, expected)
+        self.logger.debug("Resolving %r against the %s prefix.", object_url, expected)  # noqa: E501
         if not isinstance(object_url, str) or not object_url.strip():
             self.logger.warning(
                 "Cannot resolve an empty URL; nothing will be acted on."
@@ -511,7 +751,7 @@ class S3Storage:
         try:
             path = urlparse(object_url.strip()).path.lstrip("/")
         except ValueError as exc:
-            self.logger.error("Could not parse %r as a URL: %s.", object_url, exc)
+            self.logger.error("Could not parse %r as a URL: %s.", object_url, exc)  # noqa: E501
             return None
         if not path:
             self.logger.warning("The URL %r names no object path.", object_url)
@@ -520,7 +760,7 @@ class S3Storage:
         path = path.removeprefix(bucket_segment)
         if not path.startswith(expected):
             self.logger.warning(
-                "The URL %r resolves to %r, which is not under %s; refusing it.",
+                "The URL %r resolves to %r, which is not under %s; refusing it.",  # noqa: E501
                 object_url,
                 path,
                 expected,

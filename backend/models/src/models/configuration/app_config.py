@@ -33,6 +33,8 @@ from models.configuration.observability_config import ObservabilityConfig
 from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.configuration.s3_config import S3Config
 from models.configuration.server_config import ServerConfig
+from models.configuration.billing_config import BillingConfig
+from models.configuration.billing_webhook_config import BillingWebhookConfig
 from models.configuration.webhook_config import WebhookConfig
 
 
@@ -52,6 +54,9 @@ class AppConfig(BaseModel):
         geocoding (GeocodingConfig): Nominatim geocoding settings.
         email (EmailConfig): Outbound SMTP settings.
         webhook (WebhookConfig): Settings for the planning-completed webhook.
+        billing (BillingConfig): The invoicing rules a deployment starts with.
+        billing_webhook (BillingWebhookConfig): Settings for the
+            bill-accepted webhook.
         s3 (S3Config): Object-store settings for assistant photographs.
         rabbitmq (RabbitMqConfig): Message-broker settings.
 
@@ -95,6 +100,14 @@ class AppConfig(BaseModel):
     webhook: WebhookConfig = Field(
         default_factory=WebhookConfig,
         description="Settings for the planning-completed webhook.",
+    )
+    billing: BillingConfig = Field(
+        default_factory=BillingConfig,
+        description="The invoicing rules a deployment starts with.",
+    )
+    billing_webhook: BillingWebhookConfig = Field(
+        default_factory=BillingWebhookConfig,
+        description="Settings for the bill-accepted webhook.",
     )
     rabbitmq: RabbitMqConfig = Field(
         default_factory=RabbitMqConfig,
