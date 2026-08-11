@@ -191,6 +191,41 @@ class UserRepository(BaseRepository[UserRow]):
             return None
         return self.mapper.to_model(row)
 
+    async def get_by_customer_id(self, customer_id: str) -> Optional[User]:
+        """Return the portal account bound to a customer record.
+
+        Args:
+            customer_id (str): The household whose account is wanted.
+
+        Returns:
+            Optional[User]: The account, or ``None`` when the household has
+            none.
+
+        Raises:
+            SQLAlchemyError: If the query fails.
+
+        Notes:
+            The mirror of :meth:`get_by_hca_id`, and it answers two questions:
+            whether an invitation would be a second set of credentials for one
+            household, and what has to be deleted along with the customer —
+            the foreign key is ``RESTRICT``, so a household with an account
+            cannot be removed until the account is.
+        """
+        self.logger.debug("Looking up the account bound to customer %s.", customer_id)
+        statement = select(UserRow).where(UserRow.customer_id == customer_id)
+        try:
+            row = await self._fetch_one(statement)
+        except SQLAlchemyError:
+            self.logger.error("Reading the account of customer %s failed.", customer_id)
+            raise
+        if row is None:
+            self.logger.info("Customer %s has no portal account.", customer_id)
+            return None
+        self.logger.warning(
+            "Customer %s already holds portal account %s.", customer_id, row.id
+        )
+        return self.mapper.to_model(row)
+
     async def update(self, user: User) -> Optional[User]:
         """Update an existing account.
 

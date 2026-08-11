@@ -5,7 +5,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md ./
 COPY models/pyproject.toml ./models/
 COPY storage/pyproject.toml ./storage/
 COPY service/pyproject.toml ./service/
@@ -22,6 +22,9 @@ COPY service ./service
 COPY api ./api
 COPY worker ./worker
 COPY seed ./seed
+# A plain module rather than a distribution of its own. The workspace root
+# ships it, so it has to be present before the root project is built below.
+COPY integrations ./integrations
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
@@ -47,6 +50,7 @@ COPY --from=builder --chown=rterp:rterp /app/service /app/service
 COPY --from=builder --chown=rterp:rterp /app/api /app/api
 COPY --from=builder --chown=rterp:rterp /app/worker /app/worker
 COPY --from=builder --chown=rterp:rterp /app/seed /app/seed
+COPY --from=builder --chown=rterp:rterp /app/integrations /app/integrations
 COPY --chown=rterp:rterp conf ./conf
 
 RUN mkdir -p /app/logs && chown rterp:rterp /app/logs

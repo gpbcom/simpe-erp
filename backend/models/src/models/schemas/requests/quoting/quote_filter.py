@@ -112,9 +112,7 @@ class QuoteFilter(EntityFilter):
                 f"{', '.join(QuoteStatus.values())}."
             ) from None
 
-    @field_validator(
-        "search", "customer_id", "authored_by", "reference", mode="before"
-    )
+    @field_validator("search", "customer_id", "authored_by", "reference", mode="before")
     def validate_text(cls, value: Optional[str]) -> Optional[str]:
         """Validates that a text filter is absent or a usable fragment.
 

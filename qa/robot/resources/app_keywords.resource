@@ -61,11 +61,29 @@ Sign In As
     ...    there, and reports "login-email not found" about a suite whose real
     ...    problem is three tests back. Counting is the check because it neither
     ...    waits nor raises when there is no session.
-    [Arguments]    ${email}    ${password}=${SEED_PASSWORD}
+    ...
+    ...    Then navigates to the sign-in screen if it is not already on it.
+    ...    ``Open The Application`` loads the root, and the root is the welcome
+    ...    page — a visitor arriving cold is asked what this is, not for a
+    ...    password. Only ``/login`` is the form.
+    ...
+    ...    ``space`` picks which side of the form to sign in on and defaults to
+    ...    ``employee``, which is what every existing caller wants. The chooser
+    ...    is validated after authentication, so signing a staff account in as a
+    ...    customer is refused rather than landing somewhere confusing — which
+    ...    is why the argument exists rather than the suites all clicking the
+    ...    toggle themselves.
+    [Arguments]    ${email}    ${password}=${SEED_PASSWORD}    ${space}=employee
     ${open}=    Get Element Count    [data-testid="sign-out"]
     IF    ${open} > 0
         Sign Out
     END
+    ${form}=    Get Element Count    [data-testid="login-email"]
+    IF    ${form} == 0
+        Go To    ${BASE_URL}/login
+        Wait For Elements State    [data-testid="login-email"]    visible
+    END
+    Click    [data-testid="login-space-${space}"]
     Fill Text    [data-testid="login-email"]    ${email}
     Fill Text    [data-testid="login-password"]    ${password}
     Click    [data-testid="login-submit"]

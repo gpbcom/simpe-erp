@@ -25,9 +25,7 @@ from models.people.hca.skill import Skill
 from service.hcas.exceptions import MTHcaForbidden, MTSkillNotFound
 
 
-def _user(
-    role: UserRole = UserRole.HCA, hca_id: Optional[str] = "hca-1"
-) -> User:
+def _user(role: UserRole = UserRole.HCA, hca_id: Optional[str] = "hca-1") -> User:
     """Build the account the request is authenticated as.
 
     Args:
@@ -101,9 +99,7 @@ def publisher() -> RecordingPublisher:
     return RecordingPublisher()
 
 
-def _client(
-    caller: User, hcas: AsyncMock, publisher: RecordingPublisher
-) -> TestClient:
+def _client(caller: User, hcas: AsyncMock, publisher: RecordingPublisher) -> TestClient:
     """Build a client over both skill-declaration routers.
 
     Args:

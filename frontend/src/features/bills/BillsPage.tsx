@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { EInvoicingWarning } from '@/features/integrations/EInvoicingWarning';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
@@ -111,6 +112,9 @@ export function BillsPage() {
 
   return (
     <Box data-testid="bills-page">
+      {/* Where a manager actually works, which is why the warning is here
+          and not only in the settings. */}
+      <EInvoicingWarning withLink />
       <Stack
         direction="row"
         spacing={2}

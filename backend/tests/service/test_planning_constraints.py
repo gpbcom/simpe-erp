@@ -14,7 +14,9 @@ from models.enums import AvailabilityKind, ContractType, UnplacedReason, Weekday
 from models.geo.geo_point import GeoPoint
 from models.people.hca import Hca
 from models.planning.intervention.exceptions import MTRequirementInvalidWindow
-from models.planning.intervention.intervention_requirement import InterventionRequirement
+from models.planning.intervention.intervention_requirement import (
+    InterventionRequirement,
+)
 from models.settings.planning_settings import PlanningSettings
 from service.planning.plannings import PlanningService
 

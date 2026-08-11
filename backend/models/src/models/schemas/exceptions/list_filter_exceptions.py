@@ -51,9 +51,7 @@ class MTInvalidInterventionTypeFilterException(MTInvalidEntityFilterException):
     """Exception raised when a catalogue filter is invalid."""
 
 
-class MTInterventionTypeFilterInvalidFragment(
-    MTInvalidInterventionTypeFilterException
-):
+class MTInterventionTypeFilterInvalidFragment(MTInvalidInterventionTypeFilterException):
     """Exception raised when a catalogue text filter is not a string."""
 
 
@@ -61,9 +59,7 @@ class MTInterventionTypeFilterInvalidFlag(MTInvalidInterventionTypeFilterExcepti
     """Exception raised when a catalogue filter flag is not a boolean."""
 
 
-class MTInterventionTypeFilterInvalidCategory(
-    MTInvalidInterventionTypeFilterException
-):
+class MTInterventionTypeFilterInvalidCategory(MTInvalidInterventionTypeFilterException):
     """Exception raised when the service-category filter is not a known one."""
 
 

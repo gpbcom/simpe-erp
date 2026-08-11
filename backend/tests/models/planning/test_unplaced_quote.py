@@ -62,9 +62,7 @@ class TestBuildingAnUnplacedQuote:
 
     def test_the_reference_is_trimmed(self) -> None:
         """Whitespace around a reference is not part of it."""
-        entry = UnplacedQuote(
-            quote_reference="  DEV-2026-0042  ", visits=[_visit()]
-        )
+        entry = UnplacedQuote(quote_reference="  DEV-2026-0042  ", visits=[_visit()])
 
         assert entry.quote_reference == "DEV-2026-0042"
 
@@ -97,9 +95,7 @@ class TestRefusingAnUnusableReport:
             UnplacedQuote(quote_reference=value, visits=[_visit()])
 
     @pytest.mark.parametrize("value", [42, ["Marie"], {"name": "Marie"}])
-    def test_a_customer_name_that_is_not_text_is_refused(
-        self, value: object
-    ) -> None:
+    def test_a_customer_name_that_is_not_text_is_refused(self, value: object) -> None:
         """Tolerating a missing name is not tolerating any value at all.
 
         Args:

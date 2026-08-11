@@ -39,6 +39,7 @@ Test Teardown    Take A Screenshot On Failure
 
 *** Variables ***
 ${ORIGINAL_BILLING}    ${EMPTY}
+@{QA_HOUSEHOLDS}       @{EMPTY}
 @{LAST_RUN_BILLS}      @{EMPTY}
 # Longer than ${EVENT_TIMEOUT}, and not arbitrarily: a quote status change is
 # one broker hop, while a billing run renders a PDF and uploads an object per
@@ -282,6 +283,92 @@ An Invoice Cannot Skip A Step In Its Lifecycle
     Should Be Equal As Integers    ${refused.status_code}    409
     ...    msg=An invoice was moved straight to paid, skipping validation and delivery.
 
+A Customer Billed Weekly Gets Their Own Window
+    [Documentation]    **The agency rule is a default, not a ceiling.**
+    ...
+    ...    A household paying week by week and an institution wanting one
+    ...    document a year are both ordinary, and a single agency-wide setting
+    ...    serves neither. The agency is put on monthly and this customer on
+    ...    weekly, so the seven-day window on the invoice can only have come
+    ...    from the customer's own rule.
+    ...
+    ...    Registered fresh rather than borrowed from the book: the customers
+    ...    the earlier tests billed are covered by a monthly invoice, and a
+    ...    window inside one already issued is refused — which is the guard
+    ...    against charging somebody twice for days they have paid for.
+    [Tags]    billing    per-customer
+    Set The Agency Periodicity To    monthly
+    ${customer_id}=    Register A Household Billed    weekly
+    Give Work Inside The Billed Period To    ${customer_id}
+    Bill A Past Period Through The API
+
+    ${bill}=    The Invoice Of    ${customer_id}
+    Should Be Equal    ${bill}[periodicity]    weekly
+    ...    msg=Invoice ${bill}[number] was issued monthly; the customer is billed weekly.
+    ${days}=    Evaluate
+    ...    (datetime.date.fromisoformat($bill["period_end"]) - datetime.date.fromisoformat($bill["period_start"])).days
+    ...    modules=datetime
+    Should Be Equal As Integers    ${days}    6
+    ...    msg=The invoice covers ${bill}[period_start]..${bill}[period_end], which is not one week.
+    [Teardown]    Restore The Invoicing Rules
+
+A Customer With No Rule Of Their Own Follows The Agency
+    [Documentation]    The ordinary case, and the one that must not drift.
+    ...
+    ...    Unset has to keep meaning "whatever the agency bills on". Were it
+    ...    frozen to a copy of today's setting, every household would look
+    ...    unchanged now and stop following the rule the moment a manager moved
+    ...    it — with nothing on any screen saying why.
+    [Tags]    billing    per-customer
+    Set The Agency Periodicity To    yearly
+    ${customer_id}=    Register A Household Billed    ${None}
+    ${stored}=    Customer Billing Periodicity Of    ${customer_id}
+    Should Be Equal    ${stored}    ${None}
+    ...    msg=A newly registered household was given a periodicity of its own.
+    [Teardown]    Restore The Invoicing Rules
+
+A Manager Sets And Clears The Granularity From The Customer's File
+    [Documentation]    **Requirement 4, on the screen the decision is taken.**
+    ...
+    ...    Read back over the API rather than off the control, because a select
+    ...    that accepts a choice and never sends it looks identical. Clearing is
+    ...    walked as well as setting: an override that cannot be taken off is
+    ...    one a household keeps for good.
+    [Tags]    billing    per-customer
+    ${customer_id}=    Register A Household Billed    ${None}
+    Sign In As    ${MANAGER_EMAIL}
+    Open The File Of Customer    ${customer_id}
+
+    Select Options By    [data-testid="customer-billing-periodicity"]    value    yearly
+    Wait For Elements State    [data-testid="customer-billing-saved"]    visible
+    ...    message=The periodicity was not saved.
+    ${stored}=    Customer Billing Periodicity Of    ${customer_id}
+    Should Be Equal    ${stored}    yearly
+
+    Select Options By    [data-testid="customer-billing-periodicity"]    value    ${EMPTY}
+    Wait Until Keyword Succeeds    ${EVENT_TIMEOUT}    1s
+    ...    Customer Should Follow The Agency    ${customer_id}
+    [Teardown]    Sign Out
+
+An Assistant May Not Change How Often A Customer Is Billed
+    [Documentation]    Requirement 4's other half: who may not.
+    ...
+    ...    How often a household is asked for money is a commercial decision.
+    ...    Asserted over the API, because a control an assistant never sees is a
+    ...    convenience and the guard is what actually refuses.
+    [Tags]    billing    per-customer    security
+    ${customer_id}=    Register A Household Billed    ${None}
+    ${token}=    Sign In Through The API    ${ASSISTANT_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary    periodicity=weekly
+    ${refused}=    PATCH
+    ...    ${API_URL}/api/v1/customers/${customer_id}/billing-periodicity
+    ...    json=${body}
+    ...    headers=${headers}
+    ...    expected_status=any
+    Should Be Equal As Integers    ${refused.status_code}    403
+    ...    msg=An assistant changed how often a customer is invoiced.
+
 An Assistant May Not Read The Agency's Invoices
     [Documentation]    Money is not an assistant's to see.
     ...
@@ -311,9 +398,26 @@ Snapshot The Invoicing Rules And Open
     Open The Application
 
 Restore The Invoicing Rules And Close
-    [Documentation]    Put the rules back, then close the browser.
+    [Documentation]    Put the rules back, drop the fixtures, close the browser.
     Run Keyword And Ignore Error    Restore The Invoicing Rules
+    Run Keyword And Ignore Error    Remove The Households This Run Registered
     Close The Application
+
+Remove The Households This Run Registered
+    [Documentation]    Delete the fixture customers, and only those.
+    ...
+    ...    ``expected_status=any`` because the one that was invoiced is refused:
+    ...    a customer named on an accounting record cannot be deleted, which is
+    ...    the right rule. That household stays, as its invoice does — a number
+    ...    withdrawn from the series is the gap French invoicing forbids.
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    FOR    ${customer_id}    IN    @{QA_HOUSEHOLDS}
+        DELETE
+        ...    ${API_URL}/api/v1/customers/${customer_id}
+        ...    headers=${headers}
+        ...    expected_status=any
+    END
 
 Restore The Invoicing Rules And Sign Out
     [Documentation]    Undo a test that changed the rules, then end the session.
@@ -566,6 +670,142 @@ Reload And Sign Out
     ...    over the API.
     Run Keyword And Ignore Error    Reload
     Sign Out
+
+Set The Agency Periodicity To
+    [Documentation]    Put the agency-wide rule on a known value.
+    ...
+    ...    So a per-customer test asserts a contrast rather than a coincidence:
+    ...    a weekly invoice proves nothing where the agency itself bills weekly.
+    ...    The suite teardown puts the rules back whatever happens.
+    [Arguments]    ${periodicity}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    periodicity=${periodicity}
+    ...    payment_terms_days=${ORIGINAL_BILLING}[payment_terms_days]
+    ...    late_penalty_multiplier=${ORIGINAL_BILLING}[late_penalty_multiplier]
+    ...    recovery_indemnity_eur=${ORIGINAL_BILLING}[recovery_indemnity_eur]
+    ...    escompte_offered=${ORIGINAL_BILLING}[escompte_offered]
+    PUT
+    ...    ${API_URL}/api/v1/billing/settings
+    ...    json=${body}
+    ...    headers=${headers}
+    ...    expected_status=200
+
+Register A Household Billed
+    [Documentation]    Register a customer, optionally on a rule of their own.
+    ...
+    ...    Registered fresh each time rather than reusing the book: a household
+    ...    the earlier tests billed already has an invoice covering the period,
+    ...    and a window overlapping one already issued is refused.
+    [Arguments]    ${periodicity}
+    ${suffix}=    Unique Suffix
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Catenate    SEPARATOR=
+    ...    {"first_name": "Facture", "last_name": "Qabill-${suffix}",
+    ...    "phone_number": "+33600000199", "email": "bill-${suffix}@qa.simple-erp.fr",
+    ...    "address": {"street": "12 rue de Rivoli", "postal_code": "75004",
+    ...    "city": "Paris", "country": "France"},
+    ...    "registration_status": "active"}
+    ${created}=    POST
+    ...    ${API_URL}/api/v1/customers
+    ...    data=${body}
+    ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
+    ...    expected_status=201
+    ${customer_id}=    Set Variable    ${created.json()}[id]
+    Append To List    ${QA_HOUSEHOLDS}    ${customer_id}
+    IF    $periodicity is not None
+        ${rule}=    Create Dictionary    periodicity=${periodicity}
+        PATCH
+        ...    ${API_URL}/api/v1/customers/${customer_id}/billing-periodicity
+        ...    json=${rule}
+        ...    headers=${headers}
+        ...    expected_status=200
+    END
+    RETURN    ${customer_id}
+
+Give Work Inside The Billed Period To
+    [Documentation]    Sell and accept one visit on the day being billed.
+    ...
+    ...    The same shape as ``Ensure There Is Work To Bill`` but aimed at one
+    ...    household, because a per-customer window is only observable on a
+    ...    customer nothing else has billed.
+    [Arguments]    ${customer_id}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${type_id}=    First Intervention Type
+    ${suffix}=    Unique Suffix
+    ${day}=    The Day Being Billed
+    ${body}=    Catenate    SEPARATOR=
+    ...    {"reference": "QA-GRAN-${suffix}",
+    ...    "customer_id": "${customer_id}",
+    ...    "lines": [{"name": "Aide a la toilette",
+    ...    "intervention_type_id": "${type_id}",
+    ...    "service_category": "necessity",
+    ...    "service_date": "${day}",
+    ...    "earliest_start": "09:00:00",
+    ...    "latest_end": "12:00:00",
+    ...    "duration_minutes": 120}]}
+    ${quote}=    POST
+    ...    ${API_URL}/api/v1/quotes
+    ...    data=${body}
+    ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
+    ...    expected_status=201
+    POST
+    ...    ${API_URL}/api/v1/quotes/${quote.json()}[id]/accept
+    ...    headers=${headers}
+    ...    expected_status=200
+
+The Invoice Of
+    [Documentation]    Return the one invoice issued to a household.
+    [Arguments]    ${customer_id}
+    ${bills}=    Invoices As Stored
+    ${theirs}=    Evaluate
+    ...    [b for b in $bills if b["customer_id"] == "${customer_id}"]
+    Should Not Be Empty    ${theirs}
+    ...    msg=The run issued no invoice to customer ${customer_id}.
+    RETURN    ${theirs}[0]
+
+Customer Billing Periodicity Of
+    [Documentation]    Return a household's own rule, or ``None``.
+    [Arguments]    ${customer_id}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/customers/${customer_id}
+    ...    headers=${headers}
+    ...    expected_status=200
+    RETURN    ${response.json()}[billing_periodicity]
+
+Customer Should Follow The Agency
+    [Documentation]    Assert a household carries no rule of its own.
+    [Arguments]    ${customer_id}
+    ${stored}=    Customer Billing Periodicity Of    ${customer_id}
+    Should Be Equal    ${stored}    ${None}
+    ...    msg=The override was not cleared; the customer is still billed ${stored}.
+
+Open The File Of Customer
+    [Documentation]    Open the customer book and the drawer on one household.
+    ...
+    ...    Searched for first: a household this run registered sits at the end
+    ...    of a book of forty and the grid shows twenty-five to a page.
+    [Arguments]    ${customer_id}
+    ${token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/customers/${customer_id}
+    ...    headers=${headers}
+    ...    expected_status=200
+    Click    [data-testid="nav--customers"]
+    Wait For Elements State    [data-testid="customers-grid"]    visible
+    Fill Text    [data-testid="customer-search"]    ${response.json()}[last_name]
+    Wait For Elements State
+    ...    [data-testid="customers-grid"] .MuiDataGrid-row >> nth=0    visible
+    ...    message=The customer book never listed the household this run registered.
+    Click    [data-testid="customers-grid"] .MuiDataGrid-row >> nth=0
+    Wait For Elements State    [data-testid="customer-billing-periodicity"]    visible
+    ...    message=The customer file has no invoicing control.
 
 Take A Screenshot On Failure
     [Documentation]    Capture the screen a failing test left behind.

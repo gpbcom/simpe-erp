@@ -246,8 +246,12 @@ class TestAValidatedQuoteReachesThePlanner:
     @pytest.mark.parametrize(
         ("start", "end"),
         [
-            pytest.param(date(2026, 8, 1), date(2026, 8, 9), id="period ends too early"),
-            pytest.param(date(2026, 8, 12), date(2026, 8, 20), id="period starts too late"),
+            pytest.param(
+                date(2026, 8, 1), date(2026, 8, 9), id="period ends too early"
+            ),
+            pytest.param(
+                date(2026, 8, 12), date(2026, 8, 20), id="period starts too late"
+            ),
         ],
     )
     async def test_a_period_that_misses_the_line_loads_nothing(

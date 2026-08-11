@@ -29,12 +29,19 @@ services:
       SIMPLE_ERP_CONFIG: conf/app.dev.yaml
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-simple-erp-dev-webhook}
       BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-simple-erp-dev-billing-webhook}
+      # A development key, and only that. Losing it costs re-entering a
+      # sandbox API key; the production one is injected from a secret store.
+      EINVOICING_CREDENTIAL_KEY: ${EINVOICING_CREDENTIAL_KEY:-simple-erp-dev-einvoicing-credential-key}
       SIMPLE_ERP_LOGGER: ${SIMPLE_ERP_LOGGER:-conf/logger.k8s.yaml}
     depends_on:
       otel-collector:
         condition: service_started
     volumes:
       - ../../backend/api/src:/app/api/src
+      # Not a `src` layout and not a distribution: a plain module the
+      # workspace root ships, so it mounts at the path the editable
+      # install points at rather than under a package directory.
+      - ../../backend/integrations:/app/integrations
       - ../../backend/models/src:/app/models/src
       - ../../backend/service/src:/app/service/src
       - ../../backend/storage/src:/app/storage/src
@@ -50,6 +57,10 @@ services:
       SIMPLE_ERP_CONFIG: conf/app.dev.yaml
     volumes:
       - ../../backend/api/src:/app/api/src
+      # Not a `src` layout and not a distribution: a plain module the
+      # workspace root ships, so it mounts at the path the editable
+      # install points at rather than under a package directory.
+      - ../../backend/integrations:/app/integrations
       - ../../backend/models/src:/app/models/src
       - ../../backend/service/src:/app/service/src
       - ../../backend/storage/src:/app/storage/src
@@ -66,6 +77,10 @@ services:
       - "9101:9100"
     volumes:
       - ../../backend/api/src:/app/api/src
+      # Not a `src` layout and not a distribution: a plain module the
+      # workspace root ships, so it mounts at the path the editable
+      # install points at rather than under a package directory.
+      - ../../backend/integrations:/app/integrations
       - ../../backend/models/src:/app/models/src
       - ../../backend/service/src:/app/service/src
       - ../../backend/storage/src:/app/storage/src
@@ -82,6 +97,10 @@ services:
       - "9102:9100"
     volumes:
       - ../../backend/api/src:/app/api/src
+      # Not a `src` layout and not a distribution: a plain module the
+      # workspace root ships, so it mounts at the path the editable
+      # install points at rather than under a package directory.
+      - ../../backend/integrations:/app/integrations
       - ../../backend/models/src:/app/models/src
       - ../../backend/service/src:/app/service/src
       - ../../backend/storage/src:/app/storage/src
@@ -96,6 +115,10 @@ services:
       - "9103:9100"
     volumes:
       - ../../backend/api/src:/app/api/src
+      # Not a `src` layout and not a distribution: a plain module the
+      # workspace root ships, so it mounts at the path the editable
+      # install points at rather than under a package directory.
+      - ../../backend/integrations:/app/integrations
       - ../../backend/models/src:/app/models/src
       - ../../backend/service/src:/app/service/src
       - ../../backend/storage/src:/app/storage/src

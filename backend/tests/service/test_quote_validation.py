@@ -207,8 +207,7 @@ class TestQuoteValidation:
         assert validated.is_schedulable() is True
         assert quotes.record_validation.await_args.kwargs["validated_by"] == MANAGER
         assert (
-            quotes.record_validation.await_args.kwargs["status"]
-            is QuoteStatus.ACCEPTED
+            quotes.record_validation.await_args.kwargs["status"] is QuoteStatus.ACCEPTED
         )
 
     async def test_validating_issues_the_quote_with_its_dates(

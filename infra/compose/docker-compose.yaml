@@ -152,6 +152,15 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:-}
       BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:-}
+      # Deliberately without a default: a deployment that does not set it
+      # cannot read a stored platform credential, and should say so at
+      # start-up rather than transmit nothing and look healthy.
+      #
+      # **The API alone carries it.** A worker publishes `bill.paid` and calls
+      # the loopback webhook; the transmission — and so the one decryption —
+      # happens in this process. Handing the key to four containers to be used
+      # by one is three more places to leak it from.
+      EINVOICING_CREDENTIAL_KEY: ${EINVOICING_CREDENTIAL_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

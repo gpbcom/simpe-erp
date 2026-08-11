@@ -162,7 +162,9 @@ class TestSkillTypeRepository:
     ) -> None:
         """A vanished entry is ``None``, which the service turns into a 404."""
         repository = SkillTypeRepository(session)
-        assert (await repository.update(_entry().model_copy(update={"id": "nope"}))) is None
+        assert (
+            await repository.update(_entry().model_copy(update={"id": "nope"}))
+        ) is None
 
     async def test_an_entry_can_be_deleted(self, session: AsyncSession) -> None:
         """An entry added by mistake this morning refers to nothing."""

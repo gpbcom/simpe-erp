@@ -16,6 +16,23 @@ class MTInvalidBillingPeriodicity(MTInvalidEnumException):
     """
 
 
+class MTRoleNotRankable(MTInvalidEnumException):
+    """Exception raised when a role outside the staff ladder is ranked.
+
+    Notes:
+        **This guards a privacy hole, not a typo.** The ladder is
+        ``hca < manager < admin`` and answers "at least a manager".
+        :attr:`~models.enums.UserRole.CUSTOMER` is not above or below any of
+        them — it is a different axis — so placing it on the ladder makes
+        ``has_at_least(CUSTOMER)`` true for every employee, and a guard written
+        the usual way would admit staff to a household's private space.
+
+        Refused loudly here so the mistake is a 500 with this message rather
+        than an authorisation check that quietly answers ``True``. Anything
+        specific to being a customer compares the role by identity instead.
+    """
+
+
 class MTRoutingKeyMissingCompany(MTInvalidEnumException):
     """Exception raised when a routing key is scoped to no agency.
 

@@ -1,13 +1,15 @@
 # SimpleERP — documentation
 
-Fourteen chapters. Each answers a different question, and the table says which.
+Fifteen chapters. Each answers a different question, and the table says which.
 
 If you are new to the codebase, read **01** and **02** and stop there — they are
-enough to find your way around. Come back for the rest when you need them.
+enough to find your way around. Come back for the rest when you need them. **01
+is long**: it opens with a diagram of what runs and what talks to what, and that
+much is enough on a first pass.
 
 | # | Chapter | Read it when you want to know |
 |---|---|---|
-| 01 | [Architecture](01-architecture.md) | How the pieces fit, why the layers are ordered as they are, what runs in which process |
+| 01 | [Architecture](01-architecture.md) | What runs and what talks to what, over which protocol and what happens when one end is missing — then why the layers are ordered as they are |
 | 02 | [Domain model](02-domain-model.md) | What a quote, an assistant, an intervention and a planning run actually are, and every enum |
 | 03 | [API reference](03-api-reference.md) | Which endpoint does what, and who is allowed to call it |
 | 04 | [Quote lifecycle](04-quote-lifecycle.md) | How a quote gets written, approved, sent and accepted — and why refusal is not rejection |
@@ -21,6 +23,7 @@ enough to find your way around. Come back for the rest when you need them.
 | 12 | [Conventions](12-conventions.md) | The house style, and the rules a change is reviewed against |
 | 13 | [Kubernetes](13-kubernetes.md) | How it scales, which autoscaler watches what, and the ceilings that were measured |
 | 14 | [Observability](14-observability.md) | What it reports about itself, what is alerted on, and where LangChain will fit |
+| 15 | [Electronic invoicing](15-electronic-invoicing.md) | What the French e-invoicing reform asks of this agency, why most of its revenue falls under e-reporting instead, and what has to change first, with the developer documentation of every approved platform worth calling — **design; the document builders are under way** |
 
 ---
 

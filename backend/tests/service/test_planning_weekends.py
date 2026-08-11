@@ -188,7 +188,9 @@ class TestWeekendsAreOrdinaryWorkingDays:
             The same record, unplannable on Saturday and then plannable,
             decided by nothing but the week somebody selected.
         """
-        assert _place(config, SATURDAY, [_hca(list(Hca.DEFAULT_WORKING_WEEKDAYS))]) == []
+        assert (
+            _place(config, SATURDAY, [_hca(list(Hca.DEFAULT_WORKING_WEEKDAYS))]) == []
+        )
         assert _place(
             config, SATURDAY, [_hca([*Hca.DEFAULT_WORKING_WEEKDAYS, Weekday.SATURDAY])]
         ) == ["hca-1"]
@@ -220,7 +222,7 @@ class TestWeekendsAreOrdinaryWorkingDays:
     def test_unplaced_weekend_work_is_reported_as_a_rota_decision(
         self, config: PlanningConfig
     ) -> None:
-        """"Nobody works Saturdays" is a recruitment answer, not an absence.
+        """ "Nobody works Saturdays" is a recruitment answer, not an absence.
 
         Args:
             config (PlanningConfig): The planning rules.

@@ -95,8 +95,7 @@ class QuoteCreateRequest(BaseModel):
         """
         if not isinstance(value, str) or not value.strip():
             raise MTQuoteCreateRequestInvalidCustomerId(
-                f"Invalid customer_id: {value!r}. "
-                "Must be a non-empty string."
+                f"Invalid customer_id: {value!r}. Must be a non-empty string."
             )
         return value.strip()
 

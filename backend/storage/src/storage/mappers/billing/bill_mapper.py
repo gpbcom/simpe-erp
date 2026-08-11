@@ -9,6 +9,7 @@ from uuid import uuid4
 # First-party imports
 from models.billing.bill import Bill
 from models.billing.bill_line import BillLine
+from models.billing.bill_recipient import BillRecipient
 from models.geo.postal_address import PostalAddress
 from storage.mappers.base_mapper import BaseMapper
 from storage.orm.billing.bill_line_row import BillLineRow
@@ -25,6 +26,10 @@ class BillMapper(BaseMapper[Bill, BillRow]):
         - In practice an issued invoice's charges never change: it is a legal
           document, and a correction is a credit note. The wholesale write is
           what makes the *generation* path simple, not an invitation to edit.
+        - **Both addresses are rebuilt with their coordinates**, and that is
+          not decoration. ``PostalAddress`` geocodes while it validates unless a
+          coordinate or a failure code is already set, so dropping either on the
+          way out would make every read of an invoice a blocking HTTP request.
         - The customer's address is flattened onto columns and rebuilt on the
           way back, exactly as a visit's is. Rebuilding it issues no geocoding
           request — the stored coordinates come back as they were written, which
@@ -142,6 +147,23 @@ class BillMapper(BaseMapper[Bill, BillRow]):
             longitude=row.longitude,
             geocoding_error=row.geocoding_error,
         )
+        recipient = BillRecipient(
+            kind=row.recipient_kind,
+            name=row.recipient_name,
+            address=PostalAddress(
+                street=row.recipient_street,
+                postal_code=row.recipient_postal_code,
+                city=row.recipient_city,
+                country=row.recipient_country,
+                latitude=row.recipient_latitude,
+                longitude=row.recipient_longitude,
+                geocoding_error=row.recipient_geocoding_error,
+            ),
+            siren=row.recipient_siren,
+            vat_number=row.recipient_vat_number,
+            service_code=row.recipient_service_code,
+            share_ttc=row.recipient_share_ttc,
+        )
         return Bill(
             id=row.id,
             company_id=row.company_id,
@@ -158,6 +180,8 @@ class BillMapper(BaseMapper[Bill, BillRow]):
             status=row.status,
             customer_full_name=row.customer_full_name,
             customer_address=address,
+            recipient=recipient,
+            operation_nature=row.operation_nature,
             lines=[self._line_to_model(line) for line in row.lines],
             total_ht=row.total_ht,
             total_vat=row.total_vat,
@@ -213,6 +237,20 @@ class BillMapper(BaseMapper[Bill, BillRow]):
         row.latitude = model.customer_address.latitude
         row.longitude = model.customer_address.longitude
         row.geocoding_error = model.customer_address.geocoding_error
+        row.recipient_kind = model.recipient.kind.value
+        row.recipient_name = model.recipient.name
+        row.recipient_street = model.recipient.address.street
+        row.recipient_postal_code = model.recipient.address.postal_code
+        row.recipient_city = model.recipient.address.city
+        row.recipient_country = model.recipient.address.country
+        row.recipient_latitude = model.recipient.address.latitude
+        row.recipient_longitude = model.recipient.address.longitude
+        row.recipient_geocoding_error = model.recipient.address.geocoding_error
+        row.recipient_siren = model.recipient.siren
+        row.recipient_vat_number = model.recipient.vat_number
+        row.recipient_service_code = model.recipient.service_code
+        row.recipient_share_ttc = model.recipient.share_ttc
+        row.operation_nature = model.operation_nature.value
         row.total_ht = model.total_ht
         row.total_vat = model.total_vat
         row.total_ttc = model.total_ttc

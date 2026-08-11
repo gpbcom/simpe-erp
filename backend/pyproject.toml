@@ -13,6 +13,20 @@ dependencies = [
     "seed",
 ]
 
+# The workspace root is itself a distribution, and it ships exactly one thing:
+# the `integrations` module. That module is a plain package — no `pyproject.toml`
+# of its own, no `src` layout — because it is four HTTP clients imported by
+# `service` and nothing else, and a distribution boundary around them bought a
+# lockfile entry and a build target for isolation nobody used. Declaring it here
+# is what keeps it importable from a console script (`api`, `worker`) as well as
+# from pytest, without a `PYTHONPATH` every process would have to remember.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["integrations"]
+
 [tool.uv.workspace]
 members = [
     "models",
@@ -83,7 +97,7 @@ extend-immutable-calls = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["models", "storage", "service", "api"]
+known-first-party = ["models", "storage", "service", "api", "integrations"]
 force-sort-within-sections = true
 
 [tool.pytest.ini_options]

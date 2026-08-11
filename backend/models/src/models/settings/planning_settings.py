@@ -372,9 +372,7 @@ class PlanningSettings(BaseModel):
                 f"working day [{self.day_start_minute}, "
                 f"{self.day_end_minute}]."
             )
-        window_width = (
-            self.lunch_window_end_minute - self.lunch_window_start_minute
-        )
+        window_width = self.lunch_window_end_minute - self.lunch_window_start_minute
         if window_width < self.lunch_break_minutes:
             raise MTPlanningSettingsInvalidLunchWindow(
                 f"Invalid lunch window width: {window_width} minutes. Must be "

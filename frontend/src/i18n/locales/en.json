@@ -26,7 +26,8 @@
     "certifications": "Certifications",
     "skills": "Skills",
     "bills": "Invoices",
-    "billingSettings": "Billing settings"
+    "billingSettings": "Billing settings",
+    "myPortal": "My space"
   },
   "auth": {
     "signIn": "Sign in",
@@ -38,7 +39,12 @@
     "changePassword": "Change password",
     "mustChangePassword": "You must choose a new password before continuing.",
     "invalidCredentials": "Incorrect email address or password.",
-    "signInTitle": "Sign in to SimpleERP"
+    "signInTitle": "Sign in to SimpleERP",
+    "space": "Sign in as",
+    "spaceEmployee": "Employee",
+    "spaceCustomer": "Customer",
+    "useEmployeeSpace": "This is an agency account. Choose “Employee” to sign in.",
+    "useCustomerSpace": "This is a customer account. Choose “Customer” to sign in."
   },
   "quote": {
     "reference": "Reference",
@@ -239,7 +245,14 @@
     "filterOngoingNo": "Nothing running",
     "filterGeocoded": "Address located",
     "filterGeocodedYes": "Located",
-    "filterGeocodedNo": "Not located"
+    "filterGeocodedNo": "Not located",
+    "billing": "Invoicing",
+    "billingPeriodicity": "Billing periodicity",
+    "billingFollowsAgency": "The agency's rule ({{periodicity}})",
+    "billingFollowsAgencyUnknown": "The agency's rule",
+    "billingNotice": "Applies to the next run: invoices already issued keep their period.",
+    "billingSaved": "Periodicity saved.",
+    "billingSaveFailed": "The periodicity could not be saved."
   },
   "planning": {
     "week": "Week",
@@ -598,7 +611,11 @@
     "unitPrice": "Unit excl. VAT",
     "vatRate": "VAT",
     "notPlanned": "Not planned",
-    "lines": "Services billed"
+    "lines": "Services billed",
+    "billedTo": "Billed to",
+    "recipient_business": "Business",
+    "recipient_public": "Public body",
+    "recipient_individual": "Individual"
   },
   "bills": {
     "title": "Invoices",
@@ -624,7 +641,8 @@
     "filterSentYes": "Sent",
     "filterSentNo": "Not sent",
     "detailTitle": "Invoice {{number}}",
-    "noLine": "This invoice has no service line."
+    "noLine": "This invoice has no service line.",
+    "windowIsTheDefault": "Customers with their own periodicity are billed over theirs."
   },
   "billingSettings": {
     "title": "Billing settings",
@@ -641,6 +659,123 @@
     "saved": "Settings saved.",
     "saveFailed": "The settings could not be saved.",
     "termsTooLong": "Payment terms may not exceed 60 days.",
-    "termsTooShort": "Payment terms must be at least one day."
+    "termsTooShort": "Payment terms must be at least one day.",
+    "periodicityHelp": "The default periodicity. A customer can be billed on a different one from their own file.",
+    "tabRules": "Invoicing rules",
+    "tabIntegrations": "Integrations"
+  },
+  "welcome": {
+    "kicker": "Home-care agency management",
+    "title": "Quoting, planning and billing for a home-care agency.",
+    "subtitle": "From the first conversation with a family to the visit on the calendar and the invoice at the end of the month — one place, one record, one set of rules.",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signedInAs": "Signed in as {{name}}.",
+    "featuresTitle": "What it does",
+    "featuresLead": "Nine things, in the order the work moves through the agency.",
+    "quoting": "Quoting",
+    "quotingBody": "Turn a family's needs into dated, timed, priced service lines. Rates come from your catalogue, with Sunday and public-holiday surcharges and the right VAT applied per line.",
+    "validation": "Validation queue",
+    "validationBody": "An assistant sitting with a family can write a quote; they do not set your prices. What they write waits in a queue until a manager approves it, and the record says who did.",
+    "planning": "Automatic planning",
+    "planningBody": "Accepted work becomes a week of visits — who goes where, in what order, with travel time and lunch accounted for. Re-planning the same week gives the same answer.",
+    "workforce": "Workforce",
+    "workforceBody": "Contracts, working days, dated absences and who is on the rounds at all. Each assistant keeps their own record; a manager owns the parts that decide what they can be sent to.",
+    "qualifications": "Qualifications and skills",
+    "qualificationsBody": "Diplomas a manager records and skills an assistant declares. Both are hard constraints: nobody is ever scheduled for work they are not qualified to do.",
+    "customers": "Customers",
+    "customersBody": "Addresses geocoded once, so every route is real. Contacts, registration status, and the portfolio each assistant actually serves.",
+    "map": "Intervention map",
+    "mapBody": "Every planned visit on one map over the window you choose, each pin carrying the assistant's photograph. \"Who is where\" answered without opening anything.",
+    "billing": "Billing",
+    "billingBody": "Invoices generated from the visits that actually happened, validated by a manager, and emailed with the agency's own legal identity on them.",
+    "notifications": "Live notifications",
+    "notificationsBody": "A quote to approve, a plan that came back short, invoices waiting — the badge updates as it happens, without anybody refreshing a page.",
+    "rolesTitle": "Who it is for",
+    "rolesLead": "Three roles, and each screen shows only what that role can act on.",
+    "forAssistant": "Assistants",
+    "forAssistantBody": "Their own week as a calendar, the customers they serve, the quotes they have written, and the parts of their record that are theirs to change.",
+    "forManager": "Managers",
+    "forManagerBody": "The validation queue, the whole workforce, the planning and the map. Everything that decides what the agency has committed to.",
+    "forAdministrator": "Administrators",
+    "forAdministratorBody": "All of the above, plus the accounts, the catalogues, the planning rules and the agency's own legal and banking details.",
+    "cta": "Ready when you are.",
+    "ctaBody": "Sign in with the account your agency gave you.",
+    "ctaSignedIn": "You are signed in.",
+    "ctaSignedInBody": "Sign out here, or use the navigation to carry on working.",
+    "footer": "SimpleERP — quoting, workforce and intervention planning for a French home-care agency."
+  },
+  "portal": {
+    "myPlanning": "My visits",
+    "myQuotes": "My quotes",
+    "myBills": "My invoices",
+    "myDetails": "My details",
+    "assistant": "Carer",
+    "noVisit": "No visit is scheduled at the moment. A change you have asked for may still be waiting for the agency to confirm it.",
+    "changeNeedsApproval": "Cancelling or moving a visit sends the arrangement back to the agency. Nothing on it is scheduled until they confirm.",
+    "cancel": "Cancel this visit",
+    "cancelTitle": "Cancel this visit?",
+    "cancelWarning": "This removes the visit from the arrangement and sends the whole arrangement back to the agency to be agreed again. Until they confirm it, none of its visits are scheduled — not only this one.",
+    "cancelConfirm": "Cancel the visit",
+    "reschedule": "Move this visit",
+    "rescheduleTitle": "Move this visit",
+    "rescheduleConfirm": "Ask for this time",
+    "rescheduleWarning": "The agency confirms the new time, and moving a visit onto a Sunday or a public holiday may change the price. Nothing is scheduled until they agree.",
+    "windowExplained": "Give the times you are available between. The agency places the visit somewhere inside that window, around the carer's round.",
+    "windowInvalid": "The end must fall after the start.",
+    "newDay": "New day",
+    "notBefore": "Not before",
+    "notAfter": "Not after",
+    "noQuote": "The agency has not written you a quote yet.",
+    "noBill": "You have not been invoiced yet.",
+    "downloadPdf": "Download PDF",
+    "dueOn": "Due {{date}}",
+    "detailsSaved": "Your details have been saved.",
+    "addressNotResolved": "We could not place this address on the map. No visit can be planned until it is corrected."
+  },
+  "integrations": {
+    "title": "Integrations gallery",
+    "lead": "Connect the certified platform your agency transmits its invoices through. Electronic invoicing and e-reporting are legal obligations.",
+    "category": {
+      "all": "All",
+      "invoice": "E-invoicing",
+      "reporting": "E-reporting",
+      "public": "Public bodies"
+    },
+    "sortBy": "Sort by",
+    "sort": {
+      "alpha": "Alphabetically A-Z",
+      "status": "Connected first"
+    },
+    "search": "Search",
+    "enabled": "Enabled",
+    "configured": "Configured",
+    "unverified": "Unverified docs",
+    "checkFailed": "The last check failed",
+    "noMatch": "No platform matches this filter.",
+    "showing": "Showing {{from}}-{{to}} of {{total}}",
+    "registryNote": "Every platform listed here holds a registration number with its audit report still outstanding. Check its current status on",
+    "connect": "Connect {{name}}",
+    "dialogLead": "Paste the credentials from your {{name}} account. They are checked against the platform before being saved, and stored encrypted.",
+    "documentation": "Read their API documentation",
+    "unverifiedHelp": "We could not read {{name}}'s API documentation directly, so this connector is written to its documented shape. Verify it against a sandbox before relying on it.",
+    "alreadyConfigured": "A key ending {{hint}} is already stored. Entering a new one replaces it.",
+    "field": {
+      "api_key": "API key",
+      "account_id": "Account identifier",
+      "legal_entity_id": "Legal entity identifier"
+    },
+    "fieldHelp": {
+      "api_key": "Never shown again once saved.",
+      "account_id": "The account your invoices are filed under.",
+      "legal_entity_id": "Created in the platform's own console, then copied here."
+    },
+    "refused": "The platform refused these credentials. Check the key and try again.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "cancel": "Cancel",
+    "warningTitle": "No certified platform is connected",
+    "warningBody": "Invoices cannot be transmitted or reported to the tax authority. Connect a platform from the billing settings.",
+    "warningAction": "Connect one"
   }
 }

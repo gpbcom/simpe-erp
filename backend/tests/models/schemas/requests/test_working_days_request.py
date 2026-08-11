@@ -33,9 +33,7 @@ class TestWorkingDaysRequest:
 
     def test_the_week_is_sorted_monday_first(self) -> None:
         """The order a client sent the boxes in is not a working week."""
-        request = WorkingDaysRequest(
-            working_weekdays=["saturday", "tuesday", "monday"]
-        )
+        request = WorkingDaysRequest(working_weekdays=["saturday", "tuesday", "monday"])
 
         assert request.working_weekdays == [
             Weekday.MONDAY,
@@ -45,9 +43,7 @@ class TestWorkingDaysRequest:
 
     def test_a_repeated_day_is_counted_once(self) -> None:
         """Two tickings of the same box are one working day."""
-        request = WorkingDaysRequest(
-            working_weekdays=["monday", "monday", "friday"]
-        )
+        request = WorkingDaysRequest(working_weekdays=["monday", "monday", "friday"])
 
         assert request.working_weekdays == [Weekday.MONDAY, Weekday.FRIDAY]
 

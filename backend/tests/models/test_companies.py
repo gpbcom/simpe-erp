@@ -668,3 +668,44 @@ class TestCompanyVisualIdentity:
             MTCompanyInvalidLogoUrl,
         ):
             assert issubclass(exception, MTInvalidCompanyException)
+
+
+class TestTheAgencyLegalIdentifier:
+    """Tests for the identifier a structured invoice is routed on."""
+
+    @pytest.mark.parametrize(
+        ("registration", "expected"),
+        [
+            pytest.param("12345678900019", "123456789", id="From a SIRET"),
+            pytest.param("123 456 789 00019", "123456789", id="Spaced SIRET"),
+            pytest.param("123456789", "123456789", id="Already a SIREN"),
+            pytest.param(None, None, id="Invalid - nothing recorded"),
+            pytest.param("RCS PARIS 1234", None, id="Invalid - not digits"),
+            pytest.param("1234567", None, id="Invalid - neither length"),
+        ],
+    )
+    def test_the_siren_is_read_out_of_the_registration_number(
+        self, registration: object, expected: object
+    ) -> None:
+        """**Derived, never stored twice.**
+
+        Notes:
+            A SIRET is a SIREN plus an establishment code, so a second column
+            would be a second copy of the same nine digits — free to disagree
+            with the first the day somebody corrects one of them. Anything
+            unreadable answers ``None`` rather than guessing: a wrong identifier
+            is an invoice delivered to another company.
+        """
+        company = Company(
+            name="Aide et Présence Paris",
+            registration_number=registration,
+            address={
+                "street": "1 rue des Lilas",
+                "postal_code": "75011",
+                "city": "Paris",
+                "latitude": 48.85,
+                "longitude": 2.35,
+            },
+        )
+
+        assert company.siren() == expected

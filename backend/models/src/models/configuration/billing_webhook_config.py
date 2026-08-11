@@ -13,6 +13,7 @@ class BillingWebhookConfig(WebhookConfig):
     Attributes:
         enabled (bool): Whether validating a bill calls the webhook.
         url (str): The endpoint to call once a manager approves a bill.
+        paid_url (str): The endpoint to call once a bill is marked paid.
         token_env (str): Name of the environment variable holding the shared
             secret sent as ``X-Webhook-Token`` and checked on the way in.
         timeout_seconds (float): How long to wait on the call.
@@ -36,6 +37,10 @@ class BillingWebhookConfig(WebhookConfig):
     url: str = Field(
         default="http://localhost:8000/api/v1/webhooks/bill-accepted",
         description="The endpoint called once a manager approves a bill.",
+    )
+    paid_url: str = Field(
+        default="http://localhost:8000/api/v1/webhooks/bill-paid",
+        description="The endpoint called once a bill is marked paid.",
     )
     token_env: str = Field(
         default="BILLING_WEBHOOK_TOKEN",

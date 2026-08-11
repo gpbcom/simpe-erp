@@ -46,6 +46,33 @@ class MTUserRoleHcaRequiresHcaId(MTInvalidUserException):
     """Exception raised when an HCA account is not linked to an HCA record."""
 
 
+class MTUserInvalidCustomerId(MTInvalidUserException):
+    """Exception raised when an invalid ``customer_id`` value is provided."""
+
+
+class MTUserRoleCustomerRequiresCustomerId(MTInvalidUserException):
+    """Exception raised when a customer account names no customer record.
+
+    Notes:
+        The mirror of :class:`MTUserRoleHcaRequiresHcaId`, and it matters more.
+        Every portal route resolves the household from ``customer_id``; an
+        account without one could read nothing — or, under a check written the
+        forgiving way, everything.
+    """
+
+
+class MTUserCustomerLinkRequiresCustomerRole(MTInvalidUserException):
+    """Exception raised when a non-customer account names a customer record.
+
+    Notes:
+        The rule runs **both ways** on purpose. A manager carrying a
+        ``customer_id`` is not merely untidy: it is an account that satisfies
+        the staff guards *and* resolves to one household, which is precisely the
+        shape a privilege-escalation bug takes. Refused at construction, so the
+        state cannot exist to be reasoned about.
+    """
+
+
 class MTUserInvalidMustChangePassword(MTInvalidUserException):
     """Exception raised when the forced-change flag is not a boolean."""
 

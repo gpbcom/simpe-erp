@@ -23,6 +23,8 @@ class UserRow(Base):
         hashed_password (Optional[str]): Bcrypt hash, when a password is set.
         role (str): ``hca``, ``manager`` or ``admin``.
         is_active (bool): Whether sign-in is permitted.
+        customer_id (Optional[str]): The customer record a customer account
+            belongs to.
         hca_id (Optional[str]): The assistant record an assistant account
             belongs to.
         company_id (str): The company this account belongs to.
@@ -52,6 +54,7 @@ class UserRow(Base):
         Index("ix_users_email_unique", "email", unique=True),
         Index("ix_users_role", "role"),
         Index("ix_users_hca_id", "hca_id"),
+        Index("ix_users_customer_id", "customer_id"),
     )
 
     id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), primary_key=True)
@@ -69,6 +72,16 @@ class UserRow(Base):
     hca_id: Mapped[Optional[str]] = mapped_column(
         String(Base.ID_LENGTH),
         ForeignKey("hcas.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    # ``RESTRICT`` like ``hca_id``, and for the same reason: the database must
+    # not leave an account pointing at a household that no longer exists.
+    # ``CustomerService.delete`` removes the portal account in the same
+    # transaction, so the constraint never fires in practice — it is there for
+    # the path somebody adds later and forgets.
+    customer_id: Mapped[Optional[str]] = mapped_column(
+        String(Base.ID_LENGTH),
+        ForeignKey("customers.id", ondelete="RESTRICT"),
         nullable=True,
     )
     # NOT NULL: every account belongs to exactly one agency. The column

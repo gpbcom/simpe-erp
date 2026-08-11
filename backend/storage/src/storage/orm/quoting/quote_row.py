@@ -64,7 +64,7 @@ class QuoteRow(Base):
     )
 
     id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), primary_key=True)
-    company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)  
+    company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     reference: Mapped[str] = mapped_column(String(64), nullable=False)
     customer_id: Mapped[str] = mapped_column(
         String(Base.ID_LENGTH),

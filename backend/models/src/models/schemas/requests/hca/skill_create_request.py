@@ -184,8 +184,7 @@ class SkillCreateRequest(BaseModel):
         if isinstance(value, (str, date)):
             return value
         raise MTSkillCreateRequestInvalidDate(
-            f"Invalid date: {value!r}. "
-            f"Must be a date, an ISO-8601 string, or None."
+            f"Invalid date: {value!r}. Must be a date, an ISO-8601 string, or None."
         )
 
     ############################

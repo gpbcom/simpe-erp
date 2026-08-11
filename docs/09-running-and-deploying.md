@@ -214,7 +214,7 @@ makes a rollback mean "whatever that tag points at now".
 
 ### What the chart refuses to render
 
-`templates/common/guards.yaml` holds checks for four mistakes that are silent at
+`templates/common/guards.yaml` holds checks for five mistakes that are silent at
 runtime: the pods start, report Ready, and do the wrong thing.
 
 | Refused | Because |
@@ -223,6 +223,20 @@ runtime: the pods start, report Ready, and do the wrong thing.
 | CPU request ≠ CPU limit on the planning worker | Anything but Guaranteed QoS is the same throttling from the other side |
 | A grace period under 60s on the planning worker | Kubernetes' default is 30, which is *exactly* the solve budget — a scale-down would `SIGKILL` mid-solve |
 | `workerNotifications` scaling to zero | A badge should be instant; a cold start is not |
+| An empty `integrations.providers` | The cluster would serve every screen except the one that makes the agency compliant: an e-invoicing gallery with nothing to connect |
+
+### Two flags a cluster must set deliberately
+
+`billingWebhook.enabled` and `integrations.providers` are what make an invoice
+leave the building. The first is off by default in every values file, because
+emailing customers is a decision; with it off a bill marked paid publishes its
+event, the notifications worker declines to call, and nothing reaches the
+certified platform. The second is the catalogue of platforms the gallery offers,
+and the guard above refuses an empty one.
+
+Both were absent from the chart entirely until the e-invoicing work: a cluster
+ran the model's defaults — a disabled webhook pointed at `localhost` — which is
+silent, and is the reason it went unnoticed.
 
 ### The two workers scale on different things
 
@@ -272,5 +286,18 @@ one deployment to drain. → [05](05-events-and-notifications.md)
 Two volumes hold everything durable: `postgres-data` and `minio-data`.
 `rabbitmq-data` holds undelivered messages — worth keeping across a restart, not
 worth backing up.
+
+**A third thing is durable and is not a volume: `EINVOICING_CREDENTIAL_KEY`.**
+Every other secret is a credential for something that can be issued again — a
+new database password, a new signing key, a rotated S3 pair. This one is the
+only thing that can read an agency's stored e-invoicing platform credentials
+back, so losing it means every agency must re-enter its certified platform's API
+key before it can transmit an invoice again. Whatever store holds it needs the
+same backup discipline as the database, and restoring `postgres-data` without it
+restores rows nothing can decrypt.
+
+It is read by the API alone. A worker publishes `bill.paid` and calls the
+loopback webhook; the transmission — and so the one decryption — happens in the
+API process, which is why the compose files set it there and nowhere else.
 
 There is no backup job in this repository. That is a gap, not a decision.

@@ -326,9 +326,7 @@ class TestWorkingDaysConfidentiality:
         """
         hcas.set_working_weekdays.return_value = _hca_working([Weekday.FRIDAY])
 
-        assert await service.set_working_days(
-            "hca-9", [Weekday.FRIDAY], _user(role)
-        )
+        assert await service.set_working_days("hca-9", [Weekday.FRIDAY], _user(role))
 
     async def test_an_absent_assistant_is_reported(
         self, service: HcaService, hcas: AsyncMock

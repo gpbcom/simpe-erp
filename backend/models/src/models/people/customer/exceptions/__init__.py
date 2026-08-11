@@ -1,5 +1,6 @@
 from .customer_exceptions import (
     MTCustomerInvalidAddress,
+    MTCustomerInvalidBillingPeriodicity,
     MTCustomerInvalidDate,
     MTCustomerInvalidEmail,
     MTCustomerInvalidFirstName,
@@ -12,6 +13,7 @@ from .customer_exceptions import (
 
 __all__ = [
     "MTCustomerInvalidAddress",
+    "MTCustomerInvalidBillingPeriodicity",
     "MTCustomerInvalidDate",
     "MTCustomerInvalidEmail",
     "MTCustomerInvalidFirstName",

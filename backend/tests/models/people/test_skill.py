@@ -136,7 +136,9 @@ class TestSkill:
 
         assert Skill.CODE_MAX_LENGTH == SkillType.CODE_MAX_LENGTH
         for code in ("LEVE-PERSONNE", "A_B", "AB12"):
-            assert Skill(name="x", code=code).code == SkillType(code=code, label="x").code
+            assert (
+                Skill(name="x", code=code).code == SkillType(code=code, label="x").code
+            )
 
     # ------------------------------------------------------------------ #
     #  issuer and dates
@@ -170,7 +172,9 @@ class TestSkill:
 
     def test_an_expiry_on_the_acquisition_day_is_allowed(self) -> None:
         """The boundary itself is a real, if brief, skill."""
-        skill = Skill(name="x", obtained_on=date(2026, 1, 1), expires_on=date(2026, 1, 1))
+        skill = Skill(
+            name="x", obtained_on=date(2026, 1, 1), expires_on=date(2026, 1, 1)
+        )
         assert skill.expires_on == date(2026, 1, 1)
 
     # ------------------------------------------------------------------ #
@@ -198,7 +202,10 @@ class TestSkill:
             Treating an untyped name as a match would let a spelling decide who
             is qualified.
         """
-        assert Skill(name="LEVE-PERSONNE").satisfies("LEVE-PERSONNE", date(2026, 1, 1)) is False
+        assert (
+            Skill(name="LEVE-PERSONNE").satisfies("LEVE-PERSONNE", date(2026, 1, 1))
+            is False
+        )
 
     def test_a_coded_skill_satisfies_its_own_code(self) -> None:
         """The ordinary case."""

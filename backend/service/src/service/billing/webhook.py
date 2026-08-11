@@ -57,8 +57,86 @@ class BillingWebhook:
         )
 
     ############################
+    # Internal Helpers Methods #
+    ############################
+
+    async def _announce_to(self, url: str, bill_id: str, what: str) -> bool:
+        """Post an invoice identifier to one of the billing webhooks.
+
+        Args:
+            url (str): The endpoint to call.
+            bill_id (str): The invoice being announced.
+            what (str): What happened to it, for the log lines.
+
+        Returns:
+            bool: ``True`` when the call was made and accepted.
+
+        Notes:
+            Shared by both announcements because the transport is identical and
+            only the destination differs. Two copies would drift, and the half
+            that drifted would be the one nobody exercises until an invoice is
+            settled.
+        """
+        if not self.config.enabled:
+            self.logger.debug(
+                "The billing webhook is disabled; not announcing bill %s (%s).",
+                bill_id,
+                what,
+            )
+            return False
+        token = self.config.get_token()
+        if not token:
+            self.logger.warning(
+                "Not announcing bill %s (%s): the webhook secret (%s) is unset.",
+                bill_id,
+                what,
+                self.config.token_env,
+            )
+            return False
+        self.logger.info("Announcing bill %s (%s) to %s.", bill_id, what, url)
+        try:
+            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:  # noqa: E501
+                response = await client.post(
+                    url,
+                    json={"bill_id": bill_id},
+                    headers={"X-Webhook-Token": token},
+                )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            self.logger.error("Could not announce bill %s: %s", bill_id, exc)
+            return False
+        self.logger.info(
+            "Bill %s announced; the dispatcher answered %d.",
+            bill_id,
+            response.status_code,
+        )
+        return True
+
+    ############################
     # Publicly Exposed Methods #
     ############################
+
+    async def announce_paid(self, bill_id: str) -> bool:
+        """Tell the transmitter that an invoice has been collected.
+
+        Args:
+            bill_id (str): The invoice that was settled.
+
+        Returns:
+            bool: ``True`` when the call was made and accepted.
+
+        Notes:
+            - **A separate endpoint from the approval one, because it is a
+              different obligation.** Approval emails a document to a customer;
+              collection is what the tax authority wants declared, since VAT on
+              services falls due when the money arrives rather than when the care
+              was delivered.
+            - Shares the approval webhook's secret on purpose: both are this
+              application calling itself, over the same hop, inside the same
+              deployment. A second secret would be a second thing to rotate for
+              no boundary that actually differs.
+        """
+        return await self._announce_to(self.config.paid_url, bill_id, "paid")
 
     async def announce(self, bill_id: str) -> bool:
         """Tell the dispatcher that an invoice has been approved.
@@ -80,36 +158,4 @@ class BillingWebhook:
               misconfiguration — somebody switched the webhook on and stopped
               there — and says so at warning, naming the variable to set.
         """
-        if not self.config.enabled:
-            self.logger.debug(
-                "The billing webhook is disabled; not announcing bill %s.",
-                bill_id,
-            )
-            return False
-        token = self.config.get_token()
-        if not token:
-            self.logger.warning(
-                "Not announcing bill %s: the webhook secret (%s) is unset, so "
-                "the invoice will not be emailed.",
-                bill_id,
-                self.config.token_env,
-            )
-            return False
-        self.logger.info("Announcing bill %s to %s.", bill_id, self.config.url)
-        try:
-            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:  # noqa: E501
-                response = await client.post(
-                    self.config.url,
-                    json={"bill_id": bill_id},
-                    headers={"X-Webhook-Token": token},
-                )
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            self.logger.error("Could not announce bill %s: %s", bill_id, exc)
-            return False
-        self.logger.info(
-            "Bill %s announced; the dispatcher answered %d.",
-            bill_id,
-            response.status_code,
-        )
-        return True
+        return await self._announce_to(self.config.url, bill_id, "approved")

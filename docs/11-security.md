@@ -34,6 +34,7 @@ assistant A putting assistant B's identifier in the path.
 | `get_hca_user` | Exactly `hca` — identity, not rank, so a manager fails it |
 | `get_manager_user` | `has_at_least(MANAGER)` — an admin passes |
 | `get_admin_user` | `is_admin()` |
+| `get_customer_user` | Exactly `customer` — **and it cannot be written any other way**; see below |
 
 Row-level checks, and what each stops:
 
@@ -44,6 +45,52 @@ Row-level checks, and what each stops:
 | `QuoteService.submit_for_validation` | Submitting somebody else's draft |
 | `CustomerRepository.is_served_by` | Reading a customer outside your portfolio |
 | `NotificationRepository.mark_read` | Reading somebody else's queue by guessing an identifier |
+| `User.owns_customer` | One household reading another's file |
+
+## The customer is not a rung of the ladder
+
+`UserRole` looks like four values and is really **two axes**. `hca < manager <
+admin` is a ladder and `has_at_least` walks it. `customer` is not above or below
+any of them — it is somebody the agency serves rather than somebody who works
+for it.
+
+**`rank()` therefore refuses to rank a customer**, raising `MTRoleNotRankable`.
+That refusal is the security control, not tidiness. There is no number that
+works:
+
+- ranked **below** `hca`, every employee satisfies `has_at_least(CUSTOMER)`, so
+  a guard written the ordinary way admits all staff to a household's space;
+- ranked **above** `admin`, a customer satisfies every manager check.
+
+So `get_customer_user` compares by identity, `hasAtLeast` in the front-end is
+never called with `'customer'`, and the portal routes sit behind a distinct
+`CustomerRoute` rather than `RoleRoute minimum=`. A call that gets this wrong
+raises instead of returning a plausible boolean — the failure mode of a
+privilege check that quietly answers `True` is that nobody ever finds it.
+
+`UserRole.is_staff()` is the one safe way to ask the other question. It is
+written as a method so a fifth role added later cannot be admitted to the staff
+side by not being mentioned — which is exactly how `owns_hca` broke:
+
+> It read `if self.role is not UserRole.HCA: return True`, correct while the
+> only other roles were manager and admin. The moment `customer` existed, that
+> spelling handed every assistant's diary — with every household's name and
+> address on it — to every customer. Nothing raised. The test named
+> `test_a_customer_owns_nobodys_planning` is there so it cannot come back.
+
+### The link runs both ways
+
+`users.customer_id` is set for a customer account and **forbidden on every
+other role**, enforced by `User.check_customer_link` at construction. The
+reverse direction is the one that matters: a manager carrying a `customer_id`
+would satisfy the staff guards *and* resolve to one household — an account on
+both sides of the boundary at once. Refused at construction, the state cannot
+exist for a service to reason about.
+
+Portal routes resolve the household from `caller.customer_id` and **never from a
+path parameter**, so there is no identifier a customer can point at somebody
+else's file. `owns_customer` is the second gate behind that, for the route
+somebody adds later without remembering the first.
 
 ## Scoping
 

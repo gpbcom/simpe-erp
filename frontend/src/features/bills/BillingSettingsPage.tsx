@@ -11,8 +11,12 @@ import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 import { useBillingSettings, useUpdateBillingSettings } from '@/api/queries';
 import type { BillingPeriodicity } from '@/api/types';
+import { EInvoicingWarning } from '@/features/integrations/EInvoicingWarning';
+import { IntegrationsGallery } from '@/features/integrations/IntegrationsGallery';
 
 /** The form's fields, as the inputs hold them. */
 interface FormState {
@@ -45,6 +49,12 @@ const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
  * statements the agency makes to its customers, and changing one is a
  * commercial decision rather than a deployment.
  *
+ * **The periodicity here is the default, not the whole answer.** A customer may
+ * be put on a granularity of their own from their own file, and is then billed
+ * over their window rather than this one. The field says so beneath itself: a
+ * manager who read this screen as "everybody is billed monthly" would have no
+ * way to account for the weekly invoices coming out of the same run.
+ *
  * **Saving re-issues nothing.** The rules apply to the next generation run; an
  * invoice already issued keeps the terms it was printed with, because those
  * terms are part of what the customer was told. The page says so rather than
@@ -62,6 +72,11 @@ const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
  */
 export function BillingSettingsPage() {
   const { t } = useTranslation();
+  // A sub-menu rather than a second route: these are two halves of one
+  // subject — what an invoice says, and where it goes — and splitting them
+  // across the navigation would put "why is nothing being transmitted?" a
+  // level away from the rules that decide what is transmitted.
+  const [tab, setTab] = useState<'rules' | 'integrations'>('rules');
   const { data: settings, isLoading } = useBillingSettings();
   const save = useUpdateBillingSettings();
   const [form, setForm] = useState<FormState | null>(null);
@@ -112,9 +127,34 @@ export function BillingSettingsPage() {
 
   return (
     <Box data-testid="billing-settings-page">
+      <Tabs
+        value={tab}
+        onChange={(_, value: 'rules' | 'integrations') => setTab(value)}
+        sx={{ mb: 2 }}
+        data-testid="billing-settings-tabs"
+      >
+        <Tab
+          value="rules"
+          label={t('billingSettings.tabRules')}
+          data-testid="billing-tab-rules"
+        />
+        <Tab
+          value="integrations"
+          label={t('billingSettings.tabIntegrations')}
+          data-testid="billing-tab-integrations"
+        />
+      </Tabs>
+
+      {tab === 'integrations' ? <IntegrationsGallery /> : null}
+      {tab === 'integrations' ? null : (
+        <Box>
       <Typography variant="h5" sx={{ mb: 2 }}>
         {t('billingSettings.title')}
       </Typography>
+
+      {/* On the rules tab too, because a manager editing payment terms is a
+          manager who has not necessarily opened the other tab. */}
+      <EInvoicingWarning />
 
       <Alert severity="info" sx={{ mb: 2 }} data-testid="billing-settings-notice">
         {t('billingSettings.notice')}
@@ -131,6 +171,7 @@ export function BillingSettingsPage() {
             */}
             <TextField
               select
+              helperText={t('billingSettings.periodicityHelp')}
               label={t('billingSettings.periodicity')}
               {...field('periodicity')}
               slotProps={{
@@ -211,6 +252,8 @@ export function BillingSettingsPage() {
           </Stack>
         </CardContent>
       </Card>
+        </Box>
+      )}
     </Box>
   );
 }

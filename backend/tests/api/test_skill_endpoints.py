@@ -144,9 +144,7 @@ class TestSkillCatalogueEndpoints:
 
     def test_a_malformed_code_answers_422(self, client: TestClient) -> None:
         """The model's own validator is translated by the app-wide handler."""
-        response = client.post(
-            "/api/v1/skills", json={"code": "LEVÉ", "label": "Leve"}
-        )
+        response = client.post("/api/v1/skills", json={"code": "LEVÉ", "label": "Leve"})
 
         assert response.status_code == 422
 

@@ -39,6 +39,8 @@ class Company(BaseModel):
 
     Attributes:
         MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.
+        SIREN_LENGTH (ClassVar[int]): Digits in a French SIREN.
+        SIRET_LENGTH (ClassVar[int]): Digits in a French SIRET.
         MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration
             number.
         id (Optional[str]): Identifier, populated on read from the store.
@@ -82,6 +84,8 @@ class Company(BaseModel):
 
     MAX_NAME_LENGTH: ClassVar[int] = 200
     MAX_REGISTRATION_LENGTH: ClassVar[int] = 64
+    SIREN_LENGTH: ClassVar[int] = 9
+    SIRET_LENGTH: ClassVar[int] = 14
     MAX_LEGAL_FORM_LENGTH: ClassVar[int] = 64
     MAX_RCS_LENGTH: ClassVar[int] = 64
     MAX_SAP_DECLARATION_LENGTH: ClassVar[int] = 64
@@ -344,6 +348,32 @@ class Company(BaseModel):
             agency's registered office and contact address to anybody who asks.
         """
         return CompanyChoice(id=self.id if self.id else "", name=self.name)
+
+    def siren(self) -> Optional[str]:
+        """Return the agency's nine-digit legal identifier.
+
+        Returns:
+            Optional[str]: The SIREN, or ``None`` when the registration number
+            is absent or is not one this can be read out of.
+
+        Notes:
+            - **Derived, not stored.** A SIRET is the SIREN plus a five-digit
+              establishment code, so a second column would be a second copy of
+              the same nine digits — free to disagree with the first the day
+              somebody corrects one of them.
+            - Both forms are accepted because both get typed onto letterheads.
+              Anything else answers ``None`` rather than guessing: a structured
+              invoice is *routed* on this identifier, and a wrong one is an
+              invoice delivered to another company.
+        """
+        if not self.registration_number:
+            return None
+        digits = self.registration_number
+        if not digits.isdigit():
+            return None
+        if len(digits) == self.SIRET_LENGTH:
+            return digits[: self.SIREN_LENGTH]
+        return digits if len(digits) == self.SIREN_LENGTH else None
 
     def masked_iban(self) -> Optional[str]:
         """Return the account number as somebody not entitled to it may see it.

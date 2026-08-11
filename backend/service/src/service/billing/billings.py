@@ -12,10 +12,16 @@ from sqlalchemy.exc import IntegrityError
 # First-party imports
 from models.billing.bill import Bill
 from models.billing.bill_line import BillLine
+from models.billing.bill_recipient import BillRecipient
 from models.billing.billing_run import BillingRun
 from models.companies.company import Company
 from models.configuration.billing_config import BillingConfig
-from models.enums import BillingRunStatus, BillStatus, Language
+from models.enums import (
+    BillingPeriodicity,
+    BillingRunStatus,
+    BillStatus,
+    Language,
+)
 from models.people.customer import Customer
 from models.planning.intervention import Intervention
 from models.quoting.quote import Quote
@@ -36,6 +42,7 @@ from service.billing.exceptions import (
     MTBillNothingToBill,
     MTBillTransitionNotAllowed,
 )
+from service.integrations.utils.factur_x import FacturXBuilder
 from service.utils.invoice_renderer import InvoiceRenderer
 from storage.repositories.billing.bill import BillRepository
 from storage.repositories.billing.billing_run import BillingRunRepository
@@ -64,6 +71,8 @@ class BillingService:
         companies (CompanyRepository): Who issues them.
         documents (Optional[S3Storage]): Where rendered documents are kept.
         renderer (InvoiceRenderer): Lays a bill out as a PDF.
+        factur_x (FacturXBuilder): Writes the same bill as a structured file
+            and puts it inside the rendered one.
         config (BillingConfig): The rules a deployment starts with.
         logger (Logger): Logger for billing operations.
 
@@ -77,6 +86,12 @@ class BillingService:
           stops, leaving each invoice waiting for a manager. Approval is what
           puts one in a customer's inbox — see
           :meth:`set_status` and :class:`~service.billing.webhook.BillingWebhook`.
+        - **The periodicity is the agency's default, and a customer may have
+          their own.** Every window is resolved through
+          :meth:`periodicity_for`, which falls back to the stored rule, so a
+          household paying weekly and an institution paying yearly are billed
+          side by side out of one run. What that changes is only *which days* an
+          invoice covers — never how anything on it is priced.
         - The invoicing rules live here rather than in a service of their own,
           the way the planning rules live on ``PlanningService``: one service
           per entity, and the rules have no life apart from the invoices they
@@ -95,6 +110,7 @@ class BillingService:
         config: BillingConfig,
         documents: Optional[S3Storage] = None,
         renderer: Optional[InvoiceRenderer] = None,
+        factur_x: Optional[FacturXBuilder] = None,
         logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the service.
@@ -113,6 +129,8 @@ class BillingService:
                 asked to rather than at import.
             renderer (Optional[InvoiceRenderer]): Lays a bill out as a PDF.
                 Defaults to a renderer sharing this service's logger.
+            factur_x (Optional[FacturXBuilder]): Writes the structured invoice
+                and combines it with the rendered page.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
@@ -127,6 +145,7 @@ class BillingService:
         self.documents = documents
         self.logger = logger if logger else getLogger(__name__)
         self.renderer = renderer if renderer else InvoiceRenderer()
+        self.factur_x = factur_x if factur_x else FacturXBuilder()
         self.logger.debug(
             "BillingService created (documents=%s).",
             "configured" if documents else "unavailable",
@@ -228,6 +247,31 @@ class BillingService:
             total_ttc=line.total_ttc,
         )
 
+    def _recipient_for(self, customer: Customer) -> BillRecipient:
+        """Return the party to bill for a customer's care.
+
+        Args:
+            customer (Customer): The person cared for.
+
+        Returns:
+            BillRecipient: The household itself, as the party that owes.
+
+        Notes:
+            **Today the answer is always the household**, and this method exists
+            so that the day it is not — a conseil départemental funding an APA
+            share, a mutuelle, an employer — there is one place to change rather
+            than a construction buried in the middle of a hundred-line method.
+            The customer record carries no payer of its own yet; when it does,
+            only this reads it.
+        """
+        recipient = BillRecipient(name=customer.full_name(), address=customer.address)
+        self.logger.debug(
+            "Customer %s is billed as a %s.",
+            customer.id,
+            recipient.kind.value,
+        )
+        return recipient
+
     async def _render_and_store(
         self,
         bill: Bill,
@@ -250,9 +294,21 @@ class BillingService:
 
         Raises:
             MTInvoiceRenderFailed: If the document could not be laid out.
+            MTCiiSellerNotIdentified: If the agency has no VAT number.
+            MTFacturXAssemblyFailed: If the two halves could not be combined.
             MTS3UploadFailed: If it could not be stored.
 
         Notes:
+            - **What is stored is a Factur-X document**, not a plain PDF: the
+              page a customer reads with the structured invoice a platform reads
+              carried inside it. One object, one key, one download — and the two
+              halves are built from the same :class:`~models.billing.bill.Bill`
+              in the same call, so they cannot come to state different totals.
+            - **A failure anywhere here refuses the invoice.** The structured
+              half is not decoration that can be dropped when it misbehaves: an
+              invoice without it is one the recipient's system cannot read, and
+              shipping that silently is how an agency discovers a year later
+              that nothing it sent was machine-readable.
             **The language is passed in, not read off the customer.** A customer
             record carries no language preference — only an account does — and
             reaching for one that does not exist would silently print every
@@ -271,8 +327,16 @@ class BillingService:
             language=language,
             logo=logo,
         )
+        structured = self.factur_x.build(bill, company)
+        assembled = self.factur_x.assemble(
+            pdf=payload,
+            xml=structured,
+            bill=bill,
+            company=company,
+            language=language,
+        )
         return await documents.upload_invoice(
-            company.id or bill.company_id, bill.number, payload
+            company.id or bill.company_id, bill.number, assembled
         )
 
     async def _billable_customers(
@@ -391,25 +455,118 @@ class BillingService:
         )
         return updated
 
-    async def window_for(self, reference_date: date) -> Tuple[date, date]:
-        """Return the billing window containing a day, under the stored rules.
+    async def periodicity_for(
+        self, customer_id: Optional[str] = None
+    ) -> BillingPeriodicity:
+        """Return the rule a customer is invoiced on, or the agency's own.
+
+        Args:
+            customer_id (Optional[str]): The customer being billed. ``None``
+                asks for the agency's own rule.
+
+        Returns:
+            BillingPeriodicity: The periodicity in force.
+
+        Raises:
+            MTBillNotFound: If the named customer no longer exists.
+
+        Notes:
+            **Every path that decides a window comes through here**, so a
+            customer's own granularity cannot be honoured by the run and missed
+            by the screen that previews it, or the other way round. The fallback
+            itself lives on :meth:`~models.people.customer.Customer.effective_periodicity`
+            — this method's job is only to fetch the two things it needs.
+        """
+        settings = await self.current_settings()
+        if not customer_id:
+            return settings.periodicity
+        customer = await self.customers.get(customer_id)
+        if customer is None:
+            self.logger.error(
+                "Cannot resolve a billing periodicity: no customer %s.",
+                customer_id,
+            )
+            raise MTBillNotFound(f"No customer {customer_id!r}.")
+        periodicity = customer.effective_periodicity(settings.periodicity)
+        self.logger.debug(
+            "Customer %s is billed %s (%s).",
+            customer_id,
+            periodicity.value,
+            "their own rule" if customer.billing_periodicity else "the agency's",
+        )
+        return periodicity
+
+    async def window_for(
+        self, reference_date: date, customer_id: Optional[str] = None
+    ) -> Tuple[date, date]:
+        """Return the billing window containing a day.
 
         Args:
             reference_date (date): Any day inside the wanted period.
+            customer_id (Optional[str]): The customer being billed, when the
+                window is theirs rather than the agency's.
 
         Returns:
             Tuple[date, date]: The period's first and last day, both inclusive.
+
+        Raises:
+            MTBillNotFound: If the named customer no longer exists.
+
+        Notes:
+            Naming a customer matters: with an override in play the two answers
+            differ, and the agency's window is the wrong one to show beside a
+            customer's name — a screen previewing "1–31 July" for somebody
+            billed weekly is promising a document they will not receive.
         """
-        settings = await self.current_settings()
-        window = settings.window_for(reference_date)
+        periodicity = await self.periodicity_for(customer_id)
+        window = periodicity.window_for(reference_date)
         self.logger.debug(
             "%s falls in the %s window %s..%s.",
             reference_date,
-            settings.periodicity.value,
+            periodicity.value,
             window[0],
             window[1],
         )
         return window
+
+    async def spanned_window(self, reference_date: date) -> Tuple[date, date]:
+        """Return the days a run has to look at to catch every customer.
+
+        Args:
+            reference_date (date): The day the run was asked to bill around.
+
+        Returns:
+            Tuple[date, date]: The earliest first day and the latest last day
+            of the windows in use, both inclusive.
+
+        Notes:
+            - **A run's own window is not wide enough once customers differ.**
+              A customer billed yearly has work in January that a July run must
+              still find, and one billed weekly has a window inside the
+              agency's. Discovery therefore spans every periodicity actually in
+              use; each customer is then billed over their own window alone, so
+              a wider search never widens what anybody is charged.
+            - The periodicities are read from the book rather than assumed to be
+              all three. With no override anywhere this is exactly the agency's
+              own window, and the run does the work it always did.
+        """
+        settings = await self.current_settings()
+        in_use = {settings.periodicity}
+        in_use.update(await self.customers.list_billing_periodicities())
+        windows = [periodicity.window_for(reference_date) for periodicity in in_use]
+        span = (
+            min(window[0] for window in windows),
+            max(window[1] for window in windows),
+        )
+        self.logger.info(
+            "Billing around %s spans %s..%s across %d periodicit(ies): %s.",
+            reference_date,
+            span[0],
+            span[1],
+            len(in_use),
+            ", ".join(sorted(periodicity.value for periodicity in in_use)),
+        )
+        return span
 
     async def request_run(
         self, company_id: str, reference_date: date, requested_by: str
@@ -434,6 +591,13 @@ class BillingService:
             - A period still running is refused rather than billed early. Care
               that has not happened cannot be invoiced, and an empty document
               would carry a number the series can never reuse.
+            - **The window recorded on the run is the agency's own**, and it is
+              what the run is *called*, not what every customer is charged over.
+              A customer with a granularity of their own is billed across their
+              window, which is recorded on their invoice; the run keeps the
+              period a manager asked for, because "bill July" is the request and
+              a run labelled with the widest window it happened to touch would
+              answer a question nobody asked.
         """
         settings = await self.current_settings()
         period_start, period_end = settings.window_for(reference_date)
@@ -556,8 +720,7 @@ class BillingService:
         self,
         company_id: str,
         customer_id: str,
-        period_start: date,
-        period_end: date,
+        reference_date: date,
         run_id: Optional[str] = None,
         generated_by: Optional[str] = None,
         language: Language = Language.FR,
@@ -567,8 +730,9 @@ class BillingService:
         Args:
             company_id (str): The agency issuing it.
             customer_id (str): The customer being billed.
-            period_start (date): First day of the window, inclusive.
-            period_end (date): Last day of the window, inclusive.
+            reference_date (date): Any day inside the period to bill. **The
+                window is resolved from the customer's own periodicity**, not
+                passed in.
             run_id (Optional[str]): The run producing it.
             generated_by (Optional[str]): The account that asked for the run.
             language (Language): The language to write the document in.
@@ -576,27 +740,74 @@ class BillingService:
 
         Returns:
             Optional[Bill]: The invoice, or ``None`` when there was nothing to
-            bill or the period was billed already.
+            bill, the period was billed already, or it has not finished.
 
         Raises:
+            MTBillNotFound: If the customer or the agency no longer exists.
             MTBillDocumentStorageUnavailable: If no object store is configured.
             MTInvoiceRenderFailed: If the document could not be laid out.
 
         Notes:
+            - **A day, never a window.** The caller says which day is being
+              billed around and this resolves the period from the customer's own
+              granularity, so no caller can hand in a window that disagrees with
+              what the customer is billed on. That used to be a parameter, and a
+              parameter is what would have let a run bill a weekly customer over
+              a month without anything noticing.
+            - **A period that has not finished is skipped, not billed.** With a
+              periodicity per customer the run's own window finishing says
+              nothing about theirs: a customer billed yearly has an open year
+              while the agency closes a month. Care that has not happened cannot
+              be invoiced, so they are passed over with a warning and picked up
+              once their year ends.
             - **Three guards against billing a customer twice**, and they are not
-              redundant: the ``exists_for_period`` check makes a re-run a reported
-              no-op, the unique index makes it safe when two runs race past that
-              check, and the loser of such a race re-reads the winner's invoice
-              rather than failing. Only the middle one is a guarantee.
+              redundant: the overlap check makes a re-run a reported no-op *and*
+              catches a granularity that changed mid-period, the unique index
+              makes it safe when two runs race past that check, and the loser of
+              such a race discards its draft rather than failing. Only the
+              middle one is a guarantee.
             - The document is rendered and stored **before** the record is
               written, so a failure anywhere leaves no row pointing at a document
               that does not exist. The number is allocated first because the
               document has to print it.
         """
-        if await self.bills.exists_for_period(customer_id, period_start, period_end):  # noqa: E501
-            self.logger.info(
-                "Customer %s is already billed for %s..%s; skipping.",
+        settings = await self.current_settings()
+        customer = await self.customers.get(customer_id)
+        company = await self.companies.get(company_id)
+        if customer is None or company is None:
+            self.logger.error(
+                "Cannot bill customer %s for agency %s: the customer or the "
+                "agency no longer exists.",
                 customer_id,
+                company_id,
+            )
+            raise MTBillNotFound(
+                f"Customer {customer_id!r} or agency {company_id!r} is gone."
+            )
+
+        periodicity = customer.effective_periodicity(settings.periodicity)
+        period_start, period_end = periodicity.window_for(reference_date)
+        issued_on = datetime.now(UTC).date()
+        if period_end >= issued_on:
+            self.logger.warning(
+                "Customer %s is billed %s, so %s falls in the open period "
+                "%s..%s; they are passed over until it ends.",
+                customer_id,
+                periodicity.value,
+                reference_date,
+                period_start,
+                period_end,
+            )
+            return None
+
+        overlapping = await self.bills.find_overlapping(
+            customer_id, period_start, period_end
+        )
+        if overlapping:
+            self.logger.info(
+                "Customer %s already has %s covering part of %s..%s; skipping.",
+                customer_id,
+                ", ".join(bill.number for bill in overlapping),
                 period_start,
                 period_end,
             )
@@ -613,21 +824,6 @@ class BillingService:
             )
             return None
 
-        customer = await self.customers.get(customer_id)
-        company = await self.companies.get(company_id)
-        if customer is None or company is None:
-            self.logger.error(
-                "Cannot bill customer %s for agency %s: the customer or the "
-                "agency no longer exists.",
-                customer_id,
-                company_id,
-            )
-            raise MTBillNotFound(
-                f"Customer {customer_id!r} or agency {company_id!r} is gone."
-            )
-
-        settings = await self.current_settings()
-        issued_on = datetime.now(UTC).date()
         sequence, number = await self.bills.next_number(company_id, issued_on.year)  # noqa: E501
         draft = Bill(
             company_id=company_id,
@@ -636,13 +832,14 @@ class BillingService:
             number=number,
             sequence=sequence,
             sequence_year=issued_on.year,
-            periodicity=settings.periodicity,
+            periodicity=periodicity,
             period_start=period_start,
             period_end=period_end,
             issued_on=issued_on,
             due_on=settings.due_date_for(issued_on),
             customer_full_name=customer.full_name(),
             customer_address=customer.address,
+            recipient=self._recipient_for(customer),
             lines=charges,
             total_ht=sum((line.total_ht for line in charges), Decimal("0.00")),
             total_vat=sum((line.vat_amount for line in charges), Decimal("0.00")),  # noqa: E501
@@ -687,35 +884,46 @@ class BillingService:
             MTBillingRunNotFound: If no such run exists.
 
         Notes:
-            Each customer is billed inside its own guard, so one bad record
-            costs one invoice rather than the month. A run that billed some and
-            failed on others finishes **partial** and names the customers it
-            could not bill — which is the only thing that makes such a run
-            actionable.
+            - Each customer is billed inside its own guard, so one bad record
+              costs one invoice rather than the month. A run that billed some
+              and failed on others finishes **partial** and names the customers
+              it could not bill — which is the only thing that makes such a run
+              actionable.
+            - **The run's own window decides who is looked at, not what anybody
+              is charged.** Discovery spans every periodicity in use, because a
+              customer billed yearly has work outside the month the run was
+              asked for; each of them is then billed over their own window
+              alone. A customer whose period has not finished is passed over
+              rather than counted as a failure — nothing went wrong, their
+              period is simply still running.
         """
         run = await self.runs.get(run_id)
         if run is None:
             self.logger.error("No billing run found with id %s.", run_id)
             raise MTBillingRunNotFound(f"No billing run {run_id!r}.")
+        span_start, span_end = await self.spanned_window(run.reference_date)
         self.logger.info(
-            "Executing billing run %s over %s..%s.",
+            "Executing billing run %s around %s; the agency's own window is "
+            "%s..%s and customers are looked for across %s..%s.",
             run_id,
+            run.reference_date,
             run.period_start,
             run.period_end,
+            span_start,
+            span_end,
         )
         await self.runs.mark_running(run_id, datetime.now(UTC))
 
         written: List[str] = []
         failed: List[str] = []
         for customer_id in await self._billable_customers(
-            run.company_id, run.period_start, run.period_end
+            run.company_id, span_start, span_end
         ):
             try:
                 issued = await self.generate_for_customer(
                     company_id=run.company_id,
                     customer_id=customer_id,
-                    period_start=run.period_start,
-                    period_end=run.period_end,
+                    reference_date=run.reference_date,
                     run_id=run_id,
                     generated_by=run.requested_by,
                 )
@@ -979,34 +1187,59 @@ class BillingService:
             Bill: The issued invoice.
 
         Raises:
-            MTBillAlreadyIssued: If the period is billed already.
+            MTBillingPeriodInFuture: If their period has not finished yet.
+            MTBillAlreadyIssued: If any of the period is billed already.
             MTBillNothingToBill: If the customer owes nothing for it.
 
         Notes:
-            The one path where an empty period and an already-billed one are
-            **errors** rather than customers to pass over. A run over everybody
-            skips both silently, because most customers have no work in most
-            weeks; a caller who named one customer asked a question and is owed
-            an answer.
+            - The one path where an empty period and an already-billed one are
+              **errors** rather than customers to pass over. A run over
+              everybody skips both silently, because most customers have no work
+              in most weeks; a caller who named one customer asked a question
+              and is owed an answer.
+            - The window is **this customer's**, not the agency's. Billing one
+              person is exactly where a granularity of their own has to be
+              honoured, and where the difference is visible: the period named in
+              the refusal is the one they would actually have been charged for.
         """
-        period_start, period_end = await self.window_for(reference_date)
-        if await self.bills.exists_for_period(customer_id, period_start, period_end):  # noqa: E501
+        period_start, period_end = await self.window_for(reference_date, customer_id)
+        today = datetime.now(UTC).date()
+        if period_end >= today:
             self.logger.warning(
-                "%s asked to bill customer %s for %s..%s, which is billed already.",
+                "%s asked to bill customer %s for %s..%s, which has not "
+                "finished (today is %s).",
                 actor,
                 customer_id,
                 period_start,
                 period_end,
+                today,
+            )
+            raise MTBillingPeriodInFuture(
+                f"The period {period_start}..{period_end} has not finished; "
+                f"care that has not happened cannot be invoiced."
+            )
+        overlapping = await self.bills.find_overlapping(
+            customer_id, period_start, period_end
+        )
+        if overlapping:
+            self.logger.warning(
+                "%s asked to bill customer %s for %s..%s, which %s already "
+                "cover(s) in whole or in part.",
+                actor,
+                customer_id,
+                period_start,
+                period_end,
+                ", ".join(bill.number for bill in overlapping),
             )
             raise MTBillAlreadyIssued(
-                f"Customer {customer_id!r} is already billed for "
-                f"{period_start}..{period_end}."
+                f"Customer {customer_id!r} is already billed for part of "
+                f"{period_start}..{period_end} by "
+                f"{', '.join(bill.number for bill in overlapping)}."
             )
         issued = await self.generate_for_customer(
             company_id=company_id,
             customer_id=customer_id,
-            period_start=period_start,
-            period_end=period_end,
+            reference_date=reference_date,
             generated_by=actor,
             language=language,
         )

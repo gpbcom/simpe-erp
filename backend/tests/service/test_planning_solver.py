@@ -13,7 +13,9 @@ from models.configuration.planning_config import PlanningConfig
 from models.enums import AvailabilityKind, ContractType
 from models.geo.geo_point import GeoPoint
 from models.people.hca import Hca
-from models.planning.intervention.intervention_requirement import InterventionRequirement
+from models.planning.intervention.intervention_requirement import (
+    InterventionRequirement,
+)
 from models.planning.planning_run.planning_solution import PlanningSolution
 from models.settings.planning_settings import PlanningSettings
 

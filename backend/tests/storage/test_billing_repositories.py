@@ -18,6 +18,8 @@ from models.enums import (
     BillingPeriodicity,
     BillingRunStatus,
     BillStatus,
+    OperationNature,
+    RecipientKind,
     ServiceCategory,
 )
 from models.people.customer import Customer
@@ -89,6 +91,7 @@ def a_bill(customer_id: str, **overrides: Any) -> Bill:
         "due_on": date(2026, 5, 1),
         "customer_full_name": "Marie Durand",
         "customer_address": ADDRESS,
+        "recipient": {"name": "Marie Durand", "address": ADDRESS},
         "lines": lines,
         "total_ht": sum((line.total_ht for line in lines), Decimal("0.00")),
         "total_vat": sum((line.vat_amount for line in lines), Decimal("0.00")),
@@ -234,10 +237,10 @@ class TestBillIdempotency:
         """Nothing has been billed before anything is written."""
         customer_id = await a_customer(session, customer)
         assert (
-            await BillRepository(session).exists_for_period(
+            await BillRepository(session).find_overlapping(
                 customer_id, date(2026, 3, 1), date(2026, 3, 31)
             )
-            is False
+            == []
         )
 
     @pytest.mark.asyncio
@@ -249,12 +252,67 @@ class TestBillIdempotency:
         customer_id = await a_customer(session, customer)
         await repository.create(a_bill(customer_id))
 
-        assert (
-            await repository.exists_for_period(
-                customer_id, date(2026, 3, 1), date(2026, 3, 31)
-            )
-            is True
+        found = await repository.find_overlapping(
+            customer_id, date(2026, 3, 1), date(2026, 3, 31)
         )
+
+        assert [bill.number for bill in found] == ["FA-2026-000001"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("window", "expected"),
+        [
+            pytest.param(
+                (date(2026, 3, 2), date(2026, 3, 8)),
+                ["FA-2026-000001"],
+                id="A week inside a billed month",
+            ),
+            pytest.param(
+                (date(2026, 2, 23), date(2026, 3, 1)),
+                ["FA-2026-000001"],
+                id="A week straddling the first day",
+            ),
+            pytest.param(
+                (date(2026, 1, 1), date(2026, 12, 31)),
+                ["FA-2026-000001"],
+                id="A year containing a billed month",
+            ),
+            pytest.param(
+                (date(2026, 2, 1), date(2026, 2, 28)),
+                [],
+                id="Invalid - the month before touches nothing",
+            ),
+            pytest.param(
+                (date(2026, 4, 1), date(2026, 4, 30)),
+                [],
+                id="Invalid - the month after touches nothing",
+            ),
+        ],
+    )
+    async def test_a_window_overlapping_a_billed_one_is_reported(
+        self,
+        session: AsyncSession,
+        customer: Customer,
+        window: tuple[date, date],
+        expected: list[str],
+    ) -> None:
+        """**What an exact-window check could never catch.**
+
+        Notes:
+            A customer moved from weekly to monthly billing mid-period would
+            otherwise be charged twice for the same days: two windows that
+            differ, so the unique index sees nothing, over care delivered once.
+            Containment either way round, a partial overlap either way round and
+            an exact match are all one expression, which is why there are no
+            cases in the query and five here.
+        """
+        repository = BillRepository(session)
+        customer_id = await a_customer(session, customer)
+        await repository.create(a_bill(customer_id))
+
+        found = await repository.find_overlapping(customer_id, *window)
+
+        assert [bill.number for bill in found] == expected
 
     @pytest.mark.asyncio
     async def test_a_second_invoice_for_one_period_is_refused(
@@ -263,7 +321,7 @@ class TestBillIdempotency:
         """**The guarantee, as opposed to the check.**
 
         Notes:
-            Two runs waking together both pass ``exists_for_period`` and both
+            Two runs waking together both pass ``find_overlapping`` and both
             attempt the insert. This index is what stops the customer receiving
             two invoices for one month; the service catches the failure and
             re-reads the winner.
@@ -728,3 +786,87 @@ class TestBillingSettingsRepository:
         assert (
             await BillingSettingsRepository(session).update(BillingSettings()) is None
         )
+
+
+class TestTheRecipientSurvivesStorage:
+    """Tests for the party an invoice was billed to, read back."""
+
+    @pytest.mark.asyncio
+    async def test_a_household_round_trips(
+        self, session: AsyncSession, customer: Customer
+    ) -> None:
+        """The ordinary case: the household pays for its own care."""
+        repository = BillRepository(session)
+        customer_id = await a_customer(session, customer)
+
+        stored = await repository.create(a_bill(customer_id))
+        read = await repository.get(stored.id)
+
+        assert read is not None
+        assert read.recipient.kind is RecipientKind.INDIVIDUAL
+        assert read.recipient.name == "Marie Durand"
+        assert read.recipient.siren is None
+        assert read.operation_nature is OperationNature.SERVICES
+
+    @pytest.mark.asyncio
+    async def test_a_funded_payer_round_trips_whole(
+        self, session: AsyncSession, customer: Customer
+    ) -> None:
+        """**Every identifier, or the invoice cannot be routed on re-read.**
+
+        Notes:
+            The SIREN is what a platform delivers on and the service code is
+            what a public body routes on internally. A column dropped from the
+            mapper would surface as an invoice nobody can deliver, months after
+            it was written.
+        """
+        repository = BillRepository(session)
+        customer_id = await a_customer(session, customer)
+        payer = {
+            "kind": "public",
+            "name": "Conseil départemental de Paris",
+            "address": ADDRESS,
+            "siren": "130025265",
+            "vat_number": "FR12345678900",
+            "service_code": "APA",
+        }
+
+        stored = await repository.create(
+            a_bill(customer_id, recipient=payer)
+        )
+        read = await repository.get(stored.id)
+
+        assert read is not None
+        assert read.recipient.kind is RecipientKind.PUBLIC
+        assert read.recipient.siren == "130025265"
+        assert read.recipient.vat_number == "FR12345678900"
+        assert read.recipient.service_code == "APA"
+        assert read.requires_electronic_invoice() is True
+
+    @pytest.mark.asyncio
+    async def test_the_billing_address_keeps_its_coordinate(
+        self, session: AsyncSession, customer: Customer
+    ) -> None:
+        """**Which is why three columns nobody queries exist.**
+
+        Notes:
+            ``PostalAddress`` geocodes while it validates and skips the lookup
+            only when a coordinate or a failure code is already set. Dropping
+            them here would make every read of every invoice a blocking request
+            to a geocoding service.
+        """
+        repository = BillRepository(session)
+        customer_id = await a_customer(session, customer)
+        placed = {**ADDRESS, "latitude": 48.8558, "longitude": 2.3588}
+
+        stored = await repository.create(
+            a_bill(
+                customer_id,
+                recipient={"name": "Marie Durand", "address": placed},
+            )
+        )
+        read = await repository.get(stored.id)
+
+        assert read is not None
+        assert read.recipient.address.latitude == 48.8558
+        assert read.recipient.address.longitude == 2.3588

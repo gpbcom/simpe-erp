@@ -500,7 +500,7 @@ From `backend/models/src/models/enums.py`.
 
 | Enum | Values |
 |---|---|
-| `UserRole` | `hca` < `manager` < `admin`, with `has_at_least()` |
+| `UserRole` | `hca` < `manager` < `admin`, with `has_at_least()`; plus `customer`, which is **off the ladder** — `rank()` refuses it. See [11](11-security.md#the-customer-is-not-a-rung-of-the-ladder) |
 | `AccountOrigin` | `self-registered`, `created-by-staff` |
 | `RegistrationStatus` | `active`, `prospect`, `stopped`, with `can_be_scheduled()` |
 | `ContractType` | `cdi`, `cdd`, `interim`, `internship` |
@@ -551,6 +551,13 @@ you build a screen around it.
 | 0021 | The quotes a planning run could not place |
 | 0022 | Planning feedback recorded on the quote |
 | 0023 | Billing: `bills`, `bill_lines`, `billing_runs`, `billing_settings` |
+| 0024 | Per-customer billing periodicity, overriding the agency's |
+| 0025 | `users.customer_id`, so a household can sign in to their own space |
+
+The link in 0025 runs **both ways**: a customer account must carry one and no
+other role may. A staff account holding a `customer_id` would satisfy the staff
+guards *and* resolve to one household — an account on both sides of the boundary
+at once — so `User.check_customer_link` refuses to build it.
 
 The widening in 0006 is the one to remember. `status` was `String(16)`, sized
 when `accepted` was the longest value; `pending-validation` is eighteen

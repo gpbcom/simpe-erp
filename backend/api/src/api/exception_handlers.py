@@ -16,6 +16,7 @@ from models.base.exceptions import (
 from models.billing.exceptions import (
     MTInvalidBillException,
     MTInvalidBillLineException,
+    MTInvalidBillRecipientException,
     MTInvalidBillingRunException,
 )
 from models.auth.exceptions import (
@@ -28,9 +29,35 @@ from models.catalog.exceptions import (
     MTInvalidInterventionTypeException,
 )
 from models.companies.exceptions import MTInvalidCompanyException
+from models.integrations.exceptions import (
+    MTInvalidEInvoicingIntegrationException,
+    MTInvalidIntegrationCredentialsException,
+    MTInvalidProviderDescriptorException,
+    MTInvalidTransmissionReceiptException,
+)
+from integrations.exceptions import (
+    MTConnectorNotImplemented,
+    MTConnectorRejected,
+    MTConnectorUnauthorised,
+    MTConnectorUnavailable,
+    MTConnectorUnsupported,
+    MTInvoicingConnectorException,
+)
+from service.integrations.exceptions import (
+    MTInvoicingServiceException,
+    MTIntegrationCredentialsRefused,
+    MTIntegrationNotConfigured,
+    MTNoActivePlatform,
+)
+from service.security.exceptions import (
+    MTCredentialCipherException,
+    MTCredentialCipherKeyUnusable,
+    MTCredentialCipherUnreadable,
+)
 from models.configuration.exceptions import (
     MTInvalidAppConfigException,
     MTInvalidBillingConfigException,
+    MTInvalidIntegrationConfigException,
     MTInvalidAuthConfigException,
     MTInvalidDatabaseConfigException,
     MTInvalidEmailConfigException,
@@ -77,7 +104,10 @@ from models.quoting.exceptions import (
     MTInvalidQuoteTypeWeekAggregateException,
 )
 from models.schemas.exceptions import (
+    MTInvalidBillPaidRequestException,
+    MTInvalidIntegrationSchemaException,
     MTInvalidBillAcceptedRequestException,
+    MTInvalidBillingPeriodicityRequestException,
     MTInvalidBillDispatchResponseException,
     MTInvalidBillFilterException,
     MTInvalidBillGenerationRequestException,
@@ -116,6 +146,9 @@ from models.schemas.exceptions import (
     MTInvalidRegisterRequestException,
     MTInvalidCustomerFilterException,
     MTInvalidRoleUpdateRequestException,
+    MTInvalidCustomerAccountRequestException,
+    MTInvalidCustomerProfileUpdateRequestException,
+    MTInvalidInterventionRescheduleRequestException,
     MTInvalidStaffAccountRequestException,
     MTInvalidStatusUpdateRequestException,
     MTInvalidTemporaryCredentialsResponseException,
@@ -135,6 +168,8 @@ from service.auth.exceptions import (
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
     MTAuthUnknownAccount,
+    MTAuthCustomerAlreadyHasAccount,
+    MTAuthUnknownCustomer,
     MTAuthUnknownHca,
     MTAuthUserInactive,
     MTInvalidAuthException,
@@ -224,7 +259,14 @@ from service.quotes.exceptions import (
     MTQuoteNotFound,
     MTQuoteNotPriced,
 )
-from service.utils.exceptions import MTInvalidInvoiceRendererException
+from service.integrations.utils.exceptions import (
+    MTInvalidCiiInvoiceException,
+    MTInvalidFacturXException,
+)
+from service.utils.exceptions import (
+    MTInvalidInvoiceRendererException,
+    MTInvalidQuoteRendererException,
+)
 from storage.db.exceptions import MTInvalidDatabaseConnectionException
 from storage.mappers.exceptions import MTInvalidMapperException
 from storage.s3.exceptions import (
@@ -283,6 +325,10 @@ class ExceptionHandlers:
         MTAuthUnknownAccount: status.HTTP_404_NOT_FOUND,
         MTAuthHcaLinkRequired: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTAuthUnknownHca: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTAuthUnknownCustomer: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # 409, not 422: the request is well formed and the caller may make
+        # it — what refuses is that the household already has access.
+        MTAuthCustomerAlreadyHasAccount: status.HTTP_409_CONFLICT,
         MTAuthMissingSecret: status.HTTP_503_SERVICE_UNAVAILABLE,
         # Request payloads that fail their own model's validators
         MTInvalidActiveUpdateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -328,6 +374,15 @@ class ExceptionHandlers:
         MTInvalidRoleUpdateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidHcaApplicationRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidStaffAccountRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTInvalidCustomerAccountRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidCustomerProfileUpdateRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidInterventionRescheduleRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
         MTInvalidPasswordChangeRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidApplicationDecisionRequestException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -359,6 +414,12 @@ class ExceptionHandlers:
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
         MTInvalidBillAcceptedRequestException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        # One customer's own granularity, refused for the same reason: a
+        # periodicity nobody can bill on is the caller's to correct. Clearing
+        # the override is not a refusal — a null periodicity is a valid payload.
+        MTInvalidBillingPeriodicityRequestException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
         # Every list screen's filter, in one row. The concrete families
         # below it exist so a rejected filter names its own screen; what
         # they all mean is the same — the caller narrowed by something the
@@ -517,6 +578,54 @@ class ExceptionHandlers:
         MTInvalidBillingSettingsException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidBillException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidBillLineException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidBillRecipientException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # E-invoicing integrations. The split here is between what a caller
+        # can fix, what a *platform* did, and what is a fault in this
+        # deployment — three audiences that must not share a status code.
+        MTIntegrationNotConfigured: status.HTTP_404_NOT_FOUND,
+        # 409, not 422: connecting nothing is a well-formed request against an
+        # agency that has not done a prerequisite. The screen's answer is
+        # "connect a platform", not "fix this field".
+        MTNoActivePlatform: status.HTTP_409_CONFLICT,
+        # 502 and 503: a certified platform is a third party. Its refusal of a
+        # key, or its being down, is not this API's fault and not the caller's,
+        # and a 500 would send an operator looking in the wrong logs.
+        MTIntegrationCredentialsRefused: status.HTTP_502_BAD_GATEWAY,
+        MTConnectorUnauthorised: status.HTTP_502_BAD_GATEWAY,
+        MTConnectorRejected: status.HTTP_502_BAD_GATEWAY,
+        MTConnectorUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
+        # A platform that documents no route to public bodies is a procurement
+        # fact, not a malformed request: the agency must connect one that does.
+        MTConnectorUnsupported: status.HTTP_409_CONFLICT,
+        MTInvoicingConnectorException: status.HTTP_502_BAD_GATEWAY,
+        MTInvoicingServiceException: status.HTTP_400_BAD_REQUEST,
+        # Payloads a caller can correct. The credentials family's messages
+        # never quote the key, which is what makes returning them safe.
+        MTInvalidIntegrationCredentialsException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidEInvoicingIntegrationException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        MTInvalidIntegrationSchemaException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidBillPaidRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # 500s, all of them programming or deployment faults rather than
+        # anything a request did: a platform in the enumeration with no
+        # catalogue entry or no connector, a receipt a connector built wrong,
+        # a credential key that is missing or will not open.
+        MTConnectorNotImplemented: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTInvalidProviderDescriptorException: (
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        ),
+        MTInvalidTransmissionReceiptException: (
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        ),
+        MTCredentialCipherKeyUnusable: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTCredentialCipherUnreadable: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTCredentialCipherException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTInvalidIntegrationConfigException: (
+            status.HTTP_500_INTERNAL_SERVER_ERROR
+        ),
         MTInvalidBillingRunException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # A service refusing an operation. The concrete members carry their own
         # meaning above; a new one defaults to "refused", never to a 500, which
@@ -537,6 +646,19 @@ class ExceptionHandlers:
         # model that will not build: the caller asked for an invoice they
         # were entitled to and we could not produce it.
         MTInvalidInvoiceRendererException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        # The structured half of the invoice, and the container that carries
+        # it. Both are 500s for the same reason the renderer is: the caller
+        # asked for an invoice they were entitled to. Two families rather than
+        # one, because they fail for unrelated reasons and the log line should
+        # say which — a missing VAT number on the agency is somebody's record to
+        # complete, and a container that would not assemble is our defect.
+        MTInvalidCiiInvoiceException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        MTInvalidFacturXException: status.HTTP_500_INTERNAL_SERVER_ERROR,
+        # A render failure is a 500: the document could not be produced. An
+        # *unpriced* quote is a 422 and is already registered under
+        # MTInvalidPricingException — the offer is simply not ready yet, which
+        # is the screen's problem to explain rather than a server error.
+        MTInvalidQuoteRendererException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidUserResponseException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHcaResponseException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidHealthResponseException: status.HTTP_500_INTERNAL_SERVER_ERROR,

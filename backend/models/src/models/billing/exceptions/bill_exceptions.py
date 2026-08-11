@@ -87,3 +87,33 @@ class MTBillInvalidDocument(MTInvalidBillException):
         Nobody validates an invoice they cannot read, and a number issued
         against a document that was never produced is a gap in the series.
     """
+
+
+class MTBillInvalidRecipient(MTInvalidBillException):
+    """Exception raised when an invalid billing recipient is provided.
+
+    Notes:
+        The recipient is the party that owes the money, which for a funded
+        arrangement is not the person cared for. An invoice without one could
+        not say who to ask for payment.
+    """
+
+
+class MTBillInvalidOperationNature(MTInvalidBillException):
+    """Exception raised when the nature of the operation is not a known one.
+
+    Notes:
+        A mandatory mention on a French invoice. Coercing an unknown value to
+        "services" would print a guess as a declaration.
+    """
+
+
+class MTBillInvalidShare(MTInvalidBillException):
+    """Exception raised when a recipient is asked to pay more than the total.
+
+    Notes:
+        A funded share above the invoice total is arithmetic nobody can
+        reconcile: the payers' shares would sum past what the customer was
+        charged, and the difference would surface as an unexplained credit
+        months later.
+    """

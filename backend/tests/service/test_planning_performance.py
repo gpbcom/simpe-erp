@@ -130,9 +130,7 @@ class TestAWeekSolvesQuickly:
         service = generator.build.service(config)
         service.build_travel(staff, work)
 
-        solution = await service.solve_period(
-            work, staff, generator.build.settings()
-        )
+        solution = await service.solve_period(work, staff, generator.build.settings())
 
         assert solution.is_feasible
         assert solution.unassigned_requirement_ids == []

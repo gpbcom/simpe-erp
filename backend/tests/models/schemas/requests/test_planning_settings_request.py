@@ -16,7 +16,9 @@ from models.schemas.exceptions import (
     MTPlanningSettingsRequestInvalidLunchWindow,
     MTPlanningSettingsRequestInvalidRadius,
 )
-from models.schemas.requests.planning.planning_settings_request import PlanningSettingsRequest
+from models.schemas.requests.planning.planning_settings_request import (
+    PlanningSettingsRequest,
+)
 from models.settings.planning_settings import PlanningSettings
 
 
@@ -58,9 +60,7 @@ class TestPlanningSettingsRequest:
         assert payload.day_start_minute == stored.day_start_minute
         assert payload.day_end_minute == stored.day_end_minute
         assert payload.lunch_break_minutes == stored.lunch_break_minutes
-        assert (
-            payload.lunch_window_start_minute == stored.lunch_window_start_minute
-        )
+        assert payload.lunch_window_start_minute == stored.lunch_window_start_minute
         assert payload.lunch_window_end_minute == stored.lunch_window_end_minute
 
     def test_a_complete_payload_is_accepted(self) -> None:
@@ -187,9 +187,7 @@ class TestPlanningSettingsRequest:
         "exception",
         [
             pytest.param(MTPlanningSettingsRequestInvalidRadius, id="radius"),
-            pytest.param(
-                MTPlanningSettingsRequestInvalidLunchBreak, id="lunch break"
-            ),
+            pytest.param(MTPlanningSettingsRequestInvalidLunchBreak, id="lunch break"),
             pytest.param(MTPlanningSettingsRequestInvalidDayStart, id="day start"),
             pytest.param(MTPlanningSettingsRequestInvalidDayEnd, id="day end"),
             pytest.param(

@@ -9,11 +9,12 @@ from pydantic import ValidationError
 import pytest
 
 # First-party imports
-from models.enums import RegistrationStatus
+from models.enums import BillingPeriodicity, RegistrationStatus
 from models.geo.postal_address import PostalAddress
 from models.people.customer import Customer
 from models.people.customer.exceptions import (
     MTCustomerInvalidAddress,
+    MTCustomerInvalidBillingPeriodicity,
     MTCustomerInvalidDate,
     MTCustomerInvalidEmail,
     MTCustomerInvalidFirstName,
@@ -289,6 +290,63 @@ class TestCustomer:
             Customer(**{**valid_customer_kwargs, "registration_status": invalid_status})
 
     # ------------------------------------------------------------------ #
+    #  Billing periodicity
+    # ------------------------------------------------------------------ #
+
+    def test_a_customer_follows_the_agency_by_default(
+        self, valid_customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """**Unset is the ordinary case, and it is not monthly.**
+
+        Notes:
+            The absence of an override has to stay an absence. Defaulting it to
+            monthly would look identical on the day the record is written and
+            wrong the day a manager changes the agency's rule, because every
+            customer would be carrying a frozen copy of the old one.
+        """
+        customer = Customer(**valid_customer_kwargs)
+
+        assert customer.billing_periodicity is None
+        assert (
+            customer.effective_periodicity(BillingPeriodicity.WEEKLY)
+            is BillingPeriodicity.WEEKLY
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("weekly", id="As the string the API sends"),
+            pytest.param(BillingPeriodicity.WEEKLY, id="As the enum member"),
+        ],
+    )
+    def test_an_override_is_kept_whichever_way_it_arrives(
+        self, valid_customer_kwargs: Dict[str, Any], value: object
+    ) -> None:
+        """Their own rule wins over the agency's, however it was sent."""
+        customer = Customer(**{**valid_customer_kwargs, "billing_periodicity": value})
+
+        assert customer.billing_periodicity is BillingPeriodicity.WEEKLY
+        assert (
+            customer.effective_periodicity(BillingPeriodicity.MONTHLY)
+            is BillingPeriodicity.WEEKLY
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("fortnightly", id="Invalid - not a periodicity"),
+            pytest.param("MONTHLY", id="Invalid - the wrong case"),
+            pytest.param(2, id="Invalid - a number of weeks"),
+        ],
+    )
+    def test_an_unknown_periodicity_is_refused(
+        self, valid_customer_kwargs: Dict[str, Any], value: object
+    ) -> None:
+        """A granularity nothing can bill on is refused, not coerced."""
+        with pytest.raises(MTCustomerInvalidBillingPeriodicity):
+            Customer(**{**valid_customer_kwargs, "billing_periodicity": value})
+
+    # ------------------------------------------------------------------ #
     #  Timestamp validation
     # ------------------------------------------------------------------ #
 
@@ -367,6 +425,7 @@ class TestCustomer:
         "exception_class",
         [
             MTCustomerInvalidAddress,
+            MTCustomerInvalidBillingPeriodicity,
             MTCustomerInvalidDate,
             MTCustomerInvalidEmail,
             MTCustomerInvalidFirstName,

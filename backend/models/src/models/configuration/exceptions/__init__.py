@@ -63,6 +63,14 @@ from .holiday_surcharge_exceptions import (
     MTHolidaySurchargeInvalidSurcharge,
     MTInvalidHolidaySurchargeException,
 )
+from .integration_config_exceptions import (
+    MTIntegrationConfigInvalidKeyEnv,
+    MTIntegrationConfigInvalidProviders,
+    MTIntegrationConfigInvalidTimeout,
+    MTIntegrationConfigMissingKey,
+    MTIntegrationConfigProviderUnknown,
+    MTInvalidIntegrationConfigException,
+)
 from .observability_config_exceptions import (
     MTInvalidObservabilityConfigException,
     MTObservabilityConfigInvalidEndpoint,
@@ -164,6 +172,12 @@ __all__ = [
     "MTInvalidEmailConfigException",
     "MTInvalidGeocodingConfigException",
     "MTInvalidHolidaySurchargeException",
+    "MTIntegrationConfigInvalidKeyEnv",
+    "MTIntegrationConfigInvalidProviders",
+    "MTIntegrationConfigInvalidTimeout",
+    "MTIntegrationConfigMissingKey",
+    "MTIntegrationConfigProviderUnknown",
+    "MTInvalidIntegrationConfigException",
     "MTInvalidObservabilityConfigException",
     "MTInvalidPlanningConfigException",
     "MTInvalidPricingConfigException",

@@ -7,6 +7,11 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { PortalBillsPage } from '@/features/portal/PortalBillsPage';
+import { PortalPlanningPage } from '@/features/portal/PortalPlanningPage';
+import { PortalProfilePage } from '@/features/portal/PortalProfilePage';
+import { PortalQuotesPage } from '@/features/portal/PortalQuotesPage';
+import { WelcomePage } from '@/features/welcome/WelcomePage';
 import { RegisterCompanyPage } from '@/features/auth/RegisterCompanyPage';
 import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage';
 import { MyAccountPage } from '@/features/me/MyAccountPage';
@@ -28,11 +33,18 @@ import { PlanningSettingsPage } from '@/features/plannings/PlanningSettingsPage'
 import { TeamPlanningPage } from '@/features/plannings/TeamPlanningPage';
 import { buildTheme } from '@/theme/theme';
 import { hasAtLeast, useSession } from '@/store/session';
-import type { UserRole } from '@/api/types';
+import type { StaffRole } from '@/store/session';
 
 interface GuardProps {
-  /** The lowest role that may see the route. */
-  minimum: UserRole;
+  /**
+   * The lowest **staff** role that may see the route.
+   *
+   * @remarks
+   * `StaffRole`, not `UserRole`, so `minimum="customer"` is a compile error.
+   * A customer is a different axis rather than a lower rung — see
+   * `hasAtLeast`. The portal uses `CustomerRoute` below instead.
+   */
+  minimum: StaffRole;
   /** What to render when the check passes. */
   children: React.ReactNode;
 }
@@ -51,6 +63,31 @@ interface GuardProps {
 function RoleRoute({ minimum, children }: GuardProps) {
   const user = useSession((state) => state.user);
   return hasAtLeast(user?.role, minimum) ? (
+    <>{children}</>
+  ) : (
+    <Navigate to="/" replace />
+  );
+}
+
+/**
+ * Hide the household's own space from everybody else.
+ *
+ * @param props - The route to guard.
+ * @returns The route, or a redirect.
+ *
+ * @remarks
+ * **Compares by identity, and it cannot be written any other way.** A customer
+ * is not a rung of the staff ladder — see `hasAtLeast`, whose `minimum` is
+ * typed `StaffRole` precisely so `RoleRoute minimum="customer"` is a compile
+ * error. Written that way it would admit every employee to a household's
+ * calendar, address and invoices.
+ *
+ * A convenience, like `RoleRoute`: the server's `get_customer_user` is what
+ * actually refuses staff, on every request.
+ */
+function CustomerRoute({ children }: { children: React.ReactNode }) {
+  const user = useSession((state) => state.user);
+  return user?.role === 'customer' ? (
     <>{children}</>
   ) : (
     <Navigate to="/" replace />
@@ -79,7 +116,15 @@ export function App() {
     return buildTheme(mode, i18n.language);
   }, [i18n.language]);
 
-  const home = hasAtLeast(user?.role, 'manager') ? '/quotes' : '/me/planning';
+  // Three landings, not two. A household has none of the staff screens, so
+  // sending them to the assistant's diary would be a redirect loop through a
+  // page that answers 403.
+  const home =
+    user?.role === 'customer'
+      ? '/portal/planning'
+      : hasAtLeast(user?.role, 'manager')
+        ? '/quotes'
+        : '/me/planning';
 
   return (
     <ThemeProvider theme={theme}>
@@ -89,13 +134,34 @@ export function App() {
           <CircularProgress />
         </Box>
       ) : !user ? (
-        // Two screens rather than a route, because neither is reachable
-        // once signed in and the router below only exists for a session.
-        founding ? (
-          <RegisterCompanyPage onCancel={() => setFounding(false)} />
-        ) : (
-          <LoginPage onRegisterCompany={() => setFounding(true)} />
-        )
+        // **Routed, where this used to be two pieces of state.** The landing
+        // page has to be linkable and has to survive a sign-out, and a
+        // boolean cannot express "somewhere to come back to".
+        //
+        // The landing page is named, and the sign-in form is the fallback —
+        // deliberately that way round. Somebody arriving at the root, or
+        // returning here after signing out, is being asked what this is;
+        // somebody whose session expired on `/quotes` is not, and putting the
+        // product tour in front of them would cost them the click that gets
+        // them back to work.
+        <Routes>
+          <Route path="/" element={<WelcomePage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
+          <Route
+            path="/register-company"
+            element={<RegisterCompanyPage onCancel={() => setFounding(false)} />}
+          />
+          <Route
+            path="*"
+            element={
+              founding ? (
+                <RegisterCompanyPage onCancel={() => setFounding(false)} />
+              ) : (
+                <LoginPage onRegisterCompany={() => setFounding(true)} />
+              )
+            }
+          />
+        </Routes>
       ) : user.must_change_password ? (
         // Nothing else is reachable while the flag is set: the server answers
         // 403 on every other route, so routing anywhere else would show a
@@ -103,6 +169,10 @@ export function App() {
         <ChangePasswordPage />
       ) : (
         <Routes>
+          {/* Outside the shell on purpose: the navigation rail and the
+              account menu mean nothing on a page that describes the product,
+              and the hero needs the full width. */}
+          <Route path="/welcome" element={<WelcomePage />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<Navigate to={home} replace />} />
             <Route path="/me" element={<MyAccountPage />} />
@@ -110,6 +180,42 @@ export function App() {
             <Route path="/me/customers" element={<MyCustomersPage />} />
             <Route path="/me/quotes" element={<MyQuotesPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            {/* The household's own space. Behind `CustomerRoute`, which
+                compares by identity — a customer is a different axis rather
+                than a lower rung, so `RoleRoute minimum="customer"` does not
+                even type-check. */}
+            <Route
+              path="/portal/planning"
+              element={
+                <CustomerRoute>
+                  <PortalPlanningPage />
+                </CustomerRoute>
+              }
+            />
+            <Route
+              path="/portal/profile"
+              element={
+                <CustomerRoute>
+                  <PortalProfilePage />
+                </CustomerRoute>
+              }
+            />
+            <Route
+              path="/portal/quotes"
+              element={
+                <CustomerRoute>
+                  <PortalQuotesPage />
+                </CustomerRoute>
+              }
+            />
+            <Route
+              path="/portal/bills"
+              element={
+                <CustomerRoute>
+                  <PortalBillsPage />
+                </CustomerRoute>
+              }
+            />
             <Route
               path="/quotes"
               element={

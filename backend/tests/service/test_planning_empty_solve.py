@@ -99,7 +99,9 @@ def _service() -> PlanningService:
     )
 
 
-def _empty(status_name: str, requirements: List[InterventionRequirement]) -> PlanningSolution:
+def _empty(
+    status_name: str, requirements: List[InterventionRequirement]
+) -> PlanningSolution:
     """Build the solution a solve that produced nothing returns.
 
     Args:
@@ -179,7 +181,7 @@ class TestASolveThatProducedNothing:
         assert "UNKNOWN" in message
 
     def test_an_exhausted_search_says_nothing_was_proved(self) -> None:
-        """"No plan found" and "no plan exists" are different answers."""
+        """ "No plan found" and "no plan exists" are different answers."""
         requirements = [_requirement("req-1")]
 
         message = _refuse(_empty("UNKNOWN", requirements), requirements)
@@ -316,7 +318,7 @@ class TestAPartialPlanIsKeptAndReported:
         assert placed == ["req-2"]
 
     def test_each_unplaced_visit_carries_a_reason(self) -> None:
-        """"It did not fit" is not an answer anybody can act on."""
+        """ "It did not fit" is not an answer anybody can act on."""
         requirements = [_requirement("req-1"), _requirement("req-2")]
 
         report = self._report(_partial("FEASIBLE"), requirements, radius_km=0.1)

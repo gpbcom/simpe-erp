@@ -27,7 +27,9 @@ from api.middleware.auth_middleware import AuthMiddleware
 from api.middleware.transaction_middleware import TransactionMiddleware
 from api.observability import router as observability_router
 from api.v1.auth.accounts import router as accounts_router
+from api.v1.bills.integrations import router as integrations_router
 from api.v1.bills.settings import router as billing_settings_router
+from api.v1.portal.portal import router as portal_router
 from api.v1.bills.bills import router as bills_router
 from api.v1.bills.runs import router as billing_runs_router
 from api.v1.auth.auth import router as auth_router
@@ -210,6 +212,10 @@ app.include_router(interventions_router)
 app.include_router(billing_runs_router)
 app.include_router(bills_router)
 app.include_router(billing_settings_router)
+app.include_router(integrations_router)
+# The household's own space. Its own prefix rather than `/me`, because
+# `/me/customers` already means the assistant's portfolio.
+app.include_router(portal_router)
 app.include_router(webhooks_router)
 
 

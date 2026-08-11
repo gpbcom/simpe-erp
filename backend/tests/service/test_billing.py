@@ -11,6 +11,7 @@ import pytest
 
 # First-party imports
 from models.billing.bill import Bill
+from models.billing.bill_recipient import BillRecipient
 from models.billing.billing_run import BillingRun
 from models.companies.company import Company
 from models.configuration.billing_config import BillingConfig
@@ -63,6 +64,10 @@ ADDRESS = PostalAddress(
 )
 # A window in the past: a period still running cannot be billed.
 MARCH = (date(2026, 3, 1), date(2026, 3, 31))
+# A day inside it. Generation is asked for a *day* and resolves the window from
+# the customer's own periodicity, so no test can hand in a window that
+# disagrees with what the customer is billed on.
+IN_MARCH = date(2026, 3, 9)
 
 
 def a_quote_line(
@@ -155,19 +160,28 @@ def a_visit(line_id: str = "line-1", day: date = date(2026, 3, 9)) -> Interventi
     )
 
 
-def a_customer() -> Customer:
+def a_customer(
+    periodicity: Optional[BillingPeriodicity] = None,
+    customer_id: str = CUSTOMER,
+) -> Customer:
     """Build the customer being billed.
+
+    Args:
+        periodicity (Optional[BillingPeriodicity]): Their own invoicing
+            granularity, or ``None`` to follow the agency's.
+        customer_id (str): Their identifier.
 
     Returns:
         Customer: The customer.
     """
     return Customer(
-        id=CUSTOMER,
+        id=customer_id,
         first_name="Jeanne",
         last_name="Vincent",
         phone_number="+33612345678",
         email="jeanne.vincent@example.com",
         address=ADDRESS,
+        billing_periodicity=periodicity,
     )
 
 
@@ -176,11 +190,19 @@ def an_agency() -> Company:
 
     Returns:
         Company: The agency.
+
+    Notes:
+        The registration and VAT numbers are not decoration. A structured
+        invoice is routed on the first and refused without the second, so an
+        agency fixture missing them cannot produce a document at all — which is
+        the behaviour under test elsewhere, and noise here.
     """
     return Company(
         id=COMPANY,
         name="Aide et Présence Paris",
         legal_form="SARL",
+        registration_number="12345678900019",
+        vat_number="FR12345678900",
         iban="FR7630006000011234567890189",
         bic="AGRIFRPP",
         address=ADDRESS,
@@ -192,6 +214,8 @@ def a_service(
     visits: Optional[List[Intervention]] = None,
     already_billed: bool = False,
     documents: Optional[MagicMock] = None,
+    customer: Optional[Customer] = None,
+    overrides: Optional[List[BillingPeriodicity]] = None,
 ) -> BillingService:
     """Build a service over doubles, with one customer and one agency.
 
@@ -201,6 +225,10 @@ def a_service(
         already_billed (bool): Whether the period is billed already.
         documents (Optional[MagicMock]): The object store double, or ``None``
             to build a working one.
+        customer (Optional[Customer]): The customer being billed, when their
+            own invoicing granularity is what the test is about.
+        overrides (Optional[List[BillingPeriodicity]]): The granularities other
+            customers have asked for, which is what widens a run's search.
 
     Returns:
         BillingService: The service under test.
@@ -211,7 +239,9 @@ def a_service(
         pattern for service tests.
     """
     bills = MagicMock(spec=BillRepository)
-    bills.exists_for_period = AsyncMock(return_value=already_billed)
+    bills.find_overlapping = AsyncMock(
+        return_value=[_a_stored_bill()] if already_billed else []
+    )
     bills.next_number = AsyncMock(return_value=(1, "FA-2026-000001"))
     bills.create = AsyncMock(
         side_effect=lambda bill: bill.model_copy(update={"id": "bill-1"})
@@ -253,7 +283,8 @@ def a_service(
     interventions.list_for_customer = AsyncMock(return_value=visits or [])
 
     customers = MagicMock(spec=CustomerRepository)
-    customers.get = AsyncMock(return_value=a_customer())
+    customers.get = AsyncMock(return_value=customer or a_customer())
+    customers.list_billing_periodicities = AsyncMock(return_value=overrides or [])
 
     companies = MagicMock(spec=CompanyRepository)
     companies.get = AsyncMock(return_value=an_agency())
@@ -505,7 +536,7 @@ class TestIssuingAnInvoice:
         """
         service = a_service(quotes=[a_quote([a_quote_line()])])
 
-        issued = await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH)
+        issued = await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
 
         assert issued is not None
         assert issued.status is BillStatus.TO_BE_VALIDATED
@@ -517,7 +548,7 @@ class TestIssuingAnInvoice:
         """A row pointing at a document that does not exist is a burnt number."""
         service = a_service(quotes=[a_quote([a_quote_line()])])
 
-        await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH)
+        await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
 
         service.documents.upload_invoice.assert_awaited_once()
         stored = service.bills.create.await_args.args[0]
@@ -534,7 +565,7 @@ class TestIssuingAnInvoice:
         )
         service = a_service(quotes=[quote])
 
-        issued = await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH)
+        issued = await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
 
         assert issued is not None
         assert issued.total_ht == Decimal("95.73")
@@ -545,7 +576,7 @@ class TestIssuingAnInvoice:
         """A customer who moves must not rewrite last quarter's invoice."""
         service = a_service(quotes=[a_quote([a_quote_line()])])
 
-        issued = await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH)
+        issued = await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
 
         assert issued is not None
         assert issued.customer_full_name == "Jeanne Vincent"
@@ -559,7 +590,7 @@ class TestIssuingAnInvoice:
             return_value=BillingSettings(payment_terms_days=45)
         )
 
-        issued = await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH)
+        issued = await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
 
         assert issued is not None
         assert (issued.due_on - issued.issued_on).days == 45
@@ -574,7 +605,7 @@ class TestIssuingAnInvoice:
         """
         service = a_service(quotes=[])
 
-        assert await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH) is None
+        assert await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH) is None
         service.bills.next_number.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -582,7 +613,7 @@ class TestIssuingAnInvoice:
         """A re-run is a reported no-op, not a second invoice."""
         service = a_service(quotes=[a_quote([a_quote_line()])], already_billed=True)
 
-        assert await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH) is None
+        assert await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH) is None
         service.bills.create.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -599,7 +630,7 @@ class TestIssuingAnInvoice:
         service.documents = None
 
         with pytest.raises(MTBillDocumentStorageUnavailable):
-            await service.generate_for_customer(COMPANY, CUSTOMER, *MARCH)
+            await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
 
 
 class TestRequestingARun:
@@ -647,7 +678,7 @@ class TestRequestingARun:
             return_value=BillingRun(
                 id="run-1",
                 company_id=COMPANY,
-                reference_date=date(2026, 4, 1),
+                reference_date=IN_MARCH,
                 periodicity=BillingPeriodicity.MONTHLY,
                 period_start=MARCH[0],
                 period_end=MARCH[1],
@@ -784,6 +815,128 @@ class TestBillingOneCustomer:
             await service.bill_one(COMPANY, CUSTOMER, date(2026, 3, 15), "manager-1")
 
 
+class TestACustomersOwnGranularity:
+    """Tests for a customer invoiced on something other than the agency rule."""
+
+    @pytest.mark.asyncio
+    async def test_a_weekly_customer_is_billed_over_their_week(self) -> None:
+        """**The override decides the window, and only the window.**
+
+        Notes:
+            The agency bills monthly and this customer weekly, so the same run
+            and the same day produce a seven-day invoice. What it charges is
+            still copied from the quote, which is the line between a
+            granularity and a price: one decides which days appear, the other
+            is never recomputed at all.
+        """
+        service = a_service(
+            quotes=[a_quote([a_quote_line(IN_MARCH)])],
+            customer=a_customer(BillingPeriodicity.WEEKLY),
+        )
+
+        issued = await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH)
+
+        assert issued is not None
+        assert issued.periodicity is BillingPeriodicity.WEEKLY
+        assert (issued.period_start, issued.period_end) == (
+            date(2026, 3, 9),
+            date(2026, 3, 15),
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_customer_whose_period_is_still_running_is_passed_over(
+        self,
+    ) -> None:
+        """**The run's window finishing says nothing about theirs.**
+
+        Notes:
+            A customer billed yearly has an open year while the agency closes a
+            month. Billing them now would invoice care that has not happened, so
+            they are skipped with a warning and picked up once their year ends —
+            not counted as a failure, because nothing went wrong.
+        """
+        service = a_service(
+            quotes=[a_quote([a_quote_line()])],
+            customer=a_customer(BillingPeriodicity.YEARLY),
+        )
+
+        assert await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH) is None
+        service.bills.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_days_already_covered_are_not_billed_a_second_time(self) -> None:
+        """**What a changed granularity would otherwise cost a customer.**
+
+        Notes:
+            Billed for a week and then moved to monthly, they would be charged
+            twice for those days: two windows that differ, so the unique index
+            sees nothing, over care delivered once. The overlap check is what
+            catches it, and it catches a plain re-run in the same breath.
+        """
+        service = a_service(quotes=[a_quote([a_quote_line()])], already_billed=True)
+
+        assert await service.generate_for_customer(COMPANY, CUSTOMER, IN_MARCH) is None
+        service.bills.next_number.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_run_looks_beyond_its_own_window_when_customers_differ(
+        self,
+    ) -> None:
+        """**A yearly customer has work a July run must still find.**
+
+        Notes:
+            Discovery spans every periodicity in use; each customer is then
+            billed over their own window alone, so a wider search never widens
+            what anybody is charged. With nobody overridden the span is exactly
+            the agency's own window and the run does the work it always did.
+        """
+        service = a_service(overrides=[BillingPeriodicity.YEARLY])
+
+        assert await service.spanned_window(IN_MARCH) == (
+            date(2026, 1, 1),
+            date(2026, 12, 31),
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_run_spans_only_the_agency_window_when_nobody_differs(
+        self,
+    ) -> None:
+        """The common case costs nothing: one periodicity, one window."""
+        service = a_service()
+
+        assert await service.spanned_window(IN_MARCH) == MARCH
+
+    @pytest.mark.asyncio
+    async def test_billing_one_customer_refuses_their_open_period(self) -> None:
+        """**The refusal has to name the period they would be charged for.**
+
+        Notes:
+            The agency's March is finished and this customer's year is not.
+            Reporting the agency's window here would tell a manager the period
+            is closed while the server refuses it as open.
+        """
+        service = a_service(
+            quotes=[a_quote([a_quote_line()])],
+            customer=a_customer(BillingPeriodicity.YEARLY),
+        )
+
+        with pytest.raises(MTBillingPeriodInFuture) as raised:
+            await service.bill_one(COMPANY, CUSTOMER, IN_MARCH, "manager-1")
+
+        assert "2026-01-01..2026-12-31" in str(raised.value)
+
+    @pytest.mark.asyncio
+    async def test_the_window_a_screen_previews_is_the_customers_own(self) -> None:
+        """So a manager is not shown a period the customer will never get."""
+        service = a_service(customer=a_customer(BillingPeriodicity.WEEKLY))
+
+        assert await service.window_for(IN_MARCH) == MARCH
+        assert await service.window_for(IN_MARCH, CUSTOMER) == (
+            date(2026, 3, 9),
+            date(2026, 3, 15),
+        )
+
+
 class TestTheInvoicingRules:
     """Tests for the settings the documents are printed under."""
 
@@ -848,6 +1001,7 @@ def _a_stored_bill(status: BillStatus = BillStatus.TO_BE_VALIDATED) -> Bill:
         status=status,
         customer_full_name="Jeanne Vincent",
         customer_address=ADDRESS,
+        recipient=BillRecipient(name="Jeanne Vincent", address=ADDRESS),
         lines=[
             {
                 "quote_line_id": "line-1",

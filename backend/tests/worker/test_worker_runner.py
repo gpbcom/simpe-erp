@@ -146,6 +146,10 @@ class TestHandlerRegistration:
             "skill.added": "skill_added",
             "billing.run.completed": "billing_completed",
             "bill.accepted": "bill_accepted",
+            # A settled invoice is a reportable event, not only an accounting
+            # one: it is what the tax authority wants declared, because VAT on
+            # services falls due on collection.
+            "bill.paid": "bill_paid",
         }
         assert runner.planning.handlers == {}
         assert runner.billing.handlers == {}

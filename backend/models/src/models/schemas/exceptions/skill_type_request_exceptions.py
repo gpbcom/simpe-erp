@@ -12,9 +12,7 @@ class MTSkillTypeUpdateRequestInvalidDescription(
     """Exception raised when an invalid ``description`` value is provided."""
 
 
-class MTSkillTypeUpdateRequestInvalidIsActive(
-    MTInvalidSkillTypeUpdateRequestException
-):
+class MTSkillTypeUpdateRequestInvalidIsActive(MTInvalidSkillTypeUpdateRequestException):
     """Exception raised when an invalid ``is_active`` value is provided."""
 
 

@@ -194,7 +194,9 @@ class TestApplicationMetrics:
         metrics.record_run("succeeded", 12.5, scheduled=42)
 
         rendered = ApplicationMetrics.render(metrics)[0].decode()
-        assert 'planning_run_duration_seconds_count{outcome="succeeded"} 1.0' in rendered
+        assert (
+            'planning_run_duration_seconds_count{outcome="succeeded"} 1.0' in rendered
+        )
         assert "planning_run_scheduled_visits_sum 42.0" in rendered
 
     def test_a_failed_run_records_no_size(self) -> None:
@@ -209,9 +211,7 @@ class TestApplicationMetrics:
         """Which role is slow, and on which topic, is the question asked of this."""
         metrics = ApplicationMetrics()
 
-        metrics.record_message(
-            "planning", "planning.run.requested", "handled", 12.6
-        )
+        metrics.record_message("planning", "planning.run.requested", "handled", 12.6)
 
         rendered = metrics.render()[0].decode()
         assert 'role="planning"' in rendered

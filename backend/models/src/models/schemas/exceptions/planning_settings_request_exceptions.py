@@ -18,9 +18,7 @@ class MTPlanningSettingsRequestInvalidDayStart(
     """Exception raised when the day does not start at a minute of day."""
 
 
-class MTPlanningSettingsRequestInvalidDayEnd(
-    MTInvalidPlanningSettingsRequestException
-):
+class MTPlanningSettingsRequestInvalidDayEnd(MTInvalidPlanningSettingsRequestException):
     """Exception raised when the day does not end after it starts."""
 
 

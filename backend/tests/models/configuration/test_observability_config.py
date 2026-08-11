@@ -105,9 +105,7 @@ class TestObservabilityConfig:
     #  The switches
     # ------------------------------------------------------------------ #
 
-    @pytest.mark.parametrize(
-        "field", ["metrics_enabled", "tracing_enabled"]
-    )
+    @pytest.mark.parametrize("field", ["metrics_enabled", "tracing_enabled"])
     @pytest.mark.parametrize(
         "invalid_flag",
         [

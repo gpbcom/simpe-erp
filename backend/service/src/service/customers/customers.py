@@ -8,7 +8,7 @@ from typing import List, Optional
 from sqlalchemy.exc import SQLAlchemyError
 
 # First-party imports
-from models.enums import RegistrationStatus
+from models.enums import BillingPeriodicity, RegistrationStatus
 from models.people.customer import Customer
 from models.quoting.quote import Quote
 from models.schemas.requests.customers.customer_filter import CustomerFilter
@@ -17,6 +17,7 @@ from service.customers.exceptions import (  # noqa: E501
     MTCustomerNotFound,
     MTCustomerNotPromotable,
 )
+from storage.repositories.auth.user import UserRepository
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.quoting.quote import QuoteRepository
 
@@ -39,6 +40,7 @@ class CustomerService:
         self,
         customers: CustomerRepository,
         quotes: QuoteRepository,
+        users: Optional[UserRepository] = None,
         logger: Optional[Logger] = None,
     ) -> None:
         """Initialize the service.
@@ -46,13 +48,69 @@ class CustomerService:
         Args:
             customers (CustomerRepository): The customer store.
             quotes (QuoteRepository): The quote store.
+            users (Optional[UserRepository]): The account store, needed only to
+                take a household's portal account with them when they are
+                deleted. Optional so the many call sites that never delete —
+                and every existing test — keep working unchanged.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
         self.customers = customers
         self.quotes = quotes
+        self.users = users
         self.logger = logger if logger else getLogger(__name__)
         self.logger.debug("CustomerService created.")
+
+    ############################
+    # Internal Helpers Methods #
+    ############################
+
+    async def _remove_portal_account(self, customer_id: str) -> None:
+        """Remove the household's portal account, so the customer can go.
+
+        Args:
+            customer_id (str): The customer being deleted.
+
+        Notes:
+            - ``users.customer_id`` is a foreign key with ``ON DELETE
+              RESTRICT``, so a household holding an account cannot be deleted
+              until the account is. Without this the delete answers 500 from a
+              constraint, which reads as the server being broken rather than as
+              the household having a login.
+            - Mirrors what removing an assistant already does, and for the same
+              reason: an account whose link names nothing cannot pass the
+              row-level check, so it could sign in and reach nothing.
+            - Skipped entirely when no account store is wired in, which is
+              every caller that never deletes.
+        """
+        if self.users is None:
+            self.logger.debug(
+                "No account store is wired in; customer %s is removed alone.",
+                customer_id,
+            )
+            return
+        account = await self.users.get_by_customer_id(customer_id)
+        if account is None:
+            self.logger.debug("Customer %s holds no portal account.", customer_id)
+            return
+        if account.id is None:
+            self.logger.error(
+                "The portal account of customer %s carries no identifier and "
+                "cannot be deleted; the customer stays.",
+                customer_id,
+            )
+            raise MTCustomerHasQuotes(
+                f"Customer {customer_id!r} has a portal account that cannot be "
+                f"identified, so it cannot be removed with them."
+            )
+        self.logger.warning(
+            "Deleting the portal account %s of customer %s; they lose access "
+            "to their space.",
+            account.email,
+            customer_id,
+        )
+        await self.users.delete(account.id)
+        self.logger.info("Portal account of customer %s deleted.", customer_id)
 
     ############################
     # Publicly Exposed Methods #
@@ -305,6 +363,73 @@ class CustomerService:
             )
         return updated
 
+    async def set_billing_periodicity(
+        self,
+        customer_id: str,
+        periodicity: Optional[BillingPeriodicity],
+        actor: str,
+    ) -> Customer:
+        """Give a customer their own invoicing granularity, or take it away.
+
+        Args:
+            customer_id (str): The customer to change.
+            periodicity (Optional[BillingPeriodicity]): The rule to bill them
+                on, or ``None`` to put them back on the agency's own.
+            actor (str): The manager or administrator making the change.
+
+        Returns:
+            Customer: The updated customer.
+
+        Raises:
+            MTCustomerNotFound: If no such customer exists.
+
+        Notes:
+            - **It applies to the next run and re-issues nothing.** An invoice
+              already written keeps the period it was written for, so moving a
+              customer from monthly to weekly does not split last month's
+              document in four — it decides what the next run bills them over.
+            - Logged at warning, naming who did it: this changes how often a
+              customer is asked for money, which is a commercial decision
+              somebody made rather than a preference somebody toggled.
+            - Any change is accepted, including one taken mid-period. The guard
+              against that costing a customer a second invoice for days they
+              have already paid for lives where it can see the invoices —
+              :meth:`~service.billing.billings.BillingService.generate_for_customer`
+              refuses a window overlapping one already billed.
+        """
+        self.logger.debug(
+            "Changing the billing periodicity of customer %s.", customer_id
+        )
+        try:
+            updated = await self.customers.set_billing_periodicity(
+                customer_id, periodicity
+            )
+        except SQLAlchemyError:
+            self.logger.error(
+                "Writing the billing periodicity of customer %s failed.",
+                customer_id,
+            )
+            raise
+        if updated is None:
+            self.logger.warning(
+                "Cannot set the billing periodicity of the absent customer %s.",
+                customer_id,
+            )
+            raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
+        self.logger.warning(
+            "%s put customer %s on %s billing; this applies to the next run "
+            "and re-issues nothing.",
+            actor,
+            customer_id,
+            periodicity.value if periodicity else "the agency's own",
+        )
+        self.logger.info(
+            "Customer %s is billed %s.",
+            customer_id,
+            periodicity.value if periodicity else "as the agency bills",
+        )
+        return updated
+
     async def promote(self, customer_id: str) -> Customer:
         """Promote a prospect to an active customer.
 
@@ -436,6 +561,7 @@ class CustomerService:
             self.logger.info(
                 "Deleted %d quote(s) of customer %s.", len(quotes), customer_id
             )
+        await self._remove_portal_account(customer_id)
         removed = await self.customers.delete(customer_id)
         if not removed:
             self.logger.error(

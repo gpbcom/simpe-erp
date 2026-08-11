@@ -26,7 +26,7 @@ import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { LANGUAGES, setLanguage } from '@/i18n';
 import { useUpdateMyAccount } from '@/api/queries';
 import { hasAtLeast, useSession } from '@/store/session';
-import type { UserRole } from '@/api/types';
+import type { StaffRole } from '@/store/session';
 import logo from '@/assets/brand/logo-full.svg';
 
 /** How wide the navigation rail is. */
@@ -40,7 +40,22 @@ interface NavEntry {
   /** Which glyph to draw. */
   icon: AppIconName;
   /** The lowest role that may see it. */
-  minimum?: UserRole;
+  /**
+   * The lowest **staff** role that sees this entry.
+   *
+   * @remarks
+   * `StaffRole`, so an entry cannot be gated on `'customer'` — the portal's
+   * navigation is a separate list, because a household sees none of these.
+   */
+  minimum?: StaffRole;
+  /**
+   * Show this entry only to a household.
+   *
+   * @remarks
+   * A flag rather than `minimum: 'customer'`, which does not type-check — a
+   * customer is a different axis, not a lower rung. See `hasAtLeast`.
+   */
+  customerOnly?: boolean;
   /** Whether it is only for an account bound to an assistant record. */
   assistantOnly?: boolean;
 }
@@ -54,6 +69,38 @@ interface NavEntry {
  * allowed to do, which invites them to ask why rather than get on with the job.
  */
 const NAV: { headingKey: string; entries: NavEntry[] }[] = [
+  {
+    // The household's own space, and the only group they see. Their entries
+    // carry `customerOnly` and every staff entry is gated by `minimum` or
+    // `assistantOnly`, so the two sides of the axis never share a menu.
+    headingKey: 'nav.myPortal',
+    entries: [
+      {
+        to: '/portal/planning',
+        labelKey: 'portal.myPlanning',
+        icon: 'planning',
+        customerOnly: true,
+      },
+      {
+        to: '/portal/quotes',
+        labelKey: 'portal.myQuotes',
+        icon: 'quote',
+        customerOnly: true,
+      },
+      {
+        to: '/portal/bills',
+        labelKey: 'portal.myBills',
+        icon: 'bill',
+        customerOnly: true,
+      },
+      {
+        to: '/portal/profile',
+        labelKey: 'portal.myDetails',
+        icon: 'customer',
+        customerOnly: true,
+      },
+    ],
+  },
   {
     headingKey: 'nav.myAccount',
     entries: [
@@ -195,7 +242,15 @@ export function AppShell() {
     window.location.reload();
   };
 
+  const isCustomer = user?.role === 'customer';
+
   const visible = (entry: NavEntry): boolean => {
+    // Compared by identity in both directions. A household sees only their own
+    // entries, and every staff entry is hidden from them — including the
+    // ungated ones like "My account", which would otherwise show a customer a
+    // screen built for an employee.
+    if (entry.customerOnly) return isCustomer;
+    if (isCustomer) return false;
     if (entry.assistantOnly && !user?.hca_id) return false;
     if (entry.minimum && !hasAtLeast(user?.role, entry.minimum)) return false;
     return true;

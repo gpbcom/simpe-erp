@@ -85,6 +85,7 @@ class UserMapper(BaseMapper[User, UserRow]):
             role=row.role,
             is_active=row.is_active,
             hca_id=row.hca_id,
+            customer_id=row.customer_id,
             company_id=row.company_id,
             account_origin=row.account_origin,
             photo_url=row.photo_url,
@@ -121,6 +122,7 @@ class UserMapper(BaseMapper[User, UserRow]):
         row.role = role.value
         row.is_active = model.is_active
         row.hca_id = model.hca_id
+        row.customer_id = model.customer_id
         row.company_id = model.company_id
         row.account_origin = model.account_origin.value
         row.photo_url = str(model.photo_url) if model.photo_url is not None else None  # noqa: E501

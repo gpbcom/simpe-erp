@@ -376,6 +376,54 @@ A run answers **202** and can finish `partial`: some customers billed, some in
 `failed_customer_ids`. Unlike a planning run, that is a success worth keeping —
 see [02](02-domain-model.md#billing).
 
+## The customer portal — `/api/v1/portal` · all `customer`
+
+The household's own space. **Every route resolves the household from the
+credential and never from a path parameter**, so there is no identifier a
+customer could point at somebody else's file.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/profile` · PUT | Their own record. The payload carries the contact block and **nothing else** — no status, no billing periodicity |
+| GET | `/planning?period_start=&period_end=` | Their visits. The period is required: an unbounded read would return every visit ever to draw one week |
+| POST | `/interventions/{id}/cancel` | Cancel a visit |
+| POST | `/interventions/{id}/reschedule` | Move one to a day and a **window** |
+| GET | `/quotes` · `/quotes/{id}/document` | Their quotes, unfiltered, and the PDF |
+| GET | `/bills` · `/bills/{id}/document` | Their invoices, and the PDF |
+
+**Both write routes send the quote back to `pending-validation`** and queue a
+replan. That is the whole difference between a household changing their work and
+a manager doing it: `QuoteService.reschedule_line` deliberately leaves the status
+alone, because a manager answers *when*, while a household changes what the
+agency agreed to deliver. Until it is re-validated, **nothing on that quote is
+scheduled** — not only the visit that changed.
+
+The replan is the consequential part. Without it the cancelled or moved visit
+sits on an assistant's calendar until somebody starts a run by hand, and an
+assistant is sent to a door for work the household withdrew.
+
+A visit, quote or invoice belonging to another household answers **404, not
+403** — the same rule the assistant portfolio follows. Distinguishing the two
+would let somebody walk the identifier space and learn when the agency visits
+their neighbours.
+
+Staff are refused every route here, and a household is refused every staff
+route. The guard compares by **identity**: a customer is not a rung of the staff
+ladder, and `has_at_least` raises rather than answering.
+→ [11](11-security.md#the-customer-is-not-a-rung-of-the-ladder)
+
+`GET /api/v1/quotes/{id}/document` is the manager's twin of the portal
+download, written in the caller's language rather than the household's. Both
+render **on demand and store nothing**: unlike an invoice, a quote is still an
+offer that gets re-priced and edited, so a stored file would serve last month's
+prices. An unpriced quote answers **422** rather than printing a blank amount,
+which would read as *free*.
+
+`POST /api/v1/customers/{id}/account` (manager) is how a household gets access:
+it answers **201** with a one-time password, returned once and never stored in
+plaintext or emailed — the same trade staff accounts make. A second invitation
+for the same household answers **409**.
+
 ## Other
 
 `GET /health`, `GET /ready` — unauthenticated probes.

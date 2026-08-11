@@ -27,9 +27,12 @@ import type {
   CompanyProfileUpdate,
   Customer,
   CustomerFilter,
+  CustomerProfileUpdate,
   NewCustomer,
   RegistrationStatus,
   Hca,
+  Intervention,
+  InterventionReschedule,
   HcaPlanning,
   InterventionType,
   Language,
@@ -44,6 +47,9 @@ import type {
   Quote,
   QuoteReschedule,
   QuoteStatus,
+  EInvoicingProvider,
+  IntegrationCard,
+  IntegrationCredentialsBody,
 } from './types';
 
 /**
@@ -135,6 +141,15 @@ export const keys = {
   billingRuns: ['billing', 'runs'] as const,
   billingRun: (id: string) => ['billing', 'runs', 'detail', id] as const,
   billingSettings: ['billing', 'settings'] as const,
+  integrations: ['billing', 'integrations'] as const,
+  // The household's own space. Its own namespace rather than reusing the staff
+  // keys, so signing out of one and into the other can never serve a cached
+  // page belonging to the wrong reader.
+  portalProfile: ['portal', 'profile'] as const,
+  portalPlanning: (from: string, to: string) =>
+    ['portal', 'planning', from, to] as const,
+  portalQuotes: ['portal', 'quotes'] as const,
+  portalBills: ['portal', 'bills'] as const,
 };
 
 /**
@@ -627,6 +642,46 @@ export function useSetCustomerStatus() {
       request<Customer>(`/api/v1/customers/${customerId}/status`, {
         method: 'PATCH',
         json: { registration_status: status },
+      }),
+    onSuccess: (customer) => {
+      void client.invalidateQueries({ queryKey: ['customers'] });
+      if (customer.id) {
+        void client.invalidateQueries({ queryKey: keys.customer(customer.id) });
+      }
+    },
+  });
+}
+
+/**
+ * Give a customer their own invoicing granularity, or take it away.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * A route of its own rather than a field on the customer PUT: the drawer holds
+ * a record that may be minutes old, and sending the whole of it back would let
+ * that stale copy overwrite an address somebody else corrected meanwhile.
+ *
+ * **`null` is a value, not an omission.** Sending it puts the customer back on
+ * the agency's own rule, which is the only way an override comes off again.
+ *
+ * Nothing is re-issued. The change decides what the next generation run bills
+ * them over, so the bill queries are deliberately **not** invalidated — an
+ * invoice already written keeps the period it was written for.
+ */
+export function useSetCustomerBillingPeriodicity() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      customerId,
+      periodicity,
+    }: {
+      customerId: string;
+      periodicity: BillingPeriodicity | null;
+    }) =>
+      request<Customer>(`/api/v1/customers/${customerId}/billing-periodicity`, {
+        method: 'PATCH',
+        json: { periodicity },
       }),
     onSuccess: (customer) => {
       void client.invalidateQueries({ queryKey: ['customers'] });
@@ -1702,6 +1757,268 @@ export function useUpdateBillingSettings() {
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.billingSettings });
+    },
+  });
+}
+
+/* ------------------------------------------------------------------------ *
+ *  The customer portal
+ *
+ *  Every hook here reads the household from the credential — no identifier is
+ *  ever sent — so there is nothing a browser console could edit to reach
+ *  somebody else's file.
+ * ------------------------------------------------------------------------ */
+
+/** The household's own record. */
+export function usePortalProfile() {
+  return useQuery({
+    queryKey: keys.portalProfile,
+    queryFn: () => request<Customer>('/api/v1/portal/profile'),
+  });
+}
+
+/**
+ * Correct the household's own contact details.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The payload carries the contact block and nothing else — no status, no
+ * billing periodicity. Those are the agency's to set, and a household that
+ * could change the first would put their own work into the next planning run.
+ */
+export function useUpdatePortalProfile() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CustomerProfileUpdate) =>
+      request<Customer>('/api/v1/portal/profile', { method: 'PUT', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.portalProfile });
+    },
+  });
+}
+
+/**
+ * The household's visits over a period.
+ *
+ * @param from - First day of interest, inclusive.
+ * @param to - Last day of interest, inclusive.
+ * @returns The query.
+ *
+ * @remarks
+ * The period is required by the server rather than defaulted: the calendar
+ * always knows which weeks it is showing, and an unbounded read would return
+ * every visit the household has ever had in order to draw seven days.
+ */
+export function usePortalPlanning(from: string, to: string) {
+  return useQuery({
+    queryKey: keys.portalPlanning(from, to),
+    queryFn: () =>
+      request<Intervention[]>(
+        `/api/v1/portal/planning?period_start=${from}&period_end=${to}`,
+      ),
+    enabled: Boolean(from && to),
+  });
+}
+
+/** Every quote ever written for the household, newest first. */
+export function usePortalQuotes() {
+  return useQuery({
+    queryKey: keys.portalQuotes,
+    queryFn: () => request<Quote[]>('/api/v1/portal/quotes'),
+  });
+}
+
+/** Every invoice issued to the household. */
+export function usePortalBills() {
+  return useQuery({
+    queryKey: keys.portalBills,
+    queryFn: () => request<Bill[]>('/api/v1/portal/bills'),
+  });
+}
+
+/**
+ * Cancel one visit.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * **This does more than remove a block from a calendar.** The line goes off the
+ * quote, the quote is repriced and sent back to the agency for validation, and
+ * a replan is queued. Until a manager re-validates it, nothing on that quote is
+ * scheduled — which the screen has to say, because an empty calendar and a
+ * calendar waiting for approval look identical.
+ *
+ * The whole `['portal']` prefix is invalidated: the planning, the quotes and
+ * the profile can all have changed.
+ */
+export function useCancelVisit() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (interventionId: string) =>
+      request<Quote>(`/api/v1/portal/interventions/${interventionId}/cancel`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['portal'] });
+    },
+  });
+}
+
+/**
+ * Move one visit to a day and a window that suit better.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * A **window**, not a time: the solver picks the moment inside it against the
+ * assistant's round. Like cancelling, it reprices and returns the quote to the
+ * agency — a visit moved onto a Sunday costs more, so the household cannot
+ * change the work without the agency seeing the new price.
+ */
+export function useRescheduleVisit() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      interventionId,
+      ...body
+    }: InterventionReschedule & { interventionId: string }) =>
+      request<Quote>(
+        `/api/v1/portal/interventions/${interventionId}/reschedule`,
+        { method: 'POST', json: body },
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['portal'] });
+    },
+  });
+}
+
+/**
+ * Download one of the household's quotes as a PDF.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Streamed through the API rather than fetched from a bucket, so the bearer
+ * guard is the only way to the document. Rendered on demand and in the
+ * household's own language.
+ */
+export function useDownloadPortalQuote() {
+  return useMutation({
+    mutationFn: async (quote: { id: string; reference: string }) => {
+      const { blob, filename } = await requestBlob(
+        `/api/v1/portal/quotes/${quote.id}/document`,
+        `${quote.reference}.pdf`,
+      );
+      saveBlob(blob, filename);
+      return filename;
+    },
+  });
+}
+
+/** Download one of the household's invoices as a PDF. */
+export function useDownloadPortalBill() {
+  return useMutation({
+    mutationFn: async (bill: { id: string; number: string }) => {
+      const { blob, filename } = await requestBlob(
+        `/api/v1/portal/bills/${bill.id}/document`,
+        `${bill.number}.pdf`,
+      );
+      saveBlob(blob, filename);
+      return filename;
+    },
+  });
+}
+
+/**
+ * The certified platforms, with this agency's state against each.
+ *
+ * @returns The query.
+ *
+ * @remarks
+ * Always four cards, configured or not: the gallery's job is to get something
+ * connected, so a list of only what already is would be empty on exactly the
+ * screen that matters.
+ */
+export function useIntegrations() {
+  return useQuery({
+    queryKey: keys.integrations,
+    queryFn: () => request<IntegrationCard[]>('/api/v1/billing/integrations'),
+  });
+}
+
+/**
+ * Connect a platform, making it the one this agency transmits through.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * **The server proves the credentials against the live platform before storing
+ * them**, so a rejected key surfaces here as an error while the dialog is still
+ * open — which is the whole reason enabling is one round trip rather than a
+ * save followed by a separate test.
+ *
+ * Enabling one platform disables the previous one server-side, in the same
+ * transaction, so the whole list is invalidated rather than one card patched.
+ */
+export function useEnableIntegration() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      provider: EInvoicingProvider;
+      body: IntegrationCredentialsBody;
+    }) =>
+      request<IntegrationCard>(`/api/v1/billing/integrations/${input.provider}`, {
+        method: 'PUT',
+        json: input.body,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.integrations });
+    },
+  });
+}
+
+/**
+ * Stop transmitting through a platform, keeping its credentials.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The stored key survives, so switching back does not mean finding it again.
+ */
+export function useDisableIntegration() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (provider: EInvoicingProvider) =>
+      request<IntegrationCard>(`/api/v1/billing/integrations/${provider}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.integrations });
+    },
+  });
+}
+
+/**
+ * Prove stored credentials again and record what happened.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Answers 200 even when the platform refuses — the check *ran*, and what it
+ * found belongs on the card. A key rotated at the far end shows up here rather
+ * than as an invoice that silently never left.
+ */
+export function useCheckIntegration() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (provider: EInvoicingProvider) =>
+      request<IntegrationCard>(
+        `/api/v1/billing/integrations/${provider}/check`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.integrations });
     },
   });
 }

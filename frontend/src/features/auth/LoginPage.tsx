@@ -9,9 +9,12 @@ import CardContent from '@mui/material/CardContent';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import { ApiError } from '@/api/client';
-import { useSession } from '@/store/session';
+import { useSession, WrongSpaceError } from '@/store/session';
 import logo from '@/assets/brand/logo-full.svg';
+import type { SignInSpace } from '@/api/types';
 
 interface LoginPageProps {
   /**
@@ -38,23 +41,38 @@ export function LoginPage({ onRegisterCompany }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [space, setSpace] = useState<SignInSpace>('employee');
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await signIn(email, password);
+      await signIn(email, password, space);
     } catch (cause) {
       // The API answers the same 401 whether the address is unknown or the
       // password is wrong, so this message must not try to be more specific
       // than that — guessing would undo the server's care not to be an
       // account-enumeration oracle.
-      setError(
-        cause instanceof ApiError && cause.status === 401
-          ? t('auth.invalidCredentials')
-          : t('common.error'),
-      );
+      //
+      // The wrong-space case is the exception, and it is safe: the credentials
+      // have already been accepted, so naming which side the account is on
+      // discloses nothing an attacker could not have learnt by signing in.
+      // Reported as "invalid credentials" it would send somebody to reset a
+      // password that works perfectly.
+      if (cause instanceof WrongSpaceError) {
+        setError(
+          cause.belongsTo === 'employee'
+            ? t('auth.useEmployeeSpace')
+            : t('auth.useCustomerSpace'),
+        );
+      } else {
+        setError(
+          cause instanceof ApiError && cause.status === 401
+            ? t('auth.invalidCredentials')
+            : t('common.error'),
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -81,6 +99,31 @@ export function LoginPage({ onRegisterCompany }: LoginPageProps) {
             </Box>
 
             <Typography variant="h2">{t('auth.signInTitle')}</Typography>
+
+            <ToggleButtonGroup
+              exclusive
+              fullWidth
+              size="small"
+              value={space}
+              onChange={(_event, next: SignInSpace | null) => {
+                // `null` is what a second click on the selected button sends.
+                // Ignored rather than honoured: a form with neither side chosen
+                // has no landing page, and the control would look broken.
+                if (next) {
+                  setSpace(next);
+                  setError(null);
+                }
+              }}
+              aria-label={t('auth.space')}
+              data-testid="login-space"
+            >
+              <ToggleButton value="employee" data-testid="login-space-employee">
+                {t('auth.spaceEmployee')}
+              </ToggleButton>
+              <ToggleButton value="customer" data-testid="login-space-customer">
+                {t('auth.spaceCustomer')}
+              </ToggleButton>
+            </ToggleButtonGroup>
 
             {error ? (
               <Alert severity="error" data-testid="login-error">

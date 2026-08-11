@@ -13,6 +13,7 @@ import Typography from '@mui/material/Typography';
 import CloseIcon from '@mui/icons-material/Close';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import { useCustomer, useCustomerQuotes, usePromoteCustomer } from '@/api/queries';
+import { CustomerBillingCard } from './CustomerBillingCard';
 import { CustomerStatusChip } from './CustomerStatusChip';
 import { QuoteArrangementCard } from './QuoteArrangementCard';
 import { formatDate, formatDateTime } from '@/utils/format';
@@ -188,6 +189,16 @@ export function CustomerDetailDrawer({ selected, onClose }: CustomerDetailDrawer
               )}
             </Grid>
           </Grid>
+
+          <Divider />
+
+          {/*
+            Between the facts and the work, because that is what it is: how
+            often this household is invoiced is part of the arrangement with
+            them, not a setting filed away on another screen. The agency-wide
+            rule lives on the billing-rules page; this is the exception to it.
+          */}
+          <CustomerBillingCard customer={customer} />
 
           <Divider />
 

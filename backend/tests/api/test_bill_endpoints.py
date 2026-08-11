@@ -29,6 +29,7 @@ from models.enums import (
     BillingPeriodicity,
     BillingRunStatus,
     BillStatus,
+    EventRoutingKey,
     ServiceCategory,
     UserRole,
 )
@@ -96,6 +97,7 @@ def a_bill(**overrides: Any) -> Bill:
         "due_on": date(2026, 5, 1),
         "customer_full_name": "Jeanne Vincent",
         "customer_address": ADDRESS,
+        "recipient": {"name": "Jeanne Vincent", "address": ADDRESS},
         "lines": [
             {
                 "quote_line_id": "line-1",
@@ -405,18 +407,47 @@ class TestTheLifecycleEndpoint:
         publisher.publish.assert_awaited_once()
         assert publisher.publish.await_args.args[2]["bill_id"] == "bill-1"
 
-    def test_any_other_move_announces_nothing(
+    def test_marking_it_paid_declares_it_without_re_sending_it(
         self, client: TestClient, service: MagicMock, publisher: MagicMock
     ) -> None:
-        """Marking an invoice paid must not re-send it.
+        """**Two obligations, and only one of them reaches the customer.**
+
+        Args:
+            service (MagicMock): The billing service double.
+            publisher (MagicMock): The event publisher double.
+
+        Notes:
+            Marking an invoice paid must not re-send it — the customer already
+            has it — but collection *is* a reportable event: VAT on services
+            falls due when the money arrives, so the settlement is declared to
+            the tax authority. The two travel on different routing keys, and
+            asserting the key rather than merely "something was published" is
+            what keeps a settled invoice out of the customer's inbox.
+        """
+        service.set_status = AsyncMock(return_value=a_bill(status=BillStatus.PAID))
+
+        client.patch("/api/v1/bills/bill-1/status", json={"status": "paid"})
+
+        publisher.publish.assert_awaited_once()
+        assert publisher.publish.await_args.args[0] is EventRoutingKey.BILL_PAID
+        assert publisher.publish.await_args.args[2]["bill_id"] == "bill-1"
+
+    def test_a_move_that_is_neither_approval_nor_payment_announces_nothing(
+        self, client: TestClient, service: MagicMock, publisher: MagicMock
+    ) -> None:
+        """The other transitions are bookkeeping and reach nobody.
 
         Args:
             service (MagicMock): The billing service double.
             publisher (MagicMock): The event publisher double.
         """
-        service.set_status = AsyncMock(return_value=a_bill(status=BillStatus.PAID))
+        service.set_status = AsyncMock(
+            return_value=a_bill(status=BillStatus.WAITING_PAYMENT)
+        )
 
-        client.patch("/api/v1/bills/bill-1/status", json={"status": "paid"})
+        client.patch(
+            "/api/v1/bills/bill-1/status", json={"status": "waiting-payment"}
+        )
 
         publisher.publish.assert_not_awaited()
 

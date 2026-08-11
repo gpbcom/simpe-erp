@@ -19,7 +19,8 @@ React 19 + TypeScript (strict) + MUI v6, built by Vite. `frontend/`.
 ## Screens
 
 ```
-/login                       (rendered when there is no session)
+/  and  /welcome             the landing page, signed in or out
+/login                       (anything else, when there is no session)
 /change-password             (rendered when must_change_password is set)
 
   assistant                          manager / administrator
@@ -31,10 +32,48 @@ React 19 + TypeScript (strict) + MUI v6, built by Vite. `frontend/`.
                                      /skills         skill catalogue
                                      /planning-settings planning rules
                                      /notifications
+
+  customer  (the portal — a different axis, not a lower rung)
+  ──────────────────────────────────────────────────────────
+  /portal/planning   their visits, with cancel and move
+  /portal/quotes     their quotes, with a PDF download
+  /portal/bills      their invoices, with a PDF download
+  /portal/profile    their own details, editable
 ```
 
-`/` redirects to `/quotes` for a manager and `/me/planning` for an assistant.
-An unknown route falls back to the same place.
+Signed in, `/` redirects to `/quotes` for a manager, `/me/planning` for an
+assistant and `/portal/planning` for a household. An unknown route falls back to
+the same place. **Three landings, not two**: a customer has none of the staff
+screens, so sending them to the assistant's diary would be a redirect through a
+page that answers 403.
+
+**Signed out, the rule is deliberately the other way round from the obvious
+one**: the landing page is *named* — `/` and `/welcome` — and the sign-in form
+is the fallback. Making the welcome page the catch-all reads well until an
+operator's session expires on `/quotes` and they are shown a product tour
+instead of the password box they wanted; it also breaks every GUI suite, which
+opens the root and expects to sign in. `Sign In As` navigates to `/login`
+itself for that reason.
+
+### `/welcome` — the landing page
+
+Outside `AppShell`, full-bleed: the navigation rail and the account menu mean
+nothing on a page that describes the product, and the hero wants the width.
+
+It is reachable **signed in and signed out**, which decides its one control.
+The session button cannot be labelled from a role — it says what the visitor
+can do next. Signed out it reads "sign in" and goes to `/login`. Signed in it
+names the user, reads "sign out", and ends the session **without going
+anywhere else**: the signed-out application has no other page that means
+anything to somebody who just chose to leave. The button is repeated at the
+foot, because the page is long enough that reaching the end should not mean
+scrolling back.
+
+Nine cards, one per capability, each carrying an `AppIcon` glyph already used
+on the screen it describes — so the tour and the product name things the same
+way. Covered by `33_welcome.robot`, which asserts the count rather than
+sampling: a landing page listing three of nine capabilities answers "does this
+do my job?" with a maybe.
 
 ### The four that carry the requirements
 
@@ -72,6 +111,68 @@ ringed in the intervention's status colour, falling back to their initials —
 tooltip names the customer, their address and telephone number, the service and
 the time. A side list mirrors the pins, and a counter reports drawn against
 total, because a silently dropped pin is a visit nobody is looking at.
+
+## The customer portal
+
+The fourth identity, and the one place in the front-end where the role model is
+**not** a ladder. `hca < manager < admin` is ranked and `hasAtLeast` walks it;
+`customer` is a different axis — somebody the agency serves rather than somebody
+who works for it.
+
+**That distinction is enforced by the type, not by a convention.**
+`hasAtLeast(role, minimum)` takes `minimum: StaffRole`, so
+`hasAtLeast(role, 'customer')` **does not compile**. Written and allowed, it
+would be satisfied by every employee — admitting staff to a household's
+calendar, address and invoices. The same narrowing applies to
+`RoleRoute minimum=` and to a nav entry's `minimum`, so neither can be gated on
+a customer either; the portal uses `CustomerRoute`, which compares by identity,
+and the nav uses a `customerOnly` flag. The server refuses the question the same
+way — `rank()` raises. → [11](11-security.md#the-customer-is-not-a-rung-of-the-ladder)
+
+### The login screen chooses a space
+
+An Employee / Customer toggle above the fields, sent to `signIn` and validated
+**after** authentication. A staff account signing in as a customer is signed
+straight back out and told which side it belongs to.
+
+That message is more specific than any other sign-in error, and deliberately so.
+Everywhere else the form refuses to distinguish "unknown address" from "wrong
+password", because that would make it an account-enumeration oracle. Here the
+credentials have *already been accepted*, so naming the space discloses nothing
+— and reporting it as "invalid credentials" would send somebody to reset a
+password that works perfectly.
+
+### What a household may change, and what they may not
+
+`/portal/profile` carries the contact block and **nothing else**. Two fields are
+absent on purpose:
+
+- `registration_status` — a household who could set their own would promote
+  themselves from prospect to active, which is exactly what makes the planner
+  schedule their work.
+- `billing_periodicity` — a commercial term the agency agrees.
+
+Neither is a field the request model accepts, so leaving them off the form is
+honest rather than decorative.
+
+### Cancelling and moving say what they cost
+
+Both send the whole quote back to `pending-validation`, so **none of its visits
+are scheduled** until a manager re-validates — not only the one that changed.
+The cancel dialog states that in as many words: a household who cancels one
+Tuesday and finds their week empty would reasonably think the application had
+broken.
+
+The reschedule dialog asks for a **window**, not a time, because the solver
+picks the moment inside it against the assistant's round. It pre-fills an hour
+either side of the current visit — a window exactly as long as the work leaves
+the solver nowhere to put it, so the visit returns unplaced, which reads as the
+change having been ignored rather than refused.
+
+The portal calendar **shows weekends**, unlike the assistant's diary. That
+screen hides them because solved work is weekday work and two empty columns
+waste width; a household asking "is anybody coming on Saturday?" is asking a
+question the empty column answers.
 
 ## The language is server state now
 

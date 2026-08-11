@@ -34,5 +34,9 @@ class MTCustomerInvalidRegistrationStatus(MTInvalidCustomerException):
     """Exception raised when an invalid ``registration_status`` is provided."""
 
 
+class MTCustomerInvalidBillingPeriodicity(MTInvalidCustomerException):
+    """Exception raised when an invalid ``billing_periodicity`` is provided."""
+
+
 class MTCustomerInvalidDate(MTInvalidCustomerException):
     """Exception raised when an invalid timestamp value is provided."""

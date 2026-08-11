@@ -5,10 +5,11 @@ from logging import Logger, getLogger
 from typing import List, Optional
 
 # Third-party imports
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 # First-party imports
 from api.dependencies import (
+    get_quote_document_service,
     get_admin_user,
     get_event_publisher,
     get_manager_user,
@@ -33,6 +34,7 @@ from models.schemas.requests.quoting.quote_interruption_request import (
 )
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
 from service.messaging.publisher import EventPublisher
+from service.quotes.documents import QuoteDocumentService
 from service.quotes.quotes import QuoteService
 
 logger: Logger = getLogger(__name__)
@@ -631,3 +633,50 @@ async def delete_quote(
     """
     logger.info("Deleting quote %s at the request of %s.", quote_id, caller.email)
     await service.delete(quote_id)
+
+
+@router.get(
+    "/{quote_id}/document",
+    response_class=Response,
+    response_model=None,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def download_quote_document(
+    quote_id: str,
+    service: QuoteDocumentService = Depends(get_quote_document_service),
+    caller: User = Depends(get_manager_user),
+) -> Response:
+    """Serve one quote as a PDF.
+
+    Args:
+        quote_id (str): The quote to render.
+        service (QuoteDocumentService): The document service.
+        caller (User): The authenticated caller; supplies the language.
+
+    Returns:
+        Response: The document, as ``application/pdf``.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists; a 404.
+        MTQuoteNotPriced: If it has never been priced; a 422.
+        MTQuoteRenderFailed: If the document could not be laid out; a 500.
+
+    Notes:
+        - **Rendered on demand, not read from a bucket.** Unlike an invoice, a
+          quote is still an offer: it is re-priced when a rate changes and its
+          lines are edited. A stored file would go stale silently and somebody
+          would download last month's prices.
+        - Written in the **caller's** language. A manager checking what a
+          household will receive reads it in their own; the portal route below
+          uses the household's.
+        - ``response_model=None`` because the body is bytes — without it FastAPI
+          tries to serialise the PDF as JSON. The ``responses`` block keeps the
+          OpenAPI schema honest about the content type.
+    """
+    logger.info("%s is downloading quote %s.", caller.email, quote_id)
+    payload, filename = await service.document(quote_id, language=caller.language)
+    return Response(
+        content=payload,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 # First-party imports
 from api.dependencies import (
+    get_invoicing_service,
     get_billing_service,
     get_app_config,
     get_customer_service,
@@ -25,6 +26,7 @@ from models.auth.user import User
 from models.enums import BillStatus, QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.quoting.quote import Quote
+from models.schemas.requests.billing.bill_paid_request import BillPaidRequest
 from models.schemas.requests.billing.bill_accepted_request import (
     BillAcceptedRequest,
 )
@@ -38,6 +40,7 @@ from models.schemas.responses.messaging.email_dispatch_response import (
     EmailDispatchResponse,  # noqa: E501
 )
 from service.billing.billings import BillingService
+from service.integrations.invoicing import InvoicingService
 from service.customers.customers import CustomerService
 from service.emails.emails import EmailService
 from service.emails.exceptions import MTInvalidEmailException
@@ -293,4 +296,79 @@ async def bill_accepted(
             actor="bill-webhook@simple-erp.system",
         )
     logger.info("Invoice %s reached customer %s.", bill.number, bill.customer_id)
+    return BillDispatchResponse(bill_id=request.bill_id, sent=True)
+
+
+@router.post("/bill-paid", response_model=BillDispatchResponse)
+async def bill_paid(
+    request: BillPaidRequest,
+    x_webhook_token: Optional[str] = Header(default=None),
+    billing: BillingService = Depends(get_billing_service),
+    transmissions: InvoicingService = Depends(
+        get_invoicing_service
+    ),
+) -> BillDispatchResponse:
+    """Transmit a settled invoice to the agency's certified platform.
+
+    Args:
+        request (BillPaidRequest): Names the invoice that was collected.
+        x_webhook_token (Optional[str]): The shared secret, as a header.
+        billing (BillingService): Reads the invoice and its stored document.
+        transmissions (InvoicingService): Sends it where it must go.
+
+    Returns:
+        BillDispatchResponse: Whether the platform accepted it.
+
+    Raises:
+        HTTPException: 401 when the shared secret is missing or wrong.
+        MTBillNotFound: If the invoice does not exist; answered as a 404.
+
+    Notes:
+        - **What is transmitted depends on who owed the money**, not on this
+          endpoint. A household's settled invoice is *declared* — flux 10.4,
+          because VAT on services falls due on collection — and reaches nobody;
+          a business receives the structured document; a public body is reached
+          through Chorus Pro. Most of this agency's revenue takes the first
+          route, which is why a literal reading of "send the paid bill" would be
+          wrong for nearly every invoice it issues.
+        - **A failed transmission answers 200 with ``sent=false``.** The payment
+          is recorded and true whatever a platform said; answering 5xx would have
+          the announcement redelivered and, worse, would make a working payment
+          look like a broken one. The failure is logged with the platform's own
+          words.
+        - **An agency with nothing connected is a 409 and stays one.** That is
+          not a transmission that failed but one that could not be attempted,
+          and the fix is a person connecting a platform rather than a retry.
+    """
+    configured = get_app_config().billing_webhook.get_token()
+    if not configured or not x_webhook_token:
+        logger.warning("Refused a bill-paid webhook with no secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This webhook requires a shared secret.",
+        )
+    if not compare_digest(x_webhook_token, configured):
+        logger.warning("Refused a bill-paid webhook with a wrong secret.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This webhook requires a shared secret.",
+        )
+
+    bill = await billing.get(request.bill_id)
+    document, _ = await billing.document(bill.id or request.bill_id)
+    receipt = await transmissions.transmit(bill, document)
+    if not receipt.succeeded():
+        logger.error(
+            "Invoice %s was not transmitted as %s: %s",
+            bill.number,
+            receipt.kind.value,
+            receipt.error,
+        )
+        return BillDispatchResponse(bill_id=request.bill_id, sent=False)
+    logger.info(
+        "Invoice %s transmitted as %s (%s).",
+        bill.number,
+        receipt.kind.value,
+        receipt.reference,
+    )
     return BillDispatchResponse(bill_id=request.bill_id, sent=True)

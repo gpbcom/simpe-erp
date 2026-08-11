@@ -8,10 +8,12 @@ customers went unbilled.
 
 from .bill import Bill
 from .bill_line import BillLine
+from .bill_recipient import BillRecipient
 from .billing_run import BillingRun
 
 __all__ = [
     "Bill",
     "BillLine",
+    "BillRecipient",
     "BillingRun",
 ]

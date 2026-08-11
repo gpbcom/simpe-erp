@@ -4,14 +4,18 @@ from __future__ import annotations
 from decimal import Decimal
 from io import BytesIO
 from logging import Logger, getLogger
+from pathlib import Path
 from typing import ClassVar, Dict, List, Optional, Tuple
 
 # Third-party imports
+import reportlab
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Flowable,
     Image,
@@ -36,6 +40,8 @@ class InvoiceRenderer:
     """Lays out a bill as the PDF a French customer is legally owed.
 
     Attributes:
+        FONT (ClassVar[str]): The embedded typeface the document is set in.
+        BOLD_FONT (ClassVar[str]): Its bold face.
         LABELS (ClassVar[Dict[Language, Dict[str, str]]]): Wording per language.
         HEADERS (ClassVar[Dict[Language, Tuple[str, ...]]]): Line-table column
             headings per language.
@@ -160,6 +166,8 @@ class InvoiceRenderer:
         ),
     }
 
+    FONT: ClassVar[str] = "InvoiceSans"
+    BOLD_FONT: ClassVar[str] = "InvoiceSans-Bold"
     PAGE_SIZE: ClassVar[Tuple[float, float]] = A4
     MARGIN: ClassVar[float] = 15 * mm
     LOGO_WIDTH: ClassVar[float] = 45 * mm
@@ -182,7 +190,17 @@ class InvoiceRenderer:
                 named after this module.
         """
         self.logger = logger if logger else getLogger(__name__)
+        self._register_fonts()
         self.styles = getSampleStyleSheet()
+        # Every paragraph style, not only the ones used: a heading reached
+        # through a parent would otherwise keep a face that is not embedded,
+        # and the sample sheet also holds list styles, which carry no face at
+        # all.
+        for style in self.styles.byName.values():
+            existing = getattr(style, "fontName", None)
+            if existing is None:
+                continue
+            style.fontName = self.BOLD_FONT if "Bold" in existing else self.FONT
         self.right = ParagraphStyle(
             "InvoiceRight", parent=self.styles["BodyText"], alignment=TA_RIGHT
         )
@@ -191,6 +209,35 @@ class InvoiceRenderer:
     ############################
     # Internal Helpers Methods #
     ############################
+
+    def _register_fonts(self) -> None:
+        """Make the embedded typeface available, once per process.
+
+        Notes:
+            - **The built-in typefaces are not embedded, and an archival invoice
+              must be.** Helvetica and its siblings are named in the file and
+              resolved by whatever the reader happens to have, which is exactly
+              what an archive format forbids: a document that renders
+              differently in ten years is not a copy of what the customer was
+              sent. A TrueType face is subset and written into the file itself.
+            - The face ships **inside ReportLab**, so nothing new is added to
+              the repository and no system font is depended on — a container
+              with no fonts installed renders identically. It covers every
+              accent French needs and the euro sign, which was checked rather
+              than assumed.
+            - Registration is global to the process and idempotent here, because
+              a renderer is built per request in some paths and once in others.
+        """
+        if self.FONT in pdfmetrics.getRegisteredFontNames():
+            return
+        folder = Path(reportlab.__file__).parent / "fonts"
+        for name, file_name in (
+            (self.FONT, "Vera.ttf"),
+            (self.BOLD_FONT, "VeraBd.ttf"),
+        ):
+            pdfmetrics.registerFont(TTFont(name, str(folder / file_name)))
+        pdfmetrics.registerFontFamily(self.FONT, normal=self.FONT, bold=self.BOLD_FONT)
+        self.logger.debug("Registered the embedded invoice typeface.")
 
     def _money(self, amount: Decimal) -> str:
         """Return an amount as it is printed.
@@ -359,7 +406,8 @@ class InvoiceRenderer:
                 [
                     ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
                     ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTNAME", (0, 0), (-1, 0), self.BOLD_FONT),
+                    ("FONTNAME", (0, 1), (-1, -1), self.FONT),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -398,7 +446,8 @@ class InvoiceRenderer:
             TableStyle(
                 [
                     ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                    ("FONTNAME", (0, 0), (-1, -1), self.FONT),
+                    ("FONTNAME", (0, -1), (-1, -1), self.BOLD_FONT),
                     ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.black),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ]
@@ -549,6 +598,7 @@ class InvoiceRenderer:
                 rightMargin=self.MARGIN,
                 title=f"{labels['title']} {bill.number}",
                 author=Formatter.trading_name(company),
+                initialFontName=self.FONT,
             )
             document.build(drawables)
         except Exception as exc:  # noqa: BLE001 - reported as a render failure

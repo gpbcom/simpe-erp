@@ -33,6 +33,10 @@ vi.mock('@/components/filters/EntityFilterBar', () => ({
 const query = { data: undefined as Bill[] | undefined, isLoading: false };
 
 vi.mock('@/api/queries', () => ({
+  // The rules tab renders the e-invoicing warning, which asks whether a
+  // platform is connected. Stubbed as "one is" so these tests stay about
+  // the invoicing rules; the warning has its own tests.
+  useIntegrations: () => ({ data: [{ enabled: true }], isLoading: false }),
   useBills: () => query,
   useBill: () => ({ data: undefined }),
   useBillingRun: () => ({ data: undefined }),
@@ -71,6 +75,24 @@ const MARCH: Bill = {
     longitude: null,
     geocoding_error: null,
   },
+  recipient: {
+    kind: 'individual',
+    name: 'Jeanne Vincent',
+    address: {
+      street: '1 rue des Lilas',
+      postal_code: '75011',
+      city: 'Paris',
+      country: 'France',
+      latitude: null,
+      longitude: null,
+      geocoding_error: null,
+    },
+    siren: null,
+    vat_number: null,
+    service_code: null,
+    share_ttc: null,
+  },
+  operation_nature: 'services',
   lines: [],
   total_ht: '63.82',
   total_vat: '3.51',

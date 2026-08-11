@@ -121,9 +121,7 @@ class TestThePeriodIsTheSumOfItsDays:
         work = _week(build, 3)
 
         whole = _solve(config, work, staff)
-        apart = sum(
-            _solve(config, [item], staff).total_travel_minutes for item in work
-        )
+        apart = sum(_solve(config, [item], staff).total_travel_minutes for item in work)
 
         assert whole.total_travel_minutes == apart
 
@@ -231,9 +229,10 @@ class TestSolvingTheDaysAtOnce:
         solution = await service.solve_period(work, staff, build.settings())
 
         assert solution.unassigned_requirement_ids == []
-        assert solution.total_travel_minutes == _solve(
-            config, work, staff
-        ).total_travel_minutes
+        assert (
+            solution.total_travel_minutes
+            == _solve(config, work, staff).total_travel_minutes
+        )
 
     async def test_an_empty_period_needs_no_threads(self) -> None:
         """Nothing to plan is answered without dispatching anything."""

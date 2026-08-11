@@ -12,8 +12,32 @@
  * "hand-written" does not mean "allowed to drift".
  */
 
-/** What an account may do. */
-export type UserRole = 'hca' | 'manager' | 'admin';
+/**
+ * What an account may do.
+ *
+ * @remarks
+ * **These are two axes, not four rungs.** `hca < manager < admin` is a ladder
+ * and `hasAtLeast` walks it. `customer` is not above or below any of them — it
+ * is somebody the agency serves rather than somebody who works for it.
+ *
+ * So `hasAtLeast` is **never** called with `'customer'`: below the ladder it
+ * would be satisfied by every employee, admitting staff to a household's
+ * private space; above it, a customer would satisfy the manager checks. The
+ * portal sits behind `CustomerRoute`, which compares by identity. The server
+ * enforces the same rule by refusing to rank a customer at all — see
+ * `docs/11-security.md`.
+ */
+export type UserRole = 'hca' | 'manager' | 'admin' | 'customer';
+
+/**
+ * Which space a sign-in is for.
+ *
+ * @remarks
+ * Chosen on the login screen and validated after authentication, so an
+ * employee account signing in as a customer is refused with a message naming
+ * the mistake rather than landing somewhere confusing.
+ */
+export type SignInSpace = 'employee' | 'customer';
 
 /** Where a quote sits in its lifecycle. */
 export type QuoteStatus =
@@ -56,6 +80,15 @@ export interface User {
   language: Language;
   is_active: boolean;
   hca_id: string | null;
+  /**
+   * The household this account belongs to, for a customer account.
+   *
+   * @remarks
+   * Set for `customer` and `null` for every other role — the server refuses to
+   * build an account that has both a staff role and a customer link, because
+   * such an account passes the staff guards *and* resolves to one household.
+   */
+  customer_id: string | null;
   company_id: string | null;
   /**
    * The holder's portrait, when they have uploaded one.
@@ -323,6 +356,15 @@ export interface Customer {
   email: string;
   address: PostalAddress;
   registration_status: RegistrationStatus;
+  /**
+   * How often this customer is invoiced.
+   *
+   * @remarks
+   * `null` is the ordinary case and means "whatever the agency bills on" — not
+   * "unknown". A customer with a value here has been deliberately put on a
+   * granularity of their own, and it is the one their invoices cover.
+   */
+  billing_periodicity: BillingPeriodicity | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -376,6 +418,44 @@ export interface CustomerFilter {
   phone?: string;
   has_ongoing_arrangement?: boolean;
   is_geocoded?: boolean;
+}
+
+/**
+ * What a household may change about themselves.
+ *
+ * @remarks
+ * The contact block and **nothing else**. There is no `registration_status` —
+ * a household that could set their own would promote themselves from prospect
+ * to active, which is exactly what makes the planner schedule their work — and
+ * no `billing_periodicity`, which is a term the agency agrees.
+ */
+export interface CustomerProfileUpdate {
+  first_name: string;
+  last_name: string;
+  phone_number: string;
+  email: string;
+  address: {
+    street: string;
+    postal_code: string;
+    city: string;
+    country: string;
+  };
+}
+
+/**
+ * When a household would rather a visit happened.
+ *
+ * @remarks
+ * A **window**, not a time: the household says when they are available and the
+ * solver picks the moment inside it, against the assistant's round. An exact
+ * time would be a promise the planner cannot keep.
+ *
+ * Minutes from midnight, like every other time on the wire.
+ */
+export interface InterventionReschedule {
+  day: string;
+  start_minute: number;
+  end_minute: number;
 }
 
 /** One service on a quote. */
@@ -960,6 +1040,34 @@ export interface BillLine {
  * on the wire and the screen never re-sums them. `customer_full_name` and the
  * address are the copies taken when it was issued.
  */
+/**
+ * What kind of party an invoice is addressed to.
+ *
+ * @remarks
+ * **This decides the regulatory regime, not merely the wording.** An
+ * `individual` is *reported* to the tax authority; a `business` or a `public`
+ * body is *transmitted* as a structured document through a platform.
+ */
+export type RecipientKind = 'individual' | 'business' | 'public';
+
+/** What an invoice covers. Everything this agency sells is `services`. */
+export type OperationNature = 'goods' | 'services' | 'mixed';
+
+/** The party that owes an invoice. */
+export interface BillRecipient {
+  kind: RecipientKind;
+  name: string;
+  address: PostalAddress;
+  /** The legal identifier a structured invoice is routed on. */
+  siren: string | null;
+  vat_number: string | null;
+  /** Where inside a public body the invoice is routed. */
+  service_code: string | null;
+  /** What this party owes, when the invoice is split between payers. */
+  share_ttc: string | null;
+}
+
+/** One invoice: what a customer owes for the visits made in one period. */
 export interface Bill {
   id: string | null;
   company_id: string;
@@ -974,8 +1082,21 @@ export interface Bill {
   issued_on: string;
   due_on: string;
   status: BillStatus;
+  /** The person cared for — the party the work was delivered to. */
   customer_full_name: string;
+  /** Where the care was delivered. */
   customer_address: PostalAddress;
+  /**
+   * The party that owes the money.
+   *
+   * @remarks
+   * Not the same question as `customer_full_name`, even though they carry the
+   * same values for a household paying its own bills. They diverge exactly
+   * where it matters: a conseil départemental or a mutuelle funding the care.
+   */
+  recipient: BillRecipient;
+  /** Whether the invoice covers goods, services, or both. */
+  operation_nature: OperationNature;
   lines: BillLine[];
   total_ht: string;
   total_vat: string;
@@ -1024,4 +1145,46 @@ export interface BillingSettings {
   escompte_offered: boolean;
   updated_by: string | null;
   updated_at: string | null;
+}
+
+/** A certified e-invoicing platform this agency can transmit through. */
+export type EInvoicingProvider = 'b2brouter' | 'storecove' | 'invopop' | 'iopole';
+
+/** What the reform requires be transmitted for a given invoice. */
+export type TransmissionKind = 'invoice' | 'payment-report' | 'chorus-pro';
+
+/**
+ * One card in the integrations gallery.
+ *
+ * @remarks
+ * **There is no field for the API key, and that is deliberate.** The server
+ * stores it encrypted and never returns it; `credential_hint` is the masked
+ * tail, which lets a manager recognise their own key and is useless to anybody
+ * else. A type that carried the secret would invite a screen that displayed it.
+ *
+ * `documentation_verified` is `false` for exactly one platform — Iopole, whose
+ * API documentation could not be read directly. The card says so rather than
+ * offering all four as equals.
+ */
+export interface IntegrationCard {
+  provider: EInvoicingProvider;
+  name: string;
+  home_url: string;
+  documentation_url: string;
+  coverage: TransmissionKind[];
+  required_fields: string[];
+  documentation_verified: boolean;
+  configured: boolean;
+  enabled: boolean;
+  credential_hint: string;
+  last_checked_at: string | null;
+  last_check_error: string | null;
+}
+
+/** What the enable dialog sends. */
+export interface IntegrationCredentialsBody {
+  api_key: string;
+  account_id?: string | null;
+  legal_entity_id?: string | null;
+  base_url?: string | null;
 }

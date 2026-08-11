@@ -225,3 +225,79 @@ email:
 
 webhook:
   enabled: false
+
+# The two announcements a bill makes: approval, which emails the invoice to its
+# customer, and collection, which transmits it to the certified e-invoicing
+# platform. Both are the API calling itself over the in-cluster Service, and
+# both are off by default — emailing customers is a decision rather than a
+# default, and an agency that has connected no platform has nothing to transmit
+# through.
+#
+# **Switching this on is what makes automatic transmission on payment work.**
+# With it off, a bill marked paid publishes its event, the notifications worker
+# declines to call, and nothing reaches the platform.
+billingWebhook:
+  enabled: false
+
+# The certified e-invoicing platforms an agency may connect to, and how long to
+# wait on one. **A catalogue rather than a set of dials**: which platforms are
+# worth offering changes when the French registry does — one loses its
+# registration, another publishes an API — so it is values rather than a
+# constant in the image, and adding a fifth is a `helm upgrade`.
+#
+# It is also the single statement of who the platforms are: the gallery, the
+# enable dialog and the transmission service all read it, so a display name or
+# a coverage claim is written once.
+#
+# `coverage` is what the gallery's tabs filter on *and* what the backend checks
+# before handing an invoice over, so it is declared conservatively — a route a
+# platform's own documentation does not mention is not claimed here. Where each
+# entry was read, and what could not be verified, is recorded in
+# `docs/15-electronic-invoicing.md`.
+#
+# The key these credentials are encrypted with is `EINVOICING_CREDENTIAL_KEY`
+# in the secret above. **Losing it means every agency must re-enter its
+# platform API key.**
+integrations:
+  # A platform is a third party over the internet, and transmission runs off
+  # the manager's click — so a slow platform costs a retry, not a request.
+  requestTimeoutSeconds: 30.0
+  providers:
+    # The only one of the four documenting both webhooks and Chorus Pro
+    # routing, which is this agency's two awkward requirements.
+    - provider: b2brouter
+      name: B2Brouter
+      home_url: https://www.b2brouter.net/fr/
+      documentation_url: https://docs.b2brouter.net/
+      coverage: [invoice, payment-report, chorus-pro]
+      required_fields: [api_key, account_id]
+      documentation_verified: true
+    # No Chorus Pro claim: its documentation does not mention public bodies at
+    # all, and inventing the capability here would route a département's
+    # invoice nowhere.
+    - provider: storecove
+      name: Storecove
+      home_url: https://www.storecove.com/
+      documentation_url: https://www.storecove.com/docs
+      coverage: [invoice, payment-report]
+      required_fields: [api_key, legal_entity_id]
+      documentation_verified: true
+    # The most explicit French coverage of the four: flux 2 and 6 for B2B,
+    # 10.1 to 10.4 for reporting, and Chorus Pro as a separate integration.
+    - provider: invopop
+      name: Invopop
+      home_url: https://www.invopop.com/
+      documentation_url: https://docs.invopop.com/guides/fr-pa
+      coverage: [invoice, payment-report, chorus-pro]
+      required_fields: [api_key]
+      documentation_verified: true
+    # The one entry written without reading the source: Iopole's documentation
+    # renders client-side and its servers return malformed headers. The flag is
+    # what puts that on the card rather than leaving a manager to discover it.
+    - provider: iopole
+      name: Iopole
+      home_url: https://www.iopole.com/
+      documentation_url: https://docs.iopole.com/
+      coverage: [invoice, payment-report, chorus-pro]
+      required_fields: [api_key]
+      documentation_verified: false

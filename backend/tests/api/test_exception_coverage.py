@@ -12,7 +12,16 @@ import pytest
 from api.exception_handlers import ExceptionHandlers
 
 BACKEND = pathlib.Path(__file__).resolve().parents[2]
-PACKAGES: Tuple[str, ...] = ("models", "service", "storage", "api")
+PACKAGES: Tuple[str, ...] = (
+    "models",
+    "service",
+    "storage",
+    "api",
+    # The platform connectors are a plain module rather than a distribution,
+    # but are held to the same rule: everything they raise is an ``MT*`` the
+    # API boundary knows how to answer.
+    "integrations",
+)
 BUILTIN_RAISES = re.compile(
     r"raise (ValueError|KeyError|TypeError|RuntimeError|NotImplementedError"
     r"|Exception|OSError|AssertionError|IndexError|AttributeError)\b"
@@ -28,7 +37,13 @@ def _sources() -> List[pathlib.Path]:
     return [
         path
         for package in PACKAGES
-        for path in (BACKEND / package / "src").rglob("*.py")
+        # ``integrations`` is a plain module with no ``src`` layout, so the
+        # package directory itself is the root to walk. Falling back rather
+        # than special-casing keeps a mis-typed name an empty result nobody
+        # notices from becoming one.
+        for root in ((BACKEND / package / "src"), (BACKEND / package))
+        if root.is_dir()
+        for path in root.rglob("*.py")
         if "__pycache__" not in str(path)
     ]
 

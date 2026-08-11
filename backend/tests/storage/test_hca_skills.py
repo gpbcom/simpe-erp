@@ -201,7 +201,9 @@ class TestHcaSkills:
 
         loaded = await repository.get(stored.id or "")
         assert loaded is not None
-        await repository.update(loaded.model_copy(update={"phone_number": "+33600000009"}))
+        await repository.update(
+            loaded.model_copy(update={"phone_number": "+33600000009"})
+        )
 
         read = await repository.get(stored.id or "")
         assert read is not None

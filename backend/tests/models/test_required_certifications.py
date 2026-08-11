@@ -11,8 +11,12 @@ import pytest
 from models.catalog.exceptions import MTInterventionTypeInvalidRequiredCertifications
 from models.catalog.intervention_type import InterventionType
 from models.geo.geo_point import GeoPoint
-from models.planning.intervention.exceptions import MTRequirementInvalidRequiredCertifications
-from models.planning.intervention.intervention_requirement import InterventionRequirement
+from models.planning.intervention.exceptions import (
+    MTRequirementInvalidRequiredCertifications,
+)
+from models.planning.intervention.intervention_requirement import (
+    InterventionRequirement,
+)
 from models.quoting.exceptions import MTQuoteLineInvalidRequiredCertifications
 from models.quoting.quote_line import QuoteLine
 from models.schemas.exceptions import (

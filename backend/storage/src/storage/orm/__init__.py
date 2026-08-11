@@ -17,6 +17,7 @@ from .catalog.certification_type_row import CertificationTypeRow
 from .catalog.intervention_type_row import InterventionTypeRow
 from .catalog.skill_type_row import SkillTypeRow
 from .companies.company_row import CompanyRow
+from .integrations.einvoicing_integration_row import EInvoicingIntegrationRow
 from .notifications.notification_row import NotificationRow
 from .people.availability_row import AvailabilityRow
 from .people.certification_row import CertificationRow
@@ -38,6 +39,7 @@ __all__ = [
     "BillRow",
     "BillingRunRow",
     "BillingSettingsRow",
+    "EInvoicingIntegrationRow",
     "CertificationRow",
     "CertificationTypeRow",
     "CompanyRow",

@@ -56,9 +56,7 @@ class TestRefusingAnUnusableSlot:
         value (object): The rejected day.
         """
         with pytest.raises(MTSuggestedSlotInvalidDay):
-            SuggestedSlot(
-                day=value, start_minute=540, end_minute=600, hca_id="hca-1"
-            )
+            SuggestedSlot(day=value, start_minute=540, end_minute=600, hca_id="hca-1")
 
     @pytest.mark.parametrize("value", [-1, 24 * 60 + 1, "nine", True])
     def test_a_minute_outside_one_day_is_refused(self, value: object) -> None:
@@ -78,9 +76,7 @@ class TestRefusingAnUnusableSlot:
             end (int): The rejected end minute.
         """
         with pytest.raises(MTSuggestedSlotInvalidWindow):
-            SuggestedSlot(
-                day=MONDAY, start_minute=540, end_minute=end, hca_id="hca-1"
-            )
+            SuggestedSlot(day=MONDAY, start_minute=540, end_minute=end, hca_id="hca-1")
 
     @pytest.mark.parametrize("value", ["", "   ", None, 7])
     def test_a_slot_with_nobody_attached_is_refused(self, value: object) -> None:
@@ -88,9 +84,7 @@ class TestRefusingAnUnusableSlot:
         value (object): The rejected assistant identifier.
         """
         with pytest.raises(MTSuggestedSlotInvalidAssistant):
-            SuggestedSlot(
-                day=MONDAY, start_minute=540, end_minute=600, hca_id=value
-            )
+            SuggestedSlot(day=MONDAY, start_minute=540, end_minute=600, hca_id=value)
 
 
 class TestStoringASuggestedSlot:

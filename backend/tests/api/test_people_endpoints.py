@@ -12,6 +12,8 @@ import pytest
 
 # First-party imports
 from api.dependencies import (
+    get_auth_service,
+    get_customer_user,
     get_event_publisher,
     get_planning_service,
     get_current_user,
@@ -26,6 +28,7 @@ from api.v1.hcas.hcas import router as hcas_router
 from models.auth.user import User
 from models.enums import (
     AvailabilityKind,
+    BillingPeriodicity,
     ContractType,
     PlanningRunStatus,
     QuoteStatus,
@@ -37,6 +40,7 @@ from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.quoting.quote import Quote
+from service.auth.exceptions import MTAuthCustomerAlreadyHasAccount
 from service.customers.exceptions import (
     MTCustomerHasQuotes,
     MTCustomerNotFound,
@@ -88,6 +92,7 @@ def _user(role: UserRole = UserRole.MANAGER, hca_id: Optional[str] = None) -> Us
         full_name="Test Account",
         role=role,
         hca_id=hca_id if hca_id else ("hca-1" if role is UserRole.HCA else None),
+        customer_id="customer-1" if role is UserRole.CUSTOMER else None,
     )
 
 
@@ -129,6 +134,7 @@ def _client(
     hcas: AsyncMock,
     caller: User = None,
     plannings: AsyncMock = None,
+    auth: AsyncMock = None,
 ) -> TestClient:
     """Build a client for the people routers alone.
 
@@ -138,6 +144,8 @@ def _client(
         caller (User): The account the request is authenticated as.
         plannings (AsyncMock): The stubbed planning service. Defaults to one
             reporting that nobody has future work, which is the 204 path.
+        auth (AsyncMock): The stubbed authentication service, needed only by
+            the portal-invitation route.
 
     Returns:
         TestClient: A client over an app mounting only the routers under test.
@@ -169,6 +177,13 @@ def _client(
         plannings.future_period_for_customer.return_value = None
     app.dependency_overrides[get_planning_service] = lambda: plannings
     app.dependency_overrides[get_event_publisher] = lambda: AsyncMock()
+    if auth is None:
+        auth = AsyncMock()
+        auth.create_customer_account.return_value = (
+            _user(UserRole.CUSTOMER),
+            "Temp0rary!Pass",
+        )
+    app.dependency_overrides[get_auth_service] = lambda: auth
     return TestClient(app)
 
 
@@ -185,6 +200,7 @@ def customers() -> AsyncMock:
     stub.list.return_value = [_customer()]
     stub.update.return_value = _customer()
     stub.set_status.return_value = _customer()
+    stub.set_billing_periodicity.return_value = _customer()
     stub.promote.return_value = _customer()
     stub.quotes_for.return_value = [
         Quote(
@@ -285,6 +301,63 @@ class TestCustomerEndpoints:
 
         assert response.status_code == 422
         customers.set_status.assert_not_awaited()
+
+    def test_a_customer_is_given_their_own_billing_granularity(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """The periodicity reaches the service, with who asked for it."""
+        response = _client(customers, hcas).patch(
+            "/api/v1/customers/customer-1/billing-periodicity",
+            json={"periodicity": "weekly"},
+        )
+
+        assert response.status_code == 200
+        assert (
+            customers.set_billing_periodicity.await_args.args[1]
+            is BillingPeriodicity.WEEKLY
+        )
+
+    def test_a_null_periodicity_puts_them_back_on_the_agency_rule(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """**Null is a value on this route, not an omission.**
+
+        Notes:
+            It is how a manager takes an override off. Read as "no change", an
+            override could be set and never removed from any screen.
+        """
+        response = _client(customers, hcas).patch(
+            "/api/v1/customers/customer-1/billing-periodicity",
+            json={"periodicity": None},
+        )
+
+        assert response.status_code == 200
+        assert customers.set_billing_periodicity.await_args.args[1] is None
+
+    def test_an_unknown_periodicity_is_422(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A granularity nothing can bill on is refused before the service."""
+        response = _client(customers, hcas).patch(
+            "/api/v1/customers/customer-1/billing-periodicity",
+            json={"periodicity": "fortnightly"},
+        )
+
+        assert response.status_code == 422
+        customers.set_billing_periodicity.assert_not_awaited()
+
+    def test_setting_the_granularity_of_an_unknown_customer_is_404(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A customer who is gone is a 404, not a silent success."""
+        customers.set_billing_periodicity.side_effect = MTCustomerNotFound("gone")
+
+        response = _client(customers, hcas).patch(
+            "/api/v1/customers/ghost/billing-periodicity",
+            json={"periodicity": "yearly"},
+        )
+
+        assert response.status_code == 404
 
     def test_a_customers_quotes_are_listed(
         self, customers: AsyncMock, hcas: AsyncMock
@@ -543,6 +616,123 @@ class TestCustomerPromotion:
             if dependency.call is not None
         }
         assert get_manager_user in guards
+
+
+class TestCustomerPortalAccounts:
+    """Tests for the route that gives a household access to their space."""
+
+    def test_inviting_a_customer_answers_201(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """The ordinary case returns the one-time password."""
+        response = _client(customers, hcas).post(
+            "/api/v1/customers/customer-1/account",
+            json={"email": "marie@example.com", "full_name": "Marie Durand"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["temporary_password"] == "Temp0rary!Pass"
+        assert response.json()["must_change_password"] is False
+
+    def test_the_household_comes_from_the_path(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """**Not from the body, which carries no identifier at all.**
+
+        Notes:
+            The customer is resolved before anything is created, so a typo is a
+            404 rather than an invitation onto a file that does not exist. The
+            payload having no place to name a household is what removes the
+            second answer entirely.
+        """
+        _client(customers, hcas).post(
+            "/api/v1/customers/customer-1/account",
+            json={
+                "email": "marie@example.com",
+                "full_name": "Marie Durand",
+                "customer_id": "customer-99",
+            },
+        )
+
+        customers.get.assert_awaited_once_with("customer-1")
+
+    def test_the_agency_comes_from_the_caller(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """The household carries none, so the manager's agency is used."""
+        auth = AsyncMock()
+        auth.create_customer_account.return_value = (
+            _user(UserRole.CUSTOMER),
+            "Temp0rary!Pass",
+        )
+
+        _client(customers, hcas, auth=auth).post(
+            "/api/v1/customers/customer-1/account",
+            json={"email": "marie@example.com", "full_name": "Marie Durand"},
+        )
+
+        assert auth.create_customer_account.await_args.kwargs["company_id"] == (
+            "company-1"
+        )
+
+    def test_inviting_an_absent_customer_answers_404(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """A typo in the identifier is reported before anything is created."""
+        customers.get.side_effect = MTCustomerNotFound("no such customer")
+
+        response = _client(customers, hcas).post(
+            "/api/v1/customers/ghost/account",
+            json={"email": "marie@example.com", "full_name": "Marie Durand"},
+        )
+
+        assert response.status_code == 404
+
+    def test_a_second_invitation_answers_409(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """One account per household, refused rather than duplicated."""
+        auth = AsyncMock()
+        auth.create_customer_account.side_effect = MTAuthCustomerAlreadyHasAccount(
+            "already has access"
+        )
+
+        response = _client(customers, hcas, auth=auth).post(
+            "/api/v1/customers/customer-1/account",
+            json={"email": "marie@example.com", "full_name": "Marie Durand"},
+        )
+
+        assert response.status_code == 409
+
+    def test_a_payload_with_no_name_answers_422(
+        self, customers: AsyncMock, hcas: AsyncMock
+    ) -> None:
+        """An account with no display name has nothing to greet anybody by."""
+        response = _client(customers, hcas).post(
+            "/api/v1/customers/customer-1/account",
+            json={"email": "marie@example.com", "full_name": "  "},
+        )
+
+        assert response.status_code == 422
+
+    def test_only_a_manager_may_invite(self) -> None:
+        """The guard is asserted on the router's own dependency graph."""
+        matching = [
+            route
+            for route in customers_router.routes
+            if getattr(route, "path", None) == "/api/v1/customers/{customer_id}/account"
+        ]
+        assert matching, "The invitation route is not on the router."
+
+        guards = {
+            dependency.call
+            for dependency in matching[0].dependant.dependencies
+            if dependency.call is not None
+        }
+        assert get_manager_user in guards
+        # And emphatically not the customer guard: a household must not be able
+        # to mint access for another household.
+        assert get_customer_user not in guards
 
 
 class TestHcaEndpoints:

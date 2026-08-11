@@ -67,9 +67,7 @@ class TestOfferingAnAlternative:
         work = build.requirement("req-1")
         finder = SlotFinder(build.settings())
 
-        slots = finder.find(
-            work, [build.assistant()], [], _index([work]), [MONDAY]
-        )
+        slots = finder.find(work, [build.assistant()], [], _index([work]), [MONDAY])
 
         assert slots
         assert slots[0].start_minute == build.settings().day_start_minute
@@ -105,9 +103,7 @@ class TestOfferingAnAlternative:
         assert slots
         assert slots[0].start_minute >= 11 * 60
 
-    def test_the_lunch_break_is_never_offered(
-        self, build: ScenarioBuilder
-    ) -> None:
+    def test_the_lunch_break_is_never_offered(self, build: ScenarioBuilder) -> None:
         """An hour the assistant must eat in is not an hour they are free.
 
         Args:
@@ -122,9 +118,7 @@ class TestOfferingAnAlternative:
         work = build.requirement("req-1")
         finder = SlotFinder(settings)
 
-        slots = finder.find(
-            work, [build.assistant()], [], _index([work]), [MONDAY]
-        )
+        slots = finder.find(work, [build.assistant()], [], _index([work]), [MONDAY])
 
         for slot in slots:
             overlaps = (
@@ -149,9 +143,7 @@ class TestOfferingAnAlternative:
         work = build.requirement("req-1", skill_codes=["LEVE-PERSONNE"])
         finder = SlotFinder(build.settings())
 
-        slots = finder.find(
-            work, [build.assistant()], [], _index([work]), [MONDAY]
-        )
+        slots = finder.find(work, [build.assistant()], [], _index([work]), [MONDAY])
 
         assert slots == []
 
@@ -185,9 +177,7 @@ class TestOfferingAnAlternative:
             build (ScenarioBuilder): The fixture builder.
         """
         work = build.requirement("req-1", day=MONDAY)
-        away = build.assistant(
-            availability=[build.absence("hca-1", MONDAY)]
-        )
+        away = build.assistant(availability=[build.absence("hca-1", MONDAY)])
         finder = SlotFinder(build.settings())
 
         slots = finder.find(work, [away], [], _index([work]), [MONDAY])
@@ -227,9 +217,7 @@ class TestOfferingAnAlternative:
         assert slots
         assert all(slot.day == TUESDAY for slot in slots)
 
-    def test_the_number_of_offers_is_capped(
-        self, build: ScenarioBuilder
-    ) -> None:
+    def test_the_number_of_offers_is_capped(self, build: ScenarioBuilder) -> None:
         """Twenty options is a second problem, not a choice.
 
         Args:
@@ -239,15 +227,11 @@ class TestOfferingAnAlternative:
         staff = [build.assistant(f"hca-{index}") for index in range(8)]
         finder = SlotFinder(build.settings())
 
-        slots = finder.find(
-            work, staff, [], _index([work]), [MONDAY, TUESDAY], limit=3
-        )
+        slots = finder.find(work, staff, [], _index([work]), [MONDAY, TUESDAY], limit=3)
 
         assert len(slots) <= 3
 
-    def test_an_offer_is_long_enough_for_the_work(
-        self, build: ScenarioBuilder
-    ) -> None:
+    def test_an_offer_is_long_enough_for_the_work(self, build: ScenarioBuilder) -> None:
         """A slot shorter than the service is not a slot for it.
 
         Args:
@@ -256,9 +240,7 @@ class TestOfferingAnAlternative:
         work = build.requirement("req-1", duration_minutes=90)
         finder = SlotFinder(build.settings())
 
-        slots = finder.find(
-            work, [build.assistant()], [], _index([work]), [MONDAY]
-        )
+        slots = finder.find(work, [build.assistant()], [], _index([work]), [MONDAY])
 
         assert slots
         assert all(slot.duration_minutes() >= 90 for slot in slots)

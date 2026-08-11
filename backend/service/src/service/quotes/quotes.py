@@ -52,7 +52,7 @@ class QuoteService:
           stored amounts are the offer; recomputing them at display time would
           silently reprice an issued quote after its type is repriced.
     """
-    
+
     EDITABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset(QuoteStatus)
     SENDABLE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset({QuoteStatus.DRAFT})
     VALIDITY_DAYS: ClassVar[int] = 30

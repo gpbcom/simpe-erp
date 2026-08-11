@@ -96,6 +96,17 @@ def a_bill(**overrides: Any) -> Bill:
         "issued_on": date(2026, 4, 1),
         "due_on": date(2026, 5, 1),
         "customer_full_name": "Jeanne Vincent",
+        "recipient": {
+            "name": "Jeanne Vincent",
+            "address": {
+                "street": "1 rue des Lilas",
+                "postal_code": "75011",
+                "city": "Paris",
+                "country": "France",
+                "latitude": 48.85,
+                "longitude": 2.35,
+            },
+        },
         "customer_address": {
             "street": "1 rue des Lilas",
             "postal_code": "75011",

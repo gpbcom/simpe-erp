@@ -112,6 +112,25 @@ export function BillDetailDrawer({ selected, onClose }: BillDetailDrawerProps) {
             : t('bill.notSent')}
         </Typography>
 
+        {/*
+          Shown only when the payer is not the household, and that is the
+          point: on the vast majority of invoices the two are the same party
+          and a line repeating the name would be noise. Where they differ, it
+          is the single most important fact on the screen — somebody other than
+          the person cared for is being asked for the money.
+        */}
+        {bill.recipient.kind !== 'individual' ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid="bill-recipient"
+          >
+            {`${t('bill.billedTo')} ${bill.recipient.name}`}
+            {bill.recipient.siren ? ` · ${bill.recipient.siren}` : ''}
+            {` · ${t(`bill.recipient_${bill.recipient.kind}`)}`}
+          </Typography>
+        ) : null}
+
         <Divider sx={{ my: 2 }} />
 
         <Typography variant="subtitle2" sx={{ mb: 1 }}>

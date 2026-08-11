@@ -27,6 +27,7 @@ from models.configuration.exceptions import (
     MTAppConfigUnreadable,
 )
 from models.configuration.geocoding_config import GeocodingConfig
+from models.configuration.integration_config import IntegrationConfig
 from models.configuration.planning_config import PlanningConfig
 from models.configuration.pricing_config import PricingConfig
 from models.configuration.observability_config import ObservabilityConfig
@@ -59,6 +60,8 @@ class AppConfig(BaseModel):
             bill-accepted webhook.
         s3 (S3Config): Object-store settings for assistant photographs.
         rabbitmq (RabbitMqConfig): Message-broker settings.
+        integrations (IntegrationConfig): How this deployment talks to certified
+            e-invoicing platforms.
 
     Notes:
         Every section carries a default, so an absent section in the YAML file
@@ -120,6 +123,10 @@ class AppConfig(BaseModel):
     observability: ObservabilityConfig = Field(
         default_factory=ObservabilityConfig,
         description="What the process reports about itself.",
+    )
+    integrations: IntegrationConfig = Field(
+        default_factory=IntegrationConfig,
+        description="How this deployment talks to certified e-invoicing platforms.",
     )
 
     @field_validator("server", mode="before")

@@ -14,13 +14,17 @@ from models.enums import AccountOrigin, Language, ContractType, UserRole
 from models.people.hca import Hca
 from service.auth.auth import AuthService
 from service.auth.exceptions import (
+    MTAuthCompanyRequired,
     MTAuthEmailAlreadyRegistered,
     MTAuthInvalidCredentials,
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
     MTAuthUnknownAccount,
+    MTAuthCustomerAlreadyHasAccount,
+    MTAuthUnknownCustomer,
     MTAuthUnknownHca,
 )
+from models.people.customer import Customer
 
 
 def _hca() -> Hca:
@@ -45,6 +49,29 @@ def _hca() -> Hca:
     )
 
 
+def _customer(customer_id: str = "customer-1") -> Customer:
+    """Build a stored household.
+
+    Args:
+        customer_id (str): The identifier to assign.
+
+    Returns:
+        Customer: The customer.
+    """
+    return Customer(
+        id=customer_id,
+        first_name="Marie",
+        last_name="Durand",
+        phone_number="+33612345678",
+        email="marie.durand@example.com",
+        address={
+            "street": "12 rue de Rivoli",
+            "postal_code": "75004",
+            "city": "Paris",
+        },
+    )
+
+
 @pytest.fixture
 def users() -> AsyncMock:
     """Return a stand-in account repository.
@@ -57,6 +84,7 @@ def users() -> AsyncMock:
         update={"id": "user-new"}
     )
     repository.update.side_effect = lambda user: user
+    repository.get_by_customer_id.return_value = None
     return repository
 
 
@@ -460,3 +488,151 @@ class TestPasswordChange:
 
         with pytest.raises(MTAuthInvalidCredentials):
             await service.change_password(user, "anything", "MyOwnPassphrase99!")
+
+
+class TestCustomerAccountCreation:
+    """Tests for giving a household access to their own space."""
+
+    async def test_a_household_gets_a_customer_account(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """The ordinary case: the role, the link and the agency all follow."""
+        account, password = await service.create_customer_account(
+            customer=_customer(),
+            email="marie@example.com",
+            full_name="Marie Durand",
+            company_id="company-1",
+        )
+
+        assert account.role is UserRole.CUSTOMER
+        assert account.customer_id == "customer-1"
+        assert account.company_id == "company-1"
+        assert account.account_origin is AccountOrigin.CREATED_BY_STAFF
+        assert account.must_change_password is True
+        assert password
+
+    async def test_the_password_is_temporary_and_returned_once(
+        self, service: AuthService
+    ) -> None:
+        """**The plaintext leaves in the response and nowhere else.**
+
+        Notes:
+            Only its hash is stored, so a manager who loses it regenerates
+            rather than looks it up. Asserted by verifying the returned string
+            against the stored hash — if the two ever came apart, the household
+            would be handed a password that does not work.
+        """
+        account, password = await service.create_customer_account(
+            customer=_customer(),
+            email="marie@example.com",
+            full_name="Marie Durand",
+            company_id="company-1",
+        )
+
+        assert account.hashed_password != password
+        assert service.verify(password, account.hashed_password) is True
+
+    async def test_the_agency_comes_from_the_inviting_manager(
+        self, service: AuthService
+    ) -> None:
+        """**Because the household does not carry one.**
+
+        Notes:
+            ``Customer`` has no ``company_id``: households are not tenant-scoped
+            in this schema, unlike quotes, planning runs and interventions,
+            which migration 0016 scoped. The caller's agency is therefore the
+            only one available, and this test records that as a deliberate
+            compromise rather than an oversight — it is correct while a manager
+            only ever sees their own book, and it is what should change first
+            when customers gain a tenant column.
+        """
+        account, _ = await service.create_customer_account(
+            customer=_customer(),
+            email="marie@example.com",
+            full_name="Marie Durand",
+            company_id="company-9",
+        )
+
+        assert account.company_id == "company-9"
+        assert not hasattr(_customer(), "company_id")
+
+    async def test_an_account_with_no_agency_is_refused(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """Every account belongs to exactly one agency."""
+        with pytest.raises(MTAuthCompanyRequired):
+            await service.create_customer_account(
+                customer=_customer(),
+                email="marie@example.com",
+                full_name="Marie Durand",
+                company_id="",
+            )
+
+        users.create.assert_not_awaited()
+
+    async def test_a_second_invitation_is_refused(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """One account per household.
+
+        Notes:
+            Two accounts on one file are two people who each believe they were
+            the one who cancelled a visit — and the second invitation would
+            silently make the first set of credentials useless.
+        """
+        users.get_by_customer_id.return_value = User(
+            company_id="company-1",
+            id="user-1",
+            email="already@example.com",
+            full_name="Marie Durand",
+            role=UserRole.CUSTOMER,
+            customer_id="customer-1",
+        )
+
+        with pytest.raises(MTAuthCustomerAlreadyHasAccount):
+            await service.create_customer_account(
+                customer=_customer(),
+                email="marie@example.com",
+                full_name="Marie Durand",
+                company_id="company-1",
+            )
+
+        users.create.assert_not_awaited()
+
+    async def test_an_unstored_household_is_refused(
+        self, service: AuthService, users: AsyncMock
+    ) -> None:
+        """A customer with no identifier cannot be linked to."""
+        with pytest.raises(MTAuthUnknownCustomer):
+            await service.create_customer_account(
+                customer=_customer().model_copy(update={"id": None}),
+                email="marie@example.com",
+                full_name="Marie Durand",
+                company_id="company-1",
+            )
+
+        users.create.assert_not_awaited()
+
+    async def test_the_account_cannot_reach_the_staff_screens(
+        self, service: AuthService
+    ) -> None:
+        """**The account it mints is on the other axis, and stays there.**
+
+        Notes:
+            Asserted on the account rather than on a route, because this is
+            where the property is established. ``owns_hca`` answering ``False``
+            is what keeps a household out of every assistant's diary, and
+            ``rank()`` raising is what stops a guard written the usual way from
+            quietly admitting them.
+        """
+        account, _ = await service.create_customer_account(
+            customer=_customer(),
+            email="marie@example.com",
+            full_name="Marie Durand",
+            company_id="company-1",
+        )
+
+        assert account.role.is_staff() is False
+        assert account.owns_hca("hca-1") is False
+        assert account.owns_customer("customer-1") is True
+        assert account.owns_customer("customer-2") is False

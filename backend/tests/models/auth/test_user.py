@@ -22,6 +22,9 @@ from models.auth.exceptions import (
     MTUserInvalidPhoneNumber,
     MTUserInvalidPhotoUrl,
     MTUserInvalidRole,
+    MTUserCustomerLinkRequiresCustomerRole,
+    MTUserInvalidCustomerId,
+    MTUserRoleCustomerRequiresCustomerId,
     MTUserRoleHcaRequiresHcaId,
 )
 from models.auth.user import User
@@ -305,6 +308,154 @@ class TestUser:
         user = User(company_id="company-1", email="a@b.com", full_name="A B", role=role)
         assert user.owns_hca("hca-1") is True
         assert user.owns_hca("hca-2") is True
+
+    def test_a_customer_owns_nobodys_planning(self) -> None:
+        """**The hole the customer role opened, closed.**
+
+        Notes:
+            ``owns_hca`` read "not an assistant means yes" — written when the
+            only other roles were manager and administrator. The moment a fourth
+            role existed, that spelling handed every assistant's diary, with
+            every household's name and address on it, to every customer.
+
+            The test is here rather than in a security review because the bug is
+            invisible: nothing raises, nothing looks wrong, the data is simply
+            served to the wrong person.
+        """
+        customer = User(
+            company_id="company-1",
+            email="marie@example.com",
+            full_name="Marie Durand",
+            role=UserRole.CUSTOMER,
+            customer_id="customer-1",
+        )
+
+        assert customer.owns_hca("hca-1") is False
+        assert customer.owns_hca("hca-2") is False
+
+    # ------------------------------------------------------------------ #
+    #  owns_customer — the row-level portal rule
+    # ------------------------------------------------------------------ #
+
+    def test_a_customer_owns_their_own_file(self) -> None:
+        """A household may read its own records."""
+        user = User(
+            company_id="company-1",
+            email="marie@example.com",
+            full_name="Marie Durand",
+            role=UserRole.CUSTOMER,
+            customer_id="customer-1",
+        )
+
+        assert user.owns_customer("customer-1") is True
+
+    def test_a_customer_does_not_own_another_file(self) -> None:
+        """One household may not read another's.
+
+        Notes:
+            The portal never takes a customer identifier from the path — it
+            resolves the household from the credential — so this is the second
+            of two gates rather than the only one. It exists because a route
+            added later may not remember the first.
+        """
+        user = User(
+            company_id="company-1",
+            email="marie@example.com",
+            full_name="Marie Durand",
+            role=UserRole.CUSTOMER,
+            customer_id="customer-1",
+        )
+
+        assert user.owns_customer("customer-2") is False
+
+    @pytest.mark.parametrize("role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN])
+    def test_staff_are_not_narrowed_to_one_household(self, role: UserRole) -> None:
+        """Staff are answered ``True``; their own route guards gate them.
+
+        Args:
+            role (UserRole): The staff role under test.
+        """
+        user = User(
+            company_id="company-1",
+            email="a@b.com",
+            full_name="A B",
+            role=role,
+            hca_id="hca-1" if role is UserRole.HCA else None,
+        )
+
+        assert user.owns_customer("customer-1") is True
+
+    # ------------------------------------------------------------------ #
+    #  The customer link runs both ways
+    # ------------------------------------------------------------------ #
+
+    def test_a_customer_account_must_name_a_customer(self) -> None:
+        """Without the link the account resolves to no household."""
+        with pytest.raises(MTUserRoleCustomerRequiresCustomerId):
+            User(
+                company_id="company-1",
+                email="marie@example.com",
+                full_name="Marie Durand",
+                role=UserRole.CUSTOMER,
+            )
+
+    @pytest.mark.parametrize("role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN])
+    def test_no_staff_account_may_name_a_customer(self, role: UserRole) -> None:
+        """**The direction that matters.**
+
+        Args:
+            role (UserRole): The staff role under test.
+
+        Notes:
+            A manager carrying a ``customer_id`` satisfies every staff guard
+            *and* resolves to one household — an account that is both sides of
+            the boundary at once. Refused at construction, so no service has to
+            remember to check for it.
+        """
+        with pytest.raises(MTUserCustomerLinkRequiresCustomerRole):
+            User(
+                company_id="company-1",
+                email="a@b.com",
+                full_name="A B",
+                role=role,
+                hca_id="hca-1" if role is UserRole.HCA else None,
+                customer_id="customer-1",
+            )
+
+    @pytest.mark.parametrize(
+        "value",
+        [pytest.param("", id="empty"), pytest.param("   ", id="whitespace")],
+    )
+    def test_a_blank_customer_link_is_refused(self, value: str) -> None:
+        """A link that matches nothing is worse than no link.
+
+        Args:
+            value (str): The blank identifier.
+
+        Notes:
+            Kept, it would present an empty portal as though the household
+            simply had no visits — which is indistinguishable from the truth.
+        """
+        with pytest.raises(MTUserInvalidCustomerId):
+            User(
+                company_id="company-1",
+                email="marie@example.com",
+                full_name="Marie Durand",
+                role=UserRole.CUSTOMER,
+                customer_id=value,
+            )
+
+    def test_a_customer_link_is_stripped(self) -> None:
+        """Surrounding space is not part of the identifier."""
+        user = User(
+            company_id="company-1",
+            email="marie@example.com",
+            full_name="Marie Durand",
+            role=UserRole.CUSTOMER,
+            customer_id="  customer-1  ",
+        )
+
+        assert user.customer_id == "customer-1"
 
     # ------------------------------------------------------------------ #
     #  An account is a Person
@@ -628,9 +779,7 @@ class TestUser:
 class TestAccountLanguage:
     """Tests for the language preference the emailed documents follow."""
 
-    def test_french_is_the_default(
-        self, valid_manager_kwargs: Dict[str, Any]
-    ) -> None:
+    def test_french_is_the_default(self, valid_manager_kwargs: Dict[str, Any]) -> None:
         """An account nobody has set a preference on is a French one."""
         assert User(**valid_manager_kwargs).language is Language.FR
 
@@ -639,8 +788,7 @@ class TestAccountLanguage:
     ) -> None:
         """The API sends ``"en"``; the model holds a member."""
         assert (
-            User(**{**valid_manager_kwargs, "language": "en"}).language
-            is Language.EN
+            User(**{**valid_manager_kwargs, "language": "en"}).language is Language.EN
         )
 
     def test_none_reads_as_the_default(
@@ -653,8 +801,7 @@ class TestAccountLanguage:
             ``None`` is the default rather than an error.
         """
         assert (
-            User(**{**valid_manager_kwargs, "language": None}).language
-            is Language.FR
+            User(**{**valid_manager_kwargs, "language": None}).language is Language.FR
         )
 
     @pytest.mark.parametrize(

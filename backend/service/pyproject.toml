@@ -19,6 +19,20 @@ dependencies = [
     # `pillow` above is what it uses to embed the agency's logo, which is why
     # that dependency now has two reasons to be here.
     "reportlab>=4.2.0",
+    # Factur-X assembly: attaching the CII XML to the rendered PDF, declaring
+    # the PDF/A-3 conformance and writing the Factur-X XMP extension schema.
+    # A library rather than our own code because that XMP block is a compliance
+    # artifact — a subtly wrong one is discovered when a platform rejects the
+    # invoice, which is after a number has been drawn from a series that cannot
+    # have gaps. This is the reference French implementation.
+    "factur-x>=3.3",
+    # Encrypting the certified platforms' API credentials at rest. Reversible
+    # on purpose — a connector has to recover the key to make a call, so the
+    # bcrypt used for passwords is the wrong tool. Declared here rather than
+    # relied on through `python-jose[cryptography]` in the API package: a
+    # transitive dependency is one that disappears in a routine upgrade of
+    # something else.
+    "cryptography>=44.0.0",
     "aio-pika>=9.5.0",
     # The metrics registry and the exposition format. A small, stable
     # dependency: it is the format Prometheus scrapes and KEDA reads, so

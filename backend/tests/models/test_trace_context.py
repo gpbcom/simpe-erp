@@ -109,6 +109,8 @@ class TestEnvelopeCarriesTraceContext:
 
     def test_surrounding_whitespace_is_removed(self) -> None:
         """A header read off the wire may arrive padded."""
-        envelope = EventEnvelope(routing_key="quote.submitted", traceparent=f" {VALID} ")
+        envelope = EventEnvelope(
+            routing_key="quote.submitted", traceparent=f" {VALID} "
+        )
 
         assert envelope.traceparent == VALID

@@ -37,6 +37,50 @@ runtime — the pods start, report Ready, and do the wrong thing:
   it — but the whole solve is repeated.
 - `workerNotifications` scaling to zero. A badge should be instant; a cold start
   is not.
+- An empty `integrations.providers`. The cluster would come up serving every
+  screen except the one that makes the agency compliant: a gallery with nothing
+  to connect. Electronic invoicing is a legal obligation, not a feature.
+
+## The two bill announcements have to be switched on
+
+`billingWebhook.enabled` governs both of them: approval, which emails the
+rendered invoice to its customer, and collection, which transmits it to the
+certified platform. Both are the API calling itself over the in-cluster
+Service — routing them through the ingress and back would put a public hop, a
+TLS handshake and a rate limiter inside the application.
+
+**The chart had no `billing_webhook` block at all**, so a cluster ran the
+model's defaults: disabled, at `localhost:8000`. Nothing failed and nothing was
+logged as wrong; an approved invoice was simply never emailed, and — once
+automatic transmission on payment existed — a collected one was never sent to
+the platform. It is rendered now, still off by default, and turning it on is one
+value.
+
+## The e-invoicing platforms are values, not code
+
+`integrations.providers` lists the certified platforms an agency may connect
+to — display name, documentation link, what each can be asked to transmit, and
+which credential fields its dialog must ask for. It is rendered into the
+ConfigMap and read by the backend.
+
+**It is values because the French registry moves and this chart should not have
+to.** A platform whose registration lapses is a `helm upgrade`; so is a fifth
+one publishing an API. Coverage is declared conservatively — a route a
+platform's own documentation does not mention is not claimed, which is why
+Storecove does not list `chorus-pro` and the backend refuses a public body's
+invoice through it rather than sending it into silence.
+
+`EINVOICING_CREDENTIAL_KEY` is the key those credentials are encrypted with, and
+it is not like the other secrets in the list. The others are credentials for
+something the cluster can be issued again; **this one is the only thing that can
+read an agency's stored platform credentials back, so losing it means every
+agency must re-enter its platform API key.** The store holding it needs the same
+backup discipline as the database.
+
+Only the API pod ever resolves it. A worker publishes `bill.paid` and calls the
+loopback webhook; the transmission — and so the one decryption — happens in the
+API. The Secret is mounted the same way everywhere because there is one
+`envFrom`, but nothing else reads that key.
 
 ## The two workers are not variations of each other
 

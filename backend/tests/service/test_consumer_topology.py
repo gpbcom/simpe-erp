@@ -103,9 +103,7 @@ class TestWorkingQueueTopology:
         arguments = _declared(consumer, "planning-runs.company-1")["arguments"]
         assert arguments["x-dead-letter-exchange"] == "simple-erp.dlx"
 
-    async def test_the_queue_is_the_agency_s_own(
-        self, consumer: EventConsumer
-    ) -> None:
+    async def test_the_queue_is_the_agency_s_own(self, consumer: EventConsumer) -> None:
         """One agency's backlog must not delay another's."""
         await consumer.consume_for_company("planning-runs", PLANNING_KEYS, "company-7")
 

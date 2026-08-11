@@ -16,9 +16,7 @@ logger: Logger = getLogger(__name__)
 router = APIRouter(prefix="/api/v1/hcas", tags=["Skills"])
 
 
-@router.delete(
-    "/{hca_id}/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/{hca_id}/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_skill(
     hca_id: str,
     skill_id: str,

@@ -110,3 +110,24 @@ A badge should be instant, and a cold start is not.
 {{- if eq (int .Values.workerNotifications.scaling.minReplicas) 0 }}
 {{- fail "workerNotifications.scaling.minReplicas must be at least 1: a notification is answered in milliseconds, and a cold start is not." }}
 {{- end }}
+
+{{/*
+The e-invoicing catalogue must not be empty.
+
+Electronic invoicing is a legal obligation, not a feature — a PME must issue
+and e-report from September 2027, and Chorus Pro has been mandatory for public
+bodies since 2020. An agency meets it by connecting a certified platform, and
+it can only connect one this deployment offers.
+
+A cluster rendered with `integrations.providers: []` starts, reports Ready,
+serves every other screen, and shows a gallery with nothing in it — so the one
+screen whose job is to make the agency compliant is the one that cannot. That
+is precisely the shape of failure this file exists for: silent at runtime, and
+discovered by the person it was supposed to help.
+
+Each entry is validated by the backend on start-up, so a malformed one already
+fails loudly. Only *absence* is quiet, which is why it is checked here.
+*/}}
+{{- if not .Values.integrations.providers }}
+{{- fail "integrations.providers is empty: the e-invoicing gallery would offer nothing to connect, and electronic invoicing is a legal obligation rather than a feature. Declare the certified platforms this deployment offers, as values.yaml does." }}
+{{- end }}

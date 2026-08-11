@@ -362,9 +362,7 @@ class TestPlanningSettingsRepository:
         assert loaded.lunch_window_start_minute == 12 * 60
         assert loaded.lunch_window_end_minute == 14 * 60
 
-    async def test_updating_moves_the_working_day(
-        self, session: AsyncSession
-    ) -> None:
+    async def test_updating_moves_the_working_day(self, session: AsyncSession) -> None:
         """A manager's new hours reach the row, not just the radius."""
         repository = PlanningSettingsRepository(session)
         await repository.seed(PlanningSettings(max_intervention_radius_km=25.0))

@@ -28,6 +28,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD must be set}
       PLANNING_WEBHOOK_TOKEN: ${PLANNING_WEBHOOK_TOKEN:?PLANNING_WEBHOOK_TOKEN must be set}
       BILLING_WEBHOOK_TOKEN: ${BILLING_WEBHOOK_TOKEN:?BILLING_WEBHOOK_TOKEN must be set}
+      # Required, like every other secret here. **Losing this key means
+      # every agency must re-enter its certified platform's API key**, so
+      # it belongs in the same backup discipline as the database.
+      EINVOICING_CREDENTIAL_KEY: ${EINVOICING_CREDENTIAL_KEY:?EINVOICING_CREDENTIAL_KEY must be set}
     restart: unless-stopped
     deploy:
       resources:

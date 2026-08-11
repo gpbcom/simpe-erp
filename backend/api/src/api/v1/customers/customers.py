@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 # First-party imports
 from api.dependencies import (
+    get_auth_service,
     get_customer_service,
     get_event_publisher,
     get_manager_user,
@@ -19,8 +20,19 @@ from models.auth.user import User
 from models.people.customer import Customer
 from models.planning.planning_run import PlanningRun
 from models.quoting.quote import Quote
+from models.schemas.requests.customers.billing_periodicity_request import (
+    BillingPeriodicityRequest,
+)
+from models.schemas.requests.customers.customer_account_request import (
+    CustomerAccountRequest,
+)
 from models.schemas.requests.customers.customer_filter import CustomerFilter
 from models.schemas.requests.customers.status_update_request import StatusUpdateRequest
+from models.schemas.responses.auth.temporary_credentials_response import (
+    TemporaryCredentialsResponse,
+)
+from service.auth.auth import AuthService
+from service.auth.exceptions import MTAuthCustomerAlreadyHasAccount
 from service.customers.customers import CustomerService
 from service.customers.exceptions import MTCustomerNotPromotable
 from service.messaging.publisher import EventPublisher
@@ -209,6 +221,139 @@ async def set_customer_status(
         "Setting customer %s to %s.", customer_id, payload.registration_status.value
     )
     return await service.set_status(customer_id, payload.registration_status)
+
+
+@router.patch("/{customer_id}/billing-periodicity", response_model=Customer)
+async def set_customer_billing_periodicity(
+    customer_id: str,
+    payload: BillingPeriodicityRequest,
+    service: CustomerService = Depends(get_customer_service),
+    caller: User = Depends(get_manager_user),
+) -> Customer:
+    """Give a customer their own invoicing granularity, or take it away.
+
+    Args:
+        customer_id (str): The customer to change.
+        payload (BillingPeriodicityRequest): The periodicity to bill them on,
+            or ``null`` to follow the agency's own.
+        service (CustomerService): The customer service.
+        caller (User): The authenticated caller; enforces manager access.
+
+    Returns:
+        Customer: The updated customer.
+
+    Raises:
+        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTInvalidBillingPeriodicityRequestException: If the periodicity is not
+            a known one; answered as a 422.
+
+    Notes:
+        - **Manager access, which is manager and administrator**, because the
+          specification puts the billing periodicity in exactly those hands. An
+          assistant reading a customer's file cannot change how often they are
+          invoiced.
+        - A route of its own rather than a field on ``PUT /{id}``: this is a
+          commercial decision taken from a screen holding a customer record that
+          may be minutes old, and sending the whole record back would let that
+          stale copy overwrite an address somebody else corrected meanwhile.
+        - **``null`` is a value, not an omission.** Sending it is how a manager
+          puts a customer back on the agency's own rule, which is why the route
+          is a PATCH with an optional field rather than a DELETE of an override
+          nobody would think to look for.
+        - It re-issues nothing. The change decides what the *next* run bills
+          them over; an invoice already written keeps its period.
+    """
+    logger.info(
+        "%s is setting the billing periodicity of customer %s to %s.",
+        caller.email,
+        customer_id,
+        payload.periodicity.value if payload.periodicity else "the agency's own",
+    )
+    if payload.follows_the_agency():
+        logger.debug(
+            "Customer %s goes back to the agency's own periodicity.", customer_id
+        )
+    try:
+        return await service.set_billing_periodicity(
+            customer_id, payload.periodicity, actor=str(caller.email)
+        )
+    except SQLAlchemyError:
+        logger.error(
+            "Writing the billing periodicity of customer %s failed.", customer_id
+        )
+        raise
+
+
+@router.post(
+    "/{customer_id}/account",
+    response_model=TemporaryCredentialsResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_customer_account(
+    customer_id: str,
+    payload: CustomerAccountRequest,
+    customers: CustomerService = Depends(get_customer_service),
+    auth: AuthService = Depends(get_auth_service),
+    caller: User = Depends(get_manager_user),
+) -> TemporaryCredentialsResponse:
+    """Give a household access to their own space.
+
+    Args:
+        customer_id (str): The household the account belongs to.
+        payload (CustomerAccountRequest): The sign-in address and display name.
+        customers (CustomerService): The customer service.
+        auth (AuthService): The authentication service.
+        caller (User): The authenticated caller; enforces manager access and
+            supplies the agency the account belongs to.
+
+    Returns:
+        TemporaryCredentialsResponse: The account, and the one-time password.
+
+    Raises:
+        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTAuthCustomerAlreadyHasAccount: If they already have one; a 409.
+        MTAuthEmailAlreadyRegistered: If the address is in use; a 409.
+
+    Notes:
+        - **The household comes from the path and is resolved before anything
+          is created.** A typo is a 404 rather than an invitation onto a file
+          that does not exist, and the payload carries no identifier at all —
+          so there is no second answer to "whose account is this".
+        - **The temporary password is in the response, once.** It is never
+          stored in plaintext and never emailed, exactly as staff accounts
+          work: it exists for as long as it takes to build this response, and
+          a manager who loses it regenerates rather than looks it up.
+        - Manager access, which is manager **and** administrator. Deciding that
+          a household may see their own file is running the agency's work.
+    """
+    logger.debug("Portal access requested for customer %s.", customer_id)
+    customer = await customers.get(customer_id)
+    logger.info(
+        "Creating portal access for customer %s under %s.",
+        customer_id,
+        payload.email,
+    )
+    try:
+        account, temporary_password = await auth.create_customer_account(
+            customer=customer,
+            email=str(payload.email),
+            full_name=payload.full_name,
+            company_id=caller.company_id,
+        )
+    except MTAuthCustomerAlreadyHasAccount:
+        # A 409, and the one refusal here that is nobody's mistake: two
+        # managers inviting the same household within a minute of each other.
+        logger.warning("Customer %s already holds portal access.", customer_id)
+        raise
+    except SQLAlchemyError:
+        logger.error("Writing portal access for customer %s failed.", customer_id)
+        raise
+    return TemporaryCredentialsResponse(
+        user_id=account.id if account.id else "",
+        email=str(account.email),
+        temporary_password=temporary_password,
+        must_change_password=account.must_change_password,
+    )
 
 
 @router.post("/{customer_id}/promote", response_model=Customer)

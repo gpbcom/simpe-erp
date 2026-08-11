@@ -183,8 +183,15 @@ class EventEnvelope(BaseModel):
 
     @field_validator("occurred_at", mode="before")
     def validate_occurred_at(
-        cls, value: Optional[str, datetime,]
-    ) -> Optional[str, datetime,]:
+        cls,
+        value: Optional[
+            str,
+            datetime,
+        ],
+    ) -> Optional[
+        str,
+        datetime,
+    ]:
         """Validates that ``occurred_at`` is datetime-like or ``None``.
 
         Args:

@@ -95,9 +95,7 @@ class TestRefusingAnUnusableHeader:
         value (object): The rejected date.
         """
         with pytest.raises(MTQuoteHeaderRequestInvalidDate):
-            QuoteHeaderRequest(
-                reference="D-1", customer_id="c-1", issued_on=value
-            )
+            QuoteHeaderRequest(reference="D-1", customer_id="c-1", issued_on=value)
 
     def test_a_quote_cannot_expire_before_it_was_issued(self) -> None:
         """The pair is only wrong together.
@@ -132,6 +130,4 @@ class TestRefusingAnUnusableHeader:
         value (object): The rejected flag.
         """
         with pytest.raises(MTQuoteHeaderRequestInvalidAutoRenew):
-            QuoteHeaderRequest(
-                reference="D-1", customer_id="c-1", auto_renew=value
-            )
+            QuoteHeaderRequest(reference="D-1", customer_id="c-1", auto_renew=value)

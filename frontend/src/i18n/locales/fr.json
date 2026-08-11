@@ -26,7 +26,8 @@
     "certifications": "Certifications",
     "skills": "Compétences",
     "bills": "Factures",
-    "billingSettings": "Paramètres de facturation"
+    "billingSettings": "Paramètres de facturation",
+    "myPortal": "Mon espace"
   },
   "auth": {
     "signIn": "Se connecter",
@@ -38,7 +39,12 @@
     "changePassword": "Changer le mot de passe",
     "mustChangePassword": "Vous devez choisir un nouveau mot de passe avant de continuer.",
     "invalidCredentials": "Adresse e-mail ou mot de passe incorrect.",
-    "signInTitle": "Connexion à SimpleERP"
+    "signInTitle": "Connexion à SimpleERP",
+    "space": "Se connecter en tant que",
+    "spaceEmployee": "Personnel",
+    "spaceCustomer": "Bénéficiaire",
+    "useEmployeeSpace": "Ce compte est un compte de l'agence. Choisissez « Personnel » pour vous connecter.",
+    "useCustomerSpace": "Ce compte est un compte bénéficiaire. Choisissez « Bénéficiaire » pour vous connecter."
   },
   "quote": {
     "reference": "Référence",
@@ -239,7 +245,14 @@
     "filterOngoingNo": "Aucune en cours",
     "filterGeocoded": "Adresse localisée",
     "filterGeocodedYes": "Localisée",
-    "filterGeocodedNo": "Non localisée"
+    "filterGeocodedNo": "Non localisée",
+    "billing": "Facturation",
+    "billingPeriodicity": "Périodicité de facturation",
+    "billingFollowsAgency": "Règle de l'agence ({{periodicity}})",
+    "billingFollowsAgencyUnknown": "Règle de l'agence",
+    "billingNotice": "S'applique au prochain calcul : les factures déjà émises conservent leur période.",
+    "billingSaved": "Périodicité enregistrée.",
+    "billingSaveFailed": "La périodicité n'a pas pu être enregistrée."
   },
   "planning": {
     "week": "Semaine",
@@ -598,7 +611,11 @@
     "unitPrice": "PU HT",
     "vatRate": "TVA",
     "notPlanned": "Non planifiée",
-    "lines": "Prestations facturées"
+    "lines": "Prestations facturées",
+    "billedTo": "Facturé à",
+    "recipient_business": "Entreprise",
+    "recipient_public": "Organisme public",
+    "recipient_individual": "Particulier"
   },
   "bills": {
     "title": "Factures",
@@ -624,7 +641,8 @@
     "filterSentYes": "Envoyée",
     "filterSentNo": "Pas envoyée",
     "detailTitle": "Facture {{number}}",
-    "noLine": "Aucune prestation sur cette facture."
+    "noLine": "Aucune prestation sur cette facture.",
+    "windowIsTheDefault": "Les bénéficiaires ayant leur propre périodicité sont facturés sur la leur."
   },
   "billingSettings": {
     "title": "Paramètres de facturation",
@@ -641,6 +659,123 @@
     "saved": "Paramètres enregistrés.",
     "saveFailed": "Les paramètres n'ont pas pu être enregistrés.",
     "termsTooLong": "Le délai de paiement ne peut pas dépasser 60 jours.",
-    "termsTooShort": "Le délai de paiement doit être d'au moins un jour."
+    "termsTooShort": "Le délai de paiement doit être d'au moins un jour.",
+    "periodicityHelp": "Périodicité par défaut. Un bénéficiaire peut être facturé sur une autre périodicité depuis sa fiche.",
+    "tabRules": "Règles de facturation",
+    "tabIntegrations": "Intégrations"
+  },
+  "welcome": {
+    "kicker": "Gestion d'agence d'aide à domicile",
+    "title": "Devis, planification et facturation pour une agence d'aide à domicile.",
+    "subtitle": "Du premier échange avec une famille jusqu'à la visite au planning et à la facture de fin de mois — un seul endroit, un seul dossier, les mêmes règles.",
+    "signIn": "Se connecter",
+    "signOut": "Se déconnecter",
+    "signedInAs": "Connecté en tant que {{name}}.",
+    "featuresTitle": "Ce que fait l'application",
+    "featuresLead": "Neuf fonctions, dans l'ordre où le travail traverse l'agence.",
+    "quoting": "Devis",
+    "quotingBody": "Transformez les besoins d'une famille en prestations datées, horodatées et tarifées. Les tarifs viennent de votre catalogue, avec les majorations dimanche et jours fériés et la TVA appliquée ligne par ligne.",
+    "validation": "File de validation",
+    "validationBody": "Un intervenant chez une famille peut rédiger un devis ; il ne fixe pas vos prix. Ce qu'il écrit attend dans une file jusqu'à l'approbation d'un responsable, et le dossier indique qui a validé.",
+    "planning": "Planification automatique",
+    "planningBody": "Le travail accepté devient une semaine de visites — qui va où, dans quel ordre, trajets et pause déjeuner compris. Replanifier la même semaine donne le même résultat.",
+    "workforce": "Équipe",
+    "workforceBody": "Contrats, jours travaillés, absences datées et présence sur le terrain. Chaque intervenant tient sa fiche ; le responsable garde ce qui décide de ce qu'on peut lui confier.",
+    "qualifications": "Qualifications et compétences",
+    "qualificationsBody": "Les diplômes que le responsable enregistre et les compétences que l'intervenant déclare. Les deux sont des contraintes strictes : personne n'est jamais planifié sur une prestation pour laquelle il n'est pas qualifié.",
+    "customers": "Bénéficiaires",
+    "customersBody": "Adresses géocodées une fois, pour que chaque trajet soit réel. Contacts, statut d'inscription et le portefeuille réellement suivi par chaque intervenant.",
+    "map": "Carte des interventions",
+    "mapBody": "Toutes les visites planifiées sur une carte, sur la période de votre choix, chaque repère portant la photo de l'intervenant. « Qui est où » sans rien ouvrir.",
+    "billing": "Facturation",
+    "billingBody": "Des factures générées à partir des visites réellement effectuées, validées par un responsable et envoyées avec l'identité légale de l'agence.",
+    "notifications": "Notifications en direct",
+    "notificationsBody": "Un devis à valider, un planning revenu incomplet, des factures en attente — la pastille se met à jour en temps réel, sans rafraîchir la page.",
+    "rolesTitle": "Pour qui",
+    "rolesLead": "Trois rôles, et chaque écran ne montre que ce sur quoi ce rôle peut agir.",
+    "forAssistant": "Intervenants",
+    "forAssistantBody": "Leur semaine en calendrier, les bénéficiaires qu'ils suivent, les devis qu'ils ont rédigés et les parties de leur fiche qui leur appartiennent.",
+    "forManager": "Responsables",
+    "forManagerBody": "La file de validation, toute l'équipe, la planification et la carte. Tout ce qui décide de ce que l'agence s'est engagée à faire.",
+    "forAdministrator": "Administrateurs",
+    "forAdministratorBody": "Tout ce qui précède, plus les comptes, les catalogues, les règles de planification et les informations légales et bancaires de l'agence.",
+    "cta": "Quand vous voulez.",
+    "ctaBody": "Connectez-vous avec le compte fourni par votre agence.",
+    "ctaSignedIn": "Vous êtes connecté.",
+    "ctaSignedInBody": "Déconnectez-vous ici, ou utilisez la navigation pour reprendre votre travail.",
+    "footer": "SimpleERP — devis, gestion d'équipe et planification d'interventions pour une agence d'aide à domicile."
+  },
+  "portal": {
+    "myPlanning": "Mes interventions",
+    "myQuotes": "Mes devis",
+    "myBills": "Mes factures",
+    "myDetails": "Mes informations",
+    "assistant": "Intervenant",
+    "noVisit": "Aucune intervention n'est programmée pour le moment. Une modification que vous avez demandée peut être en attente de confirmation par l'agence.",
+    "changeNeedsApproval": "Annuler ou déplacer une intervention renvoie la prise en charge à l'agence. Rien n'est programmé tant qu'elle n'a pas confirmé.",
+    "cancel": "Annuler cette intervention",
+    "cancelTitle": "Annuler cette intervention ?",
+    "cancelWarning": "L'intervention est retirée de la prise en charge, et la prise en charge entière retourne à l'agence pour être validée à nouveau. Tant qu'elle n'a pas confirmé, aucune de ses interventions n'est programmée — pas seulement celle-ci.",
+    "cancelConfirm": "Annuler l'intervention",
+    "reschedule": "Déplacer cette intervention",
+    "rescheduleTitle": "Déplacer cette intervention",
+    "rescheduleConfirm": "Demander cet horaire",
+    "rescheduleWarning": "L'agence confirme le nouvel horaire, et déplacer une intervention un dimanche ou un jour férié peut en modifier le prix. Rien n'est programmé tant qu'elle n'a pas validé.",
+    "windowExplained": "Indiquez la plage pendant laquelle vous êtes disponible. L'agence place l'intervention à l'intérieur de cette plage, selon la tournée de l'intervenant.",
+    "windowInvalid": "La fin doit être postérieure au début.",
+    "newDay": "Nouveau jour",
+    "notBefore": "Pas avant",
+    "notAfter": "Pas après",
+    "noQuote": "L'agence ne vous a pas encore adressé de devis.",
+    "noBill": "Aucune facture ne vous a encore été adressée.",
+    "downloadPdf": "Télécharger le PDF",
+    "dueOn": "Échéance {{date}}",
+    "detailsSaved": "Vos informations ont été enregistrées.",
+    "addressNotResolved": "Nous n'avons pas pu localiser cette adresse. Aucune intervention ne peut être planifiée tant qu'elle n'est pas corrigée."
+  },
+  "integrations": {
+    "title": "Galerie d'intégrations",
+    "lead": "Connectez la plateforme agréée par laquelle votre agence transmet ses factures. La facturation électronique et l'e-reporting sont des obligations légales.",
+    "category": {
+      "all": "Toutes",
+      "invoice": "Facturation",
+      "reporting": "E-reporting",
+      "public": "Secteur public"
+    },
+    "sortBy": "Trier par",
+    "sort": {
+      "alpha": "Alphabétique A-Z",
+      "status": "Connectées d'abord"
+    },
+    "search": "Rechercher",
+    "enabled": "Activée",
+    "configured": "Configurée",
+    "unverified": "Doc non vérifiée",
+    "checkFailed": "La dernière vérification a échoué",
+    "noMatch": "Aucune plateforme ne correspond à ce filtre.",
+    "showing": "{{from}}-{{to}} sur {{total}}",
+    "registryNote": "Toutes les plateformes listées ici sont immatriculées sous réserve, leur rapport d'audit restant à rendre. Vérifiez leur statut actuel sur",
+    "connect": "Connecter {{name}}",
+    "dialogLead": "Collez les identifiants de votre compte {{name}}. Ils sont vérifiés auprès de la plateforme avant enregistrement, puis stockés chiffrés.",
+    "documentation": "Consulter leur documentation API",
+    "unverifiedHelp": "Nous n'avons pas pu lire directement la documentation API de {{name}} : ce connecteur suit la forme documentée. Vérifiez-le sur un bac à sable avant de vous y fier.",
+    "alreadyConfigured": "Une clé se terminant par {{hint}} est déjà enregistrée. En saisir une nouvelle la remplace.",
+    "field": {
+      "api_key": "Clé API",
+      "account_id": "Identifiant de compte",
+      "legal_entity_id": "Identifiant d'entité légale"
+    },
+    "fieldHelp": {
+      "api_key": "Jamais réaffichée une fois enregistrée.",
+      "account_id": "Le compte sous lequel vos factures sont déposées.",
+      "legal_entity_id": "Créé dans la console de la plateforme, puis recopié ici."
+    },
+    "refused": "La plateforme a refusé ces identifiants. Vérifiez la clé et réessayez.",
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "cancel": "Annuler",
+    "warningTitle": "Aucune plateforme agréée n'est connectée",
+    "warningBody": "Les factures ne peuvent être ni transmises ni déclarées à l'administration fiscale. Connectez une plateforme depuis les règles de facturation.",
+    "warningAction": "En connecter une"
   }
 }

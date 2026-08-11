@@ -24,7 +24,7 @@ from models.enums import (
 )
 
 # First-party imports
-from models.exceptions.enum_exceptions import MTInvalidWeekday
+from models.exceptions.enum_exceptions import MTInvalidWeekday, MTRoleNotRankable
 
 ALL_ENUMS = (
     AvailabilityKind,
@@ -114,9 +114,62 @@ class TestEnums:
         """``has_at_least`` compares roles by rank."""
         assert role.has_at_least(minimum) is expected
 
-    def test_every_role_has_a_rank(self) -> None:
-        """No role is missing from the rank table."""
-        assert {role.rank() for role in UserRole} == {0, 1, 2}
+    def test_every_staff_role_has_a_rank(self) -> None:
+        """No role on the ladder is missing from the rank table."""
+        assert {role.rank() for role in UserRole if role.is_staff()} == {0, 1, 2}
+
+    def test_a_customer_cannot_be_ranked(self) -> None:
+        """**The privacy hole this refusal exists to close.**
+
+        Notes:
+            A customer is not above or below an assistant — they are a
+            different axis. Ranked below, ``has_at_least(CUSTOMER)`` is true for
+            *every employee*, so a guard written the usual way would admit staff
+            to a household's private space. Ranked above, a customer satisfies
+            the manager checks.
+
+            There is no number that is correct, so ``rank()`` refuses. If
+            somebody ever "fixes" this by adding customer to the table, this
+            test is what says no.
+        """
+        with pytest.raises(MTRoleNotRankable):
+            UserRole.CUSTOMER.rank()
+
+    @pytest.mark.parametrize(
+        "role",
+        [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN],
+    )
+    def test_no_employee_satisfies_a_customer_check(self, role: UserRole) -> None:
+        """An employee is never "at least a customer".
+
+        Args:
+            role (UserRole): The staff role under test.
+
+        Notes:
+            Raises rather than answering ``False``. Either behaviour closes the
+            hole, but a call that quietly answers a plausible boolean is one
+            nobody finds; a call that raises is fixed the day it is written.
+        """
+        with pytest.raises(MTRoleNotRankable):
+            role.has_at_least(UserRole.CUSTOMER)
+
+    def test_a_customer_is_not_staff(self) -> None:
+        """The one question that separates the two axes."""
+        assert UserRole.CUSTOMER.is_staff() is False
+        assert all(
+            role.is_staff() for role in UserRole if role is not UserRole.CUSTOMER
+        )
+
+    def test_the_staff_values_exclude_the_customer(self) -> None:
+        """What a staff-facing payload validates against.
+
+        Notes:
+            A request that could name ``customer`` here would promote somebody
+            across the axis — out of the agency, or into it — through a field
+            meant to choose between assistant, manager and administrator.
+        """
+        assert UserRole.staff_values() == ("hca", "manager", "admin")
+        assert "customer" in UserRole.values()
 
     # ------------------------------------------------------------------ #
     #  Weekday

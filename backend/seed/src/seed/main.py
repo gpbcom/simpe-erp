@@ -58,7 +58,7 @@ async def _announce(company_id: str, config: AppConfig) -> None:
         else:
             logger.warning(
                 "Could not announce agency %s: "
-                "the worker will pick it up when "   # noqa: E501
+                "the worker will pick it up when "  # noqa: E501
                 "it next starts.",
                 company_id,
             )

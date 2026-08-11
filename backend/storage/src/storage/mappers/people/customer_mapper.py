@@ -64,6 +64,7 @@ class CustomerMapper(PersonMapper[Customer, CustomerRow]):
             email=row.email,
             address=self._address_to_model(row),
             registration_status=row.registration_status,
+            billing_periodicity=row.billing_periodicity,
             created_at=self.timestamps.to_utc(row.created_at),
             updated_at=self.timestamps.to_utc(row.updated_at),
         )
@@ -76,11 +77,16 @@ class CustomerMapper(PersonMapper[Customer, CustomerRow]):
             model (Customer): The model carrying the values.
 
         Notes:
-            The status is round-tripped through
-            :class:`~models.enums.RegistrationStatus` rather than read straight
-            off the model, so the column can only ever hold a value the enum
-            recognises — the repository filters on it, and a status nobody
-            queries for is a customer who quietly disappears from every list.
+            - The status is round-tripped through
+              :class:`~models.enums.RegistrationStatus` rather than read straight
+              off the model, so the column can only ever hold a value the enum
+              recognises — the repository filters on it, and a status nobody
+              queries for is a customer who quietly disappears from every list.
+            - The billing periodicity is written as ``None`` when the customer
+              has no override, never as the agency's current rule. Writing the
+              resolved value would turn "follows the agency" into a frozen copy
+              of what the agency happened to bill on the day the record was
+              saved, and the customer would silently stop tracking the setting.
         """
         self._apply_person_fields(row, model)
         status = RegistrationStatus(model.registration_status)
@@ -96,3 +102,11 @@ class CustomerMapper(PersonMapper[Customer, CustomerRow]):
                 row.id,
             )
         row.registration_status = status.value
+        periodicity = model.billing_periodicity
+        if periodicity is not None:
+            self.logger.info(
+                "Customer row %s is billed %s, not on the agency's own rule.",
+                row.id,
+                periodicity.value,
+            )
+        row.billing_periodicity = periodicity.value if periodicity else None

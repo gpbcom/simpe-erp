@@ -21,6 +21,7 @@ from service.skills.skills import SkillTypeService
 from service.companies.companies import CompanyService
 from service.companies.registration import CompanyRegistrationService
 from service.customers.customers import CustomerService
+from service.customers.portal import CustomerPortalService
 from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
 from service.intervention_types.intervention_types import (
@@ -31,16 +32,24 @@ from service.messaging.publisher import EventPublisher
 from service.planning.interventions import InterventionService
 from service.planning.plannings import PlanningService
 from service.planning.webhook import PlanningWebhook
+from service.quotes.documents import QuoteDocumentService
 from service.quotes.quotes import QuoteService
 from service.observability.metrics import ApplicationMetrics
 from storage.db.connection_manager import DatabaseConnectionManager
 from storage.repositories.catalog.certification_type import CertificationTypeRepository  # noqa: E501
 from storage.repositories.catalog.skill_type import SkillTypeRepository
 from service.billing.billings import BillingService
+from service.integrations.invoicing import InvoicingService
+from service.security.credential_cipher import CredentialCipher
 from service.billing.webhook import BillingWebhook
+from service.integrations.utils.factur_x import FacturXBuilder
 from service.utils.invoice_renderer import InvoiceRenderer
+from service.utils.quote_renderer import QuoteRenderer
 from storage.repositories.billing.bill import BillRepository
 from storage.repositories.billing.billing_run import BillingRunRepository
+from storage.repositories.integrations.einvoicing_integration import (
+    EInvoicingIntegrationRepository,
+)
 from storage.repositories.billing.billing_settings import (
     BillingSettingsRepository,
 )
@@ -481,17 +490,21 @@ async def stop_notification_relay() -> None:
 async def get_customer_service(
     customers: CustomerRepository = Depends(get_customer_repository),
     quotes: QuoteRepository = Depends(get_quote_repository),
+    users: UserRepository = Depends(get_user_repository),
 ) -> CustomerService:
     """Return the customer service.
 
     Args:
         customers (CustomerRepository): The customer store.
         quotes (QuoteRepository): The quote store, consulted before a delete.
+        users (UserRepository): The account store, so deleting a household
+            takes their portal account with them. The foreign key is
+            ``RESTRICT``, so without it the delete fails at the database.
 
     Returns:
         CustomerService: The service.
     """
-    return CustomerService(customers=customers, quotes=quotes)
+    return CustomerService(customers=customers, quotes=quotes, users=users)
 
 
 @lru_cache
@@ -933,6 +946,59 @@ def get_hca_user(request: Request) -> User:
     return user
 
 
+def get_customer_user(request: Request) -> User:
+    """Return the account, requiring it to be a customer's.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        User: The authenticated customer account.
+
+    Raises:
+        HTTPException: 401 when unauthenticated, 403 when the account is not a
+            customer's.
+
+    Notes:
+        - **Compared by identity, and it cannot be anything else.** A customer
+          is not a rung of the staff ladder — see
+          :meth:`~models.enums.UserRole.rank`, which refuses to rank one — so
+          there is no "at least a customer" to ask. Written the usual way with
+          ``has_at_least`` this would raise; written the *forgiving* way it
+          would admit every employee to a household's private space.
+        - The account's ``customer_id`` is guaranteed present by the model, so
+          every route behind this guard may resolve the household from the
+          credential and never from a path parameter.
+    """
+    user = get_current_user(request)
+    logger.debug("Checking customer access for account %s.", user.id)
+    if user.role is not UserRole.CUSTOMER:
+        logger.warning(
+            "Account %s (%s) is not a customer; denied %s %s.",
+            user.id,
+            user.role.value,
+            request.method,
+            request.url.path,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action is reserved for customers.",
+        )
+    if user.customer_id is None:
+        # Unreachable: the model refuses to build such an account. Closed
+        # rather than trusted, because the alternative is a portal that reads
+        # every household when the link is missing.
+        logger.error(
+            "Customer account %s carries no customer link; access refused.", user.id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is not linked to a customer record.",
+        )
+    logger.info("Customer account %s admitted to the portal.", user.id)
+    return user
+
+
 def get_manager_user(request: Request) -> User:
     """Return the account, requiring manager privileges or above.
 
@@ -1006,6 +1072,21 @@ async def get_billing_settings_repository(
 
 
 @lru_cache
+def get_factur_x_builder() -> FacturXBuilder:
+    """Return the builder that writes an invoice as a Factur-X document.
+
+    Returns:
+        FacturXBuilder: The builder, built once per process.
+
+    Notes:
+        Cached like the renderer, and for the same reason: it holds only
+        constants and a logger, and rebuilding it per request would allocate a
+        namespace table on every invoice.
+    """
+    return FacturXBuilder()
+
+
+@lru_cache
 def get_invoice_renderer() -> InvoiceRenderer:
     """Return the renderer that lays an invoice out as a PDF.
 
@@ -1060,6 +1141,7 @@ async def get_billing_service(
         config=get_app_config().billing,
         documents=get_object_storage(),
         renderer=get_invoice_renderer(),
+        factur_x=get_factur_x_builder(),
         logger=logger,
     )
 
@@ -1106,3 +1188,134 @@ def get_admin_user(request: Request) -> User:
         )
     logger.debug("Admin gate passed for account %s.", user.id)
     return user
+
+
+async def get_quote_document_service(
+    quotes: QuoteService = Depends(get_quote_service),
+    customers: CustomerRepository = Depends(get_customer_repository),
+    companies: CompanyRepository = Depends(get_company_repository),
+) -> QuoteDocumentService:
+    """Return the quote document service.
+
+    Args:
+        quotes (QuoteService): The quote service.
+        customers (CustomerRepository): The customer store.
+        companies (CompanyRepository): The agency store.
+
+    Returns:
+        QuoteDocumentService: The service.
+
+    Notes:
+        The object store is resolved here rather than injected, matching how
+        the other document paths reach it, and a deployment without one simply
+        prints quotes with no letterhead.
+    """
+    return QuoteDocumentService(
+        quotes=quotes,
+        customers=customers,
+        companies=companies,
+        renderer=QuoteRenderer(),
+        logos=get_object_storage(),
+    )
+
+
+async def get_customer_portal_service(
+    customers: CustomerService = Depends(get_customer_service),
+    interventions: InterventionService = Depends(get_intervention_service),
+    quotes: QuoteService = Depends(get_quote_service),
+    quote_store: QuoteRepository = Depends(get_quote_repository),
+    intervention_store: InterventionRepository = Depends(get_intervention_repository),
+    bills: BillingService = Depends(get_billing_service),
+    documents: QuoteDocumentService = Depends(get_quote_document_service),
+) -> CustomerPortalService:
+    """Return the customer portal service.
+
+    Args:
+        customers (CustomerService): The customer service.
+        interventions (InterventionService): The visit service.
+        quotes (QuoteService): The quote service.
+        quote_store (QuoteRepository): The quote store, for the status move.
+        intervention_store (InterventionRepository): The visit store.
+        bills (BillingService): Reads and serves their invoices.
+        documents (QuoteDocumentService): Renders a quote as a PDF.
+
+    Returns:
+        CustomerPortalService: The service.
+
+    Notes:
+        Composed entirely from services that already exist. The portal adds one
+        behaviour of its own — a household's change sends the quote back for
+        validation — and reuses the cancelling and repricing that the manager's
+        calendar already does.
+    """
+    return CustomerPortalService(
+        customers=customers,
+        interventions=interventions,
+        quotes=quotes,
+        quote_store=quote_store,
+        intervention_store=intervention_store,
+        bills=bills,
+        documents=documents,
+    )
+
+
+async def get_einvoicing_integration_repository(
+    session: AsyncSession = Depends(get_session),
+) -> EInvoicingIntegrationRepository:
+    """Return the e-invoicing integration repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        EInvoicingIntegrationRepository: The repository.
+    """
+    return EInvoicingIntegrationRepository(session=session)
+
+
+@lru_cache
+def get_credential_cipher() -> CredentialCipher:
+    """Return the cipher that seals platform credentials.
+
+    Returns:
+        CredentialCipher: The cipher, built once per process.
+
+    Notes:
+        **Cached, and that is load-bearing.** Deriving the key costs six hundred
+        thousand PBKDF2 rounds. Paid once at start-up it is invisible; paid per
+        request it would put a third of a second in front of every call that
+        touches an integration.
+
+        A deployment whose key is unset or too short raises here, which means it
+        raises on the first request rather than at import — deliberate, because
+        a process that cannot decrypt a credential should fail where the failure
+        is attributable rather than refusing to start for reasons an operator
+        has to go digging for.
+    """
+    return CredentialCipher(get_app_config().integrations)
+
+
+async def get_invoicing_service(
+    integrations: EInvoicingIntegrationRepository = Depends(
+        get_einvoicing_integration_repository
+    ),
+) -> InvoicingService:
+    """Return the service that connects a platform and transmits through it.
+
+    Args:
+        integrations (EInvoicingIntegrationRepository): Where the connections
+            are stored.
+
+    Returns:
+        InvoicingService: The service.
+
+    Notes:
+        The platform catalogue rides on the configuration this is handed, so a
+        deployment that declares a fifth platform in ``app.yaml`` gets a fifth
+        card without a code change.
+    """
+    return InvoicingService(
+        integrations=integrations,
+        cipher=get_credential_cipher(),
+        config=get_app_config().integrations,
+    )

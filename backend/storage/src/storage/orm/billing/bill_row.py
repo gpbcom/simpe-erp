@@ -43,11 +43,27 @@ class BillRow(Base):
         issued_on (date): The invoice date.
         due_on (date): The day payment falls due.
         status (str): Where the invoice has reached commercially.
-        customer_full_name (str): The customer's name, as addressed.
-        street (str): Street line of where the invoice was addressed.
-        postal_code (str): Postal code of where it was addressed.
-        city (str): City of where it was addressed.
-        country (str): Country of where it was addressed.
+        customer_full_name (str): The name of the person cared for.
+        street (str): Street line of where the care was delivered.
+        postal_code (str): Postal code of where it was delivered.
+        city (str): City of where it was delivered.
+        country (str): Country of where it was delivered.
+        recipient_kind (str): ``individual``, ``business`` or ``public``.
+        recipient_name (str): Who the invoice is billed to.
+        recipient_street (str): Street line of the billing address.
+        recipient_postal_code (str): Postal code of the billing address.
+        recipient_city (str): City of the billing address.
+        recipient_country (str): Country of the billing address.
+        recipient_latitude (Optional[float]): Coordinate of the billing address.
+        recipient_longitude (Optional[float]): Coordinate of the billing
+            address.
+        recipient_geocoding_error (Optional[str]): Why it could not be placed.
+        recipient_siren (Optional[str]): The payer's legal identifier.
+        recipient_vat_number (Optional[str]): The payer's VAT number.
+        recipient_service_code (Optional[str]): Routing code in a public body.
+        recipient_share_ttc (Optional[Decimal]): What this payer owes, when the
+            invoice is split.
+        operation_nature (str): ``goods``, ``services`` or ``mixed``.
         latitude (Optional[float]): Resolved latitude, when geocoded.
         longitude (Optional[float]): Resolved longitude, when geocoded.
         geocoding_error (Optional[str]): Stable geocoding failure code.
@@ -84,6 +100,23 @@ class BillRow(Base):
         - The customer's address is **flattened and copied**, exactly as an
           intervention copies the one it is delivered at. A customer who moves
           must not retroactively change where last quarter's invoice was sent.
+        - **Two flattened addresses, and they are not redundant.** The first is
+          where the care was delivered; the ``recipient_*`` block is who was
+          billed for it. They hold the same values for a household paying its
+          own invoices — most of them — and they diverge on exactly the
+          arrangement that made the columns necessary: a conseil départemental
+          or a mutuelle funding the work. Storing one and deriving the other
+          would make a funded invoice unrepresentable.
+        - ``recipient_siren`` is nine characters because that is what a SIREN
+          is, not a guess at a length. A column wide enough for a SIRET would
+          invite one, and fourteen digits in that field is an invoice routed to
+          an establishment rather than to the company.
+        - **The billing address carries a coordinate nobody routes to**, and it
+          has to. :class:`~models.geo.postal_address.PostalAddress` geocodes
+          while it validates and skips the lookup only when a coordinate or a
+          failure code is already present — so a column left off here would turn
+          every read of every invoice into a blocking HTTP request to Nominatim.
+          Three columns that are never queried are the cheap side of that trade.
         - There is no cancelled state and no delete path in ordinary use. A
           mistaken invoice is corrected by a credit note, because a number
           withdrawn from the series is the gap the series forbids.
@@ -138,6 +171,28 @@ class BillRow(Base):
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     geocoding_error: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    recipient_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    recipient_street: Mapped[str] = mapped_column(String(255), nullable=False)
+    recipient_postal_code: Mapped[str] = mapped_column(String(16), nullable=False)
+    recipient_city: Mapped[str] = mapped_column(String(128), nullable=False)
+    recipient_country: Mapped[str] = mapped_column(String(128), nullable=False)
+    recipient_latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    recipient_longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    recipient_geocoding_error: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    recipient_siren: Mapped[Optional[str]] = mapped_column(String(9), nullable=True)
+    recipient_vat_number: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True
+    )
+    recipient_service_code: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    recipient_share_ttc: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    operation_nature: Mapped[str] = mapped_column(String(16), nullable=False)
     total_ht: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     total_vat: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     total_ttc: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

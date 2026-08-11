@@ -48,6 +48,17 @@ can never disagree about which database they mean.
 | `s3` | Bucket, region, endpoint, `public_base_url`, key env names, `photo_key_prefix`, `max_upload_bytes` |
 | `rabbitmq` | `enabled`, host, port, vhost, user, `password_env`, exchange, publish timeout, `prefetch` |
 | `observability` | `service_name`, `metrics_enabled`, `metrics_port`, `tracing_enabled`, `otlp_endpoint`, `export_timeout_seconds` |
+| `integrations` | `credential_key_env`, `request_timeout_seconds`, and **`providers`** — the certified e-invoicing platforms this deployment offers |
+
+**`integrations.providers` is the one section that is a catalogue rather than a
+set of dials.** Which platforms an agency may connect to changes when the
+registry does — one loses its registration, another publishes an API — so the
+list of them, with each platform's display name, documentation link, coverage
+and required credential fields, is configuration rather than code. It is the
+single statement of who the platforms are: the gallery, the enable dialog and
+the transmission service all read it, so a fact about a vendor is written once.
+A test asserts that the shipped file still declares every platform there is a
+connector for.
 
 Each is a Pydantic model with its own validators and its own `MT*` exception
 family, so a malformed value fails at start-up naming the field rather than at
@@ -67,8 +78,18 @@ a restart, not a rebuild.
 | `S3_ACCESS_KEY` · `S3_SECRET_KEY` | `s3.access_key_env` · `secret_key_env` | upload |
 | `SMTP_USERNAME` · `SMTP_PASSWORD` | `email.username_env` · `password_env` | send |
 | `PLANNING_WEBHOOK_TOKEN` | `webhook.token_env` | call / verify |
+| `BILLING_WEBHOOK_TOKEN` | `billing_webhook.token_env` | call / verify |
+| `EINVOICING_CREDENTIAL_KEY` | `integrations.credential_key_env` | seal / open a platform credential |
 | `RABBITMQ_PASSWORD` | `rabbitmq.password_env` | connect |
 | `VITE_API_BASE_URL` | — | front-end **build** |
+
+**`EINVOICING_CREDENTIAL_KEY` is the one that cannot be replaced.** Every other
+variable here is a credential for something that can be issued again; this one
+is the only thing that can read an agency's stored platform credentials back, so
+losing it means every agency must re-enter its certified platform's API key. It
+belongs in the same backup discipline as the database, and it is read by the API
+alone — a worker publishes `bill.paid` and the API's loopback webhook does the
+transmission.
 
 Start from `infra/compose/.env.example`, copied to `infra/compose/.env` —
 Compose reads it from the directory of the first `-f` file, so one left at the

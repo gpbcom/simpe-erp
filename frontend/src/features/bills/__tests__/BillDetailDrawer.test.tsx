@@ -58,6 +58,24 @@ function aBill(overrides: Partial<Bill> = {}): Bill {
       longitude: null,
       geocoding_error: null,
     },
+    recipient: {
+      kind: 'individual',
+      name: 'Jeanne Vincent',
+      address: {
+        street: '1 rue des Lilas',
+        postal_code: '75011',
+        city: 'Paris',
+        country: 'France',
+        latitude: null,
+        longitude: null,
+        geocoding_error: null,
+      },
+      siren: null,
+      vat_number: null,
+      service_code: null,
+      share_ttc: null,
+    },
+    operation_nature: 'services',
     lines: [
       {
         id: 'line-1',
@@ -271,5 +289,34 @@ describe('BillDetailDrawer lifecycle', () => {
 
     expect(advances.length).toBeLessThanOrEqual(1);
     expect(backs.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('BillDetailDrawer — who is billed', () => {
+  it('says nothing when the household pays its own invoice', () => {
+    // The overwhelmingly common case. A line repeating the customer's name
+    // under their own name is noise on every invoice the agency issues.
+    render(<BillDetailDrawer selected={aBill()} onClose={vi.fn()} />);
+
+    expect(screen.queryByTestId('bill-recipient')).not.toBeInTheDocument();
+  });
+
+  it('names the payer when somebody else is being asked for the money', () => {
+    // The single most important fact on the screen when it is true: the person
+    // cared for is not the person being invoiced.
+    const funded: Bill = aBill({
+      recipient: {
+        ...aBill().recipient,
+        kind: 'public',
+        name: 'Conseil départemental de Paris',
+        siren: '130025265',
+      },
+    });
+
+    render(<BillDetailDrawer selected={funded} onClose={vi.fn()} />);
+
+    const line = screen.getByTestId('bill-recipient');
+    expect(line).toHaveTextContent('Conseil départemental de Paris');
+    expect(line).toHaveTextContent('130025265');
   });
 });

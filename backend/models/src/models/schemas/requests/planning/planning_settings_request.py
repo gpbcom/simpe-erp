@@ -100,7 +100,7 @@ class PlanningSettingsRequest(BaseModel):
                 "Must be a number."
             ) from None
         if not (
-            PlanningSettings.MIN_RADIUS_KM <= radius <= PlanningSettings.MAX_RADIUS_KM # noqa: E501
+            PlanningSettings.MIN_RADIUS_KM <= radius <= PlanningSettings.MAX_RADIUS_KM  # noqa: E501
         ):
             raise MTPlanningSettingsRequestInvalidRadius(
                 f"Invalid max_intervention_radius_km: {radius!r}. Must be "

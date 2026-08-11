@@ -64,7 +64,7 @@ async def start_planning_run(
           what was asked for. That is the whole reason this moved off a FastAPI
           background task — one lost the run entirely on a restart.
         - Running the computation is administrator-only: it rewrites every
-        assistant's calendar for the period.
+          assistant's calendar for the period.
     """
     if period_end < period_start:
         logger.warning(

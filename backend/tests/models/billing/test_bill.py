@@ -23,13 +23,21 @@ from models.billing.exceptions import (
     MTBillInvalidLines,
     MTBillInvalidMoment,
     MTBillInvalidNumber,
+    MTBillInvalidOperationNature,
+    MTBillInvalidRecipient,
+    MTBillInvalidShare,
     MTBillInvalidPeriod,
     MTBillInvalidPeriodicity,
     MTBillInvalidSequence,
     MTBillInvalidStatus,
     MTBillInvalidTotals,
 )
-from models.enums import BillingPeriodicity, BillStatus, ServiceCategory
+from models.enums import (
+    BillingPeriodicity,
+    BillStatus,
+    OperationNature,
+    ServiceCategory,
+)
 
 ADDRESS: Dict[str, Any] = {
     "street": "1 rue des Lilas",
@@ -97,6 +105,7 @@ def a_bill(**overrides: Any) -> Dict[str, Any]:
         "due_on": date(2026, 5, 1),
         "customer_full_name": "Jeanne Vincent",
         "customer_address": ADDRESS,
+        "recipient": {"name": "Jeanne Vincent", "address": ADDRESS},
         "lines": lines,
         "total_ht": sum((line.total_ht for line in lines), Decimal("0.00")),
         "total_vat": sum((line.vat_amount for line in lines), Decimal("0.00")),
@@ -498,3 +507,109 @@ class TestBillPresentation:
     def test_the_currency_is_stated_once_for_the_whole_document(self) -> None:
         """Every amount on an invoice is in one currency."""
         assert Bill.CURRENCY == "EUR"
+
+
+class TestTheStructuredInvoiceFields:
+    """Tests for what the electronic-invoicing reform added to a bill."""
+
+    def test_an_invoice_covers_services_unless_told_otherwise(self) -> None:
+        """**The default decides when the VAT falls due.**
+
+        Notes:
+            On services the tax is exigible on collection; on goods, on
+            delivery. Defaulting to goods would move the exigibility of every
+            invoice this agency issues a month early.
+        """
+        bill = Bill(**a_bill())
+
+        assert bill.operation_nature is OperationNature.SERVICES
+        assert bill.operation_nature.includes_services() is True
+
+    def test_an_unknown_operation_nature_is_refused(self) -> None:
+        """A mandatory mention is not somewhere to guess."""
+        with pytest.raises(MTBillInvalidOperationNature):
+            Bill(**a_bill(operation_nature="subscription"))
+
+    def test_an_invoice_must_name_who_owes_it(self) -> None:
+        """**Required rather than defaulted to the customer.**
+
+        Notes:
+            - Defaulting would hide the choice from the one place it matters: a
+              funded arrangement, where the payer is a département and the
+              household would silently be invoiced for work somebody else pays
+              for.
+            - An explicit ``null`` is what this asserts, because that is what a
+              payload can carry. A key left out entirely is refused by Pydantic
+              before any validator runs — true of every required field on this
+              model, and the reason the check exists here as well.
+        """
+        with pytest.raises(MTBillInvalidRecipient):
+            Bill(**a_bill(recipient=None))
+
+    def test_a_recipient_that_is_not_one_is_refused(self) -> None:
+        """A name is not a party: the identifiers travel with it."""
+        with pytest.raises(MTBillInvalidRecipient):
+            Bill(**a_bill(recipient="Jeanne Vincent"))
+
+    def test_a_household_paying_its_own_bill_is_reported_not_transmitted(
+        self,
+    ) -> None:
+        """Which is most of this agency's revenue."""
+        bill = Bill(**a_bill())
+
+        assert bill.requires_electronic_invoice() is False
+        assert bill.amount_due() == bill.total_ttc
+
+    def test_a_funded_recipient_is_transmitted_and_owes_its_share(self) -> None:
+        """The regime follows the buyer, not the person cared for."""
+        bill = Bill(
+            **a_bill(
+                recipient={
+                    "kind": "public",
+                    "name": "Conseil départemental de Paris",
+                    "address": ADDRESS,
+                    "siren": "130025265",
+                    "share_ttc": "10.00",
+                }
+            )
+        )
+
+        assert bill.requires_electronic_invoice() is True
+        assert bill.amount_due() == Decimal("10.00")
+
+    def test_a_share_above_the_total_is_refused(self) -> None:
+        """Arithmetic nobody can reconcile, caught where it is written."""
+        with pytest.raises(MTBillInvalidShare):
+            Bill(
+                **a_bill(
+                    recipient={
+                        "kind": "public",
+                        "name": "Conseil départemental de Paris",
+                        "address": ADDRESS,
+                        "siren": "130025265",
+                        "share_ttc": "100000.00",
+                    }
+                )
+            )
+
+    def test_a_share_below_the_total_is_the_ordinary_funded_case(self) -> None:
+        """**Only the ceiling is checked, and deliberately.**
+
+        Notes:
+            Requiring the share to equal the total would refuse exactly the
+            arrangement the field exists for: the département pays its part and
+            the household the rest.
+        """
+        bill = Bill(
+            **a_bill(
+                recipient={
+                    "kind": "public",
+                    "name": "Conseil départemental de Paris",
+                    "address": ADDRESS,
+                    "siren": "130025265",
+                    "share_ttc": "1.00",
+                }
+            )
+        )
+
+        assert bill.amount_due() < bill.total_ttc

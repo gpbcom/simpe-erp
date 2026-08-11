@@ -31,7 +31,7 @@ class QuoteInterruptionRequest(BaseModel):
     last_day: date = Field(description="The final day the arrangement runs.")
 
     @field_validator("last_day", mode="before")
-    def validate_last_day(cls, value: Union[str, date, None]) -> Union[str, date]:   # noqa: E501
+    def validate_last_day(cls, value: Union[str, date, None]) -> Union[str, date]:  # noqa: E501
         """Validates that ``last_day`` is present before it is parsed.
 
         Args:

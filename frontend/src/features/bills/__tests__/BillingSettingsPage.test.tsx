@@ -18,6 +18,10 @@ const mutation = { mutate: save, isPending: false, isError: false, isSuccess: fa
 vi.mock('@/api/queries', () => ({
   useBillingSettings: () => query,
   useUpdateBillingSettings: () => mutation,
+  // The rules tab renders the e-invoicing warning, which asks whether a
+  // platform is connected. Stubbed as "one is" so these tests stay about
+  // the invoicing rules; the warning has its own tests.
+  useIntegrations: () => ({ data: [{ enabled: true }], isLoading: false }),
 }));
 
 const RULES: BillingSettings = {

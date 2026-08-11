@@ -26,6 +26,14 @@ class MTStaffAccountRequestInvalidFullName(MTInvalidStaffAccountRequestException
     """Exception raised when the display name is empty."""
 
 
+class MTInvalidCustomerAccountRequestException(Exception):
+    """Exception raised when a customer portal-account payload is invalid."""
+
+
+class MTCustomerAccountRequestInvalidFullName(MTInvalidCustomerAccountRequestException):
+    """Exception raised when the display name is empty."""
+
+
 class MTInvalidPasswordChangeRequestException(Exception):
     """Exception raised when a password-change payload is invalid."""
 

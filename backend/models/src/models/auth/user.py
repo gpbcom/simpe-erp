@@ -16,9 +16,11 @@ from pydantic_extra_types.phone_numbers import PhoneNumber
 
 # First-party imports
 from models.auth.exceptions import (
+    MTUserCustomerLinkRequiresCustomerRole,
     MTUserInvalidAccountOrigin,
     MTUserInvalidAddress,
     MTUserInvalidCompanyId,
+    MTUserInvalidCustomerId,
     MTUserInvalidDate,
     MTUserInvalidEmail,
     MTUserInvalidFullName,
@@ -30,6 +32,7 @@ from models.auth.exceptions import (
     MTUserInvalidPhoneNumber,
     MTUserInvalidPhotoUrl,
     MTUserInvalidRole,
+    MTUserRoleCustomerRequiresCustomerId,
     MTUserRoleHcaRequiresHcaId,
     MTUserStaffAccountNeedsChange,
 )
@@ -51,6 +54,9 @@ class User(Person, PortraitHolder):
         role (UserRole): What the account may do.
         is_active (bool): Whether sign-in is permitted.
         hca_id (Optional[str]): The assistant record this account belongs to.
+        customer_id (Optional[str]): The customer record this account belongs
+            to. Set for a customer account and forbidden on any other — see
+            :meth:`check_customer_link`.
         company_id (str): The company this account belongs to. Required for
             every role — see :meth:`validate_company_id`.
         account_origin (AccountOrigin): Whether the account was
@@ -82,6 +88,10 @@ class User(Person, PortraitHolder):
           them are assistants. A manager or an administrator had nowhere to put a
           portrait at all, so their own account screen showed a blank circle with
           nothing to click.
+        - ``customer_id`` is the same idea on the other axis, and its rule runs
+          **both ways**: a customer account must carry one, and no other role
+          may. A manager holding a ``customer_id`` would pass the staff guards
+          *and* resolve to a household, which is the shape a privilege bug takes.
     """
 
     INVALID_ID: ClassVar[Type[MTInvalidPersonException]] = MTUserInvalidId
@@ -117,6 +127,10 @@ class User(Person, PortraitHolder):
     hca_id: Optional[str] = Field(
         default=None,
         description="The assistant record this account belongs to.",
+    )
+    customer_id: Optional[str] = Field(
+        default=None,
+        description="The customer record this account belongs to.",
     )
     company_id: str = Field(
         description="The company this account belongs to.",
@@ -169,7 +183,8 @@ class User(Person, PortraitHolder):
         """
         if not isinstance(display_name, str) or not display_name.strip():
             raise cls.INVALID_FIRST_NAME(
-                f"Invalid full_name: {display_name!r}. Must be a non-empty string."
+                f"Invalid full_name: {display_name!r}. "  # noqa: E501
+                "Must be a non-empty string."
             )
         given, _, family = display_name.strip().partition(" ")
         return (given, family.strip()) if family.strip() else ("", given)
@@ -204,7 +219,7 @@ class User(Person, PortraitHolder):
         """
         if not isinstance(values, dict) or "full_name" not in values:
             return values
-        if values.get("first_name") is not None or values.get("last_name") is not None:
+        if values.get("first_name") is not None or values.get("last_name") is not None:  # noqa: E501
             return values
         given, family = cls.name_parts(values["full_name"])
         supplied = dict(values)
@@ -296,12 +311,12 @@ class User(Person, PortraitHolder):
 
     @field_validator("address", mode="before")
     def validate_address(
-        cls, value: Union[PostalAddress, Dict[str, JsonValue], None]
-    ) -> Union[PostalAddress, Dict[str, JsonValue], None]:
+        cls, value: Optional[Union[PostalAddress, Dict[str, JsonValue]]]
+    ) -> Optional[Union[PostalAddress, Dict[str, JsonValue]]]:
         """Validates that ``address`` is absent, an address or a mapping.
 
         Args:
-            value (Union[PostalAddress, Dict[str, JsonValue], None]): Raw
+            value (Optional[Union[PostalAddress, Dict[str, JsonValue]]]): Raw
                 ``address`` value.
 
         Returns:
@@ -353,11 +368,11 @@ class User(Person, PortraitHolder):
         return value
 
     @field_validator("role", mode="before")
-    def validate_role(cls, value: Union[str, UserRole, None]) -> UserRole:
+    def validate_role(cls, value: Optional[Union[str, UserRole]]) -> UserRole:
         """Validates that ``role`` is a known user role.
 
         Args:
-            value (Union[str, UserRole, None]): Raw ``role`` value. ``None``
+            value (Optional[Union[str, UserRole]]): Raw ``role`` value. ``None``
                 falls back to :attr:`UserRole.HCA`.
 
         Returns:
@@ -400,16 +415,46 @@ class User(Person, PortraitHolder):
             return None
         if not isinstance(value, str) or not value.strip():
             raise MTUserInvalidHcaId(
-                f"Invalid hca_id: {value!r}. Must be a non-empty string or None."
+                f"Invalid hca_id: {value!r}. "  # noqa: E501
+                "Must be a non-empty string or None."
+            )
+        return value.strip()
+
+    @field_validator("customer_id", mode="before")
+    def validate_customer_id(cls, value: Optional[str]) -> Optional[str]:
+        """Validates that ``customer_id`` is ``None`` or a non-empty string.
+
+        Args:
+            value (Optional[str]): Raw ``customer_id`` value.
+
+        Returns:
+            Optional[str]: The customer identifier, or ``None``.
+
+        Raises:
+            MTUserInvalidCustomerId: If ``value`` is neither ``None`` nor a
+                non-empty string.
+
+        Notes:
+            Stripped, and a whitespace-only value refused rather than kept. Every
+            portal route resolves the household from this field by equality; a
+            ``" "`` that matched nothing would present an empty space as though
+            the customer simply had no visits.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise MTUserInvalidCustomerId(
+                f"Invalid customer_id: {value!r}. "  # noqa: E501
+                "Must be a non-empty string or None."
             )
         return value.strip()
 
     @field_validator("language", mode="before")
-    def validate_language(cls, value: Union[str, Language, None]) -> Language:
+    def validate_language(cls, value: Optional[Union[str, Language]]) -> Language:  # noqa: E501
         """Validates that ``language`` is one the application speaks.
 
         Args:
-            value (Union[str, Language, None]): Raw ``language`` value.
+            value (Optional[Union[str, Language]]): Raw ``language`` value.
 
         Returns:
             Language: The coerced language.
@@ -418,14 +463,13 @@ class User(Person, PortraitHolder):
             MTUserInvalidLanguage: If ``value`` is not a known language.
 
         Notes:
-            ``None`` reads as the default rather than as an error: the
-            column arrived after the rows did, and an account nobody has
-            set a preference on is an ordinary account.
-
-            An *unknown* code is refused. A preference the holder set and
-            the server silently ignored is worse than one it rejected —
-            the screen would go on showing their choice while every
-            document came out in the other language.
+            - ``None`` reads as the default rather than as an error: the
+              column arrived after the rows did, and an account nobody has
+              set a preference on is an ordinary account.
+            - An *unknown* code is refused. A preference the holder set and
+              the server silently ignored is worse than one it rejected —
+              the screen would go on showing their choice while every
+              document came out in the other language.
         """
         if value is None:
             return Language.FR
@@ -469,12 +513,12 @@ class User(Person, PortraitHolder):
 
     @field_validator("account_origin", mode="before")
     def validate_account_origin(
-        cls, value: Union[str, AccountOrigin, None]
+        cls, value: Optional[Union[str, AccountOrigin]]
     ) -> AccountOrigin:
         """Validates that ``account_origin`` is a known origin.
 
         Args:
-            value (Union[str, AccountOrigin, None]): Raw origin value.
+            value (Optional[Union[str, AccountOrigin]]): Raw origin value.
 
         Returns:
             AccountOrigin: The coerced origin.
@@ -587,6 +631,42 @@ class User(Person, PortraitHolder):
             )
         return self
 
+    @model_validator(mode="after")
+    def check_customer_link(self) -> User:
+        """Ensure the customer role and the customer link imply each other.
+
+        Returns:
+            User: ``self`` for chaining.
+
+        Raises:
+            MTUserRoleCustomerRequiresCustomerId: If the role is
+                :attr:`UserRole.CUSTOMER` and no ``customer_id`` is set.
+            MTUserCustomerLinkRequiresCustomerRole: If any other role carries a
+                ``customer_id``.
+
+        Notes:
+            - **Both directions, unlike the assistant rule, and deliberately so.**
+              Missing link, missing space: every portal route resolves the
+              household from this field, so a customer account without one could
+              read nothing — or, under a check written the forgiving way,
+              everything.
+            - The other direction is the one that matters. A manager carrying a
+              ``customer_id`` is an account that satisfies the staff guards *and*
+              resolves to one household, which is the exact shape a privilege
+              bug takes. Refused at construction, so the state never exists.
+        """
+        if self.role is UserRole.CUSTOMER and self.customer_id is None:
+            raise MTUserRoleCustomerRequiresCustomerId(
+                "Invalid customer_id: an account with the 'customer' role must "
+                "be linked to a customer record, or it resolves to no household."  # noqa: E501
+            )
+        if self.role is not UserRole.CUSTOMER and self.customer_id is not None:
+            raise MTUserCustomerLinkRequiresCustomerRole(
+                f"Invalid customer_id: an account with the {self.role.value!r} "  # noqa: E501
+                f"role must not name a customer record."
+            )
+        return self
+
     ############################
     # Publicly Exposed Methods #
     ############################
@@ -621,7 +701,7 @@ class User(Person, PortraitHolder):
             leading space, which then reaches every screen and every email that
             greets somebody by name.
         """
-        return " ".join(part for part in (self.first_name, self.last_name) if part)
+        return " ".join(part for part in (self.first_name, self.last_name) if part)  # noqa: E501
 
     def is_manager(self) -> bool:
         """Return whether the account has manager privileges or above.
@@ -655,10 +735,41 @@ class User(Person, PortraitHolder):
             is the assistant's own account.
 
         Notes:
-            This is the row-level rule behind "an assistant cannot see another
-            assistant's planning". It lives on the model so every caller
-            answers the question the same way.
+            - This is the row-level rule behind "an assistant cannot see another
+              assistant's planning". It lives on the model so every caller
+              answers the question the same way.
+            - **The staff test is positive, not "not an assistant".** It read
+              ``role is not HCA`` until the customer role existed, at which point
+              that spelling silently handed every household's planning to every
+              customer — the blanket ``True`` was written when the only roles
+              left were manager and admin. A role added later must not inherit
+              access by not being mentioned.
         """
+        if self.role is UserRole.CUSTOMER:
+            return False
         if self.role is not UserRole.HCA:
             return True
         return self.hca_id is not None and self.hca_id == hca_id
+
+    def owns_customer(self, customer_id: str) -> bool:
+        """Return whether the account may read a given customer's records.
+
+        Args:
+            customer_id (str): The household whose records are being requested.
+
+        Returns:
+            bool: ``True`` for the household's own account, and for staff.
+
+        Notes:
+            - The mirror of :meth:`owns_hca`, and the row-level rule behind "a
+              customer sees only their own file". Staff are answered ``True``
+              because the manager screens already list every household; this
+              method is not what gates them, their route guards are.
+            - A customer with no link is ``False`` rather than an error. The
+              model refuses to build one — see :meth:`check_customer_link` — so
+              this arm is unreachable, and it is written the closed way so that
+              if it ever becomes reachable it fails shut.
+        """
+        if self.role is not UserRole.CUSTOMER:
+            return True
+        return self.customer_id is not None and self.customer_id == customer_id

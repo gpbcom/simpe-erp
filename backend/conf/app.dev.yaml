@@ -327,5 +327,87 @@ billing_webhook:
   # The service name, not localhost. The caller is the *worker*
   # container, where localhost is the worker itself.
   url: http://backend:8000/api/v1/webhooks/bill-accepted
+  # The second announcement, and a different obligation: approval emails a
+  # document to a customer, collection is what the tax authority wants
+  # declared. Same secret, because both are this application calling itself
+  # over the same hop.
+  #
+  # **The service name here for the same reason as above.** Left unset it fell
+  # back to the model's `localhost` default — which, in the worker container
+  # that makes the call, is the worker — so a bill marked paid announced itself
+  # to nothing and the transmission never happened.
+  paid_url: http://backend:8000/api/v1/webhooks/bill-paid
   token_env: BILLING_WEBHOOK_TOKEN
   timeout_seconds: 10.0
+
+integrations:
+  # Names the environment variable holding the key that platform
+  # credentials are encrypted with — the name is configuration, the value
+  # is a secret, which is what lets this line sit in the open.
+  #
+  # There is no default key. A deployment that does not set this cannot
+  # read a single stored credential, and refusing to start is more honest
+  # than a process that looks healthy and transmits nothing.
+  #
+  # **Losing it means every agency must re-enter its platform API key.**
+  credential_key_env: EINVOICING_CREDENTIAL_KEY
+  # A certified platform is a third party over the internet. Bounded so a
+  # platform that never answers cannot hold a worker open.
+  request_timeout_seconds: 30.0
+  # The certified platforms this deployment offers, and what each one can be
+  # asked to send. **Configuration rather than code**, because which platforms
+  # are worth offering changes when the registry does — one loses its
+  # registration, another publishes an API — and a list compiled into the image
+  # would make that a release.
+  #
+  # Where each claim below was read, and what could not be verified, is
+  # recorded in `docs/15-electronic-invoicing.md`, §*The platforms, and their
+  # developer documentation*. **All four hold registration under reserve** — a
+  # number, with the audit report still outstanding — so presence here is not a
+  # statement that a platform is certified.
+  #
+  # `coverage` is what the gallery's tabs filter on *and* what the transmission
+  # service checks before handing an invoice over, so it is declared
+  # conservatively: a route a platform's own documentation does not mention is
+  # not claimed. `required_fields` drives the enable dialog — it is why
+  # connecting Storecove asks for a legal-entity reference and connecting
+  # Invopop does not.
+  providers:
+    # The only one of the four documenting both webhooks and Chorus Pro
+    # routing, which is this agency's two awkward requirements.
+    - provider: b2brouter
+      name: B2Brouter
+      home_url: https://www.b2brouter.net/fr/
+      documentation_url: https://docs.b2brouter.net/
+      coverage: [invoice, payment-report, chorus-pro]
+      required_fields: [api_key, account_id]
+      documentation_verified: true
+    # No Chorus Pro claim: its documentation does not mention public bodies at
+    # all, and inventing the capability here would route a département's
+    # invoice nowhere.
+    - provider: storecove
+      name: Storecove
+      home_url: https://www.storecove.com/
+      documentation_url: https://www.storecove.com/docs
+      coverage: [invoice, payment-report]
+      required_fields: [api_key, legal_entity_id]
+      documentation_verified: true
+    # The most explicit French coverage of the four: flux 2 and 6 for B2B,
+    # 10.1 to 10.4 for reporting, and Chorus Pro as a separate integration.
+    - provider: invopop
+      name: Invopop
+      home_url: https://www.invopop.com/
+      documentation_url: https://docs.invopop.com/guides/fr-pa
+      coverage: [invoice, payment-report, chorus-pro]
+      required_fields: [api_key]
+      documentation_verified: true
+    # The one entry written without reading the source: Iopole's documentation
+    # renders client-side and its servers return malformed headers. The flag is
+    # what puts that on the card rather than leaving a manager to discover it.
+    - provider: iopole
+      name: Iopole
+      home_url: https://www.iopole.com/
+      documentation_url: https://docs.iopole.com/
+      coverage: [invoice, payment-report, chorus-pro]
+      required_fields: [api_key]
+      documentation_verified: false

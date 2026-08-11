@@ -163,9 +163,7 @@ class TestTheFlagDecidesAndTheRoleDoesNot:
         would silently withdraw every manager who genuinely covers rounds.
     """
 
-    @pytest.mark.parametrize(
-        "role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN]
-    )
+    @pytest.mark.parametrize("role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN])
     def test_a_field_employee_is_planned_whatever_their_account_holds(
         self, config: PlanningConfig, role: UserRole
     ) -> None:
@@ -181,9 +179,7 @@ class TestTheFlagDecidesAndTheRoleDoesNot:
 
         assert _place(config, [record]) == ["hca-1"]
 
-    @pytest.mark.parametrize(
-        "role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN]
-    )
+    @pytest.mark.parametrize("role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN])
     def test_a_non_field_employee_is_left_out_whatever_their_account_holds(
         self, config: PlanningConfig, role: UserRole
     ) -> None:

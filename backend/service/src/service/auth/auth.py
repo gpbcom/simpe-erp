@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 # First-party imports
 from models.auth.access_token import AccessToken
 from models.auth.user import User
+from models.people.customer import Customer
 from models.configuration.auth_config import AuthConfig
 from models.configuration.exceptions import MTAuthConfigMissingSecret
 from models.enums import AccountOrigin, Language, UserRole
@@ -31,6 +32,8 @@ from service.auth.exceptions import (
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
     MTAuthUnknownAccount,
+    MTAuthCustomerAlreadyHasAccount,
+    MTAuthUnknownCustomer,
     MTAuthUnknownHca,
     MTAuthUserInactive,
 )
@@ -487,6 +490,111 @@ class AuthService:
         self.logger.warning(
             "Account %s was created with a temporary password and cannot be "
             "used until it is changed.",
+            stored.id,
+        )
+        return stored, temporary_password
+
+    async def create_customer_account(
+        self, customer: Customer, email: str, full_name: str, company_id: str
+    ) -> Tuple[User, str]:
+        """Give a household access to their own space, with a one-time password.
+
+        Args:
+            customer (Customer): The household the account belongs to.
+            email (str): The sign-in address.
+            full_name (str): The display name.
+            company_id (str): The agency the account belongs to.
+
+        Returns:
+            Tuple[User, str]: The stored account, and the temporary password in
+            plain text — returned **once**, for the manager to hand over.
+
+        Raises:
+            MTAuthUnknownCustomer: If the customer carries no identifier.
+            MTAuthCustomerAlreadyHasAccount: If the household already has one.
+            MTAuthEmailAlreadyRegistered: If the address is already in use.
+
+        Notes:
+            - **The household is passed in, not looked up.** The route resolves
+              it — and 404s on a typo — before this is reached, so the identifier
+              can never come from the request body. That is what makes it
+              impossible to invite somebody onto another household's file.
+            - The plaintext is returned rather than stored or emailed, exactly
+              as :meth:`create_staff_account` does and for the same reason: it
+              exists in this process for as long as it takes to build the
+              response, and after that only its hash exists anywhere. A manager
+              who loses it regenerates rather than looks it up.
+            - **One account per household.** A second invitation is refused
+              rather than answered with fresh credentials, because two accounts
+              on one file are two people who each believe they were the one who
+              cancelled a visit.
+            - **The agency comes from the inviting manager, and that is a
+              compromise rather than a choice.** ``Customer`` carries no
+              ``company_id`` — households are not tenant-scoped in this schema,
+              unlike quotes, planning runs and interventions, which were scoped
+              by migration 0016. So the only agency available is the caller's.
+              That is correct today, when a manager only ever sees their own
+              agency's book; it becomes wrong the day customers gain a tenant
+              column and the two can disagree. When that migration lands, this
+              argument should be dropped and the value read off the customer.
+        """
+        self.logger.debug("Preparing portal access for %s.", email)
+        if not company_id:
+            self.logger.warning(
+                "Refused to create portal access for %s: no agency was "
+                "resolved for the account.",
+                email,
+            )
+            raise MTAuthCompanyRequired(
+                f"An account must belong to an agency; none was resolved for {email!r}."
+            )
+        if customer.id is None:
+            self.logger.error(
+                "Refused to create portal access for %s: the customer carries "
+                "no identifier.",
+                email,
+            )
+            raise MTAuthUnknownCustomer(
+                "A portal account must name a stored customer record."
+            )
+
+        existing = await self.users.get_by_customer_id(customer.id)
+        if existing is not None:
+            self.logger.warning(
+                "Refused to create a second account for customer %s; %s holds "
+                "one already.",
+                customer.id,
+                existing.email,
+            )
+            raise MTAuthCustomerAlreadyHasAccount(
+                f"Customer {customer.full_name()!r} already has portal access "
+                f"under {existing.email!r}."
+            )
+
+        self.logger.info(
+            "Creating portal access for %s (customer %s).", email, customer.id
+        )
+        temporary_password = self.generate_temporary_password()
+        user = User(
+            email=email,
+            full_name=full_name,
+            hashed_password=self.hash(temporary_password),
+            role=UserRole.CUSTOMER,
+            customer_id=customer.id,
+            company_id=company_id,
+            account_origin=AccountOrigin.CREATED_BY_STAFF,
+            must_change_password=True,
+        )
+        try:
+            stored = await self.users.create(user)
+        except IntegrityError as exc:
+            self.logger.warning("Address %s is already registered.", email)
+            raise MTAuthEmailAlreadyRegistered(
+                f"An account is already registered under {email!r}."
+            ) from exc
+        self.logger.warning(
+            "Portal account %s was created with a temporary password and "
+            "cannot be used until it is changed.",
             stored.id,
         )
         return stored, temporary_password

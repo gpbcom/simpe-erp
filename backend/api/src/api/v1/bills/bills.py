@@ -155,6 +155,24 @@ async def set_bill_status(
     """
     actor = caller.id if caller.id else caller.email
     updated = await service.set_status(bill_id, request.status, actor)
+    if updated.status is BillStatus.PAID:
+        # A settled invoice is a reportable event: VAT on services falls due on
+        # collection, so "paid" is the moment the tax authority wants declared.
+        # Announced rather than transmitted inline, for the same reason approval
+        # is — a platform on the other side of the internet must not sit in
+        # front of a manager's click.
+        collected = await publisher.publish(
+            EventRoutingKey.BILL_PAID,
+            caller.company_id,
+            {"bill_id": bill_id, "company_id": caller.company_id},
+        )
+        if not collected:
+            logger.error(
+                "Invoice %s was marked paid but could not be announced; it will "
+                "not reach the certified platform until it is re-published.",
+                updated.number,
+            )
+        return updated
     if updated.status is not BillStatus.ACCEPTED:
         return updated
     announced = await publisher.publish(

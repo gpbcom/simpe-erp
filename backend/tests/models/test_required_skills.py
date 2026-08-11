@@ -169,7 +169,9 @@ class TestRequiredSkills:
     #  QuoteLine — the three-state override
     # ------------------------------------------------------------------ #
 
-    def test_a_line_inherits_by_default(self, valid_line_kwargs: Dict[str, Any]) -> None:
+    def test_a_line_inherits_by_default(
+        self, valid_line_kwargs: Dict[str, Any]
+    ) -> None:
         """``None`` means "whatever the catalogue entry requires"."""
         assert QuoteLine(**valid_line_kwargs).required_skill_codes is None
 
@@ -187,7 +189,10 @@ class TestRequiredSkills:
             Collapsing it into ``None`` would silently reinstate a requirement
             the person writing the quote had deliberately removed.
         """
-        assert QuoteLine(**valid_line_kwargs, required_skill_codes=[]).required_skill_codes == []
+        assert (
+            QuoteLine(**valid_line_kwargs, required_skill_codes=[]).required_skill_codes
+            == []
+        )
 
     @pytest.mark.parametrize("invalid", ["TOILETTE", 42, [""], [42]])
     def test_a_malformed_line_override_is_refused(

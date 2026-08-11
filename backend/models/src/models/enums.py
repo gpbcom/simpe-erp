@@ -10,6 +10,7 @@ from typing import Tuple, Union
 from models.exceptions.enum_exceptions import (
     MTInvalidBillingPeriodicity,
     MTInvalidWeekday,
+    MTRoleNotRankable,
     MTRoutingKeyMissingCompany,
 )
 
@@ -191,11 +192,28 @@ class UserRole(StrEnum):
             and certifications.
         ADMIN (str): Everything a manager can do, plus running the planning
             computation and promoting a user to manager.
+        CUSTOMER (str): Somebody the agency serves, signed in to their own
+            space. **Not a rung of the staff ladder** — see :meth:`rank`.
     """
 
     HCA = "hca"
     MANAGER = "manager"
     ADMIN = "admin"
+    CUSTOMER = "customer"
+
+    def is_staff(self) -> bool:
+        """Return whether this role works for the agency.
+
+        Returns:
+            bool: ``True`` for every role but :attr:`CUSTOMER`.
+
+        Notes:
+            The one question that separates the two axes, and the only safe way
+            to ask "may this account see the agency's own screens". Written as a
+            method rather than repeated as ``role is not CUSTOMER`` so a fifth
+            role added later cannot be admitted to the staff side by omission.
+        """
+        return self is not UserRole.CUSTOMER
 
     def rank(self) -> int:
         """Return the numeric access rank of this role.
@@ -203,14 +221,29 @@ class UserRole(StrEnum):
         Returns:
             int: The access rank; a higher rank unlocks strictly more.
 
+        Raises:
+            MTRoleNotRankable: If this role is not on the staff ladder.
+
         Notes:
-            The ordering is shared by the whole stack so the API guards and any
-            client agree on which role unlocks which feature. Rank comparison
-            answers "at least a manager"; it must not be used for the checks
-            that are specific to being an HCA (such as owning a planning),
-            which compare the role by identity instead.
+            - The ordering is shared by the whole stack so the API guards and
+              any client agree on which role unlocks which feature. Rank
+              comparison answers "at least a manager"; it must not be used for
+              the checks that are specific to being an HCA (such as owning a
+              planning), which compare the role by identity instead.
+            - **:attr:`CUSTOMER` is refused rather than ranked**, and that
+              refusal is the point. A customer is not above or below an
+              assistant — they are a different axis. Ranked below, every
+              employee would satisfy ``has_at_least(CUSTOMER)`` and a guard
+              written the usual way would let staff into a household's private
+              space; ranked above, a customer would satisfy the manager checks.
+              There is no number that is correct, so there is no number.
         """
         ranks = {UserRole.HCA: 0, UserRole.MANAGER: 1, UserRole.ADMIN: 2}
+        if self not in ranks:
+            raise MTRoleNotRankable(
+                f"Role {self.value!r} is not on the staff ladder and cannot be "
+                f"ranked. Compare it by identity — see UserRole.is_staff."
+            )
         return ranks[self]
 
     def has_at_least(self, minimum: UserRole) -> bool:
@@ -222,6 +255,15 @@ class UserRole(StrEnum):
         Returns:
             bool: ``True`` when this role's rank is greater than or equal to
             the rank of ``minimum``.
+
+        Raises:
+            MTRoleNotRankable: If either role is off the staff ladder.
+
+        Notes:
+            A customer on either side raises rather than answering. Answering
+            ``False`` would be the more forgiving choice and the wrong one: the
+            call is a mistake, and a mistake that returns a plausible boolean is
+            one nobody finds.
         """
         return self.rank() >= minimum.rank()
 
@@ -230,9 +272,22 @@ class UserRole(StrEnum):
         """Return every role value.
 
         Returns:
-            Tuple[str, ...]: ``("hca", "manager", "admin")``.
+            Tuple[str, ...]: ``("hca", "manager", "admin", "customer")``.
         """
         return tuple(role.value for role in cls)
+
+    @classmethod
+    def staff_values(cls) -> Tuple[str, ...]:
+        """Return every role that works for the agency.
+
+        Returns:
+            Tuple[str, ...]: ``("hca", "manager", "admin")``.
+
+        Notes:
+            What a staff-facing payload validates against, so a request cannot
+            promote somebody into — or out of — the customer axis by naming it.
+        """
+        return tuple(role.value for role in cls if role.is_staff())
 
 
 @unique
@@ -529,6 +584,266 @@ class BillingRunStatus(StrEnum):
             BillingRunStatus.PARTIAL,
             BillingRunStatus.FAILED,
         )
+
+
+@unique
+class RecipientKind(StrEnum):
+    """Enumeration for what kind of party an invoice is addressed to.
+
+    Attributes:
+        INDIVIDUAL (str): A private person — the household being cared for.
+        BUSINESS (str): A company: a mutuelle, a pension fund, an employer.
+        PUBLIC (str): A public body: a conseil départemental, a CCAS.
+
+    Notes:
+        - **This decides which regulatory regime the invoice falls under**, not
+          merely how it is addressed. An individual means *e-reporting*: the
+          transaction is declared to the tax authority and the customer receives
+          whatever the agency already sends them. A business or a public body
+          means *e-invoicing*: a structured document routed through a platform,
+          which the recipient's own system reads. Getting the kind wrong sends
+          the invoice down the wrong path entirely.
+        - The two non-individual kinds are kept apart even though both are
+          e-invoicing, because a public body routes by an additional service
+          code and is reached through a different platform. Folding them into
+          one "professional" kind would lose the only distinction that changes
+          where the document goes.
+        - A household has no SIREN, and that is a fact rather than missing data.
+          It is why the identifier is optional on the recipient and required by
+          the other two kinds — see
+          :class:`~models.billing.bill_recipient.BillRecipient`.
+    """
+
+    INDIVIDUAL = "individual"
+    BUSINESS = "business"
+    PUBLIC = "public"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every recipient kind.
+
+        Returns:
+            Tuple[str, ...]: ``("individual", "business", "public")``.
+        """
+        return tuple(kind.value for kind in cls)
+
+    def requires_legal_identifier(self) -> bool:
+        """Return whether this kind of recipient must carry a SIREN.
+
+        Returns:
+            bool: ``True`` for a business or a public body.
+
+        Notes:
+            A structured invoice addressed to a professional is routed on that
+            identifier, so one without it cannot be delivered at all. A private
+            individual has none to give, which is why the field is optional on
+            the model and this is what makes it required where it applies.
+        """
+        return self is not RecipientKind.INDIVIDUAL
+
+    def requires_electronic_invoice(self) -> bool:
+        """Return whether this recipient must be sent a structured invoice.
+
+        Returns:
+            bool: ``True`` for a business or a public body.
+
+        Notes:
+            The mirror of it is just as load-bearing: a ``False`` here means the
+            invoice is **reported**, not transmitted, and a home-care agency's
+            revenue is mostly of that kind. Asking this rather than testing
+            ``kind is INDIVIDUAL`` at each call site is what keeps the reform's
+            own vocabulary in the code.
+        """
+        return self.requires_legal_identifier()
+
+
+@unique
+class OperationNature(StrEnum):
+    """Enumeration for what an invoice covers: goods, services, or both.
+
+    Attributes:
+        GOODS (str): A supply of goods.
+        SERVICES (str): A supply of services.
+        MIXED (str): Both, on one document.
+
+    Notes:
+        - A **mandatory mention** on a French invoice, and one this agency would
+          otherwise never have written down: everything it sells is a service,
+          so the value is constant today. It is stored rather than assumed
+          because a constant that is never recorded is a constant nobody
+          notices changing — the day the agency starts invoicing equipment, an
+          implicit "services" would be a false declaration on every line of it.
+        - It also decides when VAT falls due. On services the tax is exigible on
+          **collection**, which is why a bill reaching
+          :attr:`BillStatus.PAID` is a reportable event and not merely an
+          accounting nicety.
+    """
+
+    GOODS = "goods"
+    SERVICES = "services"
+    MIXED = "mixed"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every operation nature.
+
+        Returns:
+            Tuple[str, ...]: ``("goods", "services", "mixed")``.
+        """
+        return tuple(nature.value for nature in cls)
+
+    def includes_services(self) -> bool:
+        """Return whether any part of the invoice is a supply of services.
+
+        Returns:
+            bool: ``True`` for services and for a mixed operation.
+
+        Notes:
+            Asked when deciding whether the collection date has to be reported.
+            A mixed invoice counts, because the services on it are exigible on
+            collection whatever the goods beside them do.
+        """
+        return self in (OperationNature.SERVICES, OperationNature.MIXED)
+
+
+@unique
+class EInvoicingProvider(StrEnum):
+    """Enumeration for the certified platforms this application can speak to.
+
+    Attributes:
+        B2BROUTER (str): B2Brouter, a Spanish platform and Peppol access point.
+        STORECOVE (str): Storecove, a Dutch API-first platform.
+        INVOPOP (str): Invopop, built around the open GOBL document format.
+        IOPOLE (str): Iopole, French and hosted on SecNumCloud.
+
+    Notes:
+        - **Membership of this enumeration is a claim about documentation, not
+          about quality.** Of the 145 platforms holding a registration number,
+          these four are the ones publishing an API a developer can integrate
+          against without signing anything first. A platform absent from here is
+          not disqualified — it simply cannot be written against yet.
+        - Every one of them is **immatriculée sous réserve**: registered, with
+          the audit report still outstanding. The status has to be re-checked
+          against ``impots.gouv.fr`` before an agency contracts with one, which
+          is why nothing in the code treats presence here as certification.
+        - The values are stored in the database and sent to the browser, so they
+          are stable identifiers rather than display names. What a card in the
+          gallery is *called* belongs to
+          :class:`~models.integrations.provider_descriptor.ProviderDescriptor`.
+    """
+
+    B2BROUTER = "b2brouter"
+    STORECOVE = "storecove"
+    INVOPOP = "invopop"
+    IOPOLE = "iopole"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every provider value.
+
+        Returns:
+            Tuple[str, ...]: The four supported platforms.
+        """
+        return tuple(provider.value for provider in cls)
+
+
+@unique
+class TransmissionKind(StrEnum):
+    """Enumeration for what was actually sent to a platform about an invoice.
+
+    Attributes:
+        INVOICE (str): The structured invoice itself, routed to a business.
+        PAYMENT_REPORT (str): Payment data declared to the tax authority.
+        CHORUS_PRO (str): The structured invoice, routed to a public body.
+
+    Notes:
+        - **These are three different obligations, not three destinations for
+          one document.** An invoice to a mutuelle is *e-invoicing*: the
+          recipient's own system reads it. A household's settled invoice is
+          *e-reporting*: nothing reaches the customer, and what reaches the
+          administration is the fact that money changed hands — flux 10.4,
+          mandatory for services because VAT falls due on collection. Recording
+          which of the three happened is what makes a transmission auditable
+          afterwards; a single "sent" flag could not answer "sent as what?".
+        - :attr:`CHORUS_PRO` is kept apart from :attr:`INVOICE` even though both
+          carry a structured document, because a public body is reached through
+          a different route and addressed by an additional service code. Folding
+          them together would lose the only distinction that changes where the
+          document goes — the same reasoning
+          :class:`RecipientKind` gives for keeping its own two apart.
+    """
+
+    INVOICE = "invoice"
+    PAYMENT_REPORT = "payment-report"
+    CHORUS_PRO = "chorus-pro"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every transmission kind.
+
+        Returns:
+            Tuple[str, ...]: ``("invoice", "payment-report", "chorus-pro")``.
+        """
+        return tuple(kind.value for kind in cls)
+
+    @classmethod
+    def for_recipient(cls, kind: RecipientKind) -> TransmissionKind:
+        """Return what must be transmitted for a recipient of this kind.
+
+        Args:
+            kind (RecipientKind): Who the invoice is addressed to.
+
+        Returns:
+            TransmissionKind: The obligation that applies.
+
+        Notes:
+            **The reform's routing rule, in one place.** Written here rather
+            than as a branch in the transmission service so that the question
+            "what happens to a public body's invoice?" has exactly one answer in
+            the codebase, and so that adding a fourth kind of recipient fails
+            here — loudly, at the mapping — rather than silently falling through
+            to whatever the ``else`` branch happened to be.
+        """
+        if kind is RecipientKind.PUBLIC:
+            return cls.CHORUS_PRO
+        if kind is RecipientKind.BUSINESS:
+            return cls.INVOICE
+        return cls.PAYMENT_REPORT
+
+
+@unique
+class TransmissionStatus(StrEnum):
+    """Enumeration for how far a transmission to a platform has reached.
+
+    Attributes:
+        PENDING (str): Queued, not yet attempted.
+        SENT (str): The platform accepted it for delivery.
+        FAILED (str): The attempt failed; it may be retried.
+
+    Notes:
+        - **Deliberately not a mirror of the regulatory statuses.** The reform
+          names *déposée*, *rejetée*, *refusée* and *encaissée*, but the last
+          two arrive from the buyer and from the agency's own books rather than
+          from an API call. These three describe only what this application
+          knows the moment it stops talking to the platform, which is the only
+          thing an outbound attempt can honestly record.
+        - :attr:`FAILED` is not terminal. A platform that was unreachable is a
+          platform that will be reachable, and the money is settled either way —
+          a failed transmission must never be readable as a failed payment.
+    """
+
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every transmission status.
+
+        Returns:
+            Tuple[str, ...]: ``("pending", "sent", "failed")``.
+        """
+        return tuple(status.value for status in cls)
 
 
 @unique
@@ -1091,6 +1406,7 @@ class EventRoutingKey(StrEnum):
     BILLING_RUN_REQUESTED = "billing.run.requested"
     BILLING_RUN_COMPLETED = "billing.run.completed"
     BILL_ACCEPTED = "bill.accepted"
+    BILL_PAID = "bill.paid"
 
     def scoped_to(self, company_id: str) -> str:
         """Return the routing key this event takes for one agency.

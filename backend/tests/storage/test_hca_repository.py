@@ -235,7 +235,10 @@ class TestHcaRepository:
             )
         )
         updated = await repository.set_employment(
-            stored.id, ContractType.CDI, [Certification(name="New")], field_employee=True
+            stored.id,
+            ContractType.CDI,
+            [Certification(name="New")],
+            field_employee=True,
         )
         assert updated is not None
         assert [entry.name for entry in updated.certifications] == ["New"]
@@ -683,8 +686,6 @@ class TestHcaRepository:
             session (AsyncSession): The database session.
         """
         assert (
-            await HcaRepository(session).set_working_weekdays(
-                "ghost", [Weekday.MONDAY]
-            )
+            await HcaRepository(session).set_working_weekdays("ghost", [Weekday.MONDAY])
             is None
         )

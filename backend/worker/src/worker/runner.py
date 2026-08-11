@@ -143,6 +143,7 @@ class WorkerRunner:
         EventRoutingKey.SKILL_ADDED,
         EventRoutingKey.BILLING_RUN_COMPLETED,
         EventRoutingKey.BILL_ACCEPTED,
+        EventRoutingKey.BILL_PAID,
     )
 
     def __init__(
@@ -239,6 +240,7 @@ class WorkerRunner:
                 EventRoutingKey.BILLING_RUN_COMPLETED, self.billing_completed
             )
             self.notifications.on(EventRoutingKey.BILL_ACCEPTED, self.bill_accepted)
+            self.notifications.on(EventRoutingKey.BILL_PAID, self.bill_paid)
         self.lifecycle.on(EventRoutingKey.COMPANY_CREATED, self.company_created)  # noqa: E501
 
     def _billing_service(self, session: AsyncSession) -> BillingService:
@@ -673,6 +675,27 @@ class WorkerRunner:
             return
         self.logger.info("Invoice %s was approved; announcing it.", bill_id)
         await self.billing_webhook.announce(bill_id)
+
+    async def bill_paid(self, envelope: EventEnvelope) -> None:
+        """Transmit an invoice that has just been collected.
+
+        Args:
+            envelope (EventEnvelope): The message, carrying ``bill_id``.
+
+        Notes:
+            **The step that satisfies the reform's reporting obligation.** The
+            announcement is handed to the webhook, which reads the stored
+            document and transmits it through whichever certified platform the
+            agency has connected — the same arrangement approval has, and for
+            the same reason: it runs as an ordinary authenticated request with
+            the handlers and logging every other request has.
+        """
+        bill_id = envelope.string_field("bill_id")
+        if bill_id is None:
+            self.logger.error("A bill-paid message named no invoice; discarding it.")
+            return
+        self.logger.info("Invoice %s was collected; announcing it.", bill_id)
+        await self.billing_webhook.announce_paid(bill_id)
 
     async def quote_submitted(self, envelope: EventEnvelope) -> None:
         """Tell the agency's supervisors that a quote needs validating.

@@ -134,7 +134,7 @@ class BillingConfig(BaseModel):
         return value
 
     @field_validator("late_penalty_multiplier", mode="before")
-    def validate_late_penalty_multiplier(cls, value: Optional[Union[int, str]]) -> int:   # noqa: E501
+    def validate_late_penalty_multiplier(cls, value: Optional[Union[int, str]]) -> int:  # noqa: E501
         """Validates that the seeded penalty multiplier is within range.
 
         Args:
@@ -151,7 +151,7 @@ class BillingConfig(BaseModel):
             return 3
         if isinstance(value, bool) or not isinstance(value, int):
             raise MTBillingConfigInvalidPenaltyMultiplier(
-                f"Invalid late_penalty_multiplier: {value!r}. "   # noqa: E501
+                f"Invalid late_penalty_multiplier: {value!r}. "  # noqa: E501
                 "Must be a whole number."
             )
         if not (
@@ -188,7 +188,7 @@ class BillingConfig(BaseModel):
         """
         if value is None:
             return Decimal("40.00")
-        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
+        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):  # noqa: E501
             raise MTBillingConfigInvalidIndemnity(
                 f"Invalid recovery_indemnity_eur: {value!r}. Must be a "
                 f"non-negative decimal."

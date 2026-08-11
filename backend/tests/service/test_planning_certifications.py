@@ -14,7 +14,9 @@ from models.enums import ContractType, UnplacedReason
 from models.geo.geo_point import GeoPoint
 from models.people.hca.certification import Certification
 from models.people.hca import Hca
-from models.planning.intervention.intervention_requirement import InterventionRequirement
+from models.planning.intervention.intervention_requirement import (
+    InterventionRequirement,
+)
 from models.planning.planning_run.planning_solution import PlanningSolution
 from models.settings.planning_settings import PlanningSettings
 from service.planning.plannings import PlanningService

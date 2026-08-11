@@ -31,3 +31,4 @@ logs/
 # hundred tests is several megabytes.
 qa/results/
 .claude
+.VSCodeCounter

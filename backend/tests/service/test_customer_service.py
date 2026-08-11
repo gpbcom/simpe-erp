@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 # First-party imports
-from models.enums import QuoteStatus, RegistrationStatus
+from models.enums import BillingPeriodicity, QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
 from models.quoting.quote import Quote
 from models.schemas.requests.customers.customer_filter import CustomerFilter
@@ -25,6 +25,7 @@ def _customer(
     latitude: Optional[float] = 48.8566,
     longitude: Optional[float] = 2.3522,
     status: RegistrationStatus = RegistrationStatus.ACTIVE,
+    periodicity: Optional[BillingPeriodicity] = None,
 ) -> Customer:
     """Build a customer.
 
@@ -33,6 +34,8 @@ def _customer(
         latitude (Optional[float]): The resolved latitude, if any.
         longitude (Optional[float]): The resolved longitude, if any.
         status (RegistrationStatus): Their registration status.
+        periodicity (Optional[BillingPeriodicity]): Their own invoicing
+            granularity, or ``None`` to follow the agency's.
 
     Returns:
         Customer: The customer.
@@ -51,6 +54,7 @@ def _customer(
             "longitude": longitude,
         },
         registration_status=status,
+        billing_periodicity=periodicity,
     )
 
 
@@ -81,6 +85,7 @@ def customers() -> AsyncMock:
     repository.create.side_effect = lambda customer: customer
     repository.update.side_effect = lambda customer: customer
     repository.set_status.return_value = _customer()
+    repository.set_billing_periodicity.return_value = _customer()
     repository.list.return_value = [_customer()]
     repository.delete.return_value = True
     return repository
@@ -229,6 +234,50 @@ class TestCustomerWrites:
 
         with pytest.raises(MTCustomerNotFound):
             await service.set_status("ghost", RegistrationStatus.STOPPED)
+
+    async def test_a_customer_can_be_given_their_own_granularity(
+        self, service: CustomerService, customers: AsyncMock
+    ) -> None:
+        """The periodicity is a customer's field, written on its own."""
+        customers.set_billing_periodicity.return_value = _customer(
+            periodicity=BillingPeriodicity.WEEKLY
+        )
+
+        updated = await service.set_billing_periodicity(
+            "customer-1", BillingPeriodicity.WEEKLY, actor="manager@example.fr"
+        )
+
+        assert updated.billing_periodicity is BillingPeriodicity.WEEKLY
+        customers.set_billing_periodicity.assert_awaited_once_with(
+            "customer-1", BillingPeriodicity.WEEKLY
+        )
+
+    async def test_a_customer_can_be_put_back_on_the_agency_rule(
+        self, service: CustomerService, customers: AsyncMock
+    ) -> None:
+        """**Clearing has to reach the store as a clear.**
+
+        Notes:
+            Null is passed through rather than resolved to the agency's current
+            rule. Writing the resolved value would look identical today and stop
+            tracking the setting the moment a manager changed it.
+        """
+        await service.set_billing_periodicity(
+            "customer-1", None, actor="manager@example.fr"
+        )
+
+        customers.set_billing_periodicity.assert_awaited_once_with("customer-1", None)
+
+    async def test_setting_the_granularity_of_an_absent_customer_is_reported(
+        self, service: CustomerService, customers: AsyncMock
+    ) -> None:
+        """A change that matches nothing raises rather than reporting success."""
+        customers.set_billing_periodicity.return_value = None
+
+        with pytest.raises(MTCustomerNotFound):
+            await service.set_billing_periodicity(
+                "ghost", BillingPeriodicity.WEEKLY, actor="manager@example.fr"
+            )
 
 
 class TestCustomerPromotion:

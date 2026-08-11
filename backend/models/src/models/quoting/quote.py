@@ -283,8 +283,7 @@ class Quote(BaseModel):
         for entry in value:
             if not isinstance(entry, (QuoteLine, dict)):
                 raise MTQuoteInvalidLines(
-                    f"Invalid lines entry: {entry!r}. "
-                    "Must be a QuoteLine or a mapping."
+                    f"Invalid lines entry: {entry!r}. Must be a QuoteLine or a mapping."
                 )
         return value
 
@@ -394,8 +393,7 @@ class Quote(BaseModel):
         if isinstance(value, (str, datetime)):
             return value
         raise MTQuoteInvalidDate(
-            f"Invalid timestamp: {value!r}. "
-            "Must be a datetime, an ISO string, or None."
+            f"Invalid timestamp: {value!r}. Must be a datetime, an ISO string, or None."
         )
 
     @model_validator(mode="after")

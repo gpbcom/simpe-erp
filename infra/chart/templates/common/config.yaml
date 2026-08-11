@@ -132,6 +132,39 @@ data:
       token_env: PLANNING_WEBHOOK_TOKEN
       timeout_seconds: 30.0
 
+    billing_webhook:
+      # **Without this block a cluster ran the model's defaults**, which are
+      # `enabled: false` at `localhost:8000` — so neither announcement left the
+      # pod, and the two things that depend on them silently did not happen: an
+      # approved invoice was never emailed to its customer, and a collected one
+      # was never transmitted to the certified platform. The compose stack has
+      # carried the block since the webhook was written; the chart did not.
+      enabled: {{ .Values.billingWebhook.enabled }}
+      # The in-cluster Service, not the ingress. This is the application calling
+      # itself, and routing it out through the ingress and back would put a
+      # public hop, a TLS handshake and a rate limiter in the middle of it.
+      url: http://{{ include "simple-erp.fullname" . }}-api:8000/api/v1/webhooks/bill-accepted
+      # The second announcement, and a different obligation: approval emails a
+      # document to a customer, collection is what the tax authority wants
+      # declared. Same secret, because both are this application calling itself
+      # over the same hop.
+      paid_url: http://{{ include "simple-erp.fullname" . }}-api:8000/api/v1/webhooks/bill-paid
+      token_env: BILLING_WEBHOOK_TOKEN
+      timeout_seconds: 30.0
+
+    integrations:
+      # The name of the secret key, not the key. It is written by External
+      # Secrets into the Secret every workload reads with envFrom, and only the
+      # API ever resolves it — a worker publishes the event and the API's
+      # loopback webhook does the transmission.
+      credential_key_env: EINVOICING_CREDENTIAL_KEY
+      request_timeout_seconds: {{ .Values.integrations.requestTimeoutSeconds }}
+      # Rendered from values so that offering a fifth platform, or withdrawing
+      # one whose registration lapsed, is a `helm upgrade` rather than a
+      # rebuild. templates/common/guards.yaml refuses an empty list.
+      providers:
+        {{- toYaml .Values.integrations.providers | nindent 8 }}
+
     observability:
       service_name: simple-erp
       metrics_enabled: true

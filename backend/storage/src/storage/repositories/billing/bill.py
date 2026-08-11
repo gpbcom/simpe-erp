@@ -29,7 +29,7 @@ class BillRepository(BaseRepository[BillRow]):
 
     Notes:
         - **Three things guard against billing a customer twice**, and only the
-          second of them actually guarantees it: :meth:`exists_for_period` is
+          second of them actually guarantees it: :meth:`find_overlapping` is
           the friendly check a run makes first so a re-run is a reported no-op;
           the unique index on ``(customer_id, period_start, period_end)`` is
           what stops two runs racing past that check; and
@@ -213,43 +213,60 @@ class BillRepository(BaseRepository[BillRow]):
         )
         return sequence, number
 
-    async def exists_for_period(
+    async def find_overlapping(
         self, customer_id: str, period_start: date, period_end: date
-    ) -> bool:
-        """Return whether a customer has already been billed for a period.
+    ) -> List[Bill]:
+        """Return the invoices whose period intersects a window.
 
         Args:
             customer_id (str): The customer being considered.
-            period_start (date): First day of the window.
-            period_end (date): Last day of the window.
+            period_start (date): First day of the window, inclusive.
+            period_end (date): Last day of the window, inclusive.
 
         Returns:
-            bool: ``True`` when an invoice already covers exactly that window.
+            List[Bill]: The overlapping invoices, earliest period first. Empty
+            when the window is free.
 
         Notes:
-            The friendly half of the duplicate-billing guard, and the exact
-            analogue of
-            :meth:`~storage.repositories.quoting.quote.QuoteRepository.has_successor`.
-            Two workers waking together, or a retry after a partial failure,
-            would otherwise each write an invoice and the customer would be
-            billed twice for one month. This is what turns a re-run into a
-            reported no-op; the unique index is what makes it safe under a race.
+            - **Wider than the exact-window match this replaced.** Comparing
+              the two dates catches a re-run; it does not catch a customer whose
+              granularity changed. Billed for the week of 1–7 July and then
+              moved to monthly, their July invoice would cover that week a
+              second time — same customer, same days, two documents, and the
+              unique index sees nothing because the windows differ.
+            - Written as "starts before the other ends, and ends after the
+              other starts", which is the only overlap test that needs no cases:
+              containment, partial overlap in either direction and an exact
+              match are all the same expression.
         """
-        statement = select(BillRow.id).where(
-            BillRow.customer_id == customer_id,
-            BillRow.period_start == period_start,
-            BillRow.period_end == period_end,
+        statement = (
+            select(BillRow)
+            .where(
+                BillRow.customer_id == customer_id,
+                BillRow.period_start <= period_end,
+                BillRow.period_end >= period_start,
+            )
+            .order_by(BillRow.period_start)
         )
-        result = await self.session.execute(statement.limit(1))
-        found = result.scalar_one_or_none() is not None
+        result = await self.session.execute(statement)
+        rows = list(result.scalars().unique().all())
+        if rows:
+            self.logger.warning(
+                "Customer %s already has %d invoice(s) covering part of %s..%s: %s.",
+                customer_id,
+                len(rows),
+                period_start,
+                period_end,
+                ", ".join(row.number for row in rows),
+            )
         self.logger.debug(
-            "Customer %s %s billed for %s..%s.",
+            "%d invoice(s) of customer %s overlap %s..%s.",
+            len(rows),
             customer_id,
-            "is already" if found else "is not yet",
             period_start,
             period_end,
         )
-        return found
+        return [self.mapper.to_model(row) for row in rows]
 
     async def create(self, bill: Bill) -> Bill:
         """Store a new invoice and its charges.

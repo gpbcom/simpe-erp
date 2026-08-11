@@ -291,7 +291,12 @@ class TestQuotePricing:
         Returns:
             Quote: The unpriced quote.
         """
-        return Quote(company_id="company-1", reference="Q-2026-001", customer_id="cust-1", lines=lines)
+        return Quote(
+            company_id="company-1",
+            reference="Q-2026-001",
+            customer_id="cust-1",
+            lines=lines,
+        )
 
     def _types(self) -> Dict[str, InterventionType]:
         """Return the two types the tests price against.

@@ -147,7 +147,7 @@ class TestAssertKnown:
             await service.assert_known(["TOILETTE"])
 
     async def test_an_empty_catalogue_says_so(self) -> None:
-        """"The catalogue offers: nothing yet" is the actionable message."""
+        """ "The catalogue offers: nothing yet" is the actionable message."""
         service = _service()
         service.skills.known_codes.return_value = set()
 

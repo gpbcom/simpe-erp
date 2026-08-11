@@ -181,7 +181,7 @@
         "type": "object"
       },
       "Bill": {
-        "description": "One invoice: what a customer owes for the visits made in one period.\n\nAttributes:\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    CURRENCY (ClassVar[str]): The currency every amount is expressed in.\n    MIN_SEQUENCE_YEAR (ClassVar[int]): Earliest year a series may run in.\n    MAX_SEQUENCE_YEAR (ClassVar[int]): Latest year a series may run in.\n    MONEY_FIELDS (ClassVar[Tuple[str, ...]]): The fields holding a total.\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency that issued it.\n    customer_id (str): The customer it is addressed to.\n    billing_run_id (Optional[str]): The run that produced it.\n    number (str): Human-facing invoice number.\n    sequence (int): Position in the agency's series for the year.\n    sequence_year (int): The year the series belongs to.\n    periodicity (BillingPeriodicity): The rule the window came from.\n    period_start (date): First day billed.\n    period_end (date): Last day billed.\n    issued_on (date): The invoice date.\n    due_on (date): The day payment falls due.\n    status (BillStatus): Where the bill has reached commercially.\n    customer_full_name (str): The customer's name, as addressed.\n    customer_address (PostalAddress): Where the invoice was addressed.\n    lines (List[BillLine]): The visits charged.\n    total_ht (Decimal): Invoice total excluding tax.\n    total_vat (Decimal): Total tax.\n    total_ttc (Decimal): Invoice total including tax.\n    document_key (Optional[str]): Where the rendered document is stored.\n    generated_by (Optional[str]): The account that ran the generation.\n    validated_by (Optional[str]): The account that approved it.\n    validated_at (Optional[datetime]): When it was approved.\n    sent_at (Optional[datetime]): When it was emailed to the customer.\n    paid_on (Optional[date]): The day it was settled.\n    created_at (Optional[datetime]): When the record was written.\n    updated_at (Optional[datetime]): When it last changed.\n\nNotes:\n    - **The bill lists visits, never quotes.** Each line names a service, a\n      day and \u2014 where a planning run placed it \u2014 an assistant and the hours\n      worked. No quote reference and no quote total appears anywhere,\n      because a customer's question is \"what was done for me in March\", and\n      a document answering \"quote D-2648, 1 240 \u20ac\" answers a different one.\n    - **The totals are stored, not computed.** :class:`~models.quoting.quote.Quote`\n      computes its own, which is exactly why they are absent from its\n      serialised form. An invoice must reprint identically for ever and its\n      totals must be readable by a client, so they are persisted \u2014 the same\n      reasoning that already stores a quote *line*'s four money fields. What\n      makes that safe is :meth:`check_totals`, which proves they agreed with\n      the lines at the moment they were written.\n    - **The customer's name and address are copies**, like the assistant's\n      name on an intervention. A customer who moves must not retroactively\n      change where last quarter's invoice was addressed.\n    - **``number`` and ``sequence`` are the legal series.** French invoicing\n      requires an unbroken, chronological sequence per issuer, which is why\n      the position is a stored integer and not something derived from a\n      creation timestamp: a row inserted out of order would leave a gap\n      nobody could explain.\n    - There is no cancelled state. A mistaken invoice is corrected by a\n      credit note, which is a document of its own, because a number\n      withdrawn from the series is exactly the gap the series forbids.",
+        "description": "One invoice: what a customer owes for the visits made in one period.\n\nAttributes:\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    CURRENCY (ClassVar[str]): The currency every amount is expressed in.\n    MIN_SEQUENCE_YEAR (ClassVar[int]): Earliest year a series may run in.\n    MAX_SEQUENCE_YEAR (ClassVar[int]): Latest year a series may run in.\n    MONEY_FIELDS (ClassVar[Tuple[str, ...]]): The fields holding a total.\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency that issued it.\n    customer_id (str): The customer it is addressed to.\n    billing_run_id (Optional[str]): The run that produced it.\n    number (str): Human-facing invoice number.\n    sequence (int): Position in the agency's series for the year.\n    sequence_year (int): The year the series belongs to.\n    periodicity (BillingPeriodicity): The rule the window came from.\n    period_start (date): First day billed.\n    period_end (date): Last day billed.\n    issued_on (date): The invoice date.\n    due_on (date): The day payment falls due.\n    status (BillStatus): Where the bill has reached commercially.\n    customer_full_name (str): The name of the person cared for.\n    customer_address (PostalAddress): Where the care was delivered.\n    recipient (BillRecipient): The party that owes the money.\n    operation_nature (OperationNature): Goods, services, or both.\n    lines (List[BillLine]): The visits charged.\n    total_ht (Decimal): Invoice total excluding tax.\n    total_vat (Decimal): Total tax.\n    total_ttc (Decimal): Invoice total including tax.\n    document_key (Optional[str]): Where the rendered document is stored.\n    generated_by (Optional[str]): The account that ran the generation.\n    validated_by (Optional[str]): The account that approved it.\n    validated_at (Optional[datetime]): When it was approved.\n    sent_at (Optional[datetime]): When it was emailed to the customer.\n    paid_on (Optional[date]): The day it was settled.\n    created_at (Optional[datetime]): When the record was written.\n    updated_at (Optional[datetime]): When it last changed.\n\nNotes:\n    - **The bill lists visits, never quotes.** Each line names a service, a\n      day and \u2014 where a planning run placed it \u2014 an assistant and the hours\n      worked. No quote reference and no quote total appears anywhere,\n      because a customer's question is \"what was done for me in March\", and\n      a document answering \"quote D-2648, 1 240 \u20ac\" answers a different one.\n    - **The totals are stored, not computed.** :class:`~models.quoting.quote.Quote`\n      computes its own, which is exactly why they are absent from its\n      serialised form. An invoice must reprint identically for ever and its\n      totals must be readable by a client, so they are persisted \u2014 the same\n      reasoning that already stores a quote *line*'s four money fields. What\n      makes that safe is :meth:`check_totals`, which proves they agreed with\n      the lines at the moment they were written.\n    - **The customer's name and address are copies**, like the assistant's\n      name on an intervention. A customer who moves must not retroactively\n      change where last quarter's invoice was addressed.\n    - **Two parties, and they are not the same question.** The customer is\n      who the care was *delivered to*; the recipient is who the invoice is\n      *billed to*. They carry identical values for a household paying its\n      own bills, which is most of them \u2014 and they diverge exactly where it\n      matters, when a conseil d\u00e9partemental or a mutuelle funds the work.\n      Collapsing them into one field would make a funded arrangement\n      unrepresentable, and the structured format asks for both separately\n      for the same reason. See\n      :class:`~models.billing.bill_recipient.BillRecipient`.\n    - **``operation_nature`` is a constant this agency would never have\n      written down.** Everything it sells is a service. It is stored because\n      it is a mandatory mention, because it decides when the VAT falls due,\n      and because a constant nobody records is a constant nobody notices\n      changing.\n    - **``number`` and ``sequence`` are the legal series.** French invoicing\n      requires an unbroken, chronological sequence per issuer, which is why\n      the position is a stored integer and not something derived from a\n      creation timestamp: a row inserted out of order would leave a gap\n      nobody could explain.\n    - There is no cancelled state. A mistaken invoice is corrected by a\n      credit note, which is a document of its own, because a number\n      withdrawn from the series is exactly the gap the series forbids.",
         "properties": {
           "billing_run_id": {
             "anyOf": [
@@ -215,7 +215,7 @@
           },
           "customer_address": {
             "$ref": "#/components/schemas/PostalAddress",
-            "description": "Where the invoice was addressed."
+            "description": "Where the care was delivered."
           },
           "customer_full_name": {
             "description": "The customer's name.",
@@ -288,6 +288,11 @@
             "title": "Number",
             "type": "string"
           },
+          "operation_nature": {
+            "$ref": "#/components/schemas/OperationNature",
+            "default": "services",
+            "description": "Whether the invoice covers goods, services or both."
+          },
           "paid_on": {
             "anyOf": [
               {
@@ -316,6 +321,10 @@
           "periodicity": {
             "$ref": "#/components/schemas/BillingPeriodicity",
             "description": "The rule the billed window came from."
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/BillRecipient",
+            "description": "The party that owes the money."
           },
           "sent_at": {
             "anyOf": [
@@ -415,6 +424,7 @@
           "due_on",
           "customer_full_name",
           "customer_address",
+          "recipient",
           "total_ht",
           "total_vat",
           "total_ttc"
@@ -638,6 +648,80 @@
         "title": "BillLine",
         "type": "object"
       },
+      "BillRecipient": {
+        "description": "The party that owes an invoice, which is not always the person cared for.\n\nAttributes:\n    SIREN_LENGTH (ClassVar[int]): Digits in a French SIREN.\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted name.\n    MAX_VAT_LENGTH (ClassVar[int]): Longest accepted VAT number.\n    MAX_SERVICE_CODE_LENGTH (ClassVar[int]): Longest accepted service code.\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    kind (RecipientKind): Whether a household, a business or a public body.\n    name (str): Who the invoice is made out to.\n    address (PostalAddress): Where it is addressed.\n    siren (Optional[str]): The legal identifier, for a professional.\n    vat_number (Optional[str]): The intra-community VAT number, if any.\n    service_code (Optional[str]): The routing code inside a public body.\n    share_ttc (Optional[Decimal]): What this party owes of the total, when\n        the invoice is split between payers.\n\nNotes:\n    - **A recipient is not a customer.** Care is delivered to a household,\n      and the bill for it may be addressed to a conseil d\u00e9partemental, a\n      mutuelle or an employer. Keeping them apart is what lets an invoice\n      name both \u2014 the household stays on the bill as the party the work was\n      delivered *to*, which is what the structured format calls the\n      ship-to party, while this is the party it is *billed* to.\n    - **Denormalised onto the invoice, like the customer's own name.** An\n      invoice is a legal document that must reprint identically for ten\n      years; a payer who is renamed or moves must not retroactively change\n      who last quarter's invoice was addressed to. That is the same trade\n      :class:`~models.planning.intervention.Intervention` makes with the\n      assistant's name.\n    - **The identifier rules are asymmetric on purpose.** A professional\n      without a SIREN cannot be routed to at all, and a household with one\n      would be read as a company by every downstream system. So one is\n      required and the other refused, rather than both being merely\n      optional \u2014 see :meth:`check_identifiers`.\n    - ``share_ttc`` exists for the case a single course of care is funded by\n      two parties, which is the ordinary shape of an APA arrangement. It is\n      deliberately **not** a percentage: a percentage of a rounded total is\n      a second rounding, and the two payers' shares would stop summing to\n      the invoice. Whether such a split is one invoice with two recipients\n      or two linked invoices is a question this model does not answer \u2014 it\n      records what *this* recipient owes and no more.",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/PostalAddress",
+            "description": "Where it is addressed."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RecipientKind",
+            "default": "individual",
+            "description": "Whether a household, a business or a public body."
+          },
+          "name": {
+            "description": "Who the invoice is made out to.",
+            "title": "Name",
+            "type": "string"
+          },
+          "service_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The routing code inside a public body.",
+            "title": "Service Code"
+          },
+          "share_ttc": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What this party owes of the total, when it is split.",
+            "title": "Share Ttc"
+          },
+          "siren": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The legal identifier, required for a professional.",
+            "title": "Siren"
+          },
+          "vat_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The intra-community VAT number, if any.",
+            "title": "Vat Number"
+          }
+        },
+        "required": [
+          "name",
+          "address"
+        ],
+        "title": "BillRecipient",
+        "type": "object"
+      },
       "BillStatus": {
         "description": "Enumeration for where a bill has reached commercially.\n\nAttributes:\n    TO_BE_VALIDATED (str): Generated, with its document, and waiting for a\n        manager to approve it. Nothing has reached the customer.\n    ACCEPTED (str): Approved by a manager. Approval is what sends it.\n    WAITING_PAYMENT (str): Sent to the customer; the money is outstanding.\n    PAID (str): Settled.\n\nNotes:\n    - **Only a manager or an administrator moves a bill.** The status is a\n      statement about money owed, and an assistant who could set one would\n      be writing the agency's accounts.\n    - Two things this enumeration deliberately does **not** record: whether\n      a document exists \u2014 that is ``Bill.document_key`` \u2014 and whether\n      generation failed, which is\n      :class:`BillingRunStatus`. Folding a generation outcome in here would\n      make \"waiting payment\" mean two unrelated things, and a manager\n      reading the list could not tell a bill nobody has paid from one nobody\n      managed to produce.\n    - There is no ``CANCELLED``. French invoice numbering forbids both reuse\n      and gaps, so a mistaken invoice is corrected by a credit note rather\n      than withdrawn \u2014 and a credit note is a document in its own right, not\n      a status on this one.",
         "enum": [
@@ -672,6 +756,24 @@
         ],
         "title": "BillingPeriodicity",
         "type": "string"
+      },
+      "BillingPeriodicityRequest": {
+        "description": "The payload setting, or clearing, one customer's invoicing granularity.\n\nAttributes:\n    periodicity (Optional[BillingPeriodicity]): The rule to bill this\n        customer on, or ``None`` to put them back on the agency's own.\n\nNotes:\n    - One field, like every other targeted update in this API. A route\n      accepting a whole customer would let a stale payload clobber their\n      address on the way past \u2014 the reason\n      :class:`~models.schemas.requests.customers.status_update_request.StatusUpdateRequest`\n      exists in the same shape.\n    - **``null`` is a value here, not a missing one.** Sending it is how a\n      manager takes an override off and puts the customer back on the\n      agency's rule, so the field is optional in the schema and the absence\n      of an override is representable. Without that, an override could be\n      set and never removed except by editing the record by hand.",
+        "properties": {
+          "periodicity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingPeriodicity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The periodicity to bill this customer on; null follows the agency's own."
+          }
+        },
+        "title": "BillingPeriodicityRequest",
+        "type": "object"
       },
       "BillingRun": {
         "description": "One request to bill a period, and what came of it.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency whose customers are being billed.\n    requested_by (Optional[str]): The account that asked for the run.\n    status (BillingRunStatus): Where the run has got to.\n    reference_date (date): The day the window was resolved from.\n    periodicity (BillingPeriodicity): The rule the window came from.\n    period_start (date): First day billed.\n    period_end (date): Last day billed.\n    bill_ids (List[str]): The bills the run wrote.\n    failed_customer_ids (List[str]): The customers it could not bill.\n    error (Optional[str]): Why the run failed, when it did.\n    requested_at (Optional[datetime]): When it was asked for.\n    started_at (Optional[datetime]): When a worker picked it up.\n    finished_at (Optional[datetime]): When it reached a terminal status.\n\nNotes:\n    - The record is written **before** the work is queued, so the identifier\n      a caller is handed back is real even when the broker is unreachable \u2014\n      the same reason a planning run is recorded first.\n    - Both outcome lists are kept, not just the successes. A partial run is\n      only actionable if it says *which* customers went unbilled; a count\n      would leave somebody comparing two lists by hand to find them.\n    - The window is stored rather than recomputed from ``reference_date`` and\n      ``periodicity`` on read. An agency that changes its periodicity between\n      the run and the day somebody reads it would otherwise see a run\n      claiming to have billed a period it never touched.",
@@ -1261,7 +1363,7 @@
         "type": "object"
       },
       "Company-Input": {
-        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): Account the agency is paid into.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo in the object store.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.\n    - **The IBAN is the one field here nobody but an administrator reads in\n      full.** It is stored whole, and the routes a manager can reach hand\n      back :meth:`masked_iban` instead \u2014 see\n      :class:`~models.schemas.responses.companies.company_view.CompanyView`.\n      Masking at the boundary rather than in the column keeps the stored\n      value usable for the one caller entitled to it.",
+        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    SIREN_LENGTH (ClassVar[int]): Digits in a French SIREN.\n    SIRET_LENGTH (ClassVar[int]): Digits in a French SIRET.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): Account the agency is paid into.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo in the object store.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.\n    - **The IBAN is the one field here nobody but an administrator reads in\n      full.** It is stored whole, and the routes a manager can reach hand\n      back :meth:`masked_iban` instead \u2014 see\n      :class:`~models.schemas.responses.companies.company_view.CompanyView`.\n      Masking at the boundary rather than in the column keeps the stored\n      value usable for the one caller entitled to it.",
         "properties": {
           "address": {
             "anyOf": [
@@ -1468,7 +1570,7 @@
         "type": "object"
       },
       "Company-Output": {
-        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): Account the agency is paid into.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo in the object store.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.\n    - **The IBAN is the one field here nobody but an administrator reads in\n      full.** It is stored whole, and the routes a manager can reach hand\n      back :meth:`masked_iban` instead \u2014 see\n      :class:`~models.schemas.responses.companies.company_view.CompanyView`.\n      Masking at the boundary rather than in the column keeps the stored\n      value usable for the one caller entitled to it.",
+        "description": "A care agency an assistant can apply to work for.\n\nAttributes:\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted trading name.\n    SIREN_LENGTH (ClassVar[int]): Digits in a French SIREN.\n    SIRET_LENGTH (ClassVar[int]): Digits in a French SIRET.\n    MAX_REGISTRATION_LENGTH (ClassVar[int]): Longest accepted registration\n        number.\n    id (Optional[str]): Identifier, populated on read from the store.\n    name (str): Trading name, shown to an applicant choosing between\n        agencies.\n    registration_number (Optional[str]): The company's registration number.\n    contact_email (Optional[EmailStr]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): Account the agency is paid into.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo in the object store.\n    is_accepting_applications (bool): Whether it appears on the public list\n        an applicant chooses from.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store.\n\nNotes:\n    - This exists because an assistant registering themselves has to say\n      *which agency they are applying to*. Without it there is nobody to\n      route the application to and nobody with standing to approve it.\n    - **Only the name and the identifier are ever shown publicly.** The list\n      an applicant picks from is served without a credential, so the address\n      and contact details stay behind the authenticated routes \u2014 publishing\n      a directory of agencies with their registered offices is not what\n      \"choose your employer\" needs.\n    - ``is_accepting_applications`` is how an agency stops appearing on that\n      list without being deleted. A company with assistants and quotes cannot\n      be removed, and hiding it is the only honest alternative.\n    - The company is *not* a tenancy boundary. Customers, quotes and\n      plannings are agency-wide, not scoped per company \u2014 see the note in the\n      service layer. What a company scopes is who may approve whose\n      application.\n    - **The IBAN is the one field here nobody but an administrator reads in\n      full.** It is stored whole, and the routes a manager can reach hand\n      back :meth:`masked_iban` instead \u2014 see\n      :class:`~models.schemas.responses.companies.company_view.CompanyView`.\n      Masking at the boundary rather than in the column keeps the stored\n      value usable for the one caller entitled to it.",
         "properties": {
           "address": {
             "anyOf": [
@@ -2111,11 +2213,22 @@
         "type": "string"
       },
       "Customer-Input": {
-        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        served, in discussion, or stopped. **Defaults to\n        :attr:`~models.enums.RegistrationStatus.PROSPECT`.**\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
+        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        served, in discussion, or stopped. **Defaults to\n        :attr:`~models.enums.RegistrationStatus.PROSPECT`.**\n    billing_periodicity (Optional[BillingPeriodicity]): How often this\n        customer is invoiced. **Unset means the agency's own periodicity**,\n        which is what almost every customer wants.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - **The billing periodicity is an override, and is normally unset.**\n      The agency's own rule is the answer for almost everybody, so this\n      field exists to say \"not this one\" \u2014 a household paying weekly, or an\n      institution that wants a single invoice a year. Storing it here rather\n      than deriving it from anything else is what lets one customer's\n      granularity change without touching the rest of the book, and it is\n      why :meth:`effective_periodicity` takes the agency default as an\n      argument instead of the record carrying a copy of it.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/PostalAddress",
             "description": "Where the care is delivered."
+          },
+          "billing_periodicity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingPeriodicity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How often this customer is invoiced; unset follows the agency's own periodicity."
           },
           "created_at": {
             "anyOf": [
@@ -2194,11 +2307,22 @@
         "type": "object"
       },
       "Customer-Output": {
-        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        served, in discussion, or stopped. **Defaults to\n        :attr:`~models.enums.RegistrationStatus.PROSPECT`.**\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
+        "description": "A person receiving home care, and the party a quote is addressed to.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n        Inherited from :class:`~models.people.person.Person`.\n    first_name (str): Given name. Inherited.\n    last_name (str): Family name. Inherited.\n    phone_number (PhoneNumber): Contact telephone number. Inherited.\n    email (EmailStr): Contact email address. Inherited.\n    address (PostalAddress): Where the care is delivered. Inherited, and\n        re-declared only to say so.\n    registration_status (RegistrationStatus): Whether the customer is\n        served, in discussion, or stopped. **Defaults to\n        :attr:`~models.enums.RegistrationStatus.PROSPECT`.**\n    billing_periodicity (Optional[BillingPeriodicity]): How often this\n        customer is invoiced. **Unset means the agency's own periodicity**,\n        which is what almost every customer wants.\n    created_at (Optional[datetime]): Creation timestamp, set by the store.\n        Inherited.\n    updated_at (Optional[datetime]): Last-update timestamp, set by the\n        store. Inherited.\n\nNotes:\n    - **Almost all of it comes from\n      :class:`~models.people.person.Person`.** A customer is a person and\n      one flag: everything else \u2014 the names, the address, the contact\n      details, their validators and\n      :meth:`~models.people.person.Person.full_name` \u2014 is the same record\n      an assistant keeps, and was a second copy of it until the base\n      existed. The ``INVALID_*`` class attributes are how the inherited\n      rules go on raising this model's own exceptions.\n    - A customer carries **no ``company_id``**, unlike an assistant and an\n      application. That is a real gap rather than an oversight of this\n      refactor \u2014 customers are global, which is why a company is not yet a\n      tenancy boundary \u2014 and it is why the field sits on the two subclasses\n      that have it rather than on the base.\n    - **The billing periodicity is an override, and is normally unset.**\n      The agency's own rule is the answer for almost everybody, so this\n      field exists to say \"not this one\" \u2014 a household paying weekly, or an\n      institution that wants a single invoice a year. Storing it here rather\n      than deriving it from anything else is what lets one customer's\n      granularity change without touching the rest of the book, and it is\n      why :meth:`effective_periodicity` takes the agency default as an\n      argument instead of the record carrying a copy of it.\n    - The address is where interventions actually take place, so it is the\n      coordinate the planner routes to. A customer whose address never\n      geocodes cannot be scheduled; that surfaces as an unassigned\n      requirement rather than as a validation error here, because a quote\n      must still be printable for an address the geocoder does not know.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/PostalAddress",
             "description": "Where the care is delivered."
+          },
+          "billing_periodicity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingPeriodicity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How often this customer is invoiced; unset follows the agency's own periodicity."
           },
           "created_at": {
             "anyOf": [
@@ -2272,6 +2396,68 @@
           "address"
         ],
         "title": "Customer",
+        "type": "object"
+      },
+      "CustomerAccountRequest": {
+        "description": "The payload a manager sends to give a customer access to their space.\n\nAttributes:\n    email (EmailStr): The sign-in address.\n    full_name (str): The display name.\n\nNotes:\n    - **The household is not in the payload; it is in the path.** The route\n      is ``POST /customers/{customer_id}/account``, and taking the\n      identifier from the body as well would give a well-formed request two\n      answers to \"whose account is this\" \u2014 the shape a mistyped invitation\n      takes when it lands on somebody else's file.\n    - **There is no password field**, exactly as on\n      :class:`~models.schemas.requests.account.staff_account_request.StaffAccountRequest`.\n      The temporary password is generated server-side and returned once;\n      letting a manager choose it means the first credential is one they\n      typed into a ticket and probably reused.\n    - **There is no role either**, and here it matters more than it does for\n      staff. This route mints a *customer*, which is the one role that is\n      not on the staff ladder; a role field would be a way to ask for an\n      employee account through a customer-facing endpoint.\n    - The address is not defaulted from the customer record. A household's\n      postal address is where care is delivered, and the person who reads\n      the agency's email is often a son or a daughter at another one.",
+        "properties": {
+          "email": {
+            "description": "The sign-in address.",
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "description": "The display name.",
+            "title": "Full Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "full_name"
+        ],
+        "title": "CustomerAccountRequest",
+        "type": "object"
+      },
+      "CustomerProfileUpdateRequest": {
+        "description": "The fields a household may change about themselves.\n\nAttributes:\n    first_name (str): Given name.\n    last_name (str): Family name.\n    phone_number (PhoneNumber): Contact telephone number.\n    email (EmailStr): Contact email address.\n    address (PostalAddress): Where the care is delivered.\n\nNotes:\n    - **What is absent is the point**, exactly as on\n      :class:`~models.schemas.requests.hca.hca_profile_update_request.HcaProfileUpdateRequest`.\n      Two fields are deliberately missing and each would be a hole:\n\n      - ``registration_status``. A household that could set their own status\n        would promote themselves from ``prospect`` to ``active`` \u2014 and being\n        active is precisely what makes the planner schedule their work. That\n        is the whole gate ``can_be_scheduled`` exists for, handed to the\n        party it is meant to gate.\n      - ``billing_periodicity``. How often somebody is invoiced is a\n        commercial term the agency agrees, not a preference. A manager sets\n        it through ``PATCH /api/v1/customers/{id}/billing-periodicity``.\n\n      Leaving them out means they cannot be smuggled in, rather than relying\n      on an endpoint remembering to ignore them.\n    - **The address is editable, and it is not a cosmetic field.** It is\n      where care is delivered and what every planning run routes to, so a\n      household correcting it is the fastest path to work being planned to\n      the right door \u2014 and re-geocoding is what the model does on the way\n      in, so a street the map cannot find is stored with the failure\n      recorded rather than refused.\n    - Every field is required. This replaces the contact block wholesale, so\n      a payload omitting the telephone number would be a household clearing\n      it \u2014 which is how somebody becomes unreachable when an assistant is\n      running late.",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/PostalAddress",
+            "description": "Where the care is delivered."
+          },
+          "email": {
+            "description": "Contact email address.",
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "first_name": {
+            "description": "Given name.",
+            "title": "First Name",
+            "type": "string"
+          },
+          "last_name": {
+            "description": "Family name.",
+            "title": "Last Name",
+            "type": "string"
+          },
+          "phone_number": {
+            "description": "Contact telephone number.",
+            "format": "phone",
+            "title": "Phone Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "first_name",
+          "last_name",
+          "phone_number",
+          "email",
+          "address"
+        ],
+        "title": "CustomerProfileUpdateRequest",
         "type": "object"
       },
       "DatabaseStatus": {
@@ -3170,6 +3356,34 @@
         "title": "Intervention",
         "type": "object"
       },
+      "InterventionRescheduleRequest": {
+        "description": "When a household would rather a visit happened.\n\nAttributes:\n    MAX_MINUTE_OF_DAY (ClassVar[int]): The last minute of a day, so a\n        window cannot run past midnight.\n    day (date): The day the visit should happen on instead.\n    start_minute (int): Earliest it may begin, in minutes from midnight.\n    end_minute (int): Latest it may finish, in the same units.\n\nNotes:\n    - **The visit is in the path, not the payload.** The route is\n      ``POST /portal/interventions/{id}/reschedule`` and the visit already\n      names the quote line it delivers, so a ``quote_line_id`` here would be\n      a second answer to \"which piece of work\" \u2014 and one a household has no\n      way to know. Compare\n      :class:`~models.schemas.requests.quoting.quote_reschedule_request.QuoteRescheduleRequest`,\n      which *does* carry it, because a manager rescheduling from the quote\n      screen is holding the line and not a visit.\n    - **A window, not a time.** The household says when they are available;\n      the solver decides where inside that the visit lands, against the\n      assistant's round and their travel. Accepting an exact time would be\n      a promise the planner cannot keep, and the visit would come back\n      unplaced with nothing explaining why.\n    - Minutes from midnight rather than ``HH:MM``, matching every other\n      time on the wire \u2014 it is the unit the solver works in, and the screens\n      convert at the edge.\n    - Nothing here says *whether* the work still happens. Cancelling is a\n      separate route with a separate consequence, and folding the two\n      together would let a mistyped window quietly remove a visit.",
+        "properties": {
+          "day": {
+            "description": "The day the visit should happen on instead.",
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "end_minute": {
+            "description": "Latest it may finish.",
+            "title": "End Minute",
+            "type": "integer"
+          },
+          "start_minute": {
+            "description": "Earliest it may begin.",
+            "title": "Start Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "start_minute",
+          "end_minute"
+        ],
+        "title": "InterventionRescheduleRequest",
+        "type": "object"
+      },
       "InterventionStatus": {
         "description": "Enumeration for the lifecycle status of a scheduled intervention.\n\nAttributes:\n    PLANNED (str): Produced by the planning computation, not yet confirmed.\n    CONFIRMED (str): Acknowledged by the assigned Home Care Assistant.\n    COMPLETED (str): Delivered.\n    CANCELLED (str): Called off; it no longer occupies the HCA's day.",
         "enum": [
@@ -3653,6 +3867,16 @@
           "bills-to-validate"
         ],
         "title": "NotificationKind",
+        "type": "string"
+      },
+      "OperationNature": {
+        "description": "Enumeration for what an invoice covers: goods, services, or both.\n\nAttributes:\n    GOODS (str): A supply of goods.\n    SERVICES (str): A supply of services.\n    MIXED (str): Both, on one document.\n\nNotes:\n    - A **mandatory mention** on a French invoice, and one this agency would\n      otherwise never have written down: everything it sells is a service,\n      so the value is constant today. It is stored rather than assumed\n      because a constant that is never recorded is a constant nobody\n      notices changing \u2014 the day the agency starts invoicing equipment, an\n      implicit \"services\" would be a false declaration on every line of it.\n    - It also decides when VAT falls due. On services the tax is exigible on\n      **collection**, which is why a bill reaching\n      :attr:`BillStatus.PAID` is a reportable event and not merely an\n      accounting nicety.",
+        "enum": [
+          "goods",
+          "services",
+          "mixed"
+        ],
+        "title": "OperationNature",
         "type": "string"
       },
       "PasswordChangeRequest": {
@@ -4844,6 +5068,16 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RecipientKind": {
+        "description": "Enumeration for what kind of party an invoice is addressed to.\n\nAttributes:\n    INDIVIDUAL (str): A private person \u2014 the household being cared for.\n    BUSINESS (str): A company: a mutuelle, a pension fund, an employer.\n    PUBLIC (str): A public body: a conseil d\u00e9partemental, a CCAS.\n\nNotes:\n    - **This decides which regulatory regime the invoice falls under**, not\n      merely how it is addressed. An individual means *e-reporting*: the\n      transaction is declared to the tax authority and the customer receives\n      whatever the agency already sends them. A business or a public body\n      means *e-invoicing*: a structured document routed through a platform,\n      which the recipient's own system reads. Getting the kind wrong sends\n      the invoice down the wrong path entirely.\n    - The two non-individual kinds are kept apart even though both are\n      e-invoicing, because a public body routes by an additional service\n      code and is reached through a different platform. Folding them into\n      one \"professional\" kind would lose the only distinction that changes\n      where the document goes.\n    - A household has no SIREN, and that is a fact rather than missing data.\n      It is why the identifier is optional on the recipient and required by\n      the other two kinds \u2014 see\n      :class:`~models.billing.bill_recipient.BillRecipient`.",
+        "enum": [
+          "individual",
+          "business",
+          "public"
+        ],
+        "title": "RecipientKind",
+        "type": "string"
+      },
       "RegisterRequest": {
         "description": "The payload creating an account.\n\nAttributes:\n    MIN_PASSWORD_LENGTH (ClassVar[int]): Shortest password accepted.\n    MAX_PASSWORD_BYTES (ClassVar[int]): Longest password accepted, matching\n        what bcrypt can actually hash.\n    email (EmailStr): The sign-in address.\n    full_name (str): The display name.\n    password (str): The plaintext password.\n    hca_id (Optional[str]): The assistant record to link.\n\nNotes:\n    - **There is no ``role`` field, deliberately.** This payload arrives on\n      the one unauthenticated route that creates an account, so a role named\n      here would be a role granted to whoever asked for it: anybody could\n      register themselves an administrator. Self-registration always\n      produces an assistant, and a privileged account is created only\n      through the manager-gated staff-account route.\n    - The upper bound on the password is not arbitrary. bcrypt silently\n      ignores anything past 72 bytes, so a longer password would appear to be\n      accepted while only its first 72 bytes ever mattered \u2014 a user could\n      change the tail and still sign in. Rejecting it is honest.\n    - The length is measured in **bytes**, not characters: an accented or\n      emoji-bearing password reaches the limit sooner than its length\n      suggests.",
         "properties": {
@@ -5646,11 +5880,12 @@
         "type": "object"
       },
       "UserRole": {
-        "description": "Enumeration for the role granted to an authenticated account.\n\nAttributes:\n    HCA (str): A Home Care Assistant. Declares their own availability and\n        sees their own planning only.\n    MANAGER (str): Sees every HCA planning, manages customers, quotes and\n        the intervention-type catalog, and edits an HCA's contract type\n        and certifications.\n    ADMIN (str): Everything a manager can do, plus running the planning\n        computation and promoting a user to manager.",
+        "description": "Enumeration for the role granted to an authenticated account.\n\nAttributes:\n    HCA (str): A Home Care Assistant. Declares their own availability and\n        sees their own planning only.\n    MANAGER (str): Sees every HCA planning, manages customers, quotes and\n        the intervention-type catalog, and edits an HCA's contract type\n        and certifications.\n    ADMIN (str): Everything a manager can do, plus running the planning\n        computation and promoting a user to manager.\n    CUSTOMER (str): Somebody the agency serves, signed in to their own\n        space. **Not a rung of the staff ladder** \u2014 see :meth:`rank`.",
         "enum": [
           "hca",
           "manager",
-          "admin"
+          "admin",
+          "customer"
         ],
         "title": "UserRole",
         "type": "string"
@@ -7505,6 +7740,112 @@
           }
         },
         "summary": "Update Customer",
+        "tags": [
+          "Customers"
+        ]
+      }
+    },
+    "/api/v1/customers/{customer_id}/account": {
+      "post": {
+        "description": "Give a household access to their own space.\n\nArgs:\n    customer_id (str): The household the account belongs to.\n    payload (CustomerAccountRequest): The sign-in address and display name.\n    customers (CustomerService): The customer service.\n    auth (AuthService): The authentication service.\n    caller (User): The authenticated caller; enforces manager access and\n        supplies the agency the account belongs to.\n\nReturns:\n    TemporaryCredentialsResponse: The account, and the one-time password.\n\nRaises:\n    MTCustomerNotFound: If no such customer exists; answered as a 404.\n    MTAuthCustomerAlreadyHasAccount: If they already have one; a 409.\n    MTAuthEmailAlreadyRegistered: If the address is in use; a 409.\n\nNotes:\n    - **The household comes from the path and is resolved before anything\n      is created.** A typo is a 404 rather than an invitation onto a file\n      that does not exist, and the payload carries no identifier at all \u2014\n      so there is no second answer to \"whose account is this\".\n    - **The temporary password is in the response, once.** It is never\n      stored in plaintext and never emailed, exactly as staff accounts\n      work: it exists for as long as it takes to build this response, and\n      a manager who loses it regenerates rather than looks it up.\n    - Manager access, which is manager **and** administrator. Deciding that\n      a household may see their own file is running the agency's work.",
+        "operationId": "create_customer_account_api_v1_customers__customer_id__account_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporaryCredentialsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Customer Account",
+        "tags": [
+          "Customers"
+        ]
+      }
+    },
+    "/api/v1/customers/{customer_id}/billing-periodicity": {
+      "patch": {
+        "description": "Give a customer their own invoicing granularity, or take it away.\n\nArgs:\n    customer_id (str): The customer to change.\n    payload (BillingPeriodicityRequest): The periodicity to bill them on,\n        or ``null`` to follow the agency's own.\n    service (CustomerService): The customer service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Customer: The updated customer.\n\nRaises:\n    MTCustomerNotFound: If no such customer exists; answered as a 404.\n    MTInvalidBillingPeriodicityRequestException: If the periodicity is not\n        a known one; answered as a 422.\n\nNotes:\n    - **Manager access, which is manager and administrator**, because the\n      specification puts the billing periodicity in exactly those hands. An\n      assistant reading a customer's file cannot change how often they are\n      invoiced.\n    - A route of its own rather than a field on ``PUT /{id}``: this is a\n      commercial decision taken from a screen holding a customer record that\n      may be minutes old, and sending the whole record back would let that\n      stale copy overwrite an address somebody else corrected meanwhile.\n    - **``null`` is a value, not an omission.** Sending it is how a manager\n      puts a customer back on the agency's own rule, which is why the route\n      is a PATCH with an optional field rather than a DELETE of an override\n      nobody would think to look for.\n    - It re-issues nothing. The change decides what the *next* run bills\n      them over; an invoice already written keeps its period.",
+        "operationId": "set_customer_billing_periodicity_api_v1_customers__customer_id__billing_periodicity_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingPeriodicityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Customer Billing Periodicity",
         "tags": [
           "Customers"
         ]
@@ -10347,7 +10688,7 @@
         ]
       },
       "post": {
-        "description": "Start a planning computation over a period.\n\nArgs:\n    period_start (date): First day to plan, inclusive.\n    period_end (date): Last day to plan, inclusive.\n    service (PlanningService): The planning service.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    PlanningRun: The pending run, with the identifier to poll.\n\nRaises:\n    MTPlanningPeriodTooLong: When the period runs backwards; answered as a\n        422 by the central handler.\n\nNotes:\n    - Answers **202**, not 200. The solve is CPU-bound and runs for the\n      configured budget in a separate worker process, so holding the request\n      open for it would tie up a connection and time out the client. Poll\n      ``GET /runs/{id}`` until the status is terminal.\n    - The run is **recorded before it is queued**, and the record is what the\n      caller is given. If the broker is unreachable the run stays ``pending``\n      rather than vanishing: the identifier the caller polls is real either\n      way, and the work can be re-queued without anybody having to reconstruct\n      what was asked for. That is the whole reason this moved off a FastAPI\n      background task \u2014 one lost the run entirely on a restart.\n    - Running the computation is administrator-only: it rewrites every\n    assistant's calendar for the period.",
+        "description": "Start a planning computation over a period.\n\nArgs:\n    period_start (date): First day to plan, inclusive.\n    period_end (date): Last day to plan, inclusive.\n    service (PlanningService): The planning service.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    PlanningRun: The pending run, with the identifier to poll.\n\nRaises:\n    MTPlanningPeriodTooLong: When the period runs backwards; answered as a\n        422 by the central handler.\n\nNotes:\n    - Answers **202**, not 200. The solve is CPU-bound and runs for the\n      configured budget in a separate worker process, so holding the request\n      open for it would tie up a connection and time out the client. Poll\n      ``GET /runs/{id}`` until the status is terminal.\n    - The run is **recorded before it is queued**, and the record is what the\n      caller is given. If the broker is unreachable the run stays ``pending``\n      rather than vanishing: the identifier the caller polls is real either\n      way, and the work can be re-queued without anybody having to reconstruct\n      what was asked for. That is the whole reason this moved off a FastAPI\n      background task \u2014 one lost the run entirely on a restart.\n    - Running the computation is administrator-only: it rewrites every\n      assistant's calendar for the period.",
         "operationId": "start_planning_run_api_v1_planning_runs_post",
         "parameters": [
           {
@@ -10501,6 +10842,352 @@
         "summary": "Update Planning Settings",
         "tags": [
           "Planning settings"
+        ]
+      }
+    },
+    "/api/v1/portal/bills": {
+      "get": {
+        "description": "Return every invoice issued to the household.\n\nArgs:\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    List[Bill]: Their invoices, most recent period first.\n\nNotes:\n    Narrowed **in the query** to this household. A page of the agency's\n    invoices filtered afterwards has already read what other families pay\n    for their care.",
+        "operationId": "read_bills_api_v1_portal_bills_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Bill"
+                  },
+                  "title": "Response Read Bills Api V1 Portal Bills Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Bills",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/bills/{bill_id}/document": {
+      "get": {
+        "description": "Serve one of the household's invoices as a PDF.\n\nArgs:\n    bill_id (str): The invoice to serve.\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    Response: The document, as ``application/pdf``.\n\nRaises:\n    MTCustomerNotFound: If the invoice is not theirs, or does not exist;\n        a 404 in both cases.\n\nNotes:\n    **Streamed through this endpoint rather than served from the bucket**,\n    exactly as the manager's download is. The objects sit under a private\n    prefix precisely so the bearer guard is the only way to them; a\n    presigned URL would put a household's invoice outside it.",
+        "operationId": "download_bill_api_v1_portal_bills__bill_id__document_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bill_id",
+            "required": true,
+            "schema": {
+              "title": "Bill Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Bill",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/interventions/{intervention_id}/cancel": {
+      "post": {
+        "description": "Cancel one visit, and send its quote back for validation.\n\nArgs:\n    intervention_id (str): The visit to cancel.\n    service (CustomerPortalService): The portal service.\n    plannings (PlanningService): Measures the period to replan.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated household.\n\nReturns:\n    Quote: The repriced quote, awaiting validation.\n\nRaises:\n    MTCustomerNotFound: If the visit does not exist, or belongs to another\n        household; a **404 in both cases**, deliberately.\n\nNotes:\n    - **The quote goes back to `pending-validation`.** The household has\n      changed what the agency agreed to deliver, so the agreement is no\n      longer current. Until a manager re-validates it, nothing on that quote\n      is scheduled \u2014 which the screen says rather than showing an empty\n      calendar.\n    - Cancelling removes the *line*, not only the visit: the next run\n      rebuilds the period from the quote, so a visit removed on its own\n      would reappear within the hour.\n    - **A replan is queued**, and it is the most important thing this route\n      does. The household's remaining work is unaffected, but every\n      assistant who was due to visit them now has a gap \u2014 and, far worse,\n      any visit left on a calendar for work nobody agreed to is an assistant\n      turning up at somebody's door. The period is measured **before** the\n      cancellation, because afterwards the visit is gone and there is\n      nothing left to measure.\n    - The run identifier is not returned. A household is not polling a\n      planning run; they are told their change is with the agency.",
+        "operationId": "cancel_visit_api_v1_portal_interventions__intervention_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intervention_id",
+            "required": true,
+            "schema": {
+              "title": "Intervention Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Visit",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/interventions/{intervention_id}/reschedule": {
+      "post": {
+        "description": "Move one visit, and send its quote back for validation.\n\nArgs:\n    intervention_id (str): The visit to move.\n    payload (InterventionRescheduleRequest): The day and the window.\n    service (CustomerPortalService): The portal service.\n    plannings (PlanningService): Measures the period to replan.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated household.\n\nReturns:\n    Quote: The repriced quote, awaiting validation.\n\nRaises:\n    MTCustomerNotFound: If the visit does not exist, or is not theirs; 404.\n    MTInvalidInterventionRescheduleRequestException: If the window is\n        empty or outside the day; a 422.\n    MTQuoteLineWindowTooShort: If the window is narrower than the work\n        takes; a 422.\n\nNotes:\n    - **A window, not a time.** The household says when they are available;\n      the solver picks the moment inside it, against the assistant's round.\n    - **It reprices**: a visit moved onto a Sunday or a holiday costs more,\n      because the surcharge is a property of the day. So the household\n      cannot move work without the agency seeing the new price \u2014 a second\n      reason the quote returns to the validation queue.\n    - **A replan is queued.** Until one runs, the stored visit still names\n      the old day, so an assistant's calendar would send them to the door at\n      a time the household has already said does not suit.",
+        "operationId": "reschedule_visit_api_v1_portal_interventions__intervention_id__reschedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intervention_id",
+            "required": true,
+            "schema": {
+              "title": "Intervention Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterventionRescheduleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reschedule Visit",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/planning": {
+      "get": {
+        "description": "Return the household's visits over a period.\n\nArgs:\n    period_start (date): First day of interest, inclusive.\n    period_end (date): Last day of interest, inclusive.\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    List[Intervention]: Their visits, in day and time order.\n\nNotes:\n    A period is required rather than defaulted. The calendar always knows\n    which weeks it is showing, and an unbounded read would return every\n    visit the household has ever had in order to draw seven days.",
+        "operationId": "read_planning_api_v1_portal_planning_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Period Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Period End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Intervention"
+                  },
+                  "title": "Response Read Planning Api V1 Portal Planning Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Planning",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/profile": {
+      "get": {
+        "description": "Return the household's own record.\n\nArgs:\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    Customer: Their record.\n\nRaises:\n    MTCustomerNotFound: If the linked record no longer exists; a 404.\n\nNotes:\n    **The household comes from the credential**, never from a path or a\n    query parameter \u2014 so there is no identifier a customer could point at\n    somebody else's file. Every route in this module works the same way.",
+        "operationId": "read_profile_api_v1_portal_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Profile",
+        "tags": [
+          "Customer portal"
+        ]
+      },
+      "put": {
+        "description": "Correct the household's own contact details.\n\nArgs:\n    payload (CustomerProfileUpdateRequest): The new contact block.\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    Customer: The updated record.\n\nRaises:\n    MTCustomerNotFound: If the linked record no longer exists; a 404.\n    MTInvalidCustomerProfileUpdateRequestException: If a name is empty; a\n        422.\n\nNotes:\n    The payload carries the contact block and **nothing else**. It has no\n    field for the registration status \u2014 a household that could set their own\n    would promote themselves into the planning \u2014 and none for the billing\n    periodicity, which is a term the agency agrees.",
+        "operationId": "update_profile_api_v1_portal_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerProfileUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Customer-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Profile",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/quotes": {
+      "get": {
+        "description": "Return every quote written for the household.\n\nArgs:\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    List[Quote]: Their quotes, newest first.\n\nRaises:\n    MTCustomerNotFound: If the linked record no longer exists; a 404.\n\nNotes:\n    Unfiltered, including refused and expired ones. A household asking \"what\n    did you quote me in March\" is asking about the history, and a list\n    narrowed to what is live answers a different question without saying so.",
+        "operationId": "read_quotes_api_v1_portal_quotes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Quote"
+                  },
+                  "title": "Response Read Quotes Api V1 Portal Quotes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Quotes",
+        "tags": [
+          "Customer portal"
+        ]
+      }
+    },
+    "/api/v1/portal/quotes/{quote_id}/document": {
+      "get": {
+        "description": "Serve one of the household's quotes as a PDF.\n\nArgs:\n    quote_id (str): The quote to render.\n    service (CustomerPortalService): The portal service.\n    caller (User): The authenticated household.\n\nReturns:\n    Response: The document, as ``application/pdf``.\n\nRaises:\n    MTCustomerNotFound: If the quote is not theirs, or does not exist \u2014\n        **the same 404 for both**, so nobody can walk the identifier space.\n    MTQuoteNotPriced: If it has never been priced; a 422.\n\nNotes:\n    Written in the **household's** language. The same offer downloaded by a\n    manager comes out in theirs; it is one document with two readers.",
+        "operationId": "download_quote_api_v1_portal_quotes__quote_id__document_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "title": "Quote Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Quote",
+        "tags": [
+          "Customer portal"
         ]
       }
     },
@@ -11008,6 +11695,45 @@
           }
         },
         "summary": "Set Quote Auto Renew",
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
+    "/api/v1/quotes/{quote_id}/document": {
+      "get": {
+        "description": "Serve one quote as a PDF.\n\nArgs:\n    quote_id (str): The quote to render.\n    service (QuoteDocumentService): The document service.\n    caller (User): The authenticated caller; supplies the language.\n\nReturns:\n    Response: The document, as ``application/pdf``.\n\nRaises:\n    MTQuoteNotFound: If no such quote exists; a 404.\n    MTQuoteNotPriced: If it has never been priced; a 422.\n    MTQuoteRenderFailed: If the document could not be laid out; a 500.\n\nNotes:\n    - **Rendered on demand, not read from a bucket.** Unlike an invoice, a\n      quote is still an offer: it is re-priced when a rate changes and its\n      lines are edited. A stored file would go stale silently and somebody\n      would download last month's prices.\n    - Written in the **caller's** language. A manager checking what a\n      household will receive reads it in their own; the portal route below\n      uses the household's.\n    - ``response_model=None`` because the body is bytes \u2014 without it FastAPI\n      tries to serialise the PDF as JSON. The ``responses`` block keeps the\n      OpenAPI schema honest about the content type.",
+        "operationId": "download_quote_document_api_v1_quotes__quote_id__document_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "title": "Quote Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Quote Document",
         "tags": [
           "Quotes"
         ]

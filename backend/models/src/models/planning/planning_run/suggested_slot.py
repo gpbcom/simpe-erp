@@ -79,9 +79,7 @@ class SuggestedSlot(BaseModel):
                 raise MTSuggestedSlotInvalidDay(
                     f"Invalid day: {value!r}. Must be an ISO date."
                 ) from None
-        raise MTSuggestedSlotInvalidDay(
-            f"Invalid day: {value!r}. Must be a date."
-        )
+        raise MTSuggestedSlotInvalidDay(f"Invalid day: {value!r}. Must be a date.")
 
     @field_validator("start_minute", "end_minute", mode="before")
     def validate_minute(cls, value: Union[int, str]) -> int:

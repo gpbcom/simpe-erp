@@ -254,8 +254,7 @@ class Hca(Person, PortraitHolder):
         for entry in value:
             if not isinstance(entry, (Skill, dict)):
                 raise MTHcaInvalidSkills(
-                    f"Invalid skills entry: {entry!r}. "
-                    f"Must be a Skill or a mapping."
+                    f"Invalid skills entry: {entry!r}. Must be a Skill or a mapping."
                 )
         return value
 

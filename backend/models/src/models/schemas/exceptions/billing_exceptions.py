@@ -86,3 +86,11 @@ class MTInvalidBillDispatchResponseException(Exception):
 
 class MTBillDispatchResponseInvalidId(MTInvalidBillDispatchResponseException):
     """Exception raised when the dispatched bill is not identified."""
+
+
+class MTInvalidBillPaidRequestException(Exception):
+    """Exception raised when a bill-paid webhook payload is invalid."""
+
+
+class MTBillPaidRequestInvalidId(MTInvalidBillPaidRequestException):
+    """Exception raised when a bill-paid payload names no invoice."""

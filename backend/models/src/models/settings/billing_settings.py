@@ -184,7 +184,7 @@ class BillingSettings(BaseModel):
             ) from None
 
     @field_validator("payment_terms_days", mode="before")
-    def validate_payment_terms_days(cls, value: Optional[Union[int, str]]) -> int:   # noqa: E501
+    def validate_payment_terms_days(cls, value: Optional[Union[int, str]]) -> int:  # noqa: E501
         """Validates that the payment terms are within the legal range.
 
         Args:
@@ -219,7 +219,7 @@ class BillingSettings(BaseModel):
         return value
 
     @field_validator("late_penalty_multiplier", mode="before")
-    def validate_late_penalty_multiplier(cls, value: Optional[Union[int, str]]) -> int:   # noqa: E501
+    def validate_late_penalty_multiplier(cls, value: Optional[Union[int, str]]) -> int:  # noqa: E501
         """Validates that the late-payment multiplier is at least the floor.
 
         Args:
@@ -246,7 +246,7 @@ class BillingSettings(BaseModel):
                 f"Invalid late_penalty_multiplier: {value!r}. "  # noqa: E501
                 "Must be a whole number."
             )
-        if not cls.MIN_PENALTY_MULTIPLIER <= value <= cls.MAX_PENALTY_MULTIPLIER:   # noqa: E501
+        if not cls.MIN_PENALTY_MULTIPLIER <= value <= cls.MAX_PENALTY_MULTIPLIER:  # noqa: E501
             raise MTBillingSettingsInvalidPenaltyMultiplier(
                 f"Invalid late_penalty_multiplier: {value!r}. Must be within "
                 f"{cls.MIN_PENALTY_MULTIPLIER}..{cls.MAX_PENALTY_MULTIPLIER}."
@@ -279,7 +279,7 @@ class BillingSettings(BaseModel):
             raise MTBillingSettingsInvalidIndemnity(
                 "Invalid recovery_indemnity_eur: an amount is required."
             )
-        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):   # noqa: E501
+        if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):  # noqa: E501
             raise MTBillingSettingsInvalidIndemnity(
                 f"Invalid recovery_indemnity_eur: {value!r}. Must be a "
                 f"non-negative decimal."
@@ -291,7 +291,7 @@ class BillingSettings(BaseModel):
                 f"Invalid recovery_indemnity_eur: {value!r}. Must be a "
                 f"non-negative decimal."
             ) from None
-        if not coerced.is_finite() or not Decimal(0) <= coerced <= cls.MAX_INDEMNITY:   # noqa: E501
+        if not coerced.is_finite() or not Decimal(0) <= coerced <= cls.MAX_INDEMNITY:  # noqa: E501
             raise MTBillingSettingsInvalidIndemnity(
                 f"Invalid recovery_indemnity_eur: {coerced!r}. Must be within "
                 f"0..{cls.MAX_INDEMNITY}."
@@ -348,7 +348,7 @@ class BillingSettings(BaseModel):
                 return datetime.fromisoformat(value)
             except ValueError:
                 raise MTBillingSettingsInvalidDate(
-                    f"Invalid updated_at: {value!r}. "   # noqa: E501
+                    f"Invalid updated_at: {value!r}. "  # noqa: E501
                     "Must be an ISO-8601 datetime."
                 ) from None
         raise MTBillingSettingsInvalidDate(

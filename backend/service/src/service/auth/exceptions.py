@@ -30,6 +30,21 @@ class MTAuthUnknownHca(MTInvalidAuthException):
     """Exception raised when an assistant account names an unknown record."""
 
 
+class MTAuthUnknownCustomer(MTInvalidAuthException):
+    """Exception raised when a customer account names an unknown household."""
+
+
+class MTAuthCustomerAlreadyHasAccount(MTInvalidAuthException):
+    """Exception raised when a household already has portal access.
+
+    Notes:
+        Refused rather than answered with a second set of credentials. Two
+        accounts on one household is two people who each believe they are the
+        one who cancelled a visit, and the second invitation would silently
+        make the first manager's password useless.
+    """
+
+
 class MTAuthLastAdmin(MTInvalidAuthException):
     """Exception raised when the change would remove the last administrator."""
 

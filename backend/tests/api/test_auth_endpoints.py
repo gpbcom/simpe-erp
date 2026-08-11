@@ -16,6 +16,7 @@ from api.dependencies import (
     get_auth_service,
     get_current_user,
     get_hca_user,
+    get_customer_user,
     get_manager_user,
 )
 from api.exception_handlers import ExceptionHandlers
@@ -353,7 +354,14 @@ class TestRoleGuards:
         )
 
     @pytest.mark.parametrize(
-        "guard", [get_current_user, get_hca_user, get_manager_user, get_admin_user]
+        "guard",
+        [
+            get_current_user,
+            get_hca_user,
+            get_manager_user,
+            get_admin_user,
+            get_customer_user,
+        ],
     )
     def test_every_guard_rejects_an_anonymous_request(self, guard: Any) -> None:
         """No guard lets an unauthenticated caller through."""
@@ -385,6 +393,45 @@ class TestRoleGuards:
         with pytest.raises(HTTPException) as raised:
             get_hca_user(request)
         assert raised.value.status_code == 403
+
+    @pytest.mark.parametrize(
+        "role",
+        [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN],
+    )
+    def test_no_employee_reaches_the_customer_guard(self, role: UserRole) -> None:
+        """**The privacy gate, asserted on the guard itself.**
+
+        Args:
+            role (UserRole): The staff role that must be refused.
+
+        Notes:
+            An administrator outranks everybody and is still refused, because
+            there is nothing to outrank: a customer is not a rung of the staff
+            ladder. Written with ``has_at_least`` this guard would raise
+            ``MTRoleNotRankable``; written the forgiving way it would admit
+            every employee to a household's private space. Compared by identity,
+            it does neither.
+        """
+        with pytest.raises(HTTPException) as raised:
+            get_customer_user(self._request(_user(role)))
+
+        assert raised.value.status_code == 403
+
+    def test_a_customer_reaches_their_own_space(self) -> None:
+        """The household's own account is the only one admitted."""
+        customer = User(
+            company_id="company-1",
+            id="user-customer",
+            email="marie@example.com",
+            full_name="Marie Durand",
+            role=UserRole.CUSTOMER,
+            customer_id="customer-1",
+        )
+
+        admitted = get_customer_user(self._request(customer))
+
+        assert admitted.role is UserRole.CUSTOMER
+        assert admitted.customer_id == "customer-1"
 
     @pytest.mark.parametrize(
         ("role", "allowed"),

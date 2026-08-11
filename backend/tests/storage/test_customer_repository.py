@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
-from models.enums import QuoteStatus, RegistrationStatus
+from models.enums import BillingPeriodicity, QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
 from models.quoting.quote import Quote
 from models.schemas.requests.customers.customer_filter import CustomerFilter
@@ -165,6 +165,98 @@ class TestCustomerRepository:
             await repository.set_status("no-such-id", RegistrationStatus.STOPPED)
             is None
         )
+
+    # ------------------------------------------------------------------ #
+    #  set_billing_periodicity
+    # ------------------------------------------------------------------ #
+
+    async def test_a_customer_starts_on_the_agency_rule(
+        self, session: AsyncSession, customer: Customer
+    ) -> None:
+        """Nothing is written until somebody asks for something else."""
+        stored = await CustomerRepository(session).create(customer)
+        assert stored.billing_periodicity is None
+
+    async def test_an_override_survives_the_round_trip(
+        self, session: AsyncSession, customer: Customer
+    ) -> None:
+        """A granularity of their own is stored and read back as itself."""
+        repository = CustomerRepository(session)
+        stored = await repository.create(customer)
+
+        updated = await repository.set_billing_periodicity(
+            stored.id, BillingPeriodicity.WEEKLY
+        )
+
+        assert updated is not None
+        assert updated.billing_periodicity is BillingPeriodicity.WEEKLY
+        assert updated.first_name == "Marie"
+        reread = await repository.get(stored.id)
+        assert reread is not None
+        assert reread.billing_periodicity is BillingPeriodicity.WEEKLY
+
+    async def test_an_override_can_be_taken_off_again(
+        self, session: AsyncSession, customer: Customer
+    ) -> None:
+        """**Clearing it has to be reachable, or it is set forever.**
+
+        Notes:
+            Null means "whatever the agency bills on", so putting a customer
+            back on the default is a write of null rather than a write of the
+            agency's current rule — which would look identical today and stop
+            tracking the setting tomorrow.
+        """
+        repository = CustomerRepository(session)
+        stored = await repository.create(customer)
+        await repository.set_billing_periodicity(stored.id, BillingPeriodicity.YEARLY)
+
+        updated = await repository.set_billing_periodicity(stored.id, None)
+
+        assert updated is not None
+        assert updated.billing_periodicity is None
+
+    async def test_setting_the_periodicity_of_an_unknown_customer_returns_none(
+        self, session: AsyncSession
+    ) -> None:
+        """An absent customer is reported rather than raised over."""
+        repository = CustomerRepository(session)
+        assert (
+            await repository.set_billing_periodicity(
+                "no-such-id", BillingPeriodicity.WEEKLY
+            )
+            is None
+        )
+
+    async def test_the_granularities_in_use_are_listed_once_each(
+        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+    ) -> None:
+        """**What stops a monthly run reading a whole year of quotes.**
+
+        Notes:
+            A run has to look far enough to catch every customer's own window,
+            and the widest is decided by the periodicities actually in use. With
+            nobody overridden the answer is empty and the run spans exactly the
+            agency's window, as it did before customers could differ.
+        """
+        repository = CustomerRepository(session)
+        assert await repository.list_billing_periodicities() == []
+
+        for index, periodicity in enumerate(
+            (
+                BillingPeriodicity.WEEKLY,
+                BillingPeriodicity.WEEKLY,
+                BillingPeriodicity.YEARLY,
+            )
+        ):
+            stored = await repository.create(
+                Customer(**{**customer_kwargs, "email": f"c{index}@example.fr"})
+            )
+            await repository.set_billing_periodicity(stored.id, periodicity)
+
+        assert await repository.list_billing_periodicities() == [
+            BillingPeriodicity.WEEKLY,
+            BillingPeriodicity.YEARLY,
+        ]
 
     # ------------------------------------------------------------------ #
     #  Listing, search and pagination

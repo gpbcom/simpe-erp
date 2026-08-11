@@ -35,6 +35,12 @@ interface GenerateBillsDialogProps {
  * and produce a window nobody could reproduce afterwards. The resolved window
  * is shown read-only beside the picker.
  *
+ * That window is the **default** one, and the alert says so. A customer with a
+ * granularity of their own is billed over theirs, which is why the run reports
+ * how many invoices it wrote rather than promising one per customer: a yearly
+ * customer whose year is still open is passed over, and a manager counting rows
+ * against the customer book would otherwise read that as a failure.
+ *
  * The run answers 202 with an identifier; the invoices are written by a worker,
  * so the dialog polls until the run is terminal. A **partial** run is finished
  * — the invoices that could be written are written — and its failure count is
@@ -94,7 +100,10 @@ export function GenerateBillsDialog({ open, onClose }: GenerateBillsDialogProps)
 
           {preview ? (
             <Alert severity="info" data-testid="generate-window">
-              {t('bills.window', { start: preview.start, end: preview.end })}
+              {`${t('bills.window', {
+                start: preview.start,
+                end: preview.end,
+              })} ${t('bills.windowIsTheDefault')}`}
             </Alert>
           ) : null}
 

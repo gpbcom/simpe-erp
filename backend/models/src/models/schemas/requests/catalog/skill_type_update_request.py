@@ -42,9 +42,7 @@ class SkillTypeUpdateRequest(BaseModel):
     """
 
     label: Optional[str] = Field(default=None, description="The display name.")
-    description: Optional[str] = Field(
-        default=None, description="What the skill is."
-    )
+    description: Optional[str] = Field(default=None, description="What the skill is.")
     is_active: Optional[bool] = Field(
         default=None, description="Whether it may still be required or declared."
     )

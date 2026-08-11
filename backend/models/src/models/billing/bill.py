@@ -16,6 +16,7 @@ from pydantic import (  # noqa: E501
 
 # First-party imports
 from models.billing.bill_line import BillLine
+from models.billing.bill_recipient import BillRecipient
 from models.billing.exceptions import (
     MTBillInvalidAddress,
     MTBillInvalidAmount,
@@ -28,13 +29,16 @@ from models.billing.exceptions import (
     MTBillInvalidLines,
     MTBillInvalidMoment,
     MTBillInvalidNumber,
+    MTBillInvalidOperationNature,
     MTBillInvalidPeriod,
     MTBillInvalidPeriodicity,
+    MTBillInvalidRecipient,
     MTBillInvalidSequence,
+    MTBillInvalidShare,
     MTBillInvalidStatus,
     MTBillInvalidTotals,
 )
-from models.enums import BillingPeriodicity, BillStatus
+from models.enums import BillingPeriodicity, BillStatus, OperationNature
 from models.geo.postal_address import PostalAddress
 
 
@@ -60,8 +64,10 @@ class Bill(BaseModel):
         issued_on (date): The invoice date.
         due_on (date): The day payment falls due.
         status (BillStatus): Where the bill has reached commercially.
-        customer_full_name (str): The customer's name, as addressed.
-        customer_address (PostalAddress): Where the invoice was addressed.
+        customer_full_name (str): The name of the person cared for.
+        customer_address (PostalAddress): Where the care was delivered.
+        recipient (BillRecipient): The party that owes the money.
+        operation_nature (OperationNature): Goods, services, or both.
         lines (List[BillLine]): The visits charged.
         total_ht (Decimal): Invoice total excluding tax.
         total_vat (Decimal): Total tax.
@@ -91,6 +97,20 @@ class Bill(BaseModel):
         - **The customer's name and address are copies**, like the assistant's
           name on an intervention. A customer who moves must not retroactively
           change where last quarter's invoice was addressed.
+        - **Two parties, and they are not the same question.** The customer is
+          who the care was *delivered to*; the recipient is who the invoice is
+          *billed to*. They carry identical values for a household paying its
+          own bills, which is most of them — and they diverge exactly where it
+          matters, when a conseil départemental or a mutuelle funds the work.
+          Collapsing them into one field would make a funded arrangement
+          unrepresentable, and the structured format asks for both separately
+          for the same reason. See
+          :class:`~models.billing.bill_recipient.BillRecipient`.
+        - **``operation_nature`` is a constant this agency would never have
+          written down.** Everything it sells is a service. It is stored because
+          it is a mandatory mention, because it decides when the VAT falls due,
+          and because a constant nobody records is a constant nobody notices
+          changing.
         - **``number`` and ``sequence`` are the legal series.** French invoicing
           requires an unbroken, chronological sequence per issuer, which is why
           the position is a stored integer and not something derived from a
@@ -137,7 +157,14 @@ class Bill(BaseModel):
     )
     customer_full_name: str = Field(description="The customer's name.")
     customer_address: PostalAddress = Field(
-        description="Where the invoice was addressed.",
+        description="Where the care was delivered.",
+    )
+    recipient: BillRecipient = Field(
+        description="The party that owes the money.",
+    )
+    operation_nature: OperationNature = Field(
+        default=OperationNature.SERVICES,
+        description="Whether the invoice covers goods, services or both.",
     )
     lines: List[BillLine] = Field(
         default_factory=list,
@@ -316,6 +343,75 @@ class Bill(BaseModel):
                 f"or a mapping."
             )
         return value
+
+    @field_validator("recipient", mode="before")
+    def validate_recipient(
+        cls, value: Union[BillRecipient, Dict[str, JsonValue], None]
+    ) -> Union[BillRecipient, Dict[str, JsonValue]]:
+        """Validates that ``recipient`` is a recipient or a mapping.
+
+        Args:
+            value (Union[BillRecipient, Dict[str, JsonValue], None]): Raw
+                recipient value.
+
+        Returns:
+            Union[BillRecipient, Dict[str, JsonValue]]: The value handed back
+            for Pydantic to build.
+
+        Raises:
+            MTBillInvalidRecipient: If ``value`` is neither a
+                :class:`~models.billing.bill_recipient.BillRecipient` nor a
+                mapping.
+
+        Notes:
+            Required rather than defaulted to the customer, even though for
+            almost every invoice it *is* the customer. Building it from the
+            customer here would put the choice in the model and hide it from the
+            one place it matters — a funded arrangement, where the payer is a
+            département and defaulting would silently invoice the household for
+            work somebody else is paying for.
+        """
+        if value is None or not isinstance(value, (BillRecipient, dict)):
+            raise MTBillInvalidRecipient(
+                f"Invalid recipient: {value!r}. Must be a BillRecipient or a "
+                f"mapping naming the party that owes the money."
+            )
+        return value
+
+    @field_validator("operation_nature", mode="before")
+    def validate_operation_nature(
+        cls, value: Union[str, OperationNature, None]
+    ) -> OperationNature:
+        """Validates that ``operation_nature`` names a known nature.
+
+        Args:
+            value (Union[str, OperationNature, None]): Raw nature. ``None``
+                falls back to a supply of services.
+
+        Returns:
+            OperationNature: The coerced nature.
+
+        Raises:
+            MTBillInvalidOperationNature: If ``value`` is not a known nature.
+
+        Notes:
+            The fallback is services because that is everything this agency
+            sells, and because it is the reading that keeps the VAT treatment
+            right: on services the tax falls due on collection, so defaulting to
+            goods would declare it due on delivery and put the exigibility a
+            month early on every invoice.
+        """
+        if value is None:
+            return OperationNature.SERVICES
+        if isinstance(value, OperationNature):
+            return value
+        try:
+            return OperationNature(value)
+        except ValueError:
+            raise MTBillInvalidOperationNature(
+                f"Invalid operation_nature: {value!r}. Must be one of: "
+                f"{', '.join(OperationNature.values())}."
+            ) from None
 
     @field_validator("sequence", mode="before")
     def validate_sequence(cls, value: Optional[Union[int, str]]) -> int:
@@ -701,6 +797,32 @@ class Bill(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def check_share(self) -> Bill:
+        """Ensure a funded share does not exceed what the invoice charges.
+
+        Returns:
+            Bill: ``self`` for chaining.
+
+        Raises:
+            MTBillInvalidShare: If the recipient's share is above
+                ``total_ttc``.
+
+        Notes:
+            Only the ceiling is checked, and deliberately. A share *below* the
+            total is the ordinary funded case — the département pays its part
+            and the household the rest — so requiring the two to match would
+            refuse exactly the arrangement the field exists for. A share above
+            it is arithmetic nobody can reconcile.
+        """
+        share = self.recipient.share_ttc
+        if share is not None and share > self.total_ttc:
+            raise MTBillInvalidShare(
+                f"Invalid share_ttc: {share}. The invoice totals "
+                f"{self.total_ttc}, so no party can owe more than that."
+            )
+        return self
+
+    @model_validator(mode="after")
     def check_document(self) -> Bill:
         """Ensure a bill past validation has a document behind it.
 
@@ -810,6 +932,49 @@ class Bill(BaseModel):
             was down is awaited but was never sent from here.
         """
         return self.sent_at is not None
+
+    def amount_due(self) -> Decimal:
+        """Return what the recipient is actually asked to pay.
+
+        Returns:
+            Decimal: The recipient's funded share, or the whole total.
+
+        Notes:
+            Distinct from ``total_ttc``, and the structured format has a field
+            for each: one is what the care cost, the other is what this document
+            asks this party for. They differ only on a split arrangement, which
+            is precisely the case a single figure would get wrong.
+        """
+        return self.recipient.owes(self.total_ttc)
+
+    def requires_electronic_invoice(self) -> bool:
+        """Return whether this invoice must be transmitted, not merely reported.
+
+        Returns:
+            bool: ``True`` when the recipient is a business or a public body.
+
+        Notes:
+            The regime is decided by **who owes the money**, not by who was
+            cared for. A household's invoice for care funded by a département is
+            transmitted, because the département is the buyer; the household's
+            own share of the same care is reported. Asking the recipient rather
+            than the customer is the whole reason the two are separate fields.
+        """
+        return self.recipient.kind.requires_electronic_invoice()
+
+    def is_paid(self) -> bool:
+        """Return whether the invoice has been settled.
+
+        Returns:
+            bool: ``True`` once it has reached :attr:`BillStatus.PAID`.
+
+        Notes:
+            Worth a method because on a supply of services the VAT falls due on
+            **collection**, so this is not merely a commercial state — it is the
+            reportable event. Read from the status rather than from ``paid_on``,
+            which a manager may leave unset when recording an old settlement.
+        """
+        return self.status is BillStatus.PAID
 
     def describe_period(self) -> str:
         """Return the billed window, as printed on the document.

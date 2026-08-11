@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 # First-party imports
-from models.enums import QuoteStatus, RegistrationStatus
+from models.enums import BillingPeriodicity, QuoteStatus, RegistrationStatus
 from models.people.customer import Customer
 from models.schemas.requests.customers.customer_filter import CustomerFilter
 from storage.mappers.people.customer_mapper import CustomerMapper
@@ -326,6 +326,74 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         row.registration_status = status.value
         await self.session.flush()
         return self.mapper.to_model(row)
+
+    async def set_billing_periodicity(
+        self, customer_id: str, periodicity: Optional[BillingPeriodicity]
+    ) -> Optional[Customer]:
+        """Give a customer their own invoicing granularity, or take it away.
+
+        Args:
+            customer_id (str): The customer to change.
+            periodicity (Optional[BillingPeriodicity]): The rule to bill them
+                on, or ``None`` to put them back on the agency's own.
+
+        Returns:
+            Optional[Customer]: The updated customer, or ``None`` when absent.
+
+        Notes:
+            A dedicated writer for the reason :meth:`set_status` is one: this
+            is a change a manager makes on its own, from a screen holding a
+            customer record that may be minutes old, and routing it through a
+            full update would let that stale copy overwrite an address somebody
+            else corrected in the meantime.
+        """
+        row = await self._get_row(customer_id)
+        if row is None:
+            self.logger.warning(
+                "A billing periodicity was set for the absent customer %s.",
+                customer_id,
+            )
+            return None
+        self.logger.info(
+            "Customer %s is now billed %s.",
+            customer_id,
+            periodicity.value if periodicity else "on the agency's own rule",
+        )
+        row.billing_periodicity = periodicity.value if periodicity else None
+        await self.session.flush()
+        return self.mapper.to_model(row)
+
+    async def list_billing_periodicities(self) -> List[BillingPeriodicity]:
+        """Return the granularities customers have asked for by name.
+
+        Returns:
+            List[BillingPeriodicity]: Every distinct override in the book, in a
+            stable order. Empty when every customer follows the agency.
+
+        Notes:
+            **This is what stops a billing run reading a whole year of quotes
+            every month.** A run has to look far enough back and forward to
+            catch every customer's own window, and the widest of those windows
+            is decided by the periodicities actually in use — which is a single
+            ``DISTINCT`` rather than an assumption. With no override anywhere,
+            the answer is empty and the run spans exactly the agency's own
+            window, as it did before customers could differ.
+        """
+        statement = select(CustomerRow.billing_periodicity).where(
+            CustomerRow.billing_periodicity.is_not(None)
+        )
+        result = await self.session.execute(statement.distinct())
+        found = [
+            BillingPeriodicity(value)
+            for value in sorted(result.scalars().all())
+            if value in BillingPeriodicity.values()
+        ]
+        self.logger.debug(
+            "%d customer periodicit(ies) differ from the agency's: %s.",
+            len(found),
+            ", ".join(periodicity.value for periodicity in found) or "none",
+        )
+        return found
 
     async def list(
         self,

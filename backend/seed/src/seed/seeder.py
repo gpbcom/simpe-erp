@@ -419,6 +419,16 @@ class Seeder:
                 id=company_id,
                 name=self.data.COMPANY_NAME,
                 registration_number="812 345 678 00019",
+                # Not decoration: an electronic invoice charging VAT is refused
+                # without the issuer's intra-community number, so a seeded
+                # agency lacking one can be quoted and planned against and
+                # cannot be billed at all. The IBAN is the same story one step
+                # further — it is printed on the page and carried in the
+                # structured file as the means of payment.
+                vat_number="FR40812345678",
+                iban="FR7630006000011234567890189",
+                bic="AGRIFRPP",
+                legal_form="SARL",
                 contact_email="contact@simple-erp.fr",
                 address=self._address(
                     "10 rue de la Roquette", "75011", "Paris", 48.8551, 2.3720
