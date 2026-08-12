@@ -6,6 +6,17 @@ class MTPlanningRunInvalidId(MTInvalidPlanningRunException):
     """Exception raised when an invalid identifier is provided."""
 
 
+class MTPlanningRunInvalidTeamId(MTInvalidPlanningRunException):
+    """Exception raised when the run does not name the team it plans.
+
+    Notes:
+        A run reads one team's accepted work and deletes one team's visits. A
+        run that could not name its team would read every team's work and clear
+        every team's calendar — the same failure ``company_id`` exists to close,
+        one level down, and just as silent.
+    """
+
+
 class MTPlanningRunInvalidStatus(MTInvalidPlanningRunException):
     """Exception raised when an invalid ``status`` value is provided."""
 

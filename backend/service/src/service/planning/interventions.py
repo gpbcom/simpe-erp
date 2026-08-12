@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from logging import Logger, getLogger
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # First-party imports
 from models.planning.intervention import Intervention
@@ -15,8 +15,8 @@ from service.planning.exceptions import (
 )
 from service.quotes.exceptions import MTQuoteNotFound
 from service.quotes.quotes import QuoteService
-from storage.repositories.planning.intervention import InterventionRepository
 from storage.repositories.catalog.intervention_type import InterventionTypeRepository
+from storage.repositories.planning.intervention import InterventionRepository
 
 
 class InterventionService:
@@ -144,15 +144,16 @@ class InterventionService:
     # Publicly Exposed Methods #
     ############################
 
-    async def delete(self, intervention_id: str) -> Optional[Quote]:
+    async def delete(self, intervention_id: str) -> Tuple[str, Optional[Quote]]:
         """Cancel a visit, and take it off the quote it was sold on.
 
         Args:
             intervention_id (str): The visit to cancel.
 
         Returns:
-            Optional[Quote]: The repriced quote, or ``None`` when that visit
-            was the only thing on it and the quote went with it.
+            Tuple[str, Optional[Quote]]: The team whose calendar the visit was
+            on, and the repriced quote — ``None`` when that visit was the only
+            thing on it and the quote went with it.
 
         Raises:
             MTInterventionNotFound: If no such visit exists.
@@ -168,6 +169,11 @@ class InterventionService:
               left standing empty. An empty quote cannot be priced, cannot be
               validated and cannot be printed; keeping the header would leave a
               record whose only future is an error message.
+            - **The team comes back with the quote**, and it is read from the
+              visit before anything is removed. A cancellation ends in a replan
+              of one team's week, and once the row is gone there is nothing left
+              to ask whose week it was — the quote cannot answer either, because
+              the last-line case deletes it.
         """
         intervention = await self._get(intervention_id)
         quote = await self._quote_of(intervention)
@@ -189,8 +195,10 @@ class InterventionService:
                 quote.reference,
             )
             await self.quotes.delete(quote.id or "")
-            return None
-        return await self.quotes.replace_lines(quote.id or "", remaining)
+            return intervention.team_id, None
+        return intervention.team_id, await self.quotes.replace_lines(
+            quote.id or "", remaining
+        )
 
     async def change_type(
         self, intervention_id: str, intervention_type_id: str
@@ -256,9 +264,6 @@ class InterventionService:
             for entry in quote.lines
         ]
         repriced = await self.quotes.replace_lines(quote.id or "", lines)
-        # The calendar is corrected in the same breath. Waiting for the next
-        # planning run would leave the manager looking at the service they just
-        # changed away from, and no reason to believe the change landed.
         await self.interventions.update(
             intervention.model_copy(
                 update={

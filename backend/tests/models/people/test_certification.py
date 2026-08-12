@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, date, datetime
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -17,6 +16,7 @@ from models.people.hca.exceptions import (
     MTCertificationInvalidObtainedOn,
     MTInvalidCertificationException,
 )
+from tests.annotations import ModelInput
 
 
 class TestCertification:
@@ -86,7 +86,7 @@ class TestCertification:
             pytest.param(42, id="Invalid - int"),
         ],
     )
-    def test_invalid_name_raises(self, invalid_name: Any) -> None:
+    def test_invalid_name_raises(self, invalid_name: ModelInput) -> None:
         """A name that is not a non-empty string is rejected."""
         with pytest.raises(MTCertificationInvalidName):
             Certification(name=invalid_name)
@@ -103,7 +103,7 @@ class TestCertification:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_invalid_issuer_raises(self, invalid_issuer: Any) -> None:
+    def test_invalid_issuer_raises(self, invalid_issuer: ModelInput) -> None:
         """An issuer that is neither None nor a non-empty string is rejected."""
         with pytest.raises(MTCertificationInvalidIssuer):
             Certification(name="DEAVS", issuer=invalid_issuer)
@@ -120,7 +120,7 @@ class TestCertification:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_invalid_obtained_on_raises(self, invalid_date: Any) -> None:
+    def test_invalid_obtained_on_raises(self, invalid_date: ModelInput) -> None:
         """A non date-like obtained_on is rejected."""
         with pytest.raises(MTCertificationInvalidObtainedOn):
             Certification(name="DEAVS", obtained_on=invalid_date)
@@ -132,7 +132,7 @@ class TestCertification:
             pytest.param({}, id="Invalid - dict"),
         ],
     )
-    def test_invalid_expires_on_raises(self, invalid_date: Any) -> None:
+    def test_invalid_expires_on_raises(self, invalid_date: ModelInput) -> None:
         """A non date-like expires_on is rejected."""
         with pytest.raises(MTCertificationInvalidExpiresOn):
             Certification(name="DEAVS", expires_on=invalid_date)
@@ -212,7 +212,7 @@ class TestCertification:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_invalid_code_raises(self, invalid_code: Any) -> None:
+    def test_invalid_code_raises(self, invalid_code: ModelInput) -> None:
         """A code that could not be matched is refused rather than stored."""
         with pytest.raises(MTCertificationInvalidCode):
             Certification(name="DEAVS", code=invalid_code)

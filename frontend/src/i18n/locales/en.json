@@ -19,7 +19,6 @@
     "planningSettings": "Planning settings",
     "users": "Accounts",
     "companies": "Agencies",
-    "teamPlanning": "Team planning",
     "operations": "Operations",
     "administration": "Administration",
     "company": "My agency",
@@ -27,7 +26,8 @@
     "skills": "Skills",
     "bills": "Invoices",
     "billingSettings": "Billing settings",
-    "myPortal": "My space"
+    "myPortal": "My space",
+    "plannings": "Plannings"
   },
   "auth": {
     "signIn": "Sign in",
@@ -323,7 +323,11 @@
       "missing-skill": "nobody has declared the skill it requires",
       "customer-conflict": "the customer's own visits overlap and cannot all fit",
       "no-feasible-slot": "the day was full: travel, the break and the other visits left no room"
-    }
+    },
+    "byAssistant": "By assistant",
+    "byCustomer": "By customer",
+    "everyHousehold": "All customers",
+    "noHouseholdPlanned": "No visit is planned for your customers."
   },
   "notification": {
     "title": "Notifications",

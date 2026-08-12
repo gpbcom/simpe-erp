@@ -173,6 +173,7 @@ class CustomerService:
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
         customer_filter: Optional[CustomerFilter] = None,
+        customer_ids: Optional[List[str]] = None,
     ) -> List[Customer]:
         """Return a page of customers.
 
@@ -183,9 +184,17 @@ class CustomerService:
             status (Optional[RegistrationStatus]): Restrict to one status.
             customer_filter (Optional[CustomerFilter]): The richer filter the
                 customers screen sends.
+            customer_ids (Optional[List[str]]): The households the caller may
+                read. ``None`` means every household; an empty list means none.
 
         Returns:
             List[Customer]: The matching customers.
+
+        Notes:
+            ``customer_ids`` is the caller's *scope*, resolved by
+            :meth:`~service.organisation.teams.TeamService.readable_customer_ids`
+            and passed straight to the statement — never applied to the page
+            afterwards, which would have read households the caller may not see.
         """
         self.logger.debug(
             "Listing customers: page=%d search=%r status=%s filter=%s.",
@@ -201,6 +210,7 @@ class CustomerService:
                 search=search,
                 status=status,
                 customer_filter=customer_filter,
+                customer_ids=customer_ids,
             )
         except SQLAlchemyError:
             # Named here rather than left to the handler: the filter is eight

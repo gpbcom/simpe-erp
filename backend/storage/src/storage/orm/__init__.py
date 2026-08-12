@@ -19,6 +19,11 @@ from .catalog.skill_type_row import SkillTypeRow
 from .companies.company_row import CompanyRow
 from .integrations.einvoicing_integration_row import EInvoicingIntegrationRow
 from .notifications.notification_row import NotificationRow
+from .organisation.agency_member_row import AgencyMemberRow
+from .organisation.agency_row import AgencyRow
+from .organisation.team_document_row import TeamDocumentRow
+from .organisation.team_member_row import TeamMemberRow
+from .organisation.team_row import TeamRow
 from .people.availability_row import AvailabilityRow
 from .people.certification_row import CertificationRow
 from .people.customer_row import CustomerRow
@@ -33,6 +38,8 @@ from .quoting.quote_line_row import QuoteLineRow
 from .quoting.quote_row import QuoteRow
 
 __all__ = [
+    "AgencyMemberRow",
+    "AgencyRow",
     "AvailabilityRow",
     "Base",
     "BillLineRow",
@@ -56,5 +63,8 @@ __all__ = [
     "QuoteRow",
     "SkillRow",
     "SkillTypeRow",
+    "TeamDocumentRow",
+    "TeamMemberRow",
+    "TeamRow",
     "UserRow",
 ]

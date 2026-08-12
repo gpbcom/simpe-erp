@@ -16,7 +16,6 @@ import { useSkillTypes } from '@/api/queries';
 import { SkillTypeDialog } from './SkillTypeDialog';
 import type { SkillType } from '@/api/types';
 
-
 /** Which of the skill filter's fields are text, flags and closed lists. */
 const SKILL_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'code', 'label'],

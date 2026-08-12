@@ -617,6 +617,25 @@ export interface HcaPlanning {
   interventions: Intervention[];
 }
 
+/**
+ * One household's care over a period.
+ *
+ * @remarks
+ * The same visits as {@link HcaPlanning}, grouped by who *receives* the care
+ * rather than by who delivers it. An intervention names both parties, so the
+ * calendar groups two ways and neither is a filter over the other's answer.
+ *
+ * The name travels with the visits because a visit carries the assistant's name
+ * and only the household's identifier — a rail of UUIDs is one nobody can read.
+ */
+export interface CustomerPlanning {
+  customer_id: string;
+  customer_full_name: string;
+  period_start: string;
+  period_end: string;
+  interventions: Intervention[];
+}
+
 /** Something that happened, addressed to one account. */
 export interface Notification {
   id: string | null;
@@ -990,19 +1009,11 @@ export type BillingPeriodicity = 'weekly' | 'monthly' | 'yearly';
  * and it moves one step at a time. Whether a document exists is
  * `Bill.document_key`; whether generation failed is on the run.
  */
-export type BillStatus =
-  | 'to-be-validated'
-  | 'accepted'
-  | 'waiting-payment'
-  | 'paid';
+export type BillStatus = 'to-be-validated' | 'accepted' | 'waiting-payment' | 'paid';
 
 /** Where a bill-generation run has got to. */
 export type BillingRunStatus =
-  | 'pending'
-  | 'running'
-  | 'succeeded'
-  | 'partial'
-  | 'failed';
+  'pending' | 'running' | 'succeeded' | 'partial' | 'failed';
 
 /**
  * One charged visit on an invoice.

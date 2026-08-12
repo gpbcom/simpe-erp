@@ -23,10 +23,15 @@ import api.v1.planning.runs as runs_module
 from api.v1.planning.runs import router as runs_router
 from models.auth.user import User
 from models.enums import InterventionStatus, PlanningRunStatus, UserRole
+from models.planning.customer_planning import CustomerPlanning
 from models.planning.hca_planning import HcaPlanning
 from models.planning.intervention import Intervention
 from models.planning.planning_run import PlanningRun
-from service.planning.exceptions import MTPlanningForbidden, MTPlanningRunNotFound
+from service.planning.exceptions import (
+    MTPlanningCustomerNotFound,
+    MTPlanningForbidden,
+    MTPlanningRunNotFound,
+)
 
 MONDAY = "2026-08-03"
 SUNDAY = "2026-08-09"
@@ -173,6 +178,8 @@ def service() -> AsyncMock:
     stub.list_runs.return_value = [_run(PlanningRunStatus.SUCCEEDED)]
     stub.planning_for.return_value = _planning()
     stub.all_plannings.return_value = [_planning()]
+    stub.planning_for_customer.return_value = _customer_planning()
+    stub.customer_plannings.return_value = [_customer_planning()]
     return stub
 
 
@@ -366,3 +373,122 @@ class TestProductionRegistration:
         assert "/api/v1/planning/runs/{run_id}" in paths
         assert "/api/v1/planning/hcas" in paths
         assert "/api/v1/planning/hcas/{hca_id}" in paths
+
+
+def _customer_planning() -> CustomerPlanning:
+    """Build one household's care as the service returns it.
+
+    Returns:
+        CustomerPlanning: The household's visits over the period.
+    """
+    return CustomerPlanning(
+        customer_id="customer-1",
+        customer_full_name="Marie Durand",
+        period_start=date(2026, 8, 3),
+        period_end=date(2026, 8, 9),
+        interventions=[],
+    )
+
+
+class TestTheCustomersPlanning:
+    """Tests for the two routes that read the calendar by household."""
+
+    def test_every_household_is_listed_for_a_supervisor(
+        self, service: AsyncMock
+    ) -> None:
+        """The whole-agency view, grouped by who receives the care."""
+        response = _client(service, _user(UserRole.MANAGER)).get(
+            "/api/v1/planning/customers", params=PERIOD
+        )
+
+        assert response.status_code == 200
+        assert response.json()[0]["customer_full_name"] == "Marie Durand"
+
+    def test_one_household_is_read_by_identifier(self, service: AsyncMock) -> None:
+        """The narrowed view, for a family somebody is asking about."""
+        response = _client(service, _user(UserRole.MANAGER)).get(
+            "/api/v1/planning/customers/customer-1", params=PERIOD
+        )
+
+        assert response.status_code == 200
+        assert response.json()["customer_id"] == "customer-1"
+
+    def test_the_caller_reaches_the_service(self, service: AsyncMock) -> None:
+        """**The row-level check needs to know who is asking.**
+
+        Notes:
+            A guard proves the caller is signed in; it cannot express "the
+            households this assistant visits". Dropping the caller on the way
+            through would leave the service scoping against nobody.
+        """
+        caller = _user(UserRole.HCA, hca_id="hca-1")
+
+        _client(service, caller).get("/api/v1/planning/customers", params=PERIOD)
+
+        assert service.customer_plannings.await_args.args[0] == caller
+
+    def test_the_list_route_is_not_swallowed_by_its_sibling(
+        self, service: AsyncMock
+    ) -> None:
+        """**A path-ordering hazard that is invisible until it bites.**
+
+        Notes:
+            FastAPI matches in declaration order, so a parametrised route
+            declared ahead of its literal sibling swallows it — ``/customers``
+            would arrive as a household named "customers". Asserted by the
+            *service method* that was called, because both routes answer 200 and
+            the wrong one would look entirely correct.
+        """
+        _client(service, _user(UserRole.MANAGER)).get(
+            "/api/v1/planning/customers", params=PERIOD
+        )
+
+        service.customer_plannings.assert_awaited_once()
+        service.planning_for_customer.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            pytest.param("/api/v1/planning/customers", id="Every household"),
+            pytest.param("/api/v1/planning/customers/customer-1", id="One household"),
+        ],
+    )
+    def test_a_period_is_required(self, service: AsyncMock, path: str) -> None:
+        """A window nobody named is a read of everything ever planned."""
+        response = _client(service, _user(UserRole.MANAGER)).get(path)
+
+        assert response.status_code == 422
+
+    def test_a_household_outside_the_portfolio_answers_404(
+        self, service: AsyncMock
+    ) -> None:
+        """Not 403 — telling the two apart is what enables enumeration."""
+        service.planning_for_customer.side_effect = MTPlanningCustomerNotFound(
+            "no such household"
+        )
+
+        response = _client(service, _user(UserRole.HCA, hca_id="hca-1")).get(
+            "/api/v1/planning/customers/customer-9", params=PERIOD
+        )
+
+        assert response.status_code == 404
+
+    def test_a_household_account_is_refused_with_403(self, service: AsyncMock) -> None:
+        """**And the body must not lecture them about role ladders.**
+
+        Notes:
+            The refusal comes from the service rather than a guard, so the wrong
+            implementation answers 422 with the enumeration's internal
+            explanation of why a customer cannot be ranked. That is both the
+            wrong status and a leak of how the roles are modelled.
+        """
+        service.customer_plannings.side_effect = MTPlanningForbidden(
+            "This planning is reserved for the agency's own staff."
+        )
+
+        response = _client(service, _user(UserRole.MANAGER)).get(
+            "/api/v1/planning/customers", params=PERIOD
+        )
+
+        assert response.status_code == 403
+        assert "ladder" not in response.text.lower()

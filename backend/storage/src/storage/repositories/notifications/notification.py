@@ -14,7 +14,9 @@ from models.notifications.notification import Notification
 from models.schemas.requests.notifications.notification_filter import (
     NotificationFilter,
 )
-from storage.mappers.notifications.notification_mapper import NotificationMapper  # noqa: E501
+from storage.mappers.notifications.notification_mapper import (
+    NotificationMapper,  # noqa: E501
+)
 from storage.orm.notifications.notification_row import NotificationRow
 from storage.repositories.base import BaseRepository
 
@@ -40,13 +42,12 @@ class NotificationRepository(BaseRepository[NotificationRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(
             session=session,
             row_class=NotificationRow,
-            logger=resolved_logger,
         )
-        self.mapper = NotificationMapper(logger=resolved_logger)
+        self.mapper = NotificationMapper()
 
     ############################
     # Internal Helpers Methods #

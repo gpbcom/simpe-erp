@@ -38,9 +38,9 @@ class UserRepository(BaseRepository[UserRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
-        super().__init__(session=session, row_class=UserRow, logger=resolved_logger)
-        self.mapper = UserMapper(logger=resolved_logger)
+        self.logger = logger if logger else getLogger(__name__)
+        super().__init__(session=session, row_class=UserRow)
+        self.mapper = UserMapper()
 
     ############################
     # Internal Helpers Methods #

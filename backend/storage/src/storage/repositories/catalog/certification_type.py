@@ -42,13 +42,12 @@ class CertificationTypeRepository(BaseRepository[CertificationTypeRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(
             session=session,
             row_class=CertificationTypeRow,
-            logger=resolved_logger,
         )
-        self.mapper = CertificationTypeMapper(logger=resolved_logger)
+        self.mapper = CertificationTypeMapper()
 
     ############################
     # Internal Helpers Methods #

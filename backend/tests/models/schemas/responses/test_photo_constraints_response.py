@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -15,6 +14,7 @@ from models.schemas.exceptions import (
 from models.schemas.responses.hca.photo_constraints_response import (
     PhotoConstraintsResponse,
 )
+from tests.annotations import ModelInput
 
 
 class TestPhotoConstraintsResponse:
@@ -63,7 +63,7 @@ class TestPhotoConstraintsResponse:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_an_invalid_limit_raises(self, invalid_value: Any) -> None:
+    def test_an_invalid_limit_raises(self, invalid_value: ModelInput) -> None:
         """A limit that is not a positive integer is rejected.
 
         Notes:
@@ -91,7 +91,7 @@ class TestPhotoConstraintsResponse:
             pytest.param([42], id="Invalid - non-string entry"),
         ],
     )
-    def test_invalid_content_types_raise(self, invalid_value: Any) -> None:
+    def test_invalid_content_types_raise(self, invalid_value: ModelInput) -> None:
         """Anything but a list of real content types is rejected."""
         with pytest.raises(MTPhotoConstraintsResponseInvalidContentTypes):
             PhotoConstraintsResponse(

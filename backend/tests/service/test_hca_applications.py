@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 from unittest.mock import AsyncMock
 
 # Third-party imports
@@ -9,7 +9,7 @@ import pytest
 
 # First-party imports
 from models.auth.user import User
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.configuration.auth_config import AuthConfig
 from models.enums import (
     AccountOrigin,
@@ -32,6 +32,7 @@ from service.hcas.exceptions import (
     MTDuplicateApplication,
 )
 from service.hcas.hcas import HcaService
+from tests.annotations import ModelInput
 
 HASH = "$2b$12$" + "a" * 53
 ADDRESS = PostalAddress(
@@ -65,16 +66,16 @@ def _user(
     )
 
 
-def _application(**overrides: Any) -> HcaApplication:
+def _application(**overrides: ModelInput) -> HcaApplication:
     """Build an application.
 
     Args:
-        **overrides (Any): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         HcaApplication: The application.
     """
-    values: Dict[str, Any] = {
+    values: Dict[str, ModelInput] = {
         "id": "application-1",
         "company_id": "company-1",
         "first_name": "Ana",

@@ -14,7 +14,7 @@ from models.auth.user import User
 from models.catalog.certification_type import CertificationType
 from models.catalog.intervention_type import InterventionType
 from models.catalog.skill_type import SkillType
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import (
     AccountOrigin,
     QuoteStatus,
@@ -31,6 +31,7 @@ from models.quoting.quote_line import QuoteLine
 
 from seed.dataset import Dataset  # isort: skip
 from models.configuration.pricing_config import PricingConfig
+from service.organisation.teams import TeamService
 from service.quotes.quotes import QuoteService
 from storage.orm.auth.user_row import UserRow
 from storage.orm.catalog.certification_type_row import CertificationTypeRow
@@ -49,6 +50,8 @@ from storage.repositories.catalog.skill_type import SkillTypeRepository
 from storage.repositories.companies.company import CompanyRepository
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
+from storage.repositories.organisation.agency import AgencyRepository
+from storage.repositories.organisation.team import TeamRepository
 from storage.repositories.quoting.quote import QuoteRepository
 
 
@@ -114,10 +117,21 @@ class Seeder:
         self.certifications = CertificationTypeRepository(session=session)
         self.skills = SkillTypeRepository(session=session)
         self.quotes = QuoteRepository(session=session)
+        self.agencies = AgencyRepository(session=session)
+        self.teams = TeamRepository(session=session)
+        self.team_service = TeamService(
+            teams=self.teams,
+            agencies=self.agencies,
+            users=self.users,
+            quotes=self.quotes,
+            logger=self.logger,
+        )
         self.pricer = QuoteService(
             quotes=self.quotes,
             types=self.types,
             config=pricing,
+            teams=self.team_service,
+            customers=self.customers,
             logger=self.logger,
         )
         self.logger.debug("Seeder created.")
@@ -207,6 +221,7 @@ class Seeder:
         role: UserRole,
         hca_id: Optional[str],
         company_id: str,
+        customer_id: Optional[str] = None,
     ) -> User:
         """Build a seeded account.
 
@@ -218,6 +233,9 @@ class Seeder:
             hca_id (Optional[str]): The assistant record, for an assistant
                 account.
             company_id (str): The agency.
+            customer_id (Optional[str]): The household record, for a customer
+                account. The model refuses an account that carries both this
+                and a staff role, so the two are never set together.
 
         Returns:
             User: The account to store.
@@ -230,6 +248,7 @@ class Seeder:
             role=role,
             is_active=True,
             hca_id=hca_id,
+            customer_id=customer_id,
             company_id=company_id,
             account_origin=AccountOrigin.SELF_REGISTERED,
             must_change_password=False,
@@ -400,6 +419,38 @@ class Seeder:
             if entry_code == code
         ]
 
+    def _registration_status(self, first: str, last: str) -> RegistrationStatus:  # noqa: E501
+        """Return the status one seeded customer is created with.
+
+        Args:
+            first (str): Their given name.
+            last (str): Their family name.
+
+        Returns:
+            RegistrationStatus: ``PROSPECT`` for the named few, ``ACTIVE``
+            otherwise.
+
+        Notes:
+            Keyed by name rather than by an extra element on the customer
+            tuple, matching how the seeded assistants get their managers and
+            their qualifications: the variation is a handful of exceptions, and
+            widening a forty-row tuple to carry one field for two of them makes
+            the other thirty-eight noisier to read.
+        """
+        full_name = f"{first} {last}"
+        self.logger.debug("Choosing a registration status for %s.", full_name)
+        if not self.data.PROSPECTS:
+            self.logger.error("The dataset names no prospects; none will be seeded.")
+        elif full_name in self.data.PROSPECTS:
+            self.logger.warning(
+                "%s is seeded as a prospect: their work is quotable but nothing "
+                "will be planned for them until they are promoted.",
+                full_name,
+            )
+            return RegistrationStatus.PROSPECT
+        self.logger.info("%s is seeded as an active customer.", full_name)
+        return RegistrationStatus.ACTIVE
+
     ############################
     # Publicly Exposed Methods #
     ############################
@@ -419,12 +470,6 @@ class Seeder:
                 id=company_id,
                 name=self.data.COMPANY_NAME,
                 registration_number="812 345 678 00019",
-                # Not decoration: an electronic invoice charging VAT is refused
-                # without the issuer's intra-community number, so a seeded
-                # agency lacking one can be quoted and planned against and
-                # cannot be billed at all. The IBAN is the same story one step
-                # further — it is printed on the page and carried in the
-                # structured file as the means of payment.
                 vat_number="FR40812345678",
                 iban="FR7630006000011234567890189",
                 bic="AGRIFRPP",
@@ -576,41 +621,6 @@ class Seeder:
         self.logger.info("Workforce holds %d assistants.", len(stored))
         return stored
 
-    def _registration_status(self, first: str, last: str) -> RegistrationStatus:
-        """Return the status one seeded customer is created with.
-
-        Args:
-            first (str): Their given name.
-            last (str): Their family name.
-
-        Returns:
-            RegistrationStatus: ``PROSPECT`` for the named few, ``ACTIVE``
-            otherwise.
-
-        Notes:
-            Keyed by name rather than by an extra element on the customer
-            tuple, matching how the seeded assistants get their managers and
-            their qualifications: the variation is a handful of exceptions, and
-            widening a forty-row tuple to carry one field for two of them makes
-            the other thirty-eight noisier to read.
-        """
-        full_name = f"{first} {last}"
-        self.logger.debug("Choosing a registration status for %s.", full_name)
-        if not self.data.PROSPECTS:
-            # Every seeded customer would then be active, and the prospect
-            # screens would have nothing to act on — which reads as the feature
-            # being broken rather than as the dataset being empty.
-            self.logger.error("The dataset names no prospects; none will be seeded.")
-        elif full_name in self.data.PROSPECTS:
-            self.logger.warning(
-                "%s is seeded as a prospect: their work is quotable but nothing "
-                "will be planned for them until they are promoted.",
-                full_name,
-            )
-            return RegistrationStatus.PROSPECT
-        self.logger.info("%s is seeded as an active customer.", full_name)
-        return RegistrationStatus.ACTIVE
-
     async def seed_customers(self) -> List[Customer]:
         """Create the people served.
 
@@ -654,8 +664,6 @@ class Seeder:
             if customer.registration_status.can_be_scheduled()
         ]
         if not schedulable:
-            # Every planning suite in the campaign would then compute an empty
-            # run and pass, which is the worst way for a seed to be wrong.
             self.logger.error(
                 "Not one seeded customer can be scheduled; no planning run will "
                 "place anything."
@@ -745,6 +753,87 @@ class Seeder:
                 )
             created.append(email)
         self.logger.info("Seeded %d new account(s).", len(created))
+        return created
+
+    async def seed_customer_accounts(
+        self, company_id: str, customers: List[Customer]
+    ) -> List[str]:
+        """Give the named households a sign-in to their own space.
+
+        Args:
+            company_id (str): The agency the accounts belong to.
+            customers (List[Customer]): Every seeded household.
+
+        Returns:
+            List[str]: The addresses that were created, for the printed summary.
+
+        Notes:
+            - **Without this there is no way to see the portal at all.** The
+              customer role exists, the routes exist and the screens exist, but
+              a demonstration stack with no customer account leaves every one of
+              them unreachable — which reads as the feature not being there.
+            - The address is derived, not taken from the customer record. A
+              household's own email is where the agency writes to them, and
+              seeding a sign-in under it would mean the demo credentials and the
+              contact address are the same string — so changing one on screen
+              silently changes what you sign in with.
+            - ``must_change_password`` is left **false**, like every other
+              seeded account. A real invitation sets it, and
+              ``POST /customers/{id}/account`` still does; a demonstration stack
+              that demands a password change before showing a single screen is
+              a demonstration nobody finishes.
+            - Two households rather than all of them, named in
+              :attr:`~seed.dataset.Dataset.PORTAL_CUSTOMERS`: one active with
+              work on the calendar, one prospect so the empty states are
+              reachable without editing anything.
+        """
+        created: List[str] = []
+        wanted = {name for name in self.data.PORTAL_CUSTOMERS}
+        self.logger.debug("Seeding portal access for %s.", sorted(wanted))
+        if not wanted:
+            self.logger.error(
+                "No household is named for portal access; the customer space "
+                "will be unreachable on this stack."
+            )
+            return created
+
+        for customer in customers:
+            name = customer.full_name()
+            if name not in wanted or customer.id is None:
+                continue
+            email = self.data.portal_email(name)
+            user_id = self.data.identifier("user", email)
+            if await self._exists(UserRow, user_id):
+                continue
+            await self.users.create(
+                self._account(
+                    user_id=user_id,
+                    email=email,
+                    full_name=name,
+                    role=UserRole.CUSTOMER,
+                    hca_id=None,
+                    company_id=company_id,
+                    customer_id=customer.id,
+                )
+            )
+            if not customer.registration_status.can_be_scheduled():
+                self.logger.warning(
+                    "%s can sign in but is %s, so their space shows no visit "
+                    "until a manager promotes them — which is the point of "
+                    "seeding one.",
+                    email,
+                    customer.registration_status.value,
+                )
+            created.append(email)
+
+        missing = wanted - {c.full_name() for c in customers}
+        if missing:
+            self.logger.error(
+                "PORTAL_CUSTOMERS names %s, which the customer dataset does "
+                "not contain; those households get no sign-in.",
+                sorted(missing),
+            )
+        self.logger.info("Seeded %d customer account(s).", len(created))
         return created
 
     async def seed_quotes(
@@ -838,9 +927,18 @@ class Seeder:
         print(f"    Manager         manager@simple-erp.fr    {password}")
         print(f"    Assistant       luc.martin@simple-erp.fr {password}")
         print()
+        print("  And on the customer side of the sign-in card:")
+        print()
+        for name in self.data.PORTAL_CUSTOMERS:
+            address = self.data.portal_email(name)
+            print(f"    Customer        {address:<32} {password}")
+        print()
         print(
             "  Every seeded assistant signs in with firstname.lastname@simple-erp.fr."
         )
+        print('  A customer must choose "Customer" on the sign-in card: the')
+        print("  chooser is validated, so a staff account is refused there and")
+        print("  a household is refused on the employee side.")
         print()
         print("  You can also found your own agency from the sign-in card, and")
         print("  be its administrator. Enabled here by")

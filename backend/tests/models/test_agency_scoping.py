@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, time
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -15,11 +15,12 @@ from models.planning.planning_run import PlanningRun
 from models.planning.planning_run.exceptions import MTPlanningRunInvalidId
 from models.quoting.exceptions import MTQuoteInvalidId
 from models.quoting.quote import Quote
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 SUNDAY = date(2026, 8, 9)
 
-ADDRESS: Dict[str, Any] = {
+ADDRESS: Dict[str, ModelInput] = {
     "street": "12 rue de Rivoli",
     "postal_code": "75004",
     "city": "Paris",
@@ -28,7 +29,7 @@ ADDRESS: Dict[str, Any] = {
 }
 
 
-def _quote(**overrides: Any) -> Quote:
+def _quote(**overrides: ModelInput) -> Quote:
     """Build a quote, overriding whatever a test is about.
 
     Args:
@@ -37,7 +38,7 @@ def _quote(**overrides: Any) -> Quote:
     Returns:
         Quote: The quote.
     """
-    fields: Dict[str, Any] = {
+    fields: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "reference": "D-2601",
         "customer_id": "customer-1",
@@ -46,7 +47,7 @@ def _quote(**overrides: Any) -> Quote:
     return Quote(**fields)
 
 
-def _run(**overrides: Any) -> PlanningRun:
+def _run(**overrides: ModelInput) -> PlanningRun:
     """Build a planning run, overriding whatever a test is about.
 
     Args:
@@ -55,7 +56,7 @@ def _run(**overrides: Any) -> PlanningRun:
     Returns:
         PlanningRun: The run.
     """
-    fields: Dict[str, Any] = {
+    fields: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "requested_by": "admin-1",
         "period_start": MONDAY,
@@ -65,7 +66,7 @@ def _run(**overrides: Any) -> PlanningRun:
     return PlanningRun(**fields)
 
 
-def _visit(**overrides: Any) -> Intervention:
+def _visit(**overrides: ModelInput) -> Intervention:
     """Build a scheduled visit, overriding whatever a test is about.
 
     Args:
@@ -74,7 +75,7 @@ def _visit(**overrides: Any) -> Intervention:
     Returns:
         Intervention: The visit.
     """
-    fields: Dict[str, Any] = {
+    fields: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "name": "Toilette matin",
         "intervention_type_id": "type-1",
@@ -158,7 +159,9 @@ class TestEveryPlannedRecordNamesItsAgency:
             pytest.param(["company-1"], id="Invalid - list"),
         ],
     )
-    def test_a_quote_refuses_an_unusable_agency(self, invalid_company: Any) -> None:
+    def test_a_quote_refuses_an_unusable_agency(
+        self, invalid_company: ModelInput
+    ) -> None:
         """Blank is not an agency, and neither is a list holding one.
 
         Notes:
@@ -177,7 +180,9 @@ class TestEveryPlannedRecordNamesItsAgency:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_a_run_refuses_an_unusable_agency(self, invalid_company: Any) -> None:
+    def test_a_run_refuses_an_unusable_agency(
+        self, invalid_company: ModelInput
+    ) -> None:
         """A run that named nothing would clear a period and fill it with nothing."""
         with pytest.raises(MTPlanningRunInvalidId):
             _run(company_id=invalid_company)
@@ -190,7 +195,9 @@ class TestEveryPlannedRecordNamesItsAgency:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_a_visit_refuses_an_unusable_agency(self, invalid_company: Any) -> None:
+    def test_a_visit_refuses_an_unusable_agency(
+        self, invalid_company: ModelInput
+    ) -> None:
         """A visit is deleted in bulk by its agency and day."""
         with pytest.raises(MTInterventionInvalidId):
             _visit(company_id=invalid_company)
@@ -207,7 +214,7 @@ class TestEveryPlannedRecordNamesItsAgency:
             pytest.param(_visit, id="Intervention"),
         ],
     )
-    def test_the_agency_is_stripped(self, build: Any) -> None:
+    def test_the_agency_is_stripped(self, build: ModelInput) -> None:
         """Surrounding whitespace is removed on all three.
 
         Notes:

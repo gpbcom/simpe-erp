@@ -201,7 +201,7 @@ class ProviderDescriptor(BaseModel):
             declared: List[Union[str, TransmissionKind]] = list(value)
         except TypeError:
             raise MTProviderDescriptorInvalidCoverage(
-                f"Invalid coverage: {value!r}. " # noqa: E501
+                f"Invalid coverage: {value!r}. "  # noqa: E501
                 "Must be a list of transmission kinds."
             ) from None
         if not declared:
@@ -256,14 +256,14 @@ class ProviderDescriptor(BaseModel):
             return (cls.REQUIRED_ALWAYS,)
         if isinstance(value, (str, bytes)):
             raise MTProviderDescriptorInvalidFields(
-                f"Invalid required_fields: {value!r}. " # noqa: E501
+                f"Invalid required_fields: {value!r}. "  # noqa: E501
                 "Must be a list of names."
             )
         try:
             declared = list(value)
         except TypeError:
             raise MTProviderDescriptorInvalidFields(
-                f"Invalid required_fields: {value!r}. " # noqa: E501
+                f"Invalid required_fields: {value!r}. "  # noqa: E501
                 "Must be a list of names."
             ) from None
         names: List[str] = [cls.REQUIRED_ALWAYS]

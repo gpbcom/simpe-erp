@@ -11,6 +11,7 @@ from models.integrations.exceptions import (
     MTIntegrationCredentialsInvalidLegalEntityId,
 )
 from models.integrations.integration_credentials import IntegrationCredentials
+from tests.annotations import ModelInput
 
 KEY = "sk_live_0123456789abcdef"
 
@@ -64,9 +65,9 @@ class TestRefusingAnUnusableCredential:
     """Tests for the values that could not authenticate."""
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42, ["k"]])
-    def test_a_missing_key_is_refused(self, value: object) -> None:
+    def test_a_missing_key_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected key.
+        value (ModelInput): The rejected key.
         """
         with pytest.raises(MTIntegrationCredentialsInvalidApiKey):
             IntegrationCredentials(api_key=value)
@@ -101,9 +102,9 @@ class TestRefusingAnUnusableCredential:
         assert secret not in str(raised.value)
 
     @pytest.mark.parametrize("value", ["", "   ", 7, ["a"]])
-    def test_an_unusable_account_id_is_refused(self, value: object) -> None:
+    def test_an_unusable_account_id_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected account reference.
+        value (ModelInput): The rejected account reference.
         """
         with pytest.raises(MTIntegrationCredentialsInvalidAccountId):
             IntegrationCredentials(api_key=KEY, account_id=value)
@@ -114,9 +115,9 @@ class TestRefusingAnUnusableCredential:
             IntegrationCredentials(api_key=KEY, account_id="a" * 129)
 
     @pytest.mark.parametrize("value", ["", "   ", 7])
-    def test_an_unusable_legal_entity_id_is_refused(self, value: object) -> None:
+    def test_an_unusable_legal_entity_id_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected legal-entity reference.
+        value (ModelInput): The rejected legal-entity reference.
         """
         with pytest.raises(MTIntegrationCredentialsInvalidLegalEntityId):
             IntegrationCredentials(api_key=KEY, legal_entity_id=value)
@@ -159,10 +160,10 @@ class TestTheBaseUrl:
 
     @pytest.mark.parametrize("value", ["", "   ", "api.example.com", 42])
     def test_an_address_that_is_not_absolute_https_is_refused(
-        self, value: object
+        self, value: ModelInput
     ) -> None:
         """Args:
-        value (object): The rejected address.
+        value (ModelInput): The rejected address.
         """
         with pytest.raises(MTIntegrationCredentialsInvalidBaseUrl):
             IntegrationCredentials(api_key=KEY, base_url=value)

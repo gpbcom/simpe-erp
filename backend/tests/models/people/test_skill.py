@@ -17,6 +17,7 @@ from models.people.hca.exceptions import (
     MTSkillInvalidObtainedOn,
 )
 from models.people.hca.skill import Skill
+from tests.annotations import ModelInput
 
 
 class TestSkill:
@@ -83,7 +84,7 @@ class TestSkill:
         assert "hca_id" not in Skill.model_fields
 
     @pytest.mark.parametrize("identifier", ["", "   ", 42])
-    def test_a_blank_id_is_refused(self, identifier: object) -> None:
+    def test_a_blank_id_is_refused(self, identifier: ModelInput) -> None:
         """A blank identifier would address no row and report success."""
         with pytest.raises(MTSkillInvalidId):
             Skill(name="Portugais", id=identifier)
@@ -93,7 +94,7 @@ class TestSkill:
     # ------------------------------------------------------------------ #
 
     @pytest.mark.parametrize("name", ["", "   ", None, 42])
-    def test_a_blank_name_is_refused(self, name: object) -> None:
+    def test_a_blank_name_is_refused(self, name: ModelInput) -> None:
         """A skill with no name is not a record anybody keeps."""
         with pytest.raises(MTSkillInvalidName):
             Skill(name=name)
@@ -112,7 +113,7 @@ class TestSkill:
         assert Skill(name="Bricolage", code="   ").code is None
 
     @pytest.mark.parametrize("code", [42, "A B", "LEVÉ", "A!"])
-    def test_a_malformed_code_is_refused(self, code: object) -> None:
+    def test_a_malformed_code_is_refused(self, code: ModelInput) -> None:
         """A malformed code would match nothing and leave its holder unskilled."""
         with pytest.raises(MTSkillInvalidCode):
             Skill(name="Portugais", code=code)
@@ -145,7 +146,7 @@ class TestSkill:
     # ------------------------------------------------------------------ #
 
     @pytest.mark.parametrize("issuer", ["", "   ", 42])
-    def test_a_blank_issuer_is_refused(self, issuer: object) -> None:
+    def test_a_blank_issuer_is_refused(self, issuer: ModelInput) -> None:
         """An issuer is a name or nothing, never an empty string."""
         with pytest.raises(MTSkillInvalidIssuer):
             Skill(name="Portugais", issuer=issuer)

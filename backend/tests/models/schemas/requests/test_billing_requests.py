@@ -3,7 +3,6 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -40,6 +39,7 @@ from models.schemas.responses.billing.bill_dispatch_response import (
     BillDispatchResponse,
 )
 from models.settings.billing_settings import BillingSettings
+from tests.annotations import ModelInput
 
 
 class TestBillingSettingsRequest:
@@ -97,7 +97,7 @@ class TestBillingSettingsRequest:
         ],
     )
     def test_a_bad_payload_names_its_own_field(
-        self, field: str, value: Any, expected: type
+        self, field: str, value: ModelInput, expected: type
     ) -> None:
         """The request repeats the stored model's bounds on purpose.
 
@@ -157,7 +157,7 @@ class TestBillGenerationRequest:
             pytest.param(object(), id="Invalid - object"),
         ],
     )
-    def test_a_run_without_a_day_is_refused(self, value: Any) -> None:
+    def test_a_run_without_a_day_is_refused(self, value: ModelInput) -> None:
         """There is no default period; billing the wrong month is expensive."""
         with pytest.raises(MTBillGenerationRequestInvalidDate):
             BillGenerationRequest(reference_date=value)
@@ -194,7 +194,7 @@ class TestBillGenerationRequest:
             pytest.param([7], id="Invalid - a number"),
         ],
     )
-    def test_an_unusable_customer_list_is_refused(self, value: Any) -> None:
+    def test_an_unusable_customer_list_is_refused(self, value: ModelInput) -> None:
         """A restriction nobody can resolve is worse than none."""
         with pytest.raises(MTBillGenerationRequestInvalidCustomers):
             BillGenerationRequest(reference_date=date(2026, 3, 9), customer_ids=value)
@@ -229,7 +229,7 @@ class TestBillStatusRequest:
             pytest.param("", id="Invalid - empty"),
         ],
     )
-    def test_a_missing_or_unknown_status_is_refused(self, value: Any) -> None:
+    def test_a_missing_or_unknown_status_is_refused(self, value: ModelInput) -> None:
         """A status change whose whole content is missing is an empty order."""
         with pytest.raises(MTBillStatusRequestInvalidStatus):
             BillStatusRequest(status=value)
@@ -278,7 +278,7 @@ class TestBillFilter:
         ],
     )
     def test_an_unusable_filter_is_refused(
-        self, field: str, value: Any, expected: type
+        self, field: str, value: ModelInput, expected: type
     ) -> None:
         """A filter the server cannot narrow by is the caller's to correct."""
         with pytest.raises(expected):
@@ -324,7 +324,7 @@ class TestBillWebhookSchemas:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_an_unidentified_announcement_is_refused(self, value: Any) -> None:
+    def test_an_unidentified_announcement_is_refused(self, value: ModelInput) -> None:
         """An announcement naming no bill sends nothing to nobody."""
         with pytest.raises(MTBillAcceptedRequestInvalidId):
             BillAcceptedRequest(bill_id=value)

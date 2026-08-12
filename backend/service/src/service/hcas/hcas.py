@@ -369,6 +369,7 @@ class HcaService:
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
         hca_filter: Optional[HcaFilter] = None,
+        hca_ids: Optional[List[str]] = None,
     ) -> List[Hca]:
         """Return a page of assistants.
 
@@ -378,9 +379,18 @@ class HcaService:
             search (Optional[str]): Case-insensitive fragment.
             contract_type (Optional[ContractType]): Restrict to one contract.
             hca_filter (Optional[HcaFilter]): The screen's filter.
+            hca_ids (Optional[List[str]]): The assistants the caller may read.
+                ``None`` means every assistant; an empty list means none.
 
         Returns:
             List[Hca]: The matching assistants.
+
+        Notes:
+            ``hca_ids`` is the caller's *scope* rather than a filter, and it is
+            passed straight to the statement. Which identifiers those are is
+            :meth:`~service.organisation.teams.TeamService.readable_hca_ids`'s
+            answer, so there is one definition of "the workforce I may see"
+            rather than one per screen.
         """
         self.logger.debug("Listing assistants: page=%d search=%r.", page, search)
         return await self.hcas.list(
@@ -389,6 +399,7 @@ class HcaService:
             search=search,
             contract_type=contract_type,
             hca_filter=hca_filter,
+            hca_ids=hca_ids,
         )
 
     async def set_employment(

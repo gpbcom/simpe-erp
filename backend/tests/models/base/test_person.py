@@ -55,16 +55,17 @@ from models.people.hca_application.exceptions import (
 )
 from models.people.hca import Hca
 from models.people.hca_application import HcaApplication
+from tests.annotations import ModelInput
 
 ADDRESS = {"street": "12 rue de Rivoli", "postal_code": "75004", "city": "Paris"}
 HASH = "$2b$12$" + "a" * 53
 
 
-def _hca(**overrides: object) -> Hca:
+def _hca(**overrides: ModelInput) -> Hca:
     """Build an assistant.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         Hca: The assistant.
@@ -82,11 +83,11 @@ def _hca(**overrides: object) -> Hca:
     return Hca(**fields)
 
 
-def _customer(**overrides: object) -> Customer:
+def _customer(**overrides: ModelInput) -> Customer:
     """Build a customer.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         Customer: The customer.
@@ -102,11 +103,11 @@ def _customer(**overrides: object) -> Customer:
     return Customer(**fields)
 
 
-def _application(**overrides: object) -> HcaApplication:
+def _application(**overrides: ModelInput) -> HcaApplication:
     """Build an application.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         HcaApplication: The application.
@@ -124,11 +125,11 @@ def _application(**overrides: object) -> HcaApplication:
     return HcaApplication(**fields)
 
 
-def _user(**overrides: object) -> User:
+def _user(**overrides: ModelInput) -> User:
     """Build an account.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         User: The account.
@@ -204,12 +205,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_blank_email_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """**The check the whole design rests on.**
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
 
         Notes:
@@ -231,12 +232,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_blank_identifier_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """The identifier rule dispatches the same way.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
         """
         with pytest.raises(expected):
@@ -251,12 +252,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_blank_given_name_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """A person the agency has a form for must have both names.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
 
         Notes:
@@ -276,12 +277,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_blank_family_name_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """Every person, account included, needs something to be called.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
         """
         with pytest.raises(expected):
@@ -295,12 +296,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_blank_telephone_number_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """A number that is present must be usable.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
         """
         with pytest.raises(expected):
@@ -314,12 +315,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_malformed_address_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """The address rule dispatches the same way.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
         """
         with pytest.raises(expected):
@@ -334,12 +335,12 @@ class TestPerModelExceptionsSurvive:
         ],
     )
     def test_a_malformed_timestamp_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """The timestamp rule dispatches the same way.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
         """
         with pytest.raises(expected):
@@ -357,11 +358,11 @@ class TestSharedBehaviour:
             pytest.param(_application, id="Application"),
         ],
     )
-    def test_the_display_name_is_composed(self, build: object) -> None:
+    def test_the_display_name_is_composed(self, build: ModelInput) -> None:
         """One implementation, so no model can disagree about the format.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
         """
         assert build().full_name() == build().first_name + " " + build().last_name
 
@@ -373,11 +374,11 @@ class TestSharedBehaviour:
             pytest.param(_user, id="User"),
         ],
     )
-    def test_timestamps_serialize_to_iso_8601(self, build: object) -> None:
+    def test_timestamps_serialize_to_iso_8601(self, build: ModelInput) -> None:
         """A client reads a string, not a Python datetime.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
         """
         record = build(updated_at=datetime(2026, 8, 5, 12, 0, tzinfo=UTC))
 
@@ -390,11 +391,11 @@ class TestSharedBehaviour:
             pytest.param(_customer, id="Customer"),
         ],
     )
-    def test_names_are_trimmed(self, build: object) -> None:
+    def test_names_are_trimmed(self, build: ModelInput) -> None:
         """The stripping rule is stated once and applies everywhere.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
         """
         record = build(first_name="  Jean  ", last_name="  Dupont  ")
 
@@ -447,12 +448,12 @@ class TestThePortraitMixin:
         ],
     )
     def test_a_third_party_url_raises_the_models_own_exception(
-        self, build: object, expected: Type[MTInvalidPersonException]
+        self, build: ModelInput, expected: Type[MTInvalidPersonException]
     ) -> None:
         """**A security rule, which is why it is worth having in one place.**
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
             expected (Type[MTInvalidPersonException]): Its own exception.
 
         Notes:
@@ -467,11 +468,11 @@ class TestThePortraitMixin:
         "build",
         [pytest.param(_hca, id="Hca"), pytest.param(_user, id="User")],
     )
-    def test_a_url_the_object_store_issued_is_accepted(self, build: object) -> None:
+    def test_a_url_the_object_store_issued_is_accepted(self, build: ModelInput) -> None:
         """The prefix the upload endpoint writes under is what passes.
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
         """
         stored = "https://cdn.example.com/hca-photos/subject/abc.jpg"
 
@@ -481,11 +482,11 @@ class TestThePortraitMixin:
         "build",
         [pytest.param(_hca, id="Hca"), pytest.param(_user, id="User")],
     )
-    def test_a_blank_portrait_reads_as_none(self, build: object) -> None:
+    def test_a_blank_portrait_reads_as_none(self, build: ModelInput) -> None:
         """An empty form field means "no photo", not "invalid photo".
 
         Args:
-            build (object): The factory for the model under test.
+            build (ModelInput): The factory for the model under test.
         """
         assert build(photo_url="   ").photo_url is None
 

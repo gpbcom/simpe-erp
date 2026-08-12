@@ -28,7 +28,40 @@ from models.catalog.exceptions import (
     MTInvalidSkillTypeException,
     MTInvalidInterventionTypeException,
 )
-from models.companies.exceptions import MTInvalidCompanyException
+from models.organisation.companies.exceptions import MTInvalidCompanyException
+from models.base.exceptions.organisation_member_exceptions import (
+    MTInvalidOrganisationMemberException,
+)
+from models.organisation.agency.exceptions import (
+    MTInvalidAgencyException,
+)
+from models.organisation.team.exceptions import (
+    MTInvalidTeamDocumentException,
+    MTInvalidTeamException,
+    MTInvalidTeamMemberException,
+)
+from service.organisation.exceptions import (
+    MTAgencyForbidden,
+    MTAgencyHeadquartersProtected,
+    MTAgencyMemberAlreadyPlaced,
+    MTAgencyMemberOutsideCompany,
+    MTAgencyNameTaken,
+    MTAgencyNotEmpty,
+    MTAgencyNotFound,
+    MTInvalidAgencyServiceException,
+    MTInvalidTeamDocumentServiceException,
+    MTInvalidTeamServiceException,
+    MTTeamDocumentForbidden,
+    MTTeamDocumentNotFound,
+    MTTeamDocumentStorageUnavailable,
+    MTTeamForbidden,
+    MTTeamHasWork,
+    MTTeamManagerRequired,
+    MTTeamMemberAlreadyPlaced,
+    MTTeamMemberOutsideAgency,
+    MTTeamNameTaken,
+    MTTeamNotFound,
+)
 from models.integrations.exceptions import (
     MTInvalidEInvoicingIntegrationException,
     MTInvalidIntegrationCredentialsException,
@@ -87,6 +120,9 @@ from models.people.hca.exceptions import (
     MTInvalidSkillException,
 )
 from models.people.hca_application.exceptions import MTInvalidHcaApplicationException
+from models.planning.customer_planning.exceptions import (
+    MTInvalidCustomerPlanningException,
+)
 from models.planning.hca_planning.exceptions import MTInvalidHcaPlanningException
 from models.planning.intervention.exceptions import (
     MTInvalidInterventionException,
@@ -104,6 +140,14 @@ from models.quoting.exceptions import (
     MTInvalidQuoteTypeWeekAggregateException,
 )
 from models.schemas.exceptions import (
+    MTInvalidQuoteTeamRequestException,
+    MTInvalidAgencyCreateRequestException,
+    MTInvalidAgencyUpdateRequestException,
+    MTInvalidAgencyViewException,
+    MTInvalidTeamCreateRequestException,
+    MTInvalidTeamDocumentConstraintsResponseException,
+    MTInvalidTeamUpdateRequestException,
+    MTInvalidTeamViewException,
     MTInvalidBillPaidRequestException,
     MTInvalidIntegrationSchemaException,
     MTInvalidBillAcceptedRequestException,
@@ -244,6 +288,7 @@ from service.planning.exceptions import (
     MTInvalidPlanningException,
     MTInterventionNotFound,
     MTInterventionNotQuoted,
+    MTPlanningCustomerNotFound,
     MTPlanningForbidden,
     MTPlanningInfeasible,
     MTPlanningPeriodTooLong,
@@ -257,6 +302,8 @@ from service.quotes.exceptions import (
     MTQuoteLineNotFound,
     MTQuoteNotEditable,
     MTQuoteNotFound,
+    MTQuoteTeamForbidden,
+    MTQuoteUnassignable,
     MTQuoteNotPriced,
 )
 from service.integrations.utils.exceptions import (
@@ -500,10 +547,24 @@ class ExceptionHandlers:
         MTQuoteLineNotFound: status.HTTP_404_NOT_FOUND,
         MTQuoteNotEditable: status.HTTP_409_CONFLICT,
         MTQuoteForbidden: status.HTTP_403_FORBIDDEN,
+        # A quote nothing can be attributed to is refused rather than stored
+        # unattributed: 422, because the caller can fix it — by correcting the
+        # household or by forming a team — and the message says which.
+        MTQuoteUnassignable: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # 403 rather than 404, unlike the agency and team refusals. The caller
+        # is a manager of this company and already reads the quote; the teams
+        # they may move it between are not a secret from them, so pretending
+        # the quote vanished would read as a bug.
+        MTQuoteTeamForbidden: status.HTTP_403_FORBIDDEN,
         MTQuoteNotPriced: status.HTTP_409_CONFLICT,
         MTPricingUnknownInterventionType: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # Planning
         MTPlanningRunNotFound: status.HTTP_404_NOT_FOUND,
+        # A household outside an assistant's portfolio answers 404, not 403.
+        # Saying "not yours" would confirm the household exists, which is what
+        # lets somebody enumerate the agency's customers one identifier at a
+        # time.
+        MTPlanningCustomerNotFound: status.HTTP_404_NOT_FOUND,
         MTInterventionNotFound: status.HTTP_404_NOT_FOUND,
         MTInterventionNotQuoted: status.HTTP_409_CONFLICT,
         MTPlanningForbidden: status.HTTP_403_FORBIDDEN,
@@ -557,6 +618,69 @@ class ExceptionHandlers:
         MTInvalidSkillException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidDrivingLicenseException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidCompanyException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # How the company is organised: its sites, its teams, and the files a
+        # team shares. Five families rather than one, and the split is the
+        # same one this map is built on — a refusal has to say *which* thing
+        # was malformed, because "the site has no name" and "the team names no
+        # manager" send a reader to two different forms.
+        MTInvalidAgencyException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamDocumentException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # The membership families. The shared base's defaults are here too:
+        # a concrete membership model declares its own, so this row only
+        # catches one that has not — which must still be a typed 422 rather
+        # than reaching the catch-all as a 500.
+        MTInvalidOrganisationMemberException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamMemberException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # The payloads and projections of those same two aggregates. Separate
+        # families from the models they build, because a malformed *request* is
+        # the caller's to fix while a malformed *projection* is ours — and only
+        # the first should ever reach a user as an instruction.
+        MTInvalidQuoteTeamRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,  # noqa: E501
+        MTInvalidAgencyCreateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,  # noqa: E501
+        MTInvalidAgencyUpdateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,  # noqa: E501
+        MTInvalidTeamCreateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,  # noqa: E501
+        MTInvalidTeamUpdateRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,  # noqa: E501
+        MTInvalidAgencyViewException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamViewException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamDocumentConstraintsResponseException: (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+        ),
+        # Operations on the organisation. The family bases answer 422 so a
+        # subclass added without a row of its own is still a typed refusal; the
+        # rows below say where each genuinely differs.
+        MTInvalidAgencyServiceException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamServiceException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTInvalidTeamDocumentServiceException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
+        MTAgencyNotFound: status.HTTP_404_NOT_FOUND,
+        # 404, not 403. Distinguishing "does not exist" from "not yours" lets a
+        # caller walk the identifier space and count how many places a
+        # competitor operates from, which is most of what a site list is worth.
+        MTAgencyForbidden: status.HTTP_404_NOT_FOUND,
+        MTAgencyNameTaken: status.HTTP_409_CONFLICT,
+        # 409 rather than 422: the payload is well formed, and what refuses it
+        # is the state of other rows — a head office that already exists, or
+        # teams still working from the site.
+        MTAgencyHeadquartersProtected: status.HTTP_409_CONFLICT,
+        MTAgencyNotEmpty: status.HTTP_409_CONFLICT,
+        MTAgencyMemberAlreadyPlaced: status.HTTP_409_CONFLICT,
+        MTAgencyMemberOutsideCompany: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTTeamNotFound: status.HTTP_404_NOT_FOUND,
+        MTTeamForbidden: status.HTTP_404_NOT_FOUND,
+        MTTeamNameTaken: status.HTTP_409_CONFLICT,
+        # 422: the request names somebody who cannot run a team, which is a
+        # payload the caller can correct.
+        MTTeamManagerRequired: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTTeamMemberAlreadyPlaced: status.HTTP_409_CONFLICT,
+        MTTeamMemberOutsideAgency: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        MTTeamHasWork: status.HTTP_409_CONFLICT,
+        MTTeamDocumentNotFound: status.HTTP_404_NOT_FOUND,
+        # 403 here, unlike everywhere else, and deliberately: every member may
+        # read every document in their team's space, so its existence is not a
+        # secret from them. What is refused is deleting a colleague's file, and
+        # "no such document" for something plainly on screen reads as a bug.
+        MTTeamDocumentForbidden: status.HTTP_403_FORBIDDEN,
+        MTTeamDocumentStorageUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
         MTInvalidInterventionTypeException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidQuoteException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidQuoteLineException: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -567,6 +691,10 @@ class ExceptionHandlers:
         MTInvalidPostalAddressException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidPlanningRunException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidHcaPlanningException: status.HTTP_422_UNPROCESSABLE_ENTITY,
+        # The same diary read on the other axis. A separate family because the
+        # two carry different identifiers and different names, so a refusal
+        # says which of the two was malformed rather than "a planning".
+        MTInvalidCustomerPlanningException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidInterventionException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidInterventionRequirementException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -604,9 +732,7 @@ class ExceptionHandlers:
         MTInvalidIntegrationCredentialsException: (
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
-        MTInvalidEInvoicingIntegrationException: (
-            status.HTTP_422_UNPROCESSABLE_ENTITY
-        ),
+        MTInvalidEInvoicingIntegrationException: (status.HTTP_422_UNPROCESSABLE_ENTITY),
         MTInvalidIntegrationSchemaException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidBillPaidRequestException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # 500s, all of them programming or deployment faults rather than
@@ -614,18 +740,12 @@ class ExceptionHandlers:
         # catalogue entry or no connector, a receipt a connector built wrong,
         # a credential key that is missing or will not open.
         MTConnectorNotImplemented: status.HTTP_500_INTERNAL_SERVER_ERROR,
-        MTInvalidProviderDescriptorException: (
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ),
-        MTInvalidTransmissionReceiptException: (
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ),
+        MTInvalidProviderDescriptorException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
+        MTInvalidTransmissionReceiptException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
         MTCredentialCipherKeyUnusable: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTCredentialCipherUnreadable: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTCredentialCipherException: status.HTTP_500_INTERNAL_SERVER_ERROR,
-        MTInvalidIntegrationConfigException: (
-            status.HTTP_500_INTERNAL_SERVER_ERROR
-        ),
+        MTInvalidIntegrationConfigException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
         MTInvalidBillingRunException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # A service refusing an operation. The concrete members carry their own
         # meaning above; a new one defaults to "refused", never to a 500, which

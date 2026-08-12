@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -38,8 +38,9 @@ from models.enums import (
     OperationNature,
     ServiceCategory,
 )
+from tests.annotations import ModelInput
 
-ADDRESS: Dict[str, Any] = {
+ADDRESS: Dict[str, ModelInput] = {
     "street": "1 rue des Lilas",
     "postal_code": "75011",
     "city": "Paris",
@@ -52,7 +53,7 @@ def a_charge(
     total_ht: str = "63.82",
     vat_rate: str = "0.055",
     vat_amount: str = "3.51",
-    **overrides: Any,
+    **overrides: ModelInput,
 ) -> BillLine:
     """Build one priced charge.
 
@@ -66,7 +67,7 @@ def a_charge(
     Returns:
         BillLine: A charge a bill accepts.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "quote_line_id": "quote-line-1",
         "name": "Aide à la toilette",
         "service_category": ServiceCategory.NECESSITY,
@@ -82,17 +83,17 @@ def a_charge(
     return BillLine(**payload)
 
 
-def a_bill(**overrides: Any) -> Dict[str, Any]:
+def a_bill(**overrides: ModelInput) -> Dict[str, ModelInput]:
     """Build the payload of a March invoice carrying one charge.
 
     Args:
         **overrides: Fields to replace on the default payload.
 
     Returns:
-        Dict[str, Any]: A payload ``Bill`` accepts.
+        Dict[str, ModelInput]: A payload ``Bill`` accepts.
     """
     lines = overrides.pop("lines", [a_charge()])
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "customer_id": "customer-1",
         "number": "FA-2026-000001",
@@ -135,7 +136,7 @@ class TestBillIdentity:
             pytest.param("   ", id="Invalid - whitespace"),
         ],
     )
-    def test_an_invoice_without_a_number_is_refused(self, value: Any) -> None:
+    def test_an_invoice_without_a_number_is_refused(self, value: ModelInput) -> None:
         """A document with no number is outside the legal series."""
         with pytest.raises(MTBillInvalidNumber):
             Bill(**a_bill(number=value))
@@ -167,7 +168,7 @@ class TestBillIdentity:
             pytest.param("1", id="Invalid - string"),
         ],
     )
-    def test_the_sequence_starts_at_one(self, value: Any) -> None:
+    def test_the_sequence_starts_at_one(self, value: ModelInput) -> None:
         """The series counts documents issued, so there is no position zero."""
         with pytest.raises(MTBillInvalidSequence):
             Bill(**a_bill(sequence=value))
@@ -180,7 +181,7 @@ class TestBillIdentity:
             pytest.param("2026", id="Invalid - string"),
         ],
     )
-    def test_the_series_year_is_bounded(self, value: Any) -> None:
+    def test_the_series_year_is_bounded(self, value: ModelInput) -> None:
         """The year is half of what makes a number unique.
 
         Notes:
@@ -281,7 +282,7 @@ class TestBillPeriod:
             pytest.param(20260301, id="Invalid - int"),
         ],
     )
-    def test_a_period_bound_must_be_a_date(self, value: Any) -> None:
+    def test_a_period_bound_must_be_a_date(self, value: ModelInput) -> None:
         """Only a date delimits a period."""
         with pytest.raises(MTBillInvalidDate):
             Bill(**a_bill(period_start=value))
@@ -451,7 +452,7 @@ class TestBillLifecycle:
             pytest.param(object(), id="Invalid - object"),
         ],
     )
-    def test_a_timestamp_must_be_a_moment(self, value: Any) -> None:
+    def test_a_timestamp_must_be_a_moment(self, value: ModelInput) -> None:
         """Only a datetime or an ISO string records when something happened."""
         with pytest.raises(MTBillInvalidMoment):
             Bill(**a_bill(sent_at=value))

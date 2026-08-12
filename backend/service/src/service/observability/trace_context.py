@@ -2,13 +2,22 @@ from __future__ import annotations
 
 # Standard library imports
 from logging import Logger, getLogger
-from typing import ClassVar, Dict, Optional
+from typing import TYPE_CHECKING, ClassVar, Dict, Optional
 
 try:  # pragma: no cover - exercised by whether the package is installed
     # Third-party imports
     from opentelemetry import propagate
 except ImportError:  # pragma: no cover - the ordinary case until tracing lands
     propagate = None
+
+if TYPE_CHECKING:  # pragma: no cover - names the return type without needing it
+    # Third-party imports
+    #
+    # Under ``TYPE_CHECKING`` because tracing is optional: a deployment without
+    # OpenTelemetry installed must still import this module, and
+    # ``from __future__ import annotations`` means the name is never resolved
+    # at runtime.
+    from opentelemetry.context import Context
 
 
 class TraceContext:
@@ -76,14 +85,14 @@ class TraceContext:
             return None
         return context
 
-    def restore(self, traceparent: Optional[str]) -> Optional[object]:
+    def restore(self, traceparent: Optional[str]) -> Optional["Context"]:
         """Rebuild the context a message was published under.
 
         Args:
             traceparent (Optional[str]): The context carried on the envelope.
 
         Returns:
-            Optional[object]: An OpenTelemetry context to attach a span to, or
+            Optional[Context]: An OpenTelemetry context to attach a span to, or
             ``None`` when there is nothing to restore.
 
         Notes:

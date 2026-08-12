@@ -13,6 +13,7 @@ from models.configuration.exceptions import (
     MTS3ConfigInvalidCredentialEnv,
     MTS3ConfigInvalidEndpointUrl,
     MTS3ConfigInvalidInvoicePrefix,
+    MTS3ConfigInvalidTeamDocumentPrefix,
     MTS3ConfigInvalidLogoPrefix,
     MTS3ConfigInvalidMaxUploadBytes,
     MTS3ConfigInvalidPhotoPrefix,
@@ -28,6 +29,8 @@ class S3Config(BaseModel):
     Attributes:
         DEFAULT_PHOTO_KEY_PREFIX (ClassVar[str]): Key prefix every photo is
             written under.
+        DEFAULT_TEAM_DOCUMENT_KEY_PREFIX (ClassVar[str]): Key prefix every
+            shared team document is written under.
         DEFAULT_LOGO_KEY_PREFIX (ClassVar[str]): Key prefix every company logo
             is written under.
         ALLOWED_PHOTO_CONTENT_TYPES (ClassVar[Tuple[str, ...]]): Image types
@@ -61,6 +64,7 @@ class S3Config(BaseModel):
     DEFAULT_PHOTO_KEY_PREFIX: ClassVar[str] = "hca-photos/"
     DEFAULT_LOGO_KEY_PREFIX: ClassVar[str] = "company-logos/"
     DEFAULT_INVOICE_KEY_PREFIX: ClassVar[str] = "invoices/"
+    DEFAULT_TEAM_DOCUMENT_KEY_PREFIX: ClassVar[str] = "team-documents/"
     ALLOWED_PHOTO_CONTENT_TYPES: ClassVar[Tuple[str, ...]] = (
         "image/jpeg",
         "image/png",
@@ -97,6 +101,10 @@ class S3Config(BaseModel):
     invoice_key_prefix: str = Field(
         default=DEFAULT_INVOICE_KEY_PREFIX,
         description="Key prefix every generated invoice is written under.",
+    )
+    team_document_key_prefix: str = Field(
+        default=DEFAULT_TEAM_DOCUMENT_KEY_PREFIX,
+        description="Key prefix every shared team document is written under.",
     )
     max_upload_bytes: int = Field(
         default=5 * 1024 * 1024,
@@ -215,6 +223,7 @@ class S3Config(BaseModel):
         "photo_key_prefix",
         "logo_key_prefix",
         "invoice_key_prefix",
+        "team_document_key_prefix",
         mode="before",
     )
     def validate_key_prefix(cls, value: Optional[str], info: ValidationInfo) -> str:
@@ -235,6 +244,8 @@ class S3Config(BaseModel):
             MTS3ConfigInvalidLogoPrefix: The same, for ``logo_key_prefix``.
             MTS3ConfigInvalidInvoicePrefix: The same, for
                 ``invoice_key_prefix``.
+            MTS3ConfigInvalidTeamDocumentPrefix: The same, for
+                ``team_document_key_prefix``.
 
         Notes:
             A leading slash is rejected because S3 would treat it as an empty
@@ -244,25 +255,27 @@ class S3Config(BaseModel):
             The trailing slash is added rather than demanded, so a prefix
             configured without one still groups its objects into a folder.
 
-            One rule, three exceptions. The check is identical for every field,
+            One rule, four exceptions. The check is identical for every field,
             but the API's exception-to-status map is keyed on the class, and a
             rejected logo prefix reporting itself as a bad photo prefix would
             send whoever is fixing the deployment to the wrong line.
 
-            The invoice prefix shares the rule and nothing else: objects under
-            it are written private and are never handed to a browser, so it is
-            the one prefix whose contents a wrong value would expose rather than
-            merely misplace.
+            The invoice and team-document prefixes share the rule and nothing
+            else: objects under them are written private and are never handed to
+            a browser, so they are the two prefixes whose contents a wrong value
+            would expose rather than merely misplace.
         """
         refusals = {
             "photo_key_prefix": MTS3ConfigInvalidPhotoPrefix,
             "logo_key_prefix": MTS3ConfigInvalidLogoPrefix,
             "invoice_key_prefix": MTS3ConfigInvalidInvoicePrefix,
+            "team_document_key_prefix": MTS3ConfigInvalidTeamDocumentPrefix,
         }
         defaults = {
             "photo_key_prefix": cls.DEFAULT_PHOTO_KEY_PREFIX,
             "logo_key_prefix": cls.DEFAULT_LOGO_KEY_PREFIX,
             "invoice_key_prefix": cls.DEFAULT_INVOICE_KEY_PREFIX,
+            "team_document_key_prefix": cls.DEFAULT_TEAM_DOCUMENT_KEY_PREFIX,
         }
         refuse = refusals[str(info.field_name)]
         default = defaults[str(info.field_name)]

@@ -403,7 +403,9 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
                       setHeader({ ...header, auto_renew: event.target.checked })
                     }
                     inputProps={
-                      { 'data-testid': 'quote-auto-renew' } as React.InputHTMLAttributes<HTMLInputElement>
+                      {
+                        'data-testid': 'quote-auto-renew',
+                      } as React.InputHTMLAttributes<HTMLInputElement>
                     }
                   />
                 }

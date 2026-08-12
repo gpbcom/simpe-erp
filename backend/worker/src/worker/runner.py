@@ -27,6 +27,7 @@ from service.messaging.consumer import EventConsumer
 from service.messaging.publisher import EventPublisher
 from service.observability.metrics import ApplicationMetrics
 from service.observability.probe_server import ProbeServer
+from service.organisation.teams import TeamService
 from service.planning.plannings import PlanningService
 from service.planning.webhook import PlanningWebhook
 from storage.db.connection_manager import DatabaseConnectionManager
@@ -46,6 +47,8 @@ from storage.repositories.notifications.notification import (
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
 from storage.repositories.planning.intervention import InterventionRepository
+from storage.repositories.organisation.agency import AgencyRepository
+from storage.repositories.organisation.team import TeamRepository
 from storage.repositories.planning.planning_run import PlanningRunRepository
 from storage.repositories.planning.planning_settings import (
     PlanningSettingsRepository,  # noqa: E501
@@ -527,6 +530,13 @@ class WorkerRunner:
                 hcas=HcaRepository(session=session),
                 types=InterventionTypeRepository(session=session),
                 settings=PlanningSettingsRepository(session=session),
+                teams=TeamService(
+                    teams=TeamRepository(session=session),
+                    agencies=AgencyRepository(session=session),
+                    users=UserRepository(session=session),
+                    quotes=QuoteRepository(session=session),
+                    logger=self.logger,
+                ),
                 config=self.config.planning,
                 metrics=self.metrics,
                 logger=self.logger,

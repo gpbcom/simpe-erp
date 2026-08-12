@@ -304,9 +304,7 @@ async def bill_paid(
     request: BillPaidRequest,
     x_webhook_token: Optional[str] = Header(default=None),
     billing: BillingService = Depends(get_billing_service),
-    transmissions: InvoicingService = Depends(
-        get_invoicing_service
-    ),
+    transmissions: InvoicingService = Depends(get_invoicing_service),
 ) -> BillDispatchResponse:
     """Transmit a settled invoice to the agency's certified platform.
 

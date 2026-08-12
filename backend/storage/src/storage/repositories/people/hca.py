@@ -67,6 +67,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
         hca_filter: Optional[HcaFilter] = None,
+        hca_ids: Optional[List[str]] = None,
     ) -> Select[Tuple[HcaRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
@@ -76,6 +77,8 @@ class HcaRepository(BaseRepository[HcaRow]):
             hca_filter (Optional[HcaFilter]): The richer filter. Its ``search``
                 and ``contract_type`` win over the two positional arguments
                 when both are given.
+            hca_ids (Optional[List[str]]): The assistants the caller may read.
+                ``None`` means every assistant; an **empty list means none**.
 
         Returns:
             Select[tuple[HcaRow]]: The filtered statement, without ordering or pagination.
@@ -83,6 +86,12 @@ class HcaRepository(BaseRepository[HcaRow]):
         Notes:
             - Shared so a page and its total can never be computed from
               different filters.
+            - ``hca_ids`` is a **permission, not a preference**, and it is
+              applied in the statement for the reason ``authored_by`` is on the
+              quote side: a page of fifty narrowed to three afterwards has
+              already read forty-seven records the caller may not see. ``None``
+              and ``[]`` mean opposite things, and reading the empty list as
+              falsy would show a manager who runs no team the whole workforce.
             - ``search`` and ``contract_type`` survive as parameters because
               other callers still pass them on their own. A caller with an
               :class:`HcaFilter` passes that instead and the two named
@@ -108,6 +117,12 @@ class HcaRepository(BaseRepository[HcaRow]):
             self.logger.info("No filter was given; the query is every assistant.")
 
         statement = select(HcaRow)
+        if hca_ids is not None:
+            if not hca_ids:
+                self.logger.warning(
+                    "The caller may read no assistant; the query matches nothing."
+                )
+            statement = statement.where(HcaRow.id.in_(hca_ids))
         if contract_type is not None:
             statement = statement.where(HcaRow.contract_type == contract_type.value)  # noqa: E501
         if search:
@@ -644,6 +659,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
         hca_filter: Optional[HcaFilter] = None,
+        hca_ids: Optional[List[str]] = None,
     ) -> List[Hca]:
         """Return a page of assistants.
 
@@ -653,6 +669,9 @@ class HcaRepository(BaseRepository[HcaRow]):
             search (Optional[str]): Case-insensitive fragment matched against
                 the names, the email and the city.
             contract_type (Optional[ContractType]): Restrict to one contract.
+            hca_filter (Optional[HcaFilter]): The screen's filter.
+            hca_ids (Optional[List[str]]): The assistants the caller may read.
+                ``None`` means every assistant; an empty list means none.
 
         Returns:
             List[Hca]: The matching assistants, ordered by family name.
@@ -664,8 +683,11 @@ class HcaRepository(BaseRepository[HcaRow]):
             contract_type.value if contract_type else None,
         )
         statement = self._build_query(
-            search=search, contract_type=contract_type, hca_filter=hca_filter
-        )  # noqa: E501
+            search=search,
+            contract_type=contract_type,
+            hca_filter=hca_filter,
+            hca_ids=hca_ids,
+        )
         statement = statement.order_by(HcaRow.last_name, HcaRow.first_name)
         rows = await self._fetch_all(self._paginate(statement, page, size))
         if not rows:
@@ -694,24 +716,81 @@ class HcaRepository(BaseRepository[HcaRow]):
             )
         return self.mapper.to_models(rows)
 
+    async def list_by_ids(self, hca_ids: List[str]) -> List[Hca]:
+        """Return the named assistants, in the planner's usual order.
+
+        Args:
+            hca_ids (List[str]): The records to load.
+
+        Returns:
+            List[Hca]: Those that exist, ordered by family name.
+
+        Notes:
+            - The workforce half of a **team-scoped** planning run. A run now
+              solves over one team's field employees, and the membership rows
+              are polymorphic — they carry no foreign key to ``hcas`` — so the
+              identifiers come from the team and the records come from here.
+            - **Ordered exactly as :meth:`list_all` is**, and that is a
+              determinism requirement rather than a presentational one: the
+              solver's tie-breaking follows the order it is handed the
+              workforce in, so two runs over the same team must see the same
+              sequence or produce different plans from identical inputs.
+            - An empty argument returns an empty list without a statement. It
+              means a team with nobody on it, which is a legitimate state the
+              caller reports; issuing ``IN ()`` to find that out would be a
+              round trip for an answer already known.
+            - Identifiers naming no record are **silently absent** rather than
+              an error. A membership outliving the assistant it names is
+              exactly what the deletion paths guard against, and a run must not
+              fail because one slipped through — the count is logged instead.
+        """
+        if not hca_ids:
+            self.logger.warning(
+                "No assistant identifier was given; this team has nobody to schedule."
+            )
+            return []
+        self.logger.debug("Loading %d named assistant(s).", len(hca_ids))
+        statement = (
+            select(HcaRow)
+            .where(HcaRow.id.in_(hca_ids))
+            .order_by(HcaRow.last_name, HcaRow.first_name)
+        )
+        rows = await self._fetch_all(statement)
+        if len(rows) != len(set(hca_ids)):
+            self.logger.error(
+                "%d assistant identifier(s) were asked for but %d record(s) "
+                "exist; a membership names somebody who has been deleted.",
+                len(set(hca_ids)),
+                len(rows),
+            )
+        self.logger.info("Loaded %d assistant(s) for planning.", len(rows))
+        return self.mapper.to_models(rows)
+
     async def count(
         self,
         search: Optional[str] = None,
         contract_type: Optional[ContractType] = None,
         hca_filter: Optional[HcaFilter] = None,
+        hca_ids: Optional[List[str]] = None,
     ) -> int:
         """Return how many assistants match a query.
 
         Args:
             search (Optional[str]): Case-insensitive fragment.
             contract_type (Optional[ContractType]): Restrict to one contract.
+            hca_filter (Optional[HcaFilter]): The screen's filter.
+            hca_ids (Optional[List[str]]): The assistants the caller may read,
+                so the total is narrowed exactly as the page is.
 
         Returns:
             int: The number of matching assistants.
         """
         return await self._count(
             self._build_query(
-                search=search, contract_type=contract_type, hca_filter=hca_filter
+                search=search,
+                contract_type=contract_type,
+                hca_filter=hca_filter,
+                hca_ids=hca_ids,
             )
         )
 

@@ -25,7 +25,7 @@ from models.enums import (
     QuoteStatus,
     UserRole,
 )
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.planning.hca_planning import HcaPlanning

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -17,15 +17,16 @@ from models.schemas.exceptions import (
     MTQuoteCreateRequestInvalidReference,
 )
 from models.schemas.requests.quoting.quote_create_request import QuoteCreateRequest
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 
 
-def _line() -> Dict[str, Any]:
+def _line() -> Dict[str, ModelInput]:
     """Return a service line, as a payload would carry it.
 
     Returns:
-        Dict[str, Any]: The raw line.
+        Dict[str, ModelInput]: The raw line.
     """
     return {
         "intervention_type_id": "type-1",
@@ -106,7 +107,9 @@ class TestQuoteCreateRequest:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_an_invalid_reference_is_refused(self, invalid_reference: Any) -> None:
+    def test_an_invalid_reference_is_refused(
+        self, invalid_reference: ModelInput
+    ) -> None:
         """A quote number is what a customer quotes back on the phone."""
         with pytest.raises(MTQuoteCreateRequestInvalidReference):
             QuoteCreateRequest(reference=invalid_reference, customer_id="customer-1")
@@ -134,7 +137,7 @@ class TestQuoteCreateRequest:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_an_invalid_customer_is_refused(self, invalid_customer: Any) -> None:
+    def test_an_invalid_customer_is_refused(self, invalid_customer: ModelInput) -> None:
         """A quote is an offer addressed to somebody."""
         with pytest.raises(MTQuoteCreateRequestInvalidCustomerId):
             QuoteCreateRequest(reference="D-2601", customer_id=invalid_customer)
@@ -171,7 +174,9 @@ class TestQuoteCreateRequest:
             pytest.param({"intervention_type_id": "type-1"}, id="Invalid - dict"),
         ],
     )
-    def test_services_that_are_not_a_list_are_refused(self, invalid_lines: Any) -> None:
+    def test_services_that_are_not_a_list_are_refused(
+        self, invalid_lines: ModelInput
+    ) -> None:
         """A single line sent unwrapped is a mistake, not one line."""
         with pytest.raises(MTQuoteCreateRequestInvalidLines):
             QuoteCreateRequest(

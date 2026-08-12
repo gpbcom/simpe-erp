@@ -77,9 +77,7 @@ describe('CustomerBillingCard', () => {
 
   it('shows a customer with an override on their own rule', () => {
     render(
-      <CustomerBillingCard
-        customer={{ ...CUSTOMER, billing_periodicity: 'weekly' }}
-      />,
+      <CustomerBillingCard customer={{ ...CUSTOMER, billing_periodicity: 'weekly' }} />,
     );
 
     expect(screen.getByTestId('customer-billing-periodicity')).toHaveValue('weekly');
@@ -104,9 +102,7 @@ describe('CustomerBillingCard', () => {
     // the agency's *current* periodicity instead, the customer would look
     // unchanged today and stop following the setting tomorrow.
     render(
-      <CustomerBillingCard
-        customer={{ ...CUSTOMER, billing_periodicity: 'weekly' }}
-      />,
+      <CustomerBillingCard customer={{ ...CUSTOMER, billing_periodicity: 'weekly' }} />,
     );
 
     await userEvent.selectOptions(

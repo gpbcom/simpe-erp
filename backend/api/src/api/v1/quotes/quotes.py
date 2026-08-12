@@ -32,6 +32,7 @@ from models.schemas.requests.quoting.quote_reschedule_request import (
 from models.schemas.requests.quoting.quote_interruption_request import (
     QuoteInterruptionRequest,
 )
+from models.schemas.requests.quoting.quote_team_request import QuoteTeamRequest
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
 from service.messaging.publisher import EventPublisher
 from service.quotes.documents import QuoteDocumentService
@@ -60,16 +61,23 @@ async def create_quote(
         Quote: The stored, priced quote with its weekly totals.
 
     Raises:
+        MTQuoteUnassignable: If no team can be given the work — the household is
+            unknown, or the company has no team with anybody on it; 422.
         MTPricingUnknownInterventionType: If a line names a type that is not in
             the catalog; answered as a 422.
 
     Notes:
-        The author is taken from the credential, never from the payload. A
-        manager's quote needs no validation step — they are the ones who would
-        sign it off — so it lands as a draft ready to send.
+        - The author and the agency are taken from the credential, never from
+          the payload. A manager's quote needs no validation step — they are the
+          ones who would sign it off — so it lands as a draft ready to send.
+        - **The payload goes to the service whole**, rather than being turned
+          into a quote here. Which team delivers the work is decided from where
+          the household lives and how much each team already carries, and that
+          rule has to be in one place: the assistant's route at
+          ``POST /api/v1/me/quotes`` calls the same method.
     """
     return await service.create(
-        payload.to_quote(caller.company_id), author_id=caller.id or caller.email
+        payload, caller.company_id, author_id=caller.id or caller.email
     )
 
 
@@ -82,9 +90,9 @@ async def list_quotes(
     authored_by: Optional[str] = Query(default=None),
     quote_filter: QuoteFilter = Depends(),
     service: QuoteService = Depends(get_quote_service),
-    _: User = Depends(get_manager_user),
+    caller: User = Depends(get_manager_user),
 ) -> List[Quote]:
-    """List quotes, narrowed by whichever filters were sent.
+    """List the quotes the caller's teams hold, narrowed by any filters sent.
 
     Args:
         page (int): One-based page number.
@@ -95,10 +103,11 @@ async def list_quotes(
         quote_filter (QuoteFilter): The filters, bound from the query string.
             Every field is optional and an absent one narrows nothing.
         service (QuoteService): The quote service.
-        _ (User): The authenticated caller; enforces manager access.
+        caller (User): The authenticated caller; enforces manager access, and
+            decides which teams' quotes come back.
 
     Returns:
-        List[Quote]: The matching quotes.
+        List[Quote]: The matching quotes of the teams the caller may read.
 
     Raises:
         MTInvalidQuoteFilterException: If a filter is malformed; answered as a
@@ -112,14 +121,25 @@ async def list_quotes(
           same names. They are passed on separately rather than merged here,
           because the store is where the rule about which one wins belongs —
           and for ``authored_by`` that rule is a permission, not a preference.
+        - **A manager now sees their own teams' quotes rather than the whole
+          agency's**, and an administrator still sees everything. The narrowing
+          is the service's, applied in the statement; ``authored_by`` remains a
+          *filter* on top of it, so a manager narrowing by an author outside
+          their teams simply gets nothing rather than somebody else's book.
     """
-    return await service.list(
+    if authored_by is not None:
+        logger.debug(
+            "%s is also narrowing the quote list to author %s.",
+            caller.email,
+            authored_by,
+        )
+    return await service.list_for(
+        caller,
         page=page,
         size=size,
         customer_id=customer_id,
         status=quote_status,
         quote_filter=quote_filter,
-        authored_by=authored_by,
     )
 
 
@@ -268,6 +288,54 @@ async def set_quote_auto_renew(
     """
     logger.info("Setting auto-renewal on quote %s to %s.", quote_id, enabled)
     return await service.set_auto_renew(quote_id, enabled)
+
+
+@router.patch("/{quote_id}/team", response_model=Quote)
+async def set_quote_team(
+    quote_id: str,
+    payload: QuoteTeamRequest,
+    service: QuoteService = Depends(get_quote_service),
+    caller: User = Depends(get_manager_user),
+) -> Quote:
+    """Move a quote to a different team.
+
+    Args:
+        quote_id (str): The quote to move.
+        payload (QuoteTeamRequest): The team that will deliver it instead.
+        service (QuoteService): The quote service.
+        caller (User): The authenticated caller; enforces manager access, and is
+            checked against both the team the quote leaves and the one it joins.
+
+    Returns:
+        Quote: The updated quote.
+
+    Raises:
+        MTQuoteNotFound: If no such quote exists, or it belongs to another
+            company; answered as a 404.
+        MTQuoteTeamForbidden: If the caller runs neither team; 403.
+        MTTeamNotFound: If the destination team does not exist; 404.
+
+    Notes:
+        - Attribution happens once, when the quote is written. This exists for
+          the two cases the rule cannot see: a proximity decision that was
+          wrong, and a household that has moved. It is deliberately **manual** —
+          re-attributing automatically would move work a manager has already
+          validated, and with it visits somebody has been told about.
+        - The **guard is manager, and the row check is in the service**, which
+          is the codebase's standing division: a route can prove the caller's
+          rank, but only the service can prove that both of these particular
+          teams are theirs.
+        - Neither team's calendar changes here. Each picks the move up on its
+          next run, which is why both need re-planning afterwards — the service
+          says so in its log line.
+    """
+    logger.info(
+        "Moving quote %s to team %s at the request of %s.",
+        quote_id,
+        payload.team_id,
+        caller.email,
+    )
+    return await service.reassign_team(quote_id, payload.team_id, caller)
 
 
 @router.get("/{quote_id}", response_model=Quote)

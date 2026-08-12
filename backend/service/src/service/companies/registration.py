@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 
 # First-party imports
 from models.auth.user import User
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.configuration.auth_config import AuthConfig
 from models.enums import EventRoutingKey, UserRole
 from service.auth.auth import AuthService

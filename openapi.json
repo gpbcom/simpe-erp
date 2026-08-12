@@ -70,6 +70,191 @@
         "title": "ActiveUpdateRequest",
         "type": "object"
       },
+      "AgencyCreateRequest": {
+        "description": "The payload opening a new site for the caller's company.\n\nAttributes:\n    name (str): What the site is called.\n    address (Optional[PostalAddress]): Where it is.\n    agency_type (AgencyType): What it is used for.\n\nNotes:\n    - **The shape of this model is the permission.**\n      :class:`~models.organisation.agency.agency.Agency` subclasses\n      :class:`~models.organisation.companies.company.Company` and therefore\n      carries the SIRET, the VAT number and the account money is paid into.\n      A route taking a whole ``Agency`` as its body would let an\n      administrator of one company file a site under another's identity, and\n      set the IBAN that every invoice is printed with. None of those fields\n      exist here, so no payload can carry them; the head office inherits\n      them from its company inside\n      :class:`~service.organisation.agencies.AgencyService`.\n    - ``company_id`` is absent for the same reason it is absent from\n      :class:`~models.schemas.requests.quoting.quote_create_request.QuoteCreateRequest`:\n      it decides whose business the site belongs to, and is taken from the\n      credential in the route.\n    - ``agency_type`` **is** accepted and then **overwritten** by the\n      service \u2014 the first site of a company is its head office and every\n      later one a branch. It is kept in the payload so the field exists for\n      the day a deliberate promotion is offered, and so a client sending it\n      is not answered with a validation error for a field the API documents.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PostalAddress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the site is."
+          },
+          "agency_type": {
+            "$ref": "#/components/schemas/AgencyType",
+            "default": "office",
+            "description": "What the site is used for."
+          },
+          "name": {
+            "description": "What the site is called.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgencyCreateRequest",
+        "type": "object"
+      },
+      "AgencyMember": {
+        "description": "One person attached to one of a company's sites.\n\nAttributes:\n    INVALID_KIND (ClassVar[Type[MTInvalidOrganisationMemberException]]):\n        Raised for a malformed member kind.\n    INVALID_MEMBER_ID (ClassVar[Type[MTInvalidOrganisationMemberException]]):\n        Raised for a malformed member identifier.\n\nNotes:\n    - It adds no field to its base, and that is the point: a person's place\n      in a site is the pair *(what kind of record, which record)* and\n      nothing else. A role would be a second copy of ``User.role``, free to\n      disagree with it.\n    - **Everybody belongs to exactly one site**, which is enforced by a\n      unique index on the membership row rather than by anything here \u2014 a\n      value cannot answer a question about other rows.",
+        "properties": {
+          "member_id": {
+            "description": "Identifier of that account or record.",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "member_kind": {
+            "$ref": "#/components/schemas/MemberKind",
+            "description": "Whether the member is an account or an assistant record."
+          }
+        },
+        "required": [
+          "member_kind",
+          "member_id"
+        ],
+        "title": "AgencyMember",
+        "type": "object"
+      },
+      "AgencyType": {
+        "description": "Enumeration for what one of a company's locations is used for.\n\nAttributes:\n    HQ (str): The head office. A company has exactly one.\n    WAREHOUSE (str): A storage site, with staff but rarely a round.\n    OFFICE (str): A branch office, which is what most sites are.\n\nNotes:\n    - **The type is descriptive, not a permission.** Nothing in the planner\n      reads it: a team based at a warehouse plans exactly like a team based\n      at the head office. It exists so an operator opening the list can tell\n      the sites apart, and so \"which one is the head office\" has an answer\n      that is not a name somebody typed.\n    - :attr:`HQ` is singular per company and that is enforced in\n      :class:`~service.organisation.agencies.AgencyService`, not here. It is\n      a question about *other rows*, which a value cannot answer about\n      itself.\n    - :attr:`OFFICE` is the default for a site created after the first, and\n      the default is the whole reason the enum is safe to add: a company\n      that already had one location keeps it as its head office, and every\n      site opened afterwards is an ordinary branch until somebody says\n      otherwise.",
+        "enum": [
+          "hq",
+          "warehouse",
+          "office"
+        ],
+        "title": "AgencyType",
+        "type": "string"
+      },
+      "AgencyUpdateRequest": {
+        "description": "The payload changing a site's name, address or type.\n\nAttributes:\n    name (str): What the site is called.\n    address (Optional[PostalAddress]): Where it is.\n    agency_type (AgencyType): What it is used for.\n\nNotes:\n    - The same three fields as\n      :class:`~models.schemas.requests.organisation.agency_create_request.AgencyCreateRequest`\n      and for the same reason: a site's *legal identity* is its company's,\n      and is changed on the company's own screens. A payload here that could\n      carry an IBAN would let a site's address form rewrite the account every\n      invoice is paid into.\n    - The whole set is sent rather than the changed field, matching every\n      other ``PUT`` on this surface. A partial payload cannot express\n      *clearing* an address \u2014 the field would be absent either way \u2014 and\n      \"the site now has no address\" is a thing an administrator legitimately\n      means.\n    - Whether the type may actually change is decided in\n      :class:`~service.organisation.agencies.AgencyService`, which refuses to\n      promote a branch or demote the head office. It is a question about the\n      company's other sites, which a payload cannot answer about itself.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PostalAddress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the site is."
+          },
+          "agency_type": {
+            "$ref": "#/components/schemas/AgencyType",
+            "default": "office",
+            "description": "What the site is used for."
+          },
+          "name": {
+            "description": "What the site is called.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AgencyUpdateRequest",
+        "type": "object"
+      },
+      "AgencyView": {
+        "description": "A site as every route returns it.\n\nAttributes:\n    id (Optional[str]): Identifier, as stored.\n    company_id (str): The company the site belongs to.\n    name (str): What the site is called.\n    agency_type (AgencyType): What it is used for.\n    address (Optional[PostalAddress]): Where it is.\n    is_headquarters (bool): Whether it is the company's head office.\n    member_count (int): How many people are attached to it.\n    team_count (int): How many teams work from it.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - **The shape is the permission, and here it is the whole protection.**\n      :class:`~models.organisation.agency.agency.Agency` subclasses\n      :class:`~models.organisation.companies.company.Company`, so the record\n      behind this carries the SIRET, the VAT number and the IBAN. Reads are\n      open to every signed-in member of the company \u2014 an assistant needs to\n      know which sites exist \u2014 and returning the record itself would put the\n      company's bank account on that screen. Not one legal field is declared\n      here, so no change to the service can leak one. An administrator reads\n      the legal identity at ``GET /api/v1/companies/{id}``, which masks the\n      account for anybody who is not one.\n    - ``is_headquarters`` travels rather than being inferred from\n      ``agency_type``. A client comparing against the literal ``\"hq\"`` would\n      break silently the day a fourth kind of site is added.\n    - The two counts are **carried on the row** because the list is a grid\n      that shows them. Resolved per row they would be a query per site, and\n      the repository already computes both in one statement each.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PostalAddress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the site is."
+          },
+          "agency_type": {
+            "$ref": "#/components/schemas/AgencyType",
+            "description": "What the site is used for."
+          },
+          "company_id": {
+            "description": "The company the site belongs to.",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Creation timestamp.",
+            "title": "Created At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, as stored.",
+            "title": "Id"
+          },
+          "is_headquarters": {
+            "default": false,
+            "description": "Whether it is the head office.",
+            "title": "Is Headquarters",
+            "type": "boolean"
+          },
+          "member_count": {
+            "default": 0,
+            "description": "How many people are attached to the site.",
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "description": "What the site is called.",
+            "title": "Name",
+            "type": "string"
+          },
+          "team_count": {
+            "default": 0,
+            "description": "How many teams work from the site.",
+            "title": "Team Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last-update timestamp.",
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "company_id",
+          "name",
+          "agency_type"
+        ],
+        "title": "AgencyView",
+        "type": "object"
+      },
       "ApplicationDecisionRequest": {
         "description": "The payload approving an assistant's application.\n\nAttributes:\n    contract_type (ContractType): The contract they are taken on under.\n\nNotes:\n    The contract type comes from the approver, not from the application.\n    An applicant may say what they hope for; what they are employed under\n    is the agency's decision, and reading it off the application would let\n    an unauthenticated payload set an employment term.",
         "properties": {
@@ -648,6 +833,21 @@
         "title": "BillLine",
         "type": "object"
       },
+      "BillPaidRequest": {
+        "description": "The payload announcing that an invoice has been collected.\n\nAttributes:\n    bill_id (str): The bill that was settled.\n\nNotes:\n    - Carries an identifier and nothing else, exactly as its approval twin\n      does. The endpoint re-reads the invoice, so amounts on the wire would\n      be a second copy of the document \u2014 one that could disagree with the\n      stored one and decide what is declared to the tax authority.\n    - **A separate payload from the approval one even though the shape is\n      identical**, because the two announce different obligations. Sharing a\n      class would leave one docstring describing both, and the next person\n      reading it could not tell which endpoint they were looking at.",
+        "properties": {
+          "bill_id": {
+            "description": "The bill that was settled.",
+            "title": "Bill Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bill_id"
+        ],
+        "title": "BillPaidRequest",
+        "type": "object"
+      },
       "BillRecipient": {
         "description": "The party that owes an invoice, which is not always the person cared for.\n\nAttributes:\n    SIREN_LENGTH (ClassVar[int]): Digits in a French SIREN.\n    MAX_NAME_LENGTH (ClassVar[int]): Longest accepted name.\n    MAX_VAT_LENGTH (ClassVar[int]): Longest accepted VAT number.\n    MAX_SERVICE_CODE_LENGTH (ClassVar[int]): Longest accepted service code.\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    kind (RecipientKind): Whether a household, a business or a public body.\n    name (str): Who the invoice is made out to.\n    address (PostalAddress): Where it is addressed.\n    siren (Optional[str]): The legal identifier, for a professional.\n    vat_number (Optional[str]): The intra-community VAT number, if any.\n    service_code (Optional[str]): The routing code inside a public body.\n    share_ttc (Optional[Decimal]): What this party owes of the total, when\n        the invoice is split between payers.\n\nNotes:\n    - **A recipient is not a customer.** Care is delivered to a household,\n      and the bill for it may be addressed to a conseil d\u00e9partemental, a\n      mutuelle or an employer. Keeping them apart is what lets an invoice\n      name both \u2014 the household stays on the bill as the party the work was\n      delivered *to*, which is what the structured format calls the\n      ship-to party, while this is the party it is *billed* to.\n    - **Denormalised onto the invoice, like the customer's own name.** An\n      invoice is a legal document that must reprint identically for ten\n      years; a payer who is renamed or moves must not retroactively change\n      who last quarter's invoice was addressed to. That is the same trade\n      :class:`~models.planning.intervention.Intervention` makes with the\n      assistant's name.\n    - **The identifier rules are asymmetric on purpose.** A professional\n      without a SIREN cannot be routed to at all, and a household with one\n      would be read as a company by every downstream system. So one is\n      required and the other refused, rather than both being merely\n      optional \u2014 see :meth:`check_identifiers`.\n    - ``share_ttc`` exists for the case a single course of care is funded by\n      two parties, which is the ordinary shape of an APA arrangement. It is\n      deliberately **not** a percentage: a percentage of a rounded total is\n      a second rounding, and the two payers' shares would stop summing to\n      the invoice. Whether such a split is one invoice with two recipients\n      or two linked invoices is a question this model does not answer \u2014 it\n      records what *this* recipient owes and no more.",
         "properties": {
@@ -1100,6 +1300,20 @@
           "photo"
         ],
         "title": "Body_upload_photo_api_v1_hcas__hca_id__photo_put",
+        "type": "object"
+      },
+      "Body_upload_team_document_api_v1_teams__team_id__documents_post": {
+        "properties": {
+          "document": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Document",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "Body_upload_team_document_api_v1_teams__team_id__documents_post",
         "type": "object"
       },
       "Certification": {
@@ -2005,7 +2219,7 @@
         "type": "object"
       },
       "CompanyView": {
-        "description": "An agency as a caller who is not its administrator may read it.\n\nAttributes:\n    id (Optional[str]): Identifier, as stored.\n    name (str): Trading name.\n    legal_form (Optional[str]): Legal form, such as SARL or Association.\n    share_capital (Optional[Decimal]): Share capital, in euros.\n    rcs_number (Optional[str]): Trade-register entry.\n    vat_number (Optional[str]): Intra-community VAT number.\n    phone_number (Optional[str]): Contact telephone number.\n    registration_number (Optional[str]): Company registration number.\n    contact_email (Optional[str]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): The account number, whole or masked depending on\n        who asked.\n    iban_is_masked (bool): Whether ``iban`` carries bullets rather than the\n        account number.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo.\n    is_accepting_applications (bool): Whether it appears publicly.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - **The shape is the permission**, as with\n      :class:`~models.companies.company_choice.CompanyChoice`. The agency\n      routes a *manager* can reach return this rather than a whole\n      :class:`~models.companies.company.Company`, so however the service\n      changes they cannot hand back a bank account somebody could pay into.\n      An administrator reads their own agency in full at\n      ``GET /api/v1/me/company``.\n    - ``iban_is_masked`` travels with the number rather than being inferred\n      from it. A client deciding by looking for bullets would have to guess,\n      and the one thing it must never do is echo a masked value back into an\n      update \u2014 which would overwrite the real account with its own censoring.\n    - The masking itself belongs to\n      :meth:`~models.companies.company.Company.masked_iban`, not here. One\n      rule in one place, testable without a request.\n    - No validator re-checks the IBAN's shape: by the time it reaches this\n      model it is either a value :class:`Company` already validated or a\n      deliberately malformed mask, and refusing the mask would make the\n      protection unrepresentable.",
+        "description": "An agency as a caller who is not its administrator may read it.\n\nAttributes:\n    id (Optional[str]): Identifier, as stored.\n    name (str): Trading name.\n    legal_form (Optional[str]): Legal form, such as SARL or Association.\n    share_capital (Optional[Decimal]): Share capital, in euros.\n    rcs_number (Optional[str]): Trade-register entry.\n    vat_number (Optional[str]): Intra-community VAT number.\n    phone_number (Optional[str]): Contact telephone number.\n    registration_number (Optional[str]): Company registration number.\n    contact_email (Optional[str]): Where an applicant's questions go.\n    address (Optional[PostalAddress]): The registered office.\n    iban (Optional[str]): The account number, whole or masked depending on\n        who asked.\n    iban_is_masked (bool): Whether ``iban`` carries bullets rather than the\n        account number.\n    bic (Optional[str]): Bank identifier code of that account.\n    logo_url (Optional[str]): URL of the agency's logo.\n    is_accepting_applications (bool): Whether it appears publicly.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - **The shape is the permission**, as with\n      :class:`~models.organisation.companies.company_choice.CompanyChoice`. The agency\n      routes a *manager* can reach return this rather than a whole\n      :class:`~models.organisation.companies.company.Company`, so however the service\n      changes they cannot hand back a bank account somebody could pay into.\n      An administrator reads their own agency in full at\n      ``GET /api/v1/me/company``.\n    - ``iban_is_masked`` travels with the number rather than being inferred\n      from it. A client deciding by looking for bullets would have to guess,\n      and the one thing it must never do is echo a masked value back into an\n      update \u2014 which would overwrite the real account with its own censoring.\n    - The masking itself belongs to\n      :meth:`~models.organisation.companies.company.Company.masked_iban`, not here. One\n      rule in one place, testable without a request.\n    - No validator re-checks the IBAN's shape: by the time it reaches this\n      model it is either a value :class:`Company` already validated or a\n      deliberately malformed mask, and refusing the mask would make the\n      protection unrepresentable.",
         "properties": {
           "address": {
             "anyOf": [
@@ -2420,6 +2634,49 @@
         "title": "CustomerAccountRequest",
         "type": "object"
       },
+      "CustomerPlanning": {
+        "description": "One household's care over a period, as the agency and the household see it.\n\nAttributes:\n    customer_id (str): The household the visits belong to.\n    customer_full_name (str): Their name.\n    period_start (date): First day of the period, inclusive.\n    period_end (date): Last day of the period, inclusive.\n    interventions (List[Intervention]): The visits, in time order.\n\nNotes:\n    - **The mirror of\n      :class:`~models.planning.hca_planning.hca_planning.HcaPlanning`, on the\n      other axis.** An intervention carries both an assistant and a\n      household, so the same visits group two ways: by who delivers them,\n      which answers \"is Monday covered\", and by who receives them, which\n      answers \"what is happening at Madame Vincent's this week\". Neither\n      question is a filter over the other's answer, which is why there are\n      two models rather than one with a mode.\n    - **Per household, deliberately.** A model able to hold several\n      households at once would make \"may this caller see this one\" a\n      filtering question at every call site instead of a property of the\n      object \u2014 the same reasoning the assistant's diary is built on, and it\n      matters more here: an assistant may read only the households in their\n      own portfolio.\n    - **This is packaging, not content.** The visits inside come from the one\n      query the customer portal also reads\n      (``InterventionRepository.list_for_customer``), unchanged and\n      unfiltered. What the envelope adds is the household's *name*, which\n      the portal has no use for \u2014 it already knows whose planning it is \u2014\n      and a staff screen listing forty households cannot do without.\n    - No ``overlapping_pairs``, unlike the assistant's diary. Two visits at\n      once is an error for a person who has to be in both places; a\n      household may legitimately have two assistants at the same hour, and a\n      method reporting that as a clash would be inventing a rule the agency\n      does not have.",
+        "properties": {
+          "customer_full_name": {
+            "description": "The household's name.",
+            "title": "Customer Full Name",
+            "type": "string"
+          },
+          "customer_id": {
+            "description": "The household the visits belong to.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "interventions": {
+            "description": "The visits, in time order.",
+            "items": {
+              "$ref": "#/components/schemas/Intervention"
+            },
+            "title": "Interventions",
+            "type": "array"
+          },
+          "period_end": {
+            "description": "Last day of the period, inclusive.",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "First day of the period, inclusive.",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer_id",
+          "customer_full_name",
+          "period_start",
+          "period_end"
+        ],
+        "title": "CustomerPlanning",
+        "type": "object"
+      },
       "CustomerProfileUpdateRequest": {
         "description": "The fields a household may change about themselves.\n\nAttributes:\n    first_name (str): Given name.\n    last_name (str): Family name.\n    phone_number (PhoneNumber): Contact telephone number.\n    email (EmailStr): Contact email address.\n    address (PostalAddress): Where the care is delivered.\n\nNotes:\n    - **What is absent is the point**, exactly as on\n      :class:`~models.schemas.requests.hca.hca_profile_update_request.HcaProfileUpdateRequest`.\n      Two fields are deliberately missing and each would be a hole:\n\n      - ``registration_status``. A household that could set their own status\n        would promote themselves from ``prospect`` to ``active`` \u2014 and being\n        active is precisely what makes the planner schedule their work. That\n        is the whole gate ``can_be_scheduled`` exists for, handed to the\n        party it is meant to gate.\n      - ``billing_periodicity``. How often somebody is invoiced is a\n        commercial term the agency agrees, not a preference. A manager sets\n        it through ``PATCH /api/v1/customers/{id}/billing-periodicity``.\n\n      Leaving them out means they cannot be smuggled in, rather than relying\n      on an endpoint remembering to ignore them.\n    - **The address is editable, and it is not a cosmetic field.** It is\n      where care is delivered and what every planning run routes to, so a\n      household correcting it is the fastest path to work being planned to\n      the right door \u2014 and re-geocoding is what the model does on the way\n      in, so a street the map cannot find is stored with the failure\n      recorded rather than refused.\n    - Every field is required. This replaces the contact block wholesale, so\n      a payload omitting the telephone number would be a household clearing\n      it \u2014 which is how somebody becomes unreachable when an assistant is\n      running late.",
         "properties": {
@@ -2521,6 +2778,69 @@
         },
         "title": "DrivingLicense",
         "type": "object"
+      },
+      "EInvoicingIntegrationRequest": {
+        "additionalProperties": false,
+        "description": "What the enable dialog sends when a manager connects a platform.\n\nAttributes:\n    api_key (str): The secret the platform authenticates on.\n    account_id (Optional[str]): The account a request is made against.\n    legal_entity_id (Optional[str]): The sender registered with a platform.\n    base_url (Optional[str]): An override for the platform's own address.\n\nNotes:\n    - **The platform is not in the payload.** It is in the path, so a body\n      naming a different one cannot disagree with the URL a manager clicked.\n    - **Mirrors :class:`~models.integrations.integration_credentials.IntegrationCredentials`\n      rather than embedding it**, so the wire format is a flat object the\n      dialog can build field by field, and the credentials model stays the\n      thing that only ever exists in memory.\n    - ``model_config`` forbids extras. A typo'd field on a secret-bearing\n      payload would be dropped silently, and the connector would then\n      authenticate with less than the manager believed they had sent.\n    - Every value is validated by building the credentials, so the rules\n      live in one place \u2014 including the one that matters most: the refusal\n      message never quotes the key.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account a request is made against.",
+            "title": "Account Id"
+          },
+          "api_key": {
+            "description": "The secret the platform authenticates on.",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An override for the platform's own address.",
+            "title": "Base Url"
+          },
+          "legal_entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The sender registered with a platform.",
+            "title": "Legal Entity Id"
+          }
+        },
+        "required": [
+          "api_key"
+        ],
+        "title": "EInvoicingIntegrationRequest",
+        "type": "object"
+      },
+      "EInvoicingProvider": {
+        "description": "Enumeration for the certified platforms this application can speak to.\n\nAttributes:\n    B2BROUTER (str): B2Brouter, a Spanish platform and Peppol access point.\n    STORECOVE (str): Storecove, a Dutch API-first platform.\n    INVOPOP (str): Invopop, built around the open GOBL document format.\n    IOPOLE (str): Iopole, French and hosted on SecNumCloud.\n\nNotes:\n    - **Membership of this enumeration is a claim about documentation, not\n      about quality.** Of the 145 platforms holding a registration number,\n      these four are the ones publishing an API a developer can integrate\n      against without signing anything first. A platform absent from here is\n      not disqualified \u2014 it simply cannot be written against yet.\n    - Every one of them is **immatricul\u00e9e sous r\u00e9serve**: registered, with\n      the audit report still outstanding. The status has to be re-checked\n      against ``impots.gouv.fr`` before an agency contracts with one, which\n      is why nothing in the code treats presence here as certification.\n    - The values are stored in the database and sent to the browser, so they\n      are stable identifiers rather than display names. What a card in the\n      gallery is *called* belongs to\n      :class:`~models.integrations.provider_descriptor.ProviderDescriptor`.",
+        "enum": [
+          "b2brouter",
+          "storecove",
+          "invopop",
+          "iopole"
+        ],
+        "title": "EInvoicingProvider",
+        "type": "string"
       },
       "EmailDispatchResponse": {
         "description": "What the planning-completed webhook delivered.\n\nAttributes:\n    run_id (str): The planning run the dispatch was for.\n    plannings_sent (int): How many assistants received their diary.\n    quotes_sent (int): How many customers received their quote.\n\nNotes:\n    Counts rather than a bare acknowledgement. A webhook that answers\n    \"accepted\" tells an operator nothing; one that answers \"0 of 14\n    plannings\" tells them the mailbox credentials expired, without anyone\n    having to open a log.",
@@ -3250,8 +3570,105 @@
         "title": "HolidaySurcharge",
         "type": "object"
       },
+      "IntegrationCardResponse": {
+        "description": "One card in the integrations gallery: a platform, and where we stand with it.\n\nAttributes:\n    provider (EInvoicingProvider): The platform.\n    name (str): What it is called.\n    home_url (str): Its own site.\n    documentation_url (str): Where its API is documented.\n    coverage (List[TransmissionKind]): What it can be asked to send.\n    required_fields (List[str]): Which credentials the dialog must ask for.\n    documentation_verified (bool): Whether its API docs were read directly.\n    configured (bool): Whether this agency has stored credentials for it.\n    enabled (bool): Whether invoices are transmitted through it.\n    credential_hint (str): The masked tail of the stored key.\n    last_checked_at (Optional[datetime]): When the key was last proven.\n    last_check_error (Optional[str]): Why the last check failed, if it did.\n\nNotes:\n    - **One shape for a platform an agency has never touched and one it\n      transmits through daily.** The gallery renders four cards either way,\n      so a response that omitted the unconfigured ones would make the client\n      merge two lists and invent the difference.\n    - **``credential_ciphertext`` is deliberately absent**, and this is the\n      class that makes that true rather than a rule somebody remembers. The\n      screen gets ``credential_hint`` \u2014 enough for a manager to recognise\n      their own key and useless to anybody else. There is no endpoint that\n      returns the secret.\n    - ``documentation_verified`` is carried through to the card because a\n      gallery offering four platforms as equals would be lying by omission\n      about the one whose API nobody here could read.",
+        "properties": {
+          "configured": {
+            "default": false,
+            "description": "Whether this agency has stored credentials for it.",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "coverage": {
+            "description": "What it can be asked to send.",
+            "items": {
+              "$ref": "#/components/schemas/TransmissionKind"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "credential_hint": {
+            "default": "",
+            "description": "The masked tail of the stored key.",
+            "title": "Credential Hint",
+            "type": "string"
+          },
+          "documentation_url": {
+            "description": "Where its API is documented.",
+            "title": "Documentation Url",
+            "type": "string"
+          },
+          "documentation_verified": {
+            "default": false,
+            "description": "Whether its API documentation was read directly.",
+            "title": "Documentation Verified",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": false,
+            "description": "Whether invoices are transmitted through it.",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "home_url": {
+            "description": "Its own site.",
+            "title": "Home Url",
+            "type": "string"
+          },
+          "last_check_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the last check failed, if it did.",
+            "title": "Last Check Error"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the key was last proven.",
+            "title": "Last Checked At"
+          },
+          "name": {
+            "description": "What it is called.",
+            "title": "Name",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/EInvoicingProvider",
+            "description": "The platform."
+          },
+          "required_fields": {
+            "description": "Which credentials the dialog must ask for.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider",
+          "name",
+          "home_url",
+          "documentation_url"
+        ],
+        "title": "IntegrationCardResponse",
+        "type": "object"
+      },
       "Intervention": {
-        "description": "One scheduled visit: who, what, where and exactly when.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    planning_run_id (Optional[str]): The run that produced this visit.\n    company_id (str): The agency whose calendar this visit sits on.\n    name (str): What the service is, as written on the quote.\n    intervention_type_id (str): The catalog entry it sells.\n    quote_line_id (str): The accepted quote line it delivers.\n    hca_id (str): The assistant who performs it.\n    hca_full_name (str): Their name, copied so a planning reads as a diary.\n    customer_id (str): The customer it is for.\n    day (date): The day it happens.\n    start_time (time): When it begins.\n    end_time (time): When it ends.\n    address (PostalAddress): Where it happens.\n    status (InterventionStatus): Where it is in its lifecycle.\n\nNotes:\n    The assistant's name and the customer's address are **copies** taken\n    when the visit was planned. A planning is a document an assistant works\n    from; re-resolving it against live records would make a printed round\n    disagree with the screen after any edit.\n\n    The times are exact, unlike the quote line's window. Deciding them is\n    what the planning computation does.",
+        "description": "One scheduled visit: who, what, where and exactly when.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    planning_run_id (Optional[str]): The run that produced this visit.\n    company_id (str): The agency whose calendar this visit sits on.\n    team_id (str): The team whose half of that calendar it sits on.\n    name (str): What the service is, as written on the quote.\n    intervention_type_id (str): The catalog entry it sells.\n    quote_line_id (str): The accepted quote line it delivers.\n    hca_id (str): The assistant who performs it.\n    hca_full_name (str): Their name, copied so a planning reads as a diary.\n    customer_id (str): The customer it is for.\n    day (date): The day it happens.\n    start_time (time): When it begins.\n    end_time (time): When it ends.\n    address (PostalAddress): Where it happens.\n    status (InterventionStatus): Where it is in its lifecycle.\n\nNotes:\n    The assistant's name and the customer's address are **copies** taken\n    when the visit was planned. A planning is a document an assistant works\n    from; re-resolving it against live records would make a printed round\n    disagree with the screen after any edit.\n\n    The times are exact, unlike the quote line's window. Deciding them is\n    what the planning computation does.",
         "properties": {
           "address": {
             "$ref": "#/components/schemas/PostalAddress",
@@ -3338,10 +3755,16 @@
             "$ref": "#/components/schemas/InterventionStatus",
             "default": "planned",
             "description": "Where it is in its lifecycle."
+          },
+          "team_id": {
+            "description": "The team that delivers this visit.",
+            "title": "Team Id",
+            "type": "string"
           }
         },
         "required": [
           "company_id",
+          "team_id",
           "name",
           "intervention_type_id",
           "quote_line_id",
@@ -3764,6 +4187,15 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MemberKind": {
+        "description": "Enumeration for which kind of person a membership row points at.\n\nAttributes:\n    USER (str): A sign-in account \u2014 an administrator, a manager, or an\n        assistant's account.\n    HCA (str): A home care assistant record, which is what the planner\n        schedules.\n\nNotes:\n    - **Two kinds rather than one, because the two records are genuinely\n      different things.** A manager has an account and no assistant record;\n      an assistant has a record and may or may not have an account. Storing\n      only accounts would make an assistant without one unplannable, and\n      storing only assistant records would leave every administrator and\n      back-office manager outside every agency.\n    - The membership row is *polymorphic on purpose*: the alternative was a\n      column on ``users`` and another on ``hcas``, which is a change to the\n      person models this feature is explicitly not allowed to make \u2014 and\n      which would have put the same fact in two places free to disagree.",
+        "enum": [
+          "user",
+          "hca"
+        ],
+        "title": "MemberKind",
+        "type": "string"
+      },
       "Notification": {
         "description": "Something that happened, addressed to one account.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    recipient_id (str): The account it is addressed to.\n    kind (NotificationKind): What it is about.\n    title (str): The one-line summary a list shows.\n    body (Optional[str]): The detail, shown when the row is opened.\n    quote_id (Optional[str]): The quote it points at, when it points at one.\n    is_read (bool): Whether the recipient has seen it.\n    created_at (Optional[datetime]): When the event happened.\n    read_at (Optional[datetime]): When the recipient marked it read.\n\nNotes:\n    - **One row per recipient, not one row per event.** A quote submitted to\n      an agency with three managers produces three notifications. Storing\n      one event and computing recipients on read would make \"have I read\n      this?\" unanswerable \u2014 read state belongs to a person, and two managers\n      must be able to disagree about whether they have dealt with something.\n    - The notification is a **record**, not a delivery mechanism. It is\n      written to the database first and pushed over the wire second, so a\n      reader who was offline, or whose stream dropped, still finds it\n      waiting. A design that only pushed would lose the notification exactly\n      when it matters most \u2014 overnight, when nobody is watching.\n    - The text is stored, not templated at read time. What a manager was\n      told is what they were told; regenerating it later would rewrite\n      history after a customer is renamed or a quote is repriced.",
         "properties": {
@@ -3940,7 +4372,7 @@
         "type": "object"
       },
       "PlanningRun": {
-        "description": "One execution of the planning computation.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    status (PlanningRunStatus): Where the run is.\n    company_id (str): The agency whose calendar this run rewrites.\n    requested_by (str): The administrator who started it.\n    period_start (date): First day planned, inclusive.\n    period_end (date): Last day planned, inclusive.\n    started_at (Optional[datetime]): When the solver began.\n    finished_at (Optional[datetime]): When it stopped.\n    total_travel_minutes (Optional[int]): Travel time in the solution.\n    scheduled_count (Optional[int]): How many requirements were placed.\n    unassigned_requirement_ids (List[str]): What could not be placed.\n    error_message (Optional[str]): Why the run failed, when it did.\n\nNotes:\n    The run is a record, not a lock. It exists so a caller who asked for a\n    planning can poll for the answer: the solve is CPU-bound and runs in a\n    worker thread, so the request that started it returns immediately.\n\n    ``unassigned_requirement_ids`` is the honest part of the result. The\n    solver is allowed to leave work unplaced rather than fail, so a\n    succeeded run with a non-empty list means \"here is a plan, and here is\n    what would not fit\" \u2014 which is far more useful than no plan at all.",
+        "description": "One execution of the planning computation.\n\nAttributes:\n    id (Optional[str]): Identifier, populated on read from the store.\n    status (PlanningRunStatus): Where the run is.\n    company_id (str): The agency whose calendar this run rewrites.\n    team_id (str): The team whose half of that calendar it rewrites.\n    requested_by (str): The administrator who started it.\n    period_start (date): First day planned, inclusive.\n    period_end (date): Last day planned, inclusive.\n    started_at (Optional[datetime]): When the solver began.\n    finished_at (Optional[datetime]): When it stopped.\n    total_travel_minutes (Optional[int]): Travel time in the solution.\n    scheduled_count (Optional[int]): How many requirements were placed.\n    unassigned_requirement_ids (List[str]): What could not be placed.\n    error_message (Optional[str]): Why the run failed, when it did.\n\nNotes:\n    - The run is a record, not a lock. It exists so a caller who asked for a\n      planning can poll for the answer: the solve is CPU-bound and runs in a\n      worker thread, so the request that started it returns immediately.\n    - ``unassigned_requirement_ids`` is the honest part of the result. The\n      solver is allowed to leave work unplaced rather than fail, so a\n      succeeded run with a non-empty list means \"here is a plan, and here is\n      what would not fit\" \u2014 which is far more useful than no plan at all.",
         "properties": {
           "company_id": {
             "description": "The agency whose calendar this run rewrites.",
@@ -4041,6 +4473,11 @@
             "default": "pending",
             "description": "Where the run is."
           },
+          "team_id": {
+            "description": "The team whose calendar this run rewrites.",
+            "title": "Team Id",
+            "type": "string"
+          },
           "total_travel_minutes": {
             "anyOf": [
               {
@@ -4072,6 +4509,7 @@
         },
         "required": [
           "company_id",
+          "team_id",
           "requested_by",
           "period_start",
           "period_end"
@@ -4333,7 +4771,7 @@
         "type": "string"
       },
       "Quote": {
-        "description": "A priced offer of home care, addressed to one customer.\n\nAttributes:\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    SCHEDULABLE_STATUSES (ClassVar[frozenset]): The statuses whose lines\n        feed the planning computation.\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency that offers the work.\n    reference (str): Human-facing quote number.\n    customer_id (str): The customer the offer is addressed to.\n    status (QuoteStatus): Where the quote is in its lifecycle.\n    lines (List[QuoteLine]): The services offered, priced.\n    aggregates (List[QuoteTypeWeekAggregate]): The lines summed by type and\n        by ISO week.\n    issued_on (Optional[date]): The day the quote was sent.\n    valid_until (Optional[date]): The day the offer lapses.\n    authored_by (Optional[str]): The account that wrote the quote.\n    submitted_at (Optional[datetime]): When it was submitted for validation.\n    validated_by (Optional[str]): The account that validated it.\n    interrupted_on (Optional[date]): Last day the arrangement is\n        delivered. Services dated after it are neither planned nor billed.\n    auto_renew (bool): Whether a successor quote is written when this one\n        reaches ``valid_until``.\n    renewed_from_id (Optional[str]): The quote this one succeeds, when it\n        was created by a renewal.\n    validated_at (Optional[datetime]): When it was validated.\n\nNotes:\n    - Only an **accepted** quote feeds the planner. A draft is still being\n      composed and a rejected one was declined, so scheduling either would\n      commit assistants to work nobody agreed to.\n    - ``aggregates`` is derived from ``lines`` but stored alongside them.\n      Recomputing on read would be cheap; the reason to store it is that a\n      reprinted quote must show the figures it showed when it was issued,\n      even after a type is renamed or repriced.\n    - The four authorship fields exist because a quote is now written by one\n      person and approved by another. ``authored_by`` is what scopes an\n      assistant's own list; ``validated_by`` is the answer to \"who agreed to\n      this price?\", which the record could not answer at all before \u2014 a\n      quote simply became accepted, with nothing saying by whom.",
+        "description": "A priced offer of home care, addressed to one customer.\n\nAttributes:\n    CENTS (ClassVar[Decimal]): The quantum money is rounded to.\n    SCHEDULABLE_STATUSES (ClassVar[frozenset]): The statuses whose lines\n        feed the planning computation.\n    id (Optional[str]): Identifier, populated on read from the store.\n    company_id (str): The agency that offers the work.\n    team_id (str): The team that will deliver the work.\n    reference (str): Human-facing quote number.\n    customer_id (str): The customer the offer is addressed to.\n    status (QuoteStatus): Where the quote is in its lifecycle.\n    lines (List[QuoteLine]): The services offered, priced.\n    aggregates (List[QuoteTypeWeekAggregate]): The lines summed by type and\n        by ISO week.\n    issued_on (Optional[date]): The day the quote was sent.\n    valid_until (Optional[date]): The day the offer lapses.\n    authored_by (Optional[str]): The account that wrote the quote.\n    submitted_at (Optional[datetime]): When it was submitted for validation.\n    validated_by (Optional[str]): The account that validated it.\n    interrupted_on (Optional[date]): Last day the arrangement is\n        delivered. Services dated after it are neither planned nor billed.\n    auto_renew (bool): Whether a successor quote is written when this one\n        reaches ``valid_until``.\n    renewed_from_id (Optional[str]): The quote this one succeeds, when it\n        was created by a renewal.\n    validated_at (Optional[datetime]): When it was validated.\n\nNotes:\n    - Only an **accepted** quote feeds the planner. A draft is still being\n      composed and a rejected one was declined, so scheduling either would\n      commit assistants to work nobody agreed to.\n    - ``aggregates`` is derived from ``lines`` but stored alongside them.\n      Recomputing on read would be cheap; the reason to store it is that a\n      reprinted quote must show the figures it showed when it was issued,\n      even after a type is renamed or repriced.\n    - The four authorship fields exist because a quote is now written by one\n      person and approved by another. ``authored_by`` is what scopes an\n      assistant's own list; ``validated_by`` is the answer to \"who agreed to\n      this price?\", which the record could not answer at all before \u2014 a\n      quote simply became accepted, with nothing saying by whom.",
         "properties": {
           "aggregates": {
             "description": "The lines summed by intervention type and ISO week.",
@@ -4463,6 +4901,11 @@
             "description": "When it was submitted for validation.",
             "title": "Submitted At"
           },
+          "team_id": {
+            "description": "The team that will deliver the work.",
+            "title": "Team Id",
+            "type": "string"
+          },
           "valid_until": {
             "anyOf": [
               {
@@ -4504,6 +4947,7 @@
         },
         "required": [
           "company_id",
+          "team_id",
           "reference",
           "customer_id"
         ],
@@ -4975,6 +5419,21 @@
         ],
         "title": "QuoteStatus",
         "type": "string"
+      },
+      "QuoteTeamRequest": {
+        "description": "The payload moving a quote to a different team.\n\nAttributes:\n    team_id (str): The team that will deliver the work instead.\n\nNotes:\n    One field, and it still earns a model rather than a query parameter. The\n    team decides whose week the planner rewrites, so the change deserves a\n    body a client has to compose deliberately \u2014 the same reason\n    ``PATCH /api/v1/users/{id}/role`` takes one.",
+        "properties": {
+          "team_id": {
+            "description": "The team that will deliver the work.",
+            "title": "Team Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id"
+        ],
+        "title": "QuoteTeamRequest",
+        "type": "object"
       },
       "QuoteTypeWeekAggregate": {
         "description": "One quote's lines of a given type, summed over one ISO week.\n\nAttributes:\n    MAX_ISO_WEEK (ClassVar[int]): Highest ISO week number a year can hold.\n    MONEY_FIELDS (ClassVar[Tuple[str, ...]]): The fields holding an amount.\n    intervention_type_id (str): The type these lines share.\n    intervention_type_name (str): Its name, copied so the aggregate reads\n        without a join.\n    iso_year (int): ISO year of the week.\n    iso_week (int): ISO week number, ``1..53``.\n    week_start_date (date): The Monday of that ISO week.\n    line_count (int): How many lines were summed.\n    total_minutes (int): Total service time in the week.\n    total_ht (Decimal): Total excluding tax.\n    vat_amount (Decimal): Total tax.\n    total_ttc (Decimal): Total including tax.\n\nNotes:\n    - Both the ISO **year** and the week number are stored. The ISO year\n      differs from the calendar year at the boundaries \u2014 29 December 2025\n      falls in ISO week 1 of 2026 \u2014 so grouping on the week number alone\n      would silently merge two weeks a year apart.\n    - The type's name is copied rather than looked up. The aggregate is\n      persisted with the quote, and a type renamed next year must not change\n      what an issued quote says it sold.\n    - Totals are sums of the **already-rounded** line amounts, so the weekly\n      subtotals on a printed quote add up to its grand total exactly, with no\n      residual cent to explain.",
@@ -5587,6 +6046,262 @@
         "title": "SuggestedSlot",
         "type": "object"
       },
+      "TeamCreateRequest": {
+        "description": "The payload forming a team at one of the company's sites.\n\nAttributes:\n    name (str): What the team is called.\n    agency_id (str): The site it works from.\n    manager_user_id (str): The account that runs it.\n\nNotes:\n    - ``company_id`` is absent and taken from the credential, as everywhere\n      else on this surface. It decides whose quotes the team is attributed\n      and whose calendar its planning run rewrites.\n    - **The member list is absent too**, and that is not an omission. A\n      person belongs to exactly one team, so adding somebody to this one\n      takes them off another \u2014 a consequence worth a deliberate call rather\n      than a side effect of creating a team. Members are added afterwards\n      through ``PUT /api/v1/teams/{id}/members``; the manager alone is\n      enrolled by the creating call, because a team that named a manager who\n      was not on it would be a roster missing the person in charge.\n    - Whether the named account *may* run a team \u2014 that it holds a manager's\n      or an administrator's role and belongs to the same site \u2014 is checked in\n      :class:`~service.organisation.teams.TeamService`, because it is a\n      question about other rows.",
+        "properties": {
+          "agency_id": {
+            "description": "The site the team works from.",
+            "title": "Agency Id",
+            "type": "string"
+          },
+          "manager_user_id": {
+            "description": "The account that runs the team.",
+            "title": "Manager User Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "What the team is called.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "agency_id",
+          "manager_user_id"
+        ],
+        "title": "TeamCreateRequest",
+        "type": "object"
+      },
+      "TeamDocument": {
+        "description": "One file in a team's shared space.\n\nAttributes:\n    KEY_PREFIX (ClassVar[str]): Object-store prefix every team document\n        lives under.\n    MAX_FILE_NAME_LENGTH (ClassVar[int]): Longest accepted file name.\n    MAX_CONTENT_TYPE_LENGTH (ClassVar[int]): Longest accepted media type.\n    PATH_SEPARATORS (ClassVar[str]): Characters a file name may not carry.\n    id (Optional[str]): Identifier, populated on read from the store.\n    team_id (str): The team whose space this file sits in.\n    company_id (str): The company that team belongs to.\n    file_name (str): What the uploader called it, shown and downloaded as.\n    content_type (str): The media type the object store *sniffed*.\n    size_bytes (int): How large the stored object is.\n    document_key (str): Where the object lives, under :attr:`KEY_PREFIX`.\n    uploaded_by (str): The account that added it.\n    uploaded_by_name (str): That account's name at the time.\n    created_at (Optional[datetime]): When it was added.\n\nNotes:\n    - **The key is stored, never a URL**, which is the invoice's shape and\n      not the portrait's. A team's documents are the agency's private\n      paperwork; a public URL would make them readable by anybody who is\n      sent one, forever, whatever the application later decided about\n      permissions. Downloads go through an authenticated endpoint that\n      resolves the key.\n    - **The uploader's name is copied, not joined.** A file added by\n      somebody who has since left still has to say who added it, and a join\n      through a deleted account would print nothing \u2014 the same reasoning\n      that copies the assistant's name onto an\n      :class:`~models.planning.intervention.intervention.Intervention`.\n    - `uploaded_by` carries no foreign key for the same reason: an audit\n      trail must outlive the thing it names.\n    - The content type is the **sniffed** one rather than the declared one.\n      A browser's ``Content-Type`` is a claim by the uploader, and this\n      value is echoed back on download.",
+        "properties": {
+          "company_id": {
+            "description": "The company that team belongs to.",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "content_type": {
+            "description": "The media type that was detected.",
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was added.",
+            "title": "Created At"
+          },
+          "document_key": {
+            "description": "Where the object lives in the store.",
+            "title": "Document Key",
+            "type": "string"
+          },
+          "file_name": {
+            "description": "What the uploader called it.",
+            "title": "File Name",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, assigned by the store.",
+            "title": "Id"
+          },
+          "size_bytes": {
+            "description": "How large the stored object is.",
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "team_id": {
+            "description": "The team whose space this file sits in.",
+            "title": "Team Id",
+            "type": "string"
+          },
+          "uploaded_by": {
+            "description": "The account that added it.",
+            "title": "Uploaded By",
+            "type": "string"
+          },
+          "uploaded_by_name": {
+            "description": "That account's name at the time.",
+            "title": "Uploaded By Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team_id",
+          "company_id",
+          "file_name",
+          "content_type",
+          "size_bytes",
+          "document_key",
+          "uploaded_by",
+          "uploaded_by_name"
+        ],
+        "title": "TeamDocument",
+        "type": "object"
+      },
+      "TeamDocumentConstraintsResponse": {
+        "description": "What a team's shared space accepts.\n\nAttributes:\n    max_upload_bytes (int): Largest file the endpoint stores.\n    accepted_content_types (List[str]): Media types the store recognises.\n\nNotes:\n    - Published for the same reason the photograph limits are: a rejection\n      that arrives after the whole file has crossed the network is a\n      rejection somebody waited for.\n    - The accepted types are the ones the store can **recognise from the\n      file's own leading bytes**, not the ones a client may claim. That is\n      why the list is short and why ``.docx`` and ``.xlsx`` appear as\n      ``application/zip`` \u2014 they are Zip containers, and no signature tells\n      them apart.",
+        "properties": {
+          "accepted_content_types": {
+            "description": "Media types the store recognises.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Content Types",
+            "type": "array"
+          },
+          "max_upload_bytes": {
+            "description": "Largest file the endpoint stores, in bytes.",
+            "title": "Max Upload Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_upload_bytes",
+          "accepted_content_types"
+        ],
+        "title": "TeamDocumentConstraintsResponse",
+        "type": "object"
+      },
+      "TeamMember": {
+        "description": "One person on one team.\n\nAttributes:\n    INVALID_KIND (ClassVar[Type[MTInvalidOrganisationMemberException]]):\n        Raised for a malformed member kind.\n    INVALID_MEMBER_ID (ClassVar[Type[MTInvalidOrganisationMemberException]]):\n        Raised for a malformed member identifier.\n\nNotes:\n    - **There is no `is_manager` flag here**, and its absence is the design.\n      \"Exactly one manager\" is a cardinality, and a boolean on a list can\n      express zero or five; the manager is a required column on\n      :class:`~models.organisation.team.team.Team` instead, which *is* the\n      constraint. The manager still gets a membership row, so \"a team is a\n      list of persons\" holds literally.\n    - **A person is on at most one team**, enforced by a unique index on the\n      row. That is load-bearing rather than tidy: plannings are computed per\n      team and stored with a per-team delete, so somebody on two teams would\n      have two complete calendars written for the same week by two runs,\n      neither of which clears the other's visits. They would be\n      double-booked with nothing anywhere reporting it.",
+        "properties": {
+          "member_id": {
+            "description": "Identifier of that account or record.",
+            "title": "Member Id",
+            "type": "string"
+          },
+          "member_kind": {
+            "$ref": "#/components/schemas/MemberKind",
+            "description": "Whether the member is an account or an assistant record."
+          }
+        },
+        "required": [
+          "member_kind",
+          "member_id"
+        ],
+        "title": "TeamMember",
+        "type": "object"
+      },
+      "TeamUpdateRequest": {
+        "description": "The payload changing a team's name, site or manager.\n\nAttributes:\n    name (str): What the team is called.\n    agency_id (str): The site it works from.\n    manager_user_id (str): The account that runs it.\n\nNotes:\n    - **Moving a team to another site changes where its work comes from**,\n      because every distance a quote is attributed by is measured from the\n      site. It is offered here rather than forbidden, since a branch that\n      relocates is an ordinary event \u2014 but the service re-checks that the\n      manager belongs to the new site, and the members do not follow\n      automatically.\n    - The member list is absent, as it is on creation: membership is one\n      person leaving one team for another, and is changed by its own call.",
+        "properties": {
+          "agency_id": {
+            "description": "The site the team works from.",
+            "title": "Agency Id",
+            "type": "string"
+          },
+          "manager_user_id": {
+            "description": "The account that runs the team.",
+            "title": "Manager User Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "What the team is called.",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "agency_id",
+          "manager_user_id"
+        ],
+        "title": "TeamUpdateRequest",
+        "type": "object"
+      },
+      "TeamView": {
+        "description": "A team as every route returns it.\n\nAttributes:\n    id (Optional[str]): Identifier, as stored.\n    company_id (str): The company the team belongs to.\n    agency_id (str): The site the team works from.\n    name (str): What the team is called.\n    manager_user_id (str): The account that runs it.\n    member_count (int): How many people are on it.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - The team record carries nothing sensitive, so this adds one field to\n      it rather than hiding any: the **member count**, which the teams grid\n      shows on every row. Resolved per row it would be a query per team.\n    - The site's name and the manager's name are deliberately **not**\n      resolved here. Both are lists the screen already holds \u2014 it needs them\n      to offer the pickers on the same page \u2014 and joining them server-side\n      would put two more tables in a statement that is read on every\n      navigation.",
+        "properties": {
+          "agency_id": {
+            "description": "The site the team works from.",
+            "title": "Agency Id",
+            "type": "string"
+          },
+          "company_id": {
+            "description": "The company the team belongs to.",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Creation timestamp.",
+            "title": "Created At"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identifier, as stored.",
+            "title": "Id"
+          },
+          "manager_user_id": {
+            "description": "The account that runs the team.",
+            "title": "Manager User Id",
+            "type": "string"
+          },
+          "member_count": {
+            "default": 0,
+            "description": "How many people are on the team.",
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "description": "What the team is called.",
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last-update timestamp.",
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "company_id",
+          "agency_id",
+          "name",
+          "manager_user_id"
+        ],
+        "title": "TeamView",
+        "type": "object"
+      },
       "TemporaryCredentialsResponse": {
         "description": "The one-time credentials handed to an administrator to pass on.\n\nAttributes:\n    user_id (str): The account that was created.\n    email (str): The sign-in address.\n    temporary_password (str): The generated password, in plain text.\n    must_change_password (bool): Always ``True``; stated so the client can\n        say so on screen.\n\nNotes:\n    **This is the only place a password is ever returned by this API, and\n    it happens exactly once.** The stored form is a hash, so an\n    administrator who loses this response regenerates the account's\n    password rather than looking it up.\n\n    ``must_change_password`` is echoed rather than assumed, so the screen\n    showing these credentials can tell the administrator what to say when\n    handing them over: this password works once, to set a real one.\n\n    The value must not be logged by whatever renders it. It is a working\n    credential until its holder replaces it.",
         "properties": {
@@ -5619,6 +6334,16 @@
         ],
         "title": "TemporaryCredentialsResponse",
         "type": "object"
+      },
+      "TransmissionKind": {
+        "description": "Enumeration for what was actually sent to a platform about an invoice.\n\nAttributes:\n    INVOICE (str): The structured invoice itself, routed to a business.\n    PAYMENT_REPORT (str): Payment data declared to the tax authority.\n    CHORUS_PRO (str): The structured invoice, routed to a public body.\n\nNotes:\n    - **These are three different obligations, not three destinations for\n      one document.** An invoice to a mutuelle is *e-invoicing*: the\n      recipient's own system reads it. A household's settled invoice is\n      *e-reporting*: nothing reaches the customer, and what reaches the\n      administration is the fact that money changed hands \u2014 flux 10.4,\n      mandatory for services because VAT falls due on collection. Recording\n      which of the three happened is what makes a transmission auditable\n      afterwards; a single \"sent\" flag could not answer \"sent as what?\".\n    - :attr:`CHORUS_PRO` is kept apart from :attr:`INVOICE` even though both\n      carry a structured document, because a public body is reached through\n      a different route and addressed by an additional service code. Folding\n      them together would lose the only distinction that changes where the\n      document goes \u2014 the same reasoning\n      :class:`RecipientKind` gives for keeping its own two apart.",
+        "enum": [
+          "invoice",
+          "payment-report",
+          "chorus-pro"
+        ],
+        "title": "TransmissionKind",
+        "type": "string"
       },
       "UnplacedQuote": {
         "description": "Everything one quote could not fit into a week, as an operator sees it.\n\nAttributes:\n    quote_reference (str): The quote, as printed on the document.\n    customer_id (str): Whose work it is.\n    customer_name (str): The same person, by name.\n    visits (List[UnplacedRequirement]): The visits that were not placed,\n        each with its own reason.\n    alternatives (List[SuggestedSlot]): Times somebody qualified is free,\n        offered so the person renegotiating has something to propose\n        rather than only a problem to report. Empty when nothing was\n        found, which is itself an answer: the week is full.\n\nNotes:\n    - **The report is grouped by quote because that is the unit somebody can\n      act on.** A list of thirty unplaced visits tells an operator that\n      something is wrong; \"quote DEV-2026-0042 for Marie Durand, three\n      visits, nobody holds DEAES\" tells them who to telephone and what to\n      say. The visit is what the solver failed on, but the quote is what the\n      agency sold, and it is the quote that has to be renegotiated,\n      rescheduled or staffed.\n    - No sentence is built here. The screen assembles one from these fields\n      in the reader's own language; a message composed in the backend would\n      arrive in French for an English operator, and the quote emails already\n      taught this codebase that lesson once.",
@@ -5763,7 +6488,7 @@
         "type": "object"
       },
       "UserResponse": {
-        "description": "The shape an account leaves the API in.\n\nAttributes:\n    id (Optional[str]): Identifier, populated once the account is stored.\n    email (EmailStr): The sign-in address.\n    full_name (str): The display name.\n    role (UserRole): The role granted.\n    is_active (bool): Whether sign-in is permitted.\n    hca_id (Optional[str]): The assistant record an assistant account\n        belongs to.\n    company_id (Optional[str]): The agency the account belongs to.\n    language (str): The language this holder reads the application, and\n        receives its emailed documents, in.\n    photo_url (Optional[str]): URL of the holder's portrait, when one has\n        been uploaded.\n    must_change_password (bool): Whether a temporary password is still in\n        force.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - There is no ``hashed_password`` field, and that is the point. The\n      credential used to be dropped by a dump that excluded it by name; a\n      field that does not exist cannot be leaked by an endpoint that forgets\n      to exclude it, or re-added by a dump that stops excluding it.\n    - Built through :meth:`from_user` rather than by spreading the domain\n      model, so adding a field to :class:`~models.auth.user.User` never\n      silently widens what the API publishes. A new field appears on the\n      wire only when someone puts it here.\n    - ``must_change_password`` is published because a client cannot work\n      without it. The middleware answers **403 on every route but the\n      password change** while the flag is set, so a client that cannot read\n      it can only discover the state by being refused \u2014 it has to send a\n      request it knows will fail, and then pattern-match the error body.\n      Publishing the flag lets the sign-in screen go straight to the change\n      form. It says nothing secret: the holder of the credential is the one\n      being told they must replace it.\n    - ``company_id`` scopes what the client asks for. A manager's queues are\n      their agency's, and without it the client cannot tell whether it is\n      looking at everything or at one company's slice.\n    - ``photo_url`` is published as **plain text**, not as a URL type. It is\n      read by a browser that puts it straight into an ``img`` source, and\n      the model has already refused any value the object store did not\n      issue \u2014 so there is nothing left here for a URL type to check.",
+        "description": "The shape an account leaves the API in.\n\nAttributes:\n    id (Optional[str]): Identifier, populated once the account is stored.\n    email (EmailStr): The sign-in address.\n    full_name (str): The display name.\n    role (UserRole): The role granted.\n    is_active (bool): Whether sign-in is permitted.\n    customer_id (Optional[str]): The customer record a customer account\n        belongs to. The mirror of ``hca_id`` on the other axis, and\n        published for the same reason: the screens ask \"is this account\n        bound to a person\" as well as \"what role is it\".\n    hca_id (Optional[str]): The assistant record an assistant account\n        belongs to.\n    company_id (Optional[str]): The agency the account belongs to.\n    language (str): The language this holder reads the application, and\n        receives its emailed documents, in.\n    photo_url (Optional[str]): URL of the holder's portrait, when one has\n        been uploaded.\n    must_change_password (bool): Whether a temporary password is still in\n        force.\n    created_at (Optional[datetime]): Creation timestamp.\n    updated_at (Optional[datetime]): Last-update timestamp.\n\nNotes:\n    - There is no ``hashed_password`` field, and that is the point. The\n      credential used to be dropped by a dump that excluded it by name; a\n      field that does not exist cannot be leaked by an endpoint that forgets\n      to exclude it, or re-added by a dump that stops excluding it.\n    - Built through :meth:`from_user` rather than by spreading the domain\n      model, so adding a field to :class:`~models.auth.user.User` never\n      silently widens what the API publishes. A new field appears on the\n      wire only when someone puts it here.\n    - ``must_change_password`` is published because a client cannot work\n      without it. The middleware answers **403 on every route but the\n      password change** while the flag is set, so a client that cannot read\n      it can only discover the state by being refused \u2014 it has to send a\n      request it knows will fail, and then pattern-match the error body.\n      Publishing the flag lets the sign-in screen go straight to the change\n      form. It says nothing secret: the holder of the credential is the one\n      being told they must replace it.\n    - ``company_id`` scopes what the client asks for. A manager's queues are\n      their agency's, and without it the client cannot tell whether it is\n      looking at everything or at one company's slice.\n    - ``photo_url`` is published as **plain text**, not as a URL type. It is\n      read by a browser that puts it straight into an ``img`` source, and\n      the model has already refused any value the object store did not\n      issue \u2014 so there is nothing left here for a URL type to check.",
         "properties": {
           "company_id": {
             "anyOf": [
@@ -5788,6 +6513,18 @@
             ],
             "description": "Creation timestamp.",
             "title": "Created At"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The customer record a customer account belongs to.",
+            "title": "Customer Id"
           },
           "email": {
             "description": "The sign-in address.",
@@ -5971,6 +6708,386 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/agencies": {
+      "get": {
+        "description": "List the sites the caller's company operates from.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[AgencyView]: The sites, by name, with their member and team counts.\n\nNotes:\n    Open to **every signed-in account**, unlike the writes. An assistant\n    reads which site they are attached to, and a manager picks one when\n    forming a team. What that costs is bounded by the response model: a site\n    record inherits its company's SIRET and bank account, and\n    :class:`~models.schemas.responses.organisation.agency_view.AgencyView`\n    declares neither.",
+        "operationId": "list_agencies_api_v1_agencies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgencyView"
+                  },
+                  "title": "Response List Agencies Api V1 Agencies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agencies",
+        "tags": [
+          "Agencies"
+        ]
+      },
+      "post": {
+        "description": "Open a new site for the caller's company.\n\nArgs:\n    payload (AgencyCreateRequest): The site's name, address and type.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    AgencyView: The stored site, with no member and no team yet.\n\nRaises:\n    MTAgencyNameTaken: If the company already has a site of that name;\n        answered as a 409.\n    MTAgencyHeadquartersProtected: If it would be a second head office;\n        answered as a 409.\n\nNotes:\n    - Administrator-only, as the requirement states. A site decides where\n      teams are based and therefore which household's work each team is\n      given; a manager able to open one could create a place that quietly\n      takes work away from theirs.\n    - The counts are passed as zero rather than queried. A site that has\n      just been created has neither members nor teams, and reading the\n      database to learn that would be a query whose answer is already known.",
+        "operationId": "create_agency_api_v1_agencies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgencyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgencyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agency",
+        "tags": [
+          "Agencies"
+        ]
+      }
+    },
+    "/api/v1/agencies/{agency_id}": {
+      "delete": {
+        "description": "Close a site nobody works at.\n\nArgs:\n    agency_id (str): The site to remove.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nRaises:\n    MTAgencyNotFound: If no such site exists; answered as a 404.\n    MTAgencyForbidden: If it belongs to another company; answered as a 403.\n    MTAgencyNotEmpty: If teams or people are still attached; 409.\n    MTAgencyHeadquartersProtected: If it is the head office and the company\n        still operates from elsewhere; answered as a 409.",
+        "operationId": "delete_agency_api_v1_agencies__agency_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agency_id",
+            "required": true,
+            "schema": {
+              "title": "Agency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Agency",
+        "tags": [
+          "Agencies"
+        ]
+      },
+      "get": {
+        "description": "Return one of the caller's company's sites.\n\nArgs:\n    agency_id (str): The site to read.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller.\n\nReturns:\n    AgencyView: The site and its two counts.\n\nRaises:\n    MTAgencyNotFound: If no such site exists; answered as a 404.\n    MTAgencyForbidden: If it belongs to another company; answered as a 403.",
+        "operationId": "get_agency_api_v1_agencies__agency_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agency_id",
+            "required": true,
+            "schema": {
+              "title": "Agency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgencyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agency",
+        "tags": [
+          "Agencies"
+        ]
+      },
+      "put": {
+        "description": "Change a site's name, address or type.\n\nArgs:\n    agency_id (str): The site to change.\n    payload (AgencyUpdateRequest): The new name, address and type.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    AgencyView: The updated site.\n\nRaises:\n    MTAgencyNotFound: If no such site exists; answered as a 404.\n    MTAgencyForbidden: If it belongs to another company; answered as a 403.\n    MTAgencyNameTaken: If another site already uses the name; 409.\n    MTAgencyHeadquartersProtected: If the change would move or duplicate the\n        head office; answered as a 409.",
+        "operationId": "update_agency_api_v1_agencies__agency_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agency_id",
+            "required": true,
+            "schema": {
+              "title": "Agency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgencyUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgencyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agency",
+        "tags": [
+          "Agencies"
+        ]
+      }
+    },
+    "/api/v1/agencies/{agency_id}/members": {
+      "get": {
+        "description": "Return everybody attached to a site.\n\nArgs:\n    agency_id (str): The site to read.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[AgencyMember]: The memberships, each a kind and an identifier.\n\nRaises:\n    MTAgencyNotFound: If no such site exists; answered as a 404.\n    MTAgencyForbidden: If it belongs to another company; answered as a 403.\n\nNotes:\n    A membership carries no name, telephone number or address \u2014 only which\n    kind of record it points at and which one. Resolving the people is the\n    client's job, from the account and assistant lists it already holds and\n    is separately authorised to read.",
+        "operationId": "list_agency_members_api_v1_agencies__agency_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agency_id",
+            "required": true,
+            "schema": {
+              "title": "Agency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgencyMember"
+                  },
+                  "title": "Response List Agency Members Api V1 Agencies  Agency Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agency Members",
+        "tags": [
+          "Agencies"
+        ]
+      },
+      "post": {
+        "description": "Attach somebody to a site.\n\nArgs:\n    agency_id (str): The site they join.\n    member (AgencyMember): Which person, and which kind of record.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    AgencyMember: The stored membership.\n\nRaises:\n    MTAgencyNotFound: If no such site exists; answered as a 404.\n    MTAgencyForbidden: If it belongs to another company; answered as a 403.\n    MTAgencyMemberAlreadyPlaced: If they already belong to a site; 409.\n\nNotes:\n    The body is the model itself rather than a request schema, and that is\n    safe here for the reason it is not on the site: an\n    :class:`~models.organisation.agency.agency_member.AgencyMember` carries\n    a kind and an identifier and nothing else, so there is no field a\n    payload could forge. The site comes from the path.",
+        "operationId": "add_agency_member_api_v1_agencies__agency_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agency_id",
+            "required": true,
+            "schema": {
+              "title": "Agency Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgencyMember"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgencyMember"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Agency Member",
+        "tags": [
+          "Agencies"
+        ]
+      }
+    },
+    "/api/v1/agencies/{agency_id}/members/{member_kind}/{member_id}": {
+      "delete": {
+        "description": "Detach somebody from a site.\n\nArgs:\n    agency_id (str): The site they leave.\n    member_kind (MemberKind): Whether the identifier names an account or an\n        assistant record.\n    member_id (str): The person to detach.\n    service (AgencyService): The site service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nRaises:\n    MTAgencyNotFound: If no such site exists, or the person is not attached\n        to it; answered as a 404.\n    MTAgencyForbidden: If it belongs to another company; answered as a 403.\n\nNotes:\n    The kind is in the path rather than the query string because it is half\n    of the identity: an account and an assistant record can share an\n    identifier, and a route that took only the second would remove whichever\n    the store found first.",
+        "operationId": "remove_agency_member_api_v1_agencies__agency_id__members__member_kind___member_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agency_id",
+            "required": true,
+            "schema": {
+              "title": "Agency Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MemberKind"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Agency Member",
+        "tags": [
+          "Agencies"
+        ]
+      }
+    },
     "/api/v1/auth/accounts": {
       "post": {
         "description": "Create an assistant's account on their behalf, with a one-time password.\n\nArgs:\n    payload (StaffAccountRequest): The assistant record, address and name.\n    service (AuthService): The authentication service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    TemporaryCredentialsResponse: The account and the temporary password,\n    in plain text, returned **once**.\n\nRaises:\n    MTAuthUnknownHca: If the assistant record does not exist; 422.\n    MTAuthEmailAlreadyRegistered: If the address is taken; 409.\n\nNotes:\n    This is the second of the two ways an assistant account comes to exist.\n    The password is generated server-side and shown here once \u2014 the stored\n    form is a hash, so an administrator who loses it regenerates rather\n    than looks it up.\n\n    The account cannot do anything until that password is changed. That is\n    not a client-side convention: :class:`AuthMiddleware` refuses every\n    request such an account makes except the change itself.",
@@ -6180,6 +7297,172 @@
         "summary": "Issue Stream Token",
         "tags": [
           "Authentication"
+        ]
+      }
+    },
+    "/api/v1/billing/integrations": {
+      "get": {
+        "description": "Return every certified platform, with this agency's state against each.\n\nArgs:\n    service (InvoicingService): The integration service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[IntegrationCardResponse]: One card per supported platform.\n\nNotes:\n    - **Every platform, configured or not.** The gallery's job is to get\n      something connected, so a response listing only what already is would\n      be empty on exactly the screen that matters.\n    - **No response here can carry a credential.**\n      :class:`~models.schemas.responses.integrations.integration_card_response.IntegrationCardResponse`\n      has no field for one; what a card carries is the masked tail, which\n      lets a manager recognise their own key and nobody else use it.",
+        "operationId": "list_integrations_api_v1_billing_integrations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntegrationCardResponse"
+                  },
+                  "title": "Response List Integrations Api V1 Billing Integrations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Integrations",
+        "tags": [
+          "E-invoicing integrations"
+        ]
+      }
+    },
+    "/api/v1/billing/integrations/{provider}": {
+      "delete": {
+        "description": "Stop transmitting through a platform, keeping its credentials.\n\nArgs:\n    provider (EInvoicingProvider): The platform to switch off.\n    service (InvoicingService): The integration service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    IntegrationCardResponse: The card for the now-inactive platform.\n\nRaises:\n    MTIntegrationNotConfigured: When the agency never connected it;\n        answered as a 404.\n\nNotes:\n    The credentials stay. Pausing a platform for a month should not mean\n    finding its API key again, and the row is also the record of what was\n    once connected \u2014 useful precisely when somebody asks where last\n    quarter's invoices went.",
+        "operationId": "disable_integration_api_v1_billing_integrations__provider__delete",
+        "parameters": [
+          {
+            "description": "The platform to switch off.",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EInvoicingProvider",
+              "description": "The platform to switch off."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable Integration",
+        "tags": [
+          "E-invoicing integrations"
+        ]
+      },
+      "put": {
+        "description": "Connect a platform, making it the one this agency transmits through.\n\nArgs:\n    request (EInvoicingIntegrationRequest): The credentials.\n    provider (EInvoicingProvider): The platform to connect.\n    service (InvoicingService): The integration service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    IntegrationCardResponse: The card for the now-active platform.\n\nRaises:\n    MTIntegrationCredentialsRefused: When the platform would not accept the\n        credentials; answered as a 502 by the central handler, because the\n        refusal came from a third party rather than from this payload.\n    MTInvalidIntegrationCredentialsException: When a value is unusable;\n        answered as a 422, with a message that never quotes the key.\n\nNotes:\n    - **The credentials are proven against the live platform before they\n      are stored.** A mistyped key is reported into the dialog that is still\n      open rather than by an invoice that silently never left.\n    - **Enabling one platform disables the previous one**, in the same\n      transaction. An invoice has exactly one destination, and switching is\n      therefore one action rather than a disable followed by an enable that\n      somebody could forget.\n    - The platform is in the path and not in the body, so a payload cannot\n      disagree with the card a manager clicked.",
+        "operationId": "enable_integration_api_v1_billing_integrations__provider__put",
+        "parameters": [
+          {
+            "description": "The platform to connect.",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EInvoicingProvider",
+              "description": "The platform to connect."
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EInvoicingIntegrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Integration",
+        "tags": [
+          "E-invoicing integrations"
+        ]
+      }
+    },
+    "/api/v1/billing/integrations/{provider}/check": {
+      "post": {
+        "description": "Prove stored credentials again and record what happened.\n\nArgs:\n    provider (EInvoicingProvider): The platform to check.\n    service (InvoicingService): The integration service.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    IntegrationCardResponse: The card, carrying the result of the check.\n\nRaises:\n    MTIntegrationNotConfigured: When the agency never connected it;\n        answered as a 404.\n\nNotes:\n    **Answers 200 even when the platform refuses.** The check *ran*; what it\n    found belongs on the card, where a manager can see that a key rotated at\n    the far end needs re-entering. Answering 502 would leave the record\n    still claiming the platform was healthy, which is the state this\n    endpoint exists to correct.",
+        "operationId": "check_integration_api_v1_billing_integrations__provider__check_post",
+        "parameters": [
+          {
+            "description": "The platform to check.",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EInvoicingProvider",
+              "description": "The platform to check."
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Integration",
+        "tags": [
+          "E-invoicing integrations"
         ]
       }
     },
@@ -7127,7 +8410,7 @@
     },
     "/api/v1/companies/choices": {
       "get": {
-        "description": "Return the companies an applicant may choose between.\n\nArgs:\n    service (CompanyService): The company service.\n\nReturns:\n    List[CompanyChoice]: Identifier and name only, for those accepting\n    applications.\n\nNotes:\n    **Public: no credential, and none possible.** An assistant applying for\n    work does not have an account yet, and cannot choose a company without\n    seeing the list.\n\n    What that costs is bounded by the response model: a\n    :class:`~models.companies.company_choice.CompanyChoice` carries an\n    identifier and a name, so this cannot become a directory of every\n    agency's registered office however the service changes.",
+        "description": "Return the companies an applicant may choose between.\n\nArgs:\n    service (CompanyService): The company service.\n\nReturns:\n    List[CompanyChoice]: Identifier and name only, for those accepting\n    applications.\n\nNotes:\n    **Public: no credential, and none possible.** An assistant applying for\n    work does not have an account yet, and cannot choose a company without\n    seeing the list.\n\n    What that costs is bounded by the response model: a\n    :class:`~models.organisation.companies.company_choice.CompanyChoice` carries an\n    identifier and a name, so this cannot become a directory of every\n    agency's registered office however the service changes.",
         "operationId": "list_company_choices_api_v1_companies_choices_get",
         "responses": {
           "200": {
@@ -7375,7 +8658,7 @@
     },
     "/api/v1/customers": {
       "get": {
-        "description": "List customers, narrowed by whichever filters were sent.\n\nArgs:\n    customer_filter (CustomerFilter): The filters, bound from the query\n        string. Every field is optional and an absent one narrows nothing.\n    page (int): One-based page number.\n    size (int): Page size.\n    service (CustomerService): The customer service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Customer]: The matching customers.\n\nRaises:\n    MTInvalidCustomerFilterException: If a filter is malformed; answered as\n        a 422.\n\nNotes:\n    - **The filters are a model, not eight parameters.** The signature was\n      already at four and the screen now sends eight; gathering them puts\n      the validation somewhere unit tests can reach without an HTTP client,\n      and stops the router growing a paragraph of ``Query`` defaults.\n    - Bound with ``Depends()`` rather than ``Annotated[..., Query()]``.\n      Both are documented, but only the former **flattens** the model into\n      individual query parameters here \u2014 the latter binds it as one\n      parameter called ``customer_filter`` taking a JSON object, which\n      answers 422 to every request the screen sends. ``Depends()`` also\n      coerces each field before the model sees it, so ``?is_geocoded=false``\n      arrives as a boolean and the model's strict flag validator keeps\n      guarding what it is for: a filter built by hand in Python.\n    - ``?search=`` and ``?status=`` keep the names and meanings they had, so\n      nothing that called this before has to change.\n    - Filtering happens **here**, not in the browser. The grid asks for one\n      page; a client-side filter would search only the rows it happens to\n      hold and silently miss the rest of the book.",
+        "description": "List the households the caller's teams serve, narrowed by any filters.\n\nArgs:\n    customer_filter (CustomerFilter): The filters, bound from the query\n        string. Every field is optional and an absent one narrows nothing.\n    page (int): One-based page number.\n    size (int): Page size.\n    service (CustomerService): The customer service.\n    teams (TeamService): Decides which households the caller may read.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Customer]: The matching households of the caller's teams.\n\nRaises:\n    MTInvalidCustomerFilterException: If a filter is malformed; answered as\n        a 422.\n\nNotes:\n    - **The filters are a model, not eight parameters.** The signature was\n      already at four and the screen now sends eight; gathering them puts\n      the validation somewhere unit tests can reach without an HTTP client,\n      and stops the router growing a paragraph of ``Query`` defaults.\n    - Bound with ``Depends()`` rather than ``Annotated[..., Query()]``.\n      Both are documented, but only the former **flattens** the model into\n      individual query parameters here \u2014 the latter binds it as one\n      parameter called ``customer_filter`` taking a JSON object, which\n      answers 422 to every request the screen sends. ``Depends()`` also\n      coerces each field before the model sees it, so ``?is_geocoded=false``\n      arrives as a boolean and the model's strict flag validator keeps\n      guarding what it is for: a filter built by hand in Python.\n    - ``?search=`` and ``?status=`` keep the names and meanings they had, so\n      nothing that called this before has to change.\n    - Filtering happens **here**, not in the browser. The grid asks for one\n      page; a client-side filter would search only the rows it happens to\n      hold and silently miss the rest of the book.\n    - **A manager sees the households their teams hold quotes for**, and an\n      administrator sees the whole book. The scope comes from the *quotes*\n      rather than from the calendar, so a prospect who has been quoted and\n      not yet planned is still the manager's to chase.",
         "operationId": "list_customers_api_v1_customers_get",
         "parameters": [
           {
@@ -7604,7 +8887,7 @@
     },
     "/api/v1/customers/{customer_id}": {
       "delete": {
-        "description": "Remove a customer, every quote written for them, and replan.\n\nArgs:\n    customer_id (str): The customer to remove.\n    response (Response): The response being built, so the status can drop\n        to 204 when there is nothing to replan.\n    service (CustomerService): The customer service.\n    plannings (PlanningService): Records the replan.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Optional[PlanningRun]: The pending replan with the identifier to poll,\n    or ``None`` when the customer had no future visits.\n\nRaises:\n    MTCustomerNotFound: If no such customer exists; answered as a 404.\n    MTCustomerHasQuotes: If a quote of theirs cannot be identified and so\n        cannot be removed with them; answered as a 409.\n\nNotes:\n    - **This destroys billing history**, and the screen offering it says\n      how much before asking. Stopping a customer remains the right answer\n      for one who was really served and has really left; this is for a\n      household entered by mistake, and for the fixtures a test campaign\n      removes after itself.\n    - **The period is measured before the delete.** Their visits go with\n      their quotes, so asking afterwards would find nothing and replan\n      nothing \u2014 leaving every assistant who was due to visit them holding a\n      gap that no other work has been moved into.",
+        "description": "Remove a customer, every quote written for them, and replan.\n\nArgs:\n    customer_id (str): The customer to remove.\n    response (Response): The response being built, so the status can drop\n        to 204 when there is nothing to replan.\n    service (CustomerService): The customer service.\n    plannings (PlanningService): Records the replan.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    Optional[List[PlanningRun]]: One pending replan per team that still\n    held future visits for them \u2014 more than one is possible, because a\n    household's quotes are attributed one at a time \u2014 or ``None`` when the\n    customer had no future visits at all.\n\nRaises:\n    MTCustomerNotFound: If no such customer exists; answered as a 404.\n    MTCustomerHasQuotes: If a quote of theirs cannot be identified and so\n        cannot be removed with them; answered as a 409.\n\nNotes:\n    - **This destroys billing history**, and the screen offering it says\n      how much before asking. Stopping a customer remains the right answer\n      for one who was really served and has really left; this is for a\n      household entered by mistake, and for the fixtures a test campaign\n      removes after itself.\n    - **The period is measured before the delete.** Their visits go with\n      their quotes, so asking afterwards would find nothing and replan\n      nothing \u2014 leaving every assistant who was due to visit them holding a\n      gap that no other work has been moved into.",
         "operationId": "delete_customer_api_v1_customers__customer_id__delete",
         "parameters": [
           {
@@ -7624,7 +8907,10 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/PlanningRun"
+                      "items": {
+                        "$ref": "#/components/schemas/PlanningRun"
+                      },
+                      "type": "array"
                     },
                     {
                       "type": "null"
@@ -8245,7 +9531,7 @@
     },
     "/api/v1/hcas": {
       "get": {
-        "description": "List assistants, narrowed by whichever filters were sent.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    search (Optional[str]): Case-insensitive fragment of a name.\n    contract_type (Optional[ContractType]): Restrict to one contract.\n    hca_filter (HcaFilter): The filters, bound from the query string. Every\n        field is optional and an absent one narrows nothing.\n    service (HcaService): The assistant service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[HcaResponse]: The matching assistants.\n\nRaises:\n    MTInvalidHcaFilterException: If a filter is malformed; answered as a\n        422.\n\nNotes:\n    ``search`` and ``contract_type`` survive as their own parameters\n    because other callers still pass them alone. When both they and the\n    filter are given, the filter wins \u2014 and the store says so in a warning\n    rather than leaving the caller to guess which fragment ran.",
+        "description": "List the assistants of the caller's teams, narrowed by any filters.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    search (Optional[str]): Case-insensitive fragment of a name.\n    contract_type (Optional[ContractType]): Restrict to one contract.\n    hca_filter (HcaFilter): The filters, bound from the query string. Every\n        field is optional and an absent one narrows nothing.\n    service (HcaService): The assistant service.\n    teams (TeamService): Decides which assistants the caller may read.\n    caller (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[HcaResponse]: The matching assistants of the caller's teams.\n\nRaises:\n    MTInvalidHcaFilterException: If a filter is malformed; answered as a\n        422.\n\nNotes:\n    - ``search`` and ``contract_type`` survive as their own parameters\n      because other callers still pass them alone. When both they and the\n      filter are given, the filter wins \u2014 and the store says so in a warning\n      rather than leaving the caller to guess which fragment ran.\n    - **A manager sees the assistants on the teams they run**, and an\n      administrator sees everybody. The scope is resolved here and applied\n      in the statement, exactly like ``authored_by`` on the quote list: it\n      is a permission rather than a filter, and no query parameter can\n      widen it.",
         "operationId": "list_hcas_api_v1_hcas_get",
         "parameters": [
           {
@@ -8512,7 +9798,7 @@
     },
     "/api/v1/hcas/{hca_id}": {
       "delete": {
-        "description": "Remove an assistant, their account, and replan what they were due.\n\nArgs:\n    hca_id (str): The assistant to remove.\n    response (Response): The response being built, so the status can drop\n        to 204 when there is nothing to replan.\n    service (HcaService): The assistant service.\n    plannings (PlanningService): Records the replan.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces manager access and\n        authorises removing the bound account.\n\nReturns:\n    Optional[PlanningRun]: The pending replan with the identifier to poll,\n    or ``None`` when the assistant had no future visits.\n\nRaises:\n    MTHcaNotFound: If no such assistant exists; answered as a 404.\n    MTHcaHasAccount: If a login is bound to them and cannot be removed;\n        answered as a 409.\n    MTAuthLastAdmin: If the bound account is the caller's own or the last\n        administrator's; answered as a 409.\n\nNotes:\n    - **The period is worked out here, not asked for.** A deletion from the\n      workforce grid has no calendar window to take one from, and the days\n      that actually need replanning are exactly the ones this person was\n      due to work \u2014 see\n      :meth:`~storage.repositories.planning.intervention.InterventionRepository.future_period_for_hca`.\n    - **The period is measured before the delete**, because their visits go\n      with them: asking afterwards would find nothing and replan nothing,\n      leaving the rest of the workforce with a calendar built around\n      somebody who has gone.\n    - Answers **202** when a replan follows and **204** when none does.\n      Queueing a run that would place the same visits in the same slots\n      costs thirty seconds of a worker and makes the calendar flicker for\n      no reason, so an assistant with no future work is simply removed.",
+        "description": "Remove an assistant, their account, and replan what they were due.\n\nArgs:\n    hca_id (str): The assistant to remove.\n    response (Response): The response being built, so the status can drop\n        to 204 when there is nothing to replan.\n    service (HcaService): The assistant service.\n    plannings (PlanningService): Records the replan.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces manager access and\n        authorises removing the bound account.\n\nReturns:\n    Optional[List[PlanningRun]]: One pending replan per team that still\n    held future visits by them, each with an identifier to poll, or\n    ``None`` when the assistant had no future visits at all.\n\nRaises:\n    MTHcaNotFound: If no such assistant exists; answered as a 404.\n    MTHcaHasAccount: If a login is bound to them and cannot be removed;\n        answered as a 409.\n    MTAuthLastAdmin: If the bound account is the caller's own or the last\n        administrator's; answered as a 409.\n\nNotes:\n    - **The period is worked out here, not asked for.** A deletion from the\n      workforce grid has no calendar window to take one from, and the days\n      that actually need replanning are exactly the ones this person was\n      due to work \u2014 see\n      :meth:`~storage.repositories.planning.intervention.InterventionRepository.future_period_for_hca`.\n    - **The period is measured before the delete**, because their visits go\n      with them: asking afterwards would find nothing and replan nothing,\n      leaving the rest of the workforce with a calendar built around\n      somebody who has gone.\n    - Answers **202** when a replan follows and **204** when none does.\n      Queueing a run that would place the same visits in the same slots\n      costs thirty seconds of a worker and makes the calendar flicker for\n      no reason, so an assistant with no future work is simply removed.",
         "operationId": "delete_hca_api_v1_hcas__hca_id__delete",
         "parameters": [
           {
@@ -8532,7 +9818,10 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/PlanningRun"
+                      "items": {
+                        "$ref": "#/components/schemas/PlanningRun"
+                      },
+                      "type": "array"
                     },
                     {
                       "type": "null"
@@ -10139,6 +11428,28 @@
         ]
       }
     },
+    "/api/v1/me/team": {
+      "get": {
+        "description": "Return the team the caller is themselves on.\n\nArgs:\n    service (TeamService): The team service.\n    caller (User): The authenticated caller.\n\nReturns:\n    TeamView: Their team and its member count.\n\nRaises:\n    MTTeamNotFound: If the account is on no team; answered as a 404.\n\nNotes:\n    - **The identifier comes from the credential**, as it does for the\n      caller's own agency: an assistant signing in has no way to know their\n      team's identifier, and a screen holding one it read from somewhere else\n      is a screen that can be pointed at somebody else's team.\n    - The team the caller is *on*, not the teams a manager *runs*. A manager\n      who runs two teams is a member of one, and it is that one whose roster\n      and shared space are theirs. ``GET /api/v1/teams`` serves the other\n      list.",
+        "operationId": "read_my_team_api_v1_me_team_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read My Team",
+        "tags": [
+          "My account"
+        ]
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "description": "Return the caller's own notifications, newest first.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    unread_only (bool): Restrict to notifications not yet read.\n    notification_filter (NotificationFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    notifications (NotificationRepository): The notification store.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[Notification]: The caller's notifications.\n\nNotes:\n    - There is no way to read anybody else's queue, and no parameter that\n      names a recipient. The recipient is the credential.\n    - **This is the delivery path, not a fallback for one.** The event\n      stream carries no notification data \u2014 it says only that something\n      changed \u2014 so every notification a reader ever sees arrives through\n      here. That is what makes an unread notification survive a logout, a\n      closed laptop and a dropped stream alike: the row is the truth, and\n      this reads the row.",
@@ -10387,6 +11698,127 @@
         "summary": "Mark Notification Read",
         "tags": [
           "Notifications"
+        ]
+      }
+    },
+    "/api/v1/planning/customers": {
+      "get": {
+        "description": "Return the households' care the caller is allowed to see.\n\nArgs:\n    period_start (date): First day of interest, inclusive.\n    period_end (date): Last day of interest, inclusive.\n    service (PlanningService): The planning service.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[CustomerPlanning]: Every household with care in the period for a\n    manager or administrator; only the assistant's own portfolio for an\n    assistant.\n\nRaises:\n    MTPlanningForbidden: If a household reaches this route, or an assistant\n        account names no assistant record; answered as a 403.\n\nNotes:\n    - **The same visits as ``/hcas``, grouped by the other party.** An\n      intervention names both an assistant and a household, so the calendar\n      groups two ways: who delivers the care, and who receives it. Neither\n      is a filter over the other's answer.\n    - **This is what a household reads at ``/api/v1/portal/planning``**,\n      read through the same repository method with the same arguments. The\n      agency and the family are looking at one query, not two that happen to\n      agree.\n    - The narrowing happens in the service. A route guard proves only that\n      the caller is signed in; it cannot express \"the households this\n      assistant visits\", which is a row-level question.",
+        "operationId": "list_customer_plannings_api_v1_planning_customers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Period Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Period End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerPlanning"
+                  },
+                  "title": "Response List Customer Plannings Api V1 Planning Customers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Customer Plannings",
+        "tags": [
+          "Plannings"
+        ]
+      }
+    },
+    "/api/v1/planning/customers/{customer_id}": {
+      "get": {
+        "description": "Return one household's care, if the caller may see it.\n\nArgs:\n    customer_id (str): The household whose care is wanted.\n    period_start (date): First day of interest, inclusive.\n    period_end (date): Last day of interest, inclusive.\n    service (PlanningService): The planning service.\n    caller (User): The authenticated caller.\n\nReturns:\n    CustomerPlanning: The household's visits over the period.\n\nRaises:\n    MTPlanningForbidden: If a household reaches this route; answered as a\n        403.\n    MTPlanningCustomerNotFound: If the household does not exist or is not in\n        the asking assistant's portfolio; answered as a **404** either way.\n\nNotes:\n    Declared **after** ``/customers`` so the literal path is matched first.\n    FastAPI matches in declaration order, and a parametrised route declared\n    ahead of its sibling swallows it \u2014 ``/customers`` would arrive here as a\n    household named \"customers\".",
+        "operationId": "get_customer_planning_api_v1_planning_customers__customer_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Period Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Period End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerPlanning"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Customer Planning",
+        "tags": [
+          "Plannings"
         ]
       }
     },
@@ -10688,7 +12120,7 @@
         ]
       },
       "post": {
-        "description": "Start a planning computation over a period.\n\nArgs:\n    period_start (date): First day to plan, inclusive.\n    period_end (date): Last day to plan, inclusive.\n    service (PlanningService): The planning service.\n    publisher (EventPublisher): Queues the solve for a worker.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    PlanningRun: The pending run, with the identifier to poll.\n\nRaises:\n    MTPlanningPeriodTooLong: When the period runs backwards; answered as a\n        422 by the central handler.\n\nNotes:\n    - Answers **202**, not 200. The solve is CPU-bound and runs for the\n      configured budget in a separate worker process, so holding the request\n      open for it would tie up a connection and time out the client. Poll\n      ``GET /runs/{id}`` until the status is terminal.\n    - The run is **recorded before it is queued**, and the record is what the\n      caller is given. If the broker is unreachable the run stays ``pending``\n      rather than vanishing: the identifier the caller polls is real either\n      way, and the work can be re-queued without anybody having to reconstruct\n      what was asked for. That is the whole reason this moved off a FastAPI\n      background task \u2014 one lost the run entirely on a restart.\n    - Running the computation is administrator-only: it rewrites every\n      assistant's calendar for the period.",
+        "description": "Start a planning computation over a period, for one team or for all.\n\nArgs:\n    period_start (date): First day to plan, inclusive.\n    period_end (date): Last day to plan, inclusive.\n    team_id (Optional[str]): The team to plan. Omitted, every team the\n        caller runs is planned.\n    service (PlanningService): The planning service.\n    publisher (EventPublisher): Queues the solves for a worker.\n    caller (User): The authenticated caller; enforces manager access, and\n        decides which teams may be named.\n\nReturns:\n    List[PlanningRun]: One pending run per team, each with an identifier to\n    poll. Empty when the caller runs no team.\n\nRaises:\n    MTPlanningPeriodTooLong: When the period runs backwards; answered as a\n        422 by the central handler.\n    MTPlanningTeamForbidden: When the named team is not one the caller\n        runs; answered as a 403.\n\nNotes:\n    - **Manager, not administrator, and that is the point of the change.** A\n      run used to rewrite every assistant's calendar in the agency, which is\n      why only an administrator could ask for one. It now rewrites one\n      team's, which is exactly the thing a manager is responsible for. The\n      *row-level* check \u2014 that this particular team is theirs \u2014 is in the\n      service, because a route guard can only prove a rank.\n    - **A list, not a run.** Omitting the team means \"every team I run\", so\n      an administrator's button is a fan-out over the company and a\n      manager's is over theirs. Returning one run would have meant either\n      silently planning only the first team or inventing a company-wide run\n      that the delete would then have to be scoped by all over again.\n    - Answers **202**, not 200. Each solve is CPU-bound and runs for the\n      configured budget in a separate worker process, so holding the request\n      open would tie up a connection and time out the client. Poll\n      ``GET /runs/{id}`` for each until its status is terminal.\n    - Each run is **recorded before it is queued**, and the records are what\n      the caller is given. If the broker is unreachable a run stays\n      ``pending`` rather than vanishing: the identifier is real either way,\n      and the work can be re-queued without anybody reconstructing what was\n      asked for. That is why this is not a background task \u2014 one lost the\n      run entirely on a restart.",
         "operationId": "start_planning_run_api_v1_planning_runs_post",
         "parameters": [
           {
@@ -10710,6 +12142,22 @@
               "title": "Period End",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "team_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Team Id"
+            }
           }
         ],
         "responses": {
@@ -10717,7 +12165,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlanningRun"
+                  "items": {
+                    "$ref": "#/components/schemas/PlanningRun"
+                  },
+                  "title": "Response Start Planning Run Api V1 Planning Runs Post",
+                  "type": "array"
                 }
               }
             },
@@ -11193,7 +12645,7 @@
     },
     "/api/v1/quotes": {
       "get": {
-        "description": "List quotes, narrowed by whichever filters were sent.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    customer_id (Optional[str]): Restrict to one customer.\n    quote_status (Optional[QuoteStatus]): Restrict to one status.\n    authored_by (Optional[str]): Restrict to one author's quotes.\n    quote_filter (QuoteFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    service (QuoteService): The quote service.\n    _ (User): The authenticated caller; enforces manager access.\n\nReturns:\n    List[Quote]: The matching quotes.\n\nRaises:\n    MTInvalidQuoteFilterException: If a filter is malformed; answered as a\n        422.\n\nNotes:\n    - Filtering by ``status=pending-validation`` is what the manager's\n      validation queue is: the quotes an assistant has submitted and nobody\n      has ruled on yet.\n    - The three older query parameters stay, and the filter carries the\n      same names. They are passed on separately rather than merged here,\n      because the store is where the rule about which one wins belongs \u2014\n      and for ``authored_by`` that rule is a permission, not a preference.",
+        "description": "List the quotes the caller's teams hold, narrowed by any filters sent.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    customer_id (Optional[str]): Restrict to one customer.\n    quote_status (Optional[QuoteStatus]): Restrict to one status.\n    authored_by (Optional[str]): Restrict to one author's quotes.\n    quote_filter (QuoteFilter): The filters, bound from the query string.\n        Every field is optional and an absent one narrows nothing.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access, and\n        decides which teams' quotes come back.\n\nReturns:\n    List[Quote]: The matching quotes of the teams the caller may read.\n\nRaises:\n    MTInvalidQuoteFilterException: If a filter is malformed; answered as a\n        422.\n\nNotes:\n    - Filtering by ``status=pending-validation`` is what the manager's\n      validation queue is: the quotes an assistant has submitted and nobody\n      has ruled on yet.\n    - The three older query parameters stay, and the filter carries the\n      same names. They are passed on separately rather than merged here,\n      because the store is where the rule about which one wins belongs \u2014\n      and for ``authored_by`` that rule is a permission, not a preference.\n    - **A manager now sees their own teams' quotes rather than the whole\n      agency's**, and an administrator still sees everything. The narrowing\n      is the service's, applied in the statement; ``authored_by`` remains a\n      *filter* on top of it, so a manager narrowing by an author outside\n      their teams simply gets nothing rather than somebody else's book.",
         "operationId": "list_quotes_api_v1_quotes_get",
         "parameters": [
           {
@@ -11364,7 +12816,7 @@
         ]
       },
       "post": {
-        "description": "Create a quote and price whatever lines it arrives with.\n\nArgs:\n    payload (QuoteCreateRequest): What the quote should offer.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access and is\n        recorded as the quote's author.\n\nReturns:\n    Quote: The stored, priced quote with its weekly totals.\n\nRaises:\n    MTPricingUnknownInterventionType: If a line names a type that is not in\n        the catalog; answered as a 422.\n\nNotes:\n    The author is taken from the credential, never from the payload. A\n    manager's quote needs no validation step \u2014 they are the ones who would\n    sign it off \u2014 so it lands as a draft ready to send.",
+        "description": "Create a quote and price whatever lines it arrives with.\n\nArgs:\n    payload (QuoteCreateRequest): What the quote should offer.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access and is\n        recorded as the quote's author.\n\nReturns:\n    Quote: The stored, priced quote with its weekly totals.\n\nRaises:\n    MTQuoteUnassignable: If no team can be given the work \u2014 the household is\n        unknown, or the company has no team with anybody on it; 422.\n    MTPricingUnknownInterventionType: If a line names a type that is not in\n        the catalog; answered as a 422.\n\nNotes:\n    - The author and the agency are taken from the credential, never from\n      the payload. A manager's quote needs no validation step \u2014 they are the\n      ones who would sign it off \u2014 so it lands as a draft ready to send.\n    - **The payload goes to the service whole**, rather than being turned\n      into a quote here. Which team delivers the work is decided from where\n      the household lives and how much each team already carries, and that\n      rule has to be in one place: the assistant's route at\n      ``POST /api/v1/me/quotes`` calls the same method.",
         "operationId": "create_quote_api_v1_quotes_post",
         "requestBody": {
           "content": {
@@ -12070,6 +13522,59 @@
         ]
       }
     },
+    "/api/v1/quotes/{quote_id}/team": {
+      "patch": {
+        "description": "Move a quote to a different team.\n\nArgs:\n    quote_id (str): The quote to move.\n    payload (QuoteTeamRequest): The team that will deliver it instead.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access, and is\n        checked against both the team the quote leaves and the one it joins.\n\nReturns:\n    Quote: The updated quote.\n\nRaises:\n    MTQuoteNotFound: If no such quote exists, or it belongs to another\n        company; answered as a 404.\n    MTQuoteTeamForbidden: If the caller runs neither team; 403.\n    MTTeamNotFound: If the destination team does not exist; 404.\n\nNotes:\n    - Attribution happens once, when the quote is written. This exists for\n      the two cases the rule cannot see: a proximity decision that was\n      wrong, and a household that has moved. It is deliberately **manual** \u2014\n      re-attributing automatically would move work a manager has already\n      validated, and with it visits somebody has been told about.\n    - The **guard is manager, and the row check is in the service**, which\n      is the codebase's standing division: a route can prove the caller's\n      rank, but only the service can prove that both of these particular\n      teams are theirs.\n    - Neither team's calendar changes here. Each picks the move up on its\n      next run, which is why both need re-planning afterwards \u2014 the service\n      says so in its log line.",
+        "operationId": "set_quote_team_api_v1_quotes__quote_id__team_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "quote_id",
+            "required": true,
+            "schema": {
+              "title": "Quote Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteTeamRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Quote Team",
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
     "/api/v1/quotes/{quote_id}/validate": {
       "post": {
         "description": "Approve a quote an assistant submitted, committing its work.\n\nArgs:\n    quote_id (str): The quote to validate.\n    service (QuoteService): The quote service.\n    caller (User): The authenticated caller; enforces manager access and is\n        recorded as the account that approved the figures.\n\nReturns:\n    Quote: The validated quote, accepted and schedulable.\n\nRaises:\n    MTQuoteNotFound: If no such quote exists; answered as a 404.\n    MTQuoteNotEditable: If the quote is not awaiting validation; answered\n        as a 409.\n    MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.\n\nNotes:\n    - **Manager-gated, and that is the whole point of the status.** An\n      assistant knows what a customer needs but does not set the agency's\n      prices, so the quote they wrote waits here until somebody who does\n      agrees to it. Who agreed is recorded on the quote.\n    - **Validation accepts the quote**, so this is the moment its lines\n      enter the planning computation \u2014 the same thing ``POST /{id}/send``\n      does for a manager's own hand-written one. It used to stop at\n      ``sent`` and need a second, separate acceptance, which nothing on any\n      screen asked for: the quote left the validation queue and its work\n      silently never reached a run.",
@@ -12375,6 +13880,599 @@
         ]
       }
     },
+    "/api/v1/teams": {
+      "get": {
+        "description": "List the teams the caller may read.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[TeamView]: An administrator's whole company, a manager's own teams,\n    or the single team an assistant is on.\n\nNotes:\n    The narrowing is **the service's**, not the route's, and it is applied in\n    the statement rather than to the page. A guard here could only prove the\n    caller's rank; which rows a manager may see is a question about the teams\n    table, and a page filtered after the read has already loaded rows the\n    caller may not see.",
+        "operationId": "list_teams_api_v1_teams_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamView"
+                  },
+                  "title": "Response List Teams Api V1 Teams Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Teams",
+        "tags": [
+          "Teams"
+        ]
+      },
+      "post": {
+        "description": "Form a team at one of the company's sites.\n\nArgs:\n    payload (TeamCreateRequest): The team's name, site and manager.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    TeamView: The stored team, whose manager is already its one member.\n\nRaises:\n    MTTeamNameTaken: If the company already has a team of that name; 409.\n    MTTeamManagerRequired: If the named account cannot run it; 422.\n    MTTeamMemberAlreadyPlaced: If the manager is already on a team; 409.\n\nNotes:\n    Administrator-only, as the requirement states \u2014 a manager cannot form\n    the team they would then run. The member count is one because the\n    creating call enrols the manager, which is why it is passed rather than\n    queried.",
+        "operationId": "create_team_api_v1_teams_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Team",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/api/v1/teams/document-constraints": {
+      "get": {
+        "description": "Report what a team's shared space accepts.\n\nArgs:\n    _ (User): The authenticated caller.\n\nReturns:\n    TeamDocumentConstraintsResponse: The accepted media types and the size\n    limit.\n\nNotes:\n    Declared **before** ``/{team_id}/documents`` and, more to the point,\n    before ``/{team_id}`` on the sibling router: FastAPI matches in\n    declaration order, and ``document-constraints`` would otherwise be read\n    as a team identifier and answered 404 by a lookup that can never\n    succeed. The two routers are mounted in the order that keeps this true.",
+        "operationId": "team_document_constraints_api_v1_teams_document_constraints_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamDocumentConstraintsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Team Document Constraints",
+        "tags": [
+          "Team documents"
+        ]
+      }
+    },
+    "/api/v1/teams/{team_id}": {
+      "delete": {
+        "description": "Disband a team that holds no work.\n\nArgs:\n    team_id (str): The team to remove.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nRaises:\n    MTTeamNotFound: If no such team exists; answered as a 404.\n    MTTeamHasWork: If quotes still name it; answered as a 409.\n\nNotes:\n    The team's shared documents are **not** removed here, and that is a gap\n    this route knows about: emptying the object store belongs to\n    :meth:`~service.organisation.team_documents.TeamDocumentService.purge_team`,\n    which the disband screen calls first. Wiring it into the delete itself\n    would put an object-store failure in the path of a database transaction.",
+        "operationId": "delete_team_api_v1_teams__team_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Team",
+        "tags": [
+          "Teams"
+        ]
+      },
+      "get": {
+        "description": "Return one team the caller may read.\n\nArgs:\n    team_id (str): The team to read.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller.\n\nReturns:\n    TeamView: The team and its member count.\n\nRaises:\n    MTTeamNotFound: If no such team exists; answered as a 404.\n    MTTeamForbidden: If it is not one the caller may read; 403.",
+        "operationId": "get_team_api_v1_teams__team_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Team",
+        "tags": [
+          "Teams"
+        ]
+      },
+      "put": {
+        "description": "Change a team's name, site or manager.\n\nArgs:\n    team_id (str): The team to change.\n    payload (TeamUpdateRequest): The new name, site and manager.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    TeamView: The updated team.\n\nRaises:\n    MTTeamNotFound: If no such team exists; answered as a 404.\n    MTTeamNameTaken: If another team already uses the name; 409.\n    MTTeamManagerRequired: If the named account cannot run it; 422.",
+        "operationId": "update_team_api_v1_teams__team_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Team",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/api/v1/teams/{team_id}/documents": {
+      "get": {
+        "description": "Return the files a team shares.\n\nArgs:\n    team_id (str): The team whose space is being read.\n    service (TeamDocumentService): The teamspace service.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[TeamDocument]: The records, newest first.\n\nRaises:\n    MTTeamNotFound: If no such team exists, or the caller is not on it;\n        answered as a 404 in both cases, so a space somebody may not open is\n        indistinguishable from one that does not exist.",
+        "operationId": "list_team_documents_api_v1_teams__team_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamDocument"
+                  },
+                  "title": "Response List Team Documents Api V1 Teams  Team Id  Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Team Documents",
+        "tags": [
+          "Team documents"
+        ]
+      },
+      "post": {
+        "description": "Add a file to a team's shared space.\n\nArgs:\n    team_id (str): The team whose space it joins.\n    document (UploadFile): The uploaded file.\n    service (TeamDocumentService): The teamspace service.\n    caller (User): The member adding it.\n\nReturns:\n    TeamDocument: The stored record.\n\nRaises:\n    MTTeamNotFound: If no such team exists, or the caller is not on it; 404.\n    MTTeamDocumentStorageUnavailable: If no object store is configured; 503.\n    MTS3EmptyPayload: If the file carries no bytes; answered as a 422.\n    MTS3UnsupportedContentType: If it is not a shareable type; 415.\n    MTS3PayloadTooLarge: If it exceeds the configured limit; 413.\n\nNotes:\n    - **Guarded at ``get_current_user``, not at manager.** Everybody on the\n      team may add a document \u2014 that is the requirement, and it is what makes\n      the space shared rather than published. The check that actually\n      matters, that the caller is on *this* team, is in the service, because\n      membership is polymorphic and cannot be resolved from a credential\n      alone.\n    - The whole file is read into memory before anything is written, so its\n      real type and size are known before an object exists. The size is\n      bounded by the configured limit, so one request cannot exhaust the\n      process.\n    - The declared ``Content-Type`` is ignored; the store decides from the\n      file's own leading bytes, for the same reason the photograph route\n      does.",
+        "operationId": "upload_team_document_api_v1_teams__team_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_team_document_api_v1_teams__team_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Team Document",
+        "tags": [
+          "Team documents"
+        ]
+      }
+    },
+    "/api/v1/teams/{team_id}/documents/{document_id}": {
+      "delete": {
+        "description": "Remove one of a team's shared files.\n\nArgs:\n    team_id (str): The team whose space it sits in.\n    document_id (str): The record to remove.\n    service (TeamDocumentService): The teamspace service.\n    caller (User): The member removing it.\n\nRaises:\n    MTTeamNotFound: If no such team exists, or the caller is not on it; 404.\n    MTTeamDocumentNotFound: If no such document exists; answered as a 404.\n    MTTeamDocumentForbidden: If the caller neither uploaded it, runs the\n        team, nor is an administrator; answered as a 403.\n    MTTeamDocumentStorageUnavailable: If no object store is configured; 503.\n\nNotes:\n    Three people may remove a file and the route names none of them: whoever\n    added it, the team's manager and an administrator are decided in the\n    service, because only the record knows who uploaded it.",
+        "operationId": "delete_team_document_api_v1_teams__team_id__documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Team Document",
+        "tags": [
+          "Team documents"
+        ]
+      },
+      "get": {
+        "description": "Read one of a team's shared files back.\n\nArgs:\n    team_id (str): The team whose space it sits in.\n    document_id (str): The record to read.\n    service (TeamDocumentService): The teamspace service.\n    caller (User): The authenticated caller.\n\nReturns:\n    Response: The bytes, with the stored media type and the uploader's file\n    name.\n\nRaises:\n    MTTeamNotFound: If no such team exists, or the caller is not on it; 404.\n    MTTeamDocumentNotFound: If no such document exists, or the object behind\n        it could not be read; answered as a 404.\n    MTTeamDocumentStorageUnavailable: If no object store is configured; 503.\n\nNotes:\n    - Declared with **no response model**: the body is bytes rather than a\n      record, and there is no model to infer one from. The same reason the\n      invoice download gives.\n    - Served as an **attachment**, so a shared file is downloaded rather than\n      rendered in the tab. The media type was detected from the file's own\n      bytes, but a document nobody vetted is still somebody else's content\n      being served from the application's origin.",
+        "operationId": "download_team_document_api_v1_teams__team_id__documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Team Document",
+        "tags": [
+          "Team documents"
+        ]
+      }
+    },
+    "/api/v1/teams/{team_id}/members": {
+      "get": {
+        "description": "Return everybody on a team the caller may read.\n\nArgs:\n    team_id (str): The team to read.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller.\n\nReturns:\n    List[TeamMember]: The memberships, each a kind and an identifier.\n\nRaises:\n    MTTeamNotFound: If no such team exists; answered as a 404.\n    MTTeamForbidden: If it is not one the caller may read; 403.",
+        "operationId": "list_team_members_api_v1_teams__team_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TeamMember"
+                  },
+                  "title": "Response List Team Members Api V1 Teams  Team Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Team Members",
+        "tags": [
+          "Teams"
+        ]
+      },
+      "post": {
+        "description": "Put somebody on a team.\n\nArgs:\n    team_id (str): The team they join.\n    member (TeamMember): Which person, and which kind of record.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    TeamMember: The stored membership.\n\nRaises:\n    MTTeamNotFound: If no such team exists; answered as a 404.\n    MTTeamMemberAlreadyPlaced: If they are already on a team; 409.\n    MTTeamMemberOutsideAgency: If they do not work at the team's site; 422.\n\nNotes:\n    Adding somebody is a **single act**, not a submitted roster, which is the\n    one place this surface departs from the \"send the whole list\" rule used\n    for working days. A person is on exactly one team, so a whole-list\n    submission would silently take people off other teams \u2014 and each of those\n    removals changes whose week the next planning run rewrites.",
+        "operationId": "add_team_member_api_v1_teams__team_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamMember"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMember"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Team Member",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/api/v1/teams/{team_id}/members/{member_kind}/{member_id}": {
+      "delete": {
+        "description": "Take somebody off a team.\n\nArgs:\n    team_id (str): The team they leave.\n    member_kind (MemberKind): Whether the identifier names an account or an\n        assistant record.\n    member_id (str): The person to remove.\n    service (TeamService): The team service.\n    caller (User): The authenticated caller; enforces administrator access.\n\nRaises:\n    MTTeamNotFound: If no such team exists, or they are not on it; 404.\n    MTTeamManagerRequired: If they are the team's manager; answered as a\n        422, because the way to replace a manager is to name a new one.",
+        "operationId": "remove_team_member_api_v1_teams__team_id__members__member_kind___member_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MemberKind"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "title": "Member Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Team Member",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
     "/api/v1/users": {
       "get": {
         "description": "List the accounts.\n\nArgs:\n    page (int): One-based page number.\n    size (int): Page size.\n    role (Optional[UserRole]): Restrict to one role.\n    repository (UserRepository): The account store.\n    _ (User): The authenticated caller; enforces administrator access.\n\nReturns:\n    List[UserResponse]: The accounts, without their password hashes.",
@@ -12649,6 +14747,66 @@
           }
         },
         "summary": "Bill Accepted",
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    },
+    "/api/v1/webhooks/bill-paid": {
+      "post": {
+        "description": "Transmit a settled invoice to the agency's certified platform.\n\nArgs:\n    request (BillPaidRequest): Names the invoice that was collected.\n    x_webhook_token (Optional[str]): The shared secret, as a header.\n    billing (BillingService): Reads the invoice and its stored document.\n    transmissions (InvoicingService): Sends it where it must go.\n\nReturns:\n    BillDispatchResponse: Whether the platform accepted it.\n\nRaises:\n    HTTPException: 401 when the shared secret is missing or wrong.\n    MTBillNotFound: If the invoice does not exist; answered as a 404.\n\nNotes:\n    - **What is transmitted depends on who owed the money**, not on this\n      endpoint. A household's settled invoice is *declared* \u2014 flux 10.4,\n      because VAT on services falls due on collection \u2014 and reaches nobody;\n      a business receives the structured document; a public body is reached\n      through Chorus Pro. Most of this agency's revenue takes the first\n      route, which is why a literal reading of \"send the paid bill\" would be\n      wrong for nearly every invoice it issues.\n    - **A failed transmission answers 200 with ``sent=false``.** The payment\n      is recorded and true whatever a platform said; answering 5xx would have\n      the announcement redelivered and, worse, would make a working payment\n      look like a broken one. The failure is logged with the platform's own\n      words.\n    - **An agency with nothing connected is a 409 and stays one.** That is\n      not a transmission that failed but one that could not be attempted,\n      and the fix is a person connecting a platform rather than a retry.",
+        "operationId": "bill_paid_api_v1_webhooks_bill_paid_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-webhook-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Webhook-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillPaidRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillDispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bill Paid",
         "tags": [
           "Webhooks"
         ]

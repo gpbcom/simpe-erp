@@ -16,6 +16,7 @@ from models.planning.intervention.exceptions import (
     MTInterventionInvalidId,
     MTInterventionInvalidName,
     MTInterventionInvalidStatus,
+    MTInterventionInvalidTeamId,
     MTInterventionInvalidTime,
 )
 
@@ -27,6 +28,7 @@ class Intervention(BaseModel):
         id (Optional[str]): Identifier, populated on read from the store.
         planning_run_id (Optional[str]): The run that produced this visit.
         company_id (str): The agency whose calendar this visit sits on.
+        team_id (str): The team whose half of that calendar it sits on.
         name (str): What the service is, as written on the quote.
         intervention_type_id (str): The catalog entry it sells.
         quote_line_id (str): The accepted quote line it delivers.
@@ -58,6 +60,7 @@ class Intervention(BaseModel):
         description="The run that produced this visit.",
     )
     company_id: str = Field(description="The agency whose calendar this visit sits on.")
+    team_id: str = Field(description="The team that delivers this visit.")
     name: str = Field(description="What the service is.")
     intervention_type_id: str = Field(description="The catalog entry it sells.")
     quote_line_id: str = Field(description="The accepted quote line it delivers.")
@@ -116,17 +119,45 @@ class Intervention(BaseModel):
             MTInterventionInvalidId: If ``value`` is not a non-empty string.
 
         Notes:
-            ``company_id`` is here rather than beside ``planning_run_id``
-            deliberately. A visit is deleted in bulk by the agency and period it
-            belongs to, so a visit that did not name its agency would either
-            escape the replacement for ever or be swept up by another agency's
-            run — which is why it is required, like the assistant and the
-            customer, and not optional like the run that happens to have
-            produced it.
+            ``company_id`` and ``team_id`` are here rather than beside
+            ``planning_run_id`` deliberately. A visit is deleted in bulk by the
+            agency, the team and the period it belongs to, so a visit missing
+            either would escape the replacement for ever or be swept up by
+            another team's run — which is why both are required, like the
+            assistant and the customer, and not optional like the run that
+            happens to have produced it.
         """
         if not isinstance(value, str) or not value.strip():
             raise MTInterventionInvalidId(
                 f"Invalid identifier: {value!r}. Must be a non-empty string."
+            )
+        return value.strip()
+
+    @field_validator("team_id", mode="before")
+    def validate_team_id(cls, value: Optional[str]) -> str:
+        """Validates that ``team_id`` names the team delivering the visit.
+
+        Args:
+            value (Optional[str]): Raw ``team_id`` value.
+
+        Returns:
+            str: The stripped identifier.
+
+        Raises:
+            MTInterventionInvalidTeamId: If ``value`` is not a non-empty string.
+
+        Notes:
+            Its own validator rather than a member of the grouped identifier
+            check beside it, because the failure it describes is a different
+            one. A missing catalogue entry or customer makes a visit
+            *incomplete*; a missing team makes it **unreplaceable** — the delete
+            that rewrites a period is scoped by ``(company, team, day)``, so a
+            visit naming no team escapes every re-plan for ever.
+        """
+        if not isinstance(value, str) or not value.strip():
+            raise MTInterventionInvalidTeamId(
+                f"Invalid team_id: {value!r}. Must be a non-empty string naming "
+                f"the team that delivers this visit."
             )
         return value.strip()
 

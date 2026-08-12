@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, time
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -23,18 +23,19 @@ from models.billing.exceptions import (
     MTBillLineInvalidWindow,
 )
 from models.enums import ServiceCategory
+from tests.annotations import ModelInput
 
 
-def a_line(**overrides: Any) -> Dict[str, Any]:
+def a_line(**overrides: ModelInput) -> Dict[str, ModelInput]:
     """Build the payload of a delivered, priced charge.
 
     Args:
         **overrides: Fields to replace on the default payload.
 
     Returns:
-        Dict[str, Any]: A payload ``BillLine`` accepts.
+        Dict[str, ModelInput]: A payload ``BillLine`` accepts.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "quote_line_id": "quote-line-1",
         "intervention_id": "intervention-1",
         "name": "Aide à la toilette",
@@ -71,7 +72,7 @@ class TestBillLineIdentity:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_a_charge_without_an_origin_is_refused(self, value: Any) -> None:
+    def test_a_charge_without_an_origin_is_refused(self, value: ModelInput) -> None:
         """Every charge comes from something that was sold."""
         with pytest.raises(MTBillLineInvalidId):
             BillLine(**a_line(quote_line_id=value))
@@ -104,7 +105,7 @@ class TestBillLineDescription:
             pytest.param("  ", id="Invalid - whitespace"),
         ],
     )
-    def test_a_charge_must_describe_itself(self, value: Any) -> None:
+    def test_a_charge_must_describe_itself(self, value: ModelInput) -> None:
         """French law requires the service rendered to be described.
 
         Notes:
@@ -121,7 +122,7 @@ class TestBillLineDescription:
             pytest.param("weekly", id="Invalid - not a category"),
         ],
     )
-    def test_the_vat_category_has_no_default(self, value: Any) -> None:
+    def test_the_vat_category_has_no_default(self, value: ModelInput) -> None:
         """Guessing the category would misstate the tax on the invoice."""
         with pytest.raises(MTBillLineInvalidServiceCategory):
             BillLine(**a_line(service_category=value))
@@ -140,7 +141,7 @@ class TestBillLineDescription:
             pytest.param(object(), id="Invalid - object"),
         ],
     )
-    def test_the_sold_day_must_be_a_date(self, value: Any) -> None:
+    def test_the_sold_day_must_be_a_date(self, value: ModelInput) -> None:
         """The service date decides which period the charge belongs to."""
         with pytest.raises(MTBillLineInvalidServiceDate):
             BillLine(**a_line(service_date=value))
@@ -167,7 +168,7 @@ class TestBillLineVisit:
             pytest.param({"end_time": None}, id="Invalid - no end"),
         ],
     )
-    def test_half_a_visit_is_refused(self, missing: Dict[str, Any]) -> None:
+    def test_half_a_visit_is_refused(self, missing: Dict[str, ModelInput]) -> None:
         """A partial visit leaves the reader unable to say what happened.
 
         Notes:
@@ -204,7 +205,7 @@ class TestBillLineVisit:
             pytest.param(object(), id="Invalid - object"),
         ],
     )
-    def test_a_clock_time_must_be_a_time(self, value: Any) -> None:
+    def test_a_clock_time_must_be_a_time(self, value: ModelInput) -> None:
         """Only a time or an ISO string names an hour of the day."""
         with pytest.raises(MTBillLineInvalidWindow):
             BillLine(**a_line(start_time=value))
@@ -235,7 +236,7 @@ class TestBillLineDuration:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_an_unusable_duration_is_refused(self, value: Any) -> None:
+    def test_an_unusable_duration_is_refused(self, value: ModelInput) -> None:
         """An amount charged for no time is an invoice nobody pays."""
         with pytest.raises(MTBillLineInvalidDuration):
             BillLine(**a_line(duration_minutes=value))
@@ -266,7 +267,7 @@ class TestBillLineMoney:
             pytest.param(float("inf"), id="Invalid - infinite"),
         ],
     )
-    def test_an_unusable_amount_is_refused(self, value: Any) -> None:
+    def test_an_unusable_amount_is_refused(self, value: ModelInput) -> None:
         """Only a finite, non-negative decimal is money."""
         with pytest.raises(MTBillLineInvalidAmount):
             BillLine(**a_line(total_ht=value))
@@ -305,7 +306,7 @@ class TestBillLineMoney:
             pytest.param("not a rate", id="Invalid - unparseable"),
         ],
     )
-    def test_an_unusable_vat_rate_is_refused(self, value: Any) -> None:
+    def test_an_unusable_vat_rate_is_refused(self, value: ModelInput) -> None:
         """A rate is a proportion, never a percentage.
 
         Notes:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, List
+from typing import Dict, List
 
 # Third-party imports
 import httpx
@@ -10,6 +10,7 @@ import pytest
 # First-party imports
 from models.configuration.billing_webhook_config import BillingWebhookConfig
 from service.billing.webhook import BillingWebhook
+from tests.annotations import ModelInput
 
 TOKEN_ENV = "BILLING_WEBHOOK_TOKEN_TEST"
 
@@ -17,16 +18,16 @@ TOKEN_ENV = "BILLING_WEBHOOK_TOKEN_TEST"
 class _Recorder:
     """Stands in for ``httpx.AsyncClient`` and records what was posted."""
 
-    calls: List[Dict[str, Any]] = []
+    calls: List[Dict[str, ModelInput]] = []
     failure: bool = False
     status_code: int = 200
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: ModelInput, **kwargs: ModelInput) -> None:
         """Accept whatever the client is constructed with.
 
         Args:
-            *args (Any): Ignored.
-            **kwargs (Any): Ignored.
+            *args (ModelInput): Ignored.
+            **kwargs (ModelInput): Ignored.
         """
 
     async def __aenter__(self) -> "_Recorder":
@@ -37,19 +38,19 @@ class _Recorder:
         """
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(self, *args: ModelInput) -> None:
         """Leave the context.
 
         Args:
-            *args (Any): The exception triple, ignored.
+            *args (ModelInput): The exception triple, ignored.
         """
 
-    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
+    async def post(self, url: str, **kwargs: ModelInput) -> httpx.Response:
         """Record a call and answer with the configured status.
 
         Args:
             url (str): Where the call went.
-            **kwargs (Any): The payload and headers.
+            **kwargs (ModelInput): The payload and headers.
 
         Returns:
             httpx.Response: The canned answer.

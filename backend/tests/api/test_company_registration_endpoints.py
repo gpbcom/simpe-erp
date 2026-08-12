@@ -14,7 +14,7 @@ from api.exception_handlers import ExceptionHandlers
 from api.middleware.auth_middleware import AuthMiddleware
 from api.v1.companies.companies import router as companies_router
 from models.auth.user import User
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import UserRole
 from service.auth.exceptions import MTAuthEmailAlreadyRegistered
 from service.companies.exceptions import (

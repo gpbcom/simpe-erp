@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, datetime
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.auth.user import User
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import AccountOrigin, HcaApplicationStatus, UserRole
 from models.people.hca_application import HcaApplication
 from models.settings.planning_settings import PlanningSettings
@@ -20,6 +20,7 @@ from storage.repositories.companies.company import CompanyRepository
 from storage.repositories.people.hca_application import HcaApplicationRepository
 from storage.repositories.planning.planning_settings import PlanningSettingsRepository
 from storage.repositories.auth.user import UserRepository
+from tests.annotations import ModelInput
 
 HASH = "$2b$12$" + "a" * 53
 
@@ -42,17 +43,17 @@ async def _company(
     )
 
 
-def _application(company_id: str, **overrides: Any) -> HcaApplication:
+def _application(company_id: str, **overrides: ModelInput) -> HcaApplication:
     """Build an application.
 
     Args:
         company_id (str): The company applied to.
-        **overrides (Any): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         HcaApplication: The application.
     """
-    values: Dict[str, Any] = {
+    values: Dict[str, ModelInput] = {
         "company_id": company_id,
         "first_name": "Ana",
         "last_name": "Lopez",

@@ -16,6 +16,7 @@ from models.enums import QuoteStatus, ServiceCategory
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from service.quotes.quotes import QuoteService
+from tests.annotations import ModelInput
 
 FIRST_SERVICE = date(2026, 9, 1)
 LAST_SERVICE = date(2026, 9, 28)
@@ -66,7 +67,7 @@ def _line(service_date: date) -> QuoteLine:
     )
 
 
-def _parent(**overrides: object) -> Quote:
+def _parent(**overrides: ModelInput) -> Quote:
     """Build an expired, accepted, auto-renewing arrangement.
 
     Args:
@@ -102,7 +103,13 @@ def service() -> QuoteService:
     quotes.create.side_effect = lambda quote: quote
     types = AsyncMock()
     types.get_many.return_value = {"type-1": _type()}
-    return QuoteService(quotes=quotes, types=types, config=PricingConfig())
+    return QuoteService(
+        quotes=quotes,
+        types=types,
+        config=PricingConfig(),
+        teams=AsyncMock(),
+        customers=AsyncMock(),
+    )
 
 
 class TestRenewalSweep:

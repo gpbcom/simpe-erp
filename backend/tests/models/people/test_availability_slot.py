@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, time
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -21,14 +21,15 @@ from models.people.hca.exceptions import (
     MTAvailabilitySlotInvalidStartTime,
     MTInvalidAvailabilitySlotException,
 )
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_slot_kwargs() -> Dict[str, Any]:
+def valid_slot_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a week of annual leave.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "hca_id": "hca-1",
@@ -46,7 +47,7 @@ class TestAvailabilitySlot:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_slot_kwargs: Dict[str, Any]
+        self, valid_slot_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A slot is a period, an assistant and a reason."""
         slot = AvailabilitySlot(**valid_slot_kwargs)
@@ -54,7 +55,7 @@ class TestAvailabilitySlot:
         assert slot.kind is AvailabilityKind.HOLIDAY
         assert slot.id is None
 
-    def test_a_single_day_slot(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_a_single_day_slot(self, valid_slot_kwargs: Dict[str, ModelInput]) -> None:
         """One day off is a slot whose start and end are the same date.
 
         Notes:
@@ -69,7 +70,9 @@ class TestAvailabilitySlot:
         )
         assert slot.covers(date(2026, 8, 10)) is True
 
-    def test_iso_strings_are_parsed(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_iso_strings_are_parsed(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """Dates and times may be supplied as ISO-8601 strings."""
         slot = AvailabilitySlot(
             **{
@@ -84,7 +87,7 @@ class TestAvailabilitySlot:
         assert slot.start_time == time(9, 0)
 
     def test_kind_is_coerced_from_a_string(
-        self, valid_slot_kwargs: Dict[str, Any]
+        self, valid_slot_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A string kind becomes an AvailabilityKind member."""
         slot = AvailabilitySlot(**{**valid_slot_kwargs, "kind": "sick-leave"})
@@ -103,7 +106,7 @@ class TestAvailabilitySlot:
         ],
     )
     def test_invalid_id_raises(
-        self, valid_slot_kwargs: Dict[str, Any], invalid_id: Any
+        self, valid_slot_kwargs: Dict[str, ModelInput], invalid_id: ModelInput
     ) -> None:
         """An id that is neither None nor a non-empty string is rejected."""
         with pytest.raises(MTAvailabilitySlotInvalidId):
@@ -118,18 +121,22 @@ class TestAvailabilitySlot:
         ],
     )
     def test_invalid_hca_id_raises(
-        self, valid_slot_kwargs: Dict[str, Any], invalid_hca_id: Any
+        self, valid_slot_kwargs: Dict[str, ModelInput], invalid_hca_id: ModelInput
     ) -> None:
         """A slot must name the assistant it belongs to."""
         with pytest.raises(MTAvailabilitySlotInvalidHcaId):
             AvailabilitySlot(**{**valid_slot_kwargs, "hca_id": invalid_hca_id})
 
-    def test_invalid_start_date_raises(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_invalid_start_date_raises(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A non date-like start_date is rejected."""
         with pytest.raises(MTAvailabilitySlotInvalidStartDate):
             AvailabilitySlot(**{**valid_slot_kwargs, "start_date": 20260810})
 
-    def test_invalid_end_date_raises(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_invalid_end_date_raises(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A non date-like end_date is rejected."""
         with pytest.raises(MTAvailabilitySlotInvalidEndDate):
             AvailabilitySlot(**{**valid_slot_kwargs, "end_date": ["2026", "08"]})
@@ -143,28 +150,36 @@ class TestAvailabilitySlot:
         ],
     )
     def test_invalid_kind_raises(
-        self, valid_slot_kwargs: Dict[str, Any], invalid_kind: Any
+        self, valid_slot_kwargs: Dict[str, ModelInput], invalid_kind: ModelInput
     ) -> None:
         """A kind outside the enum is rejected, naming the valid set."""
         with pytest.raises(MTAvailabilitySlotInvalidKind):
             AvailabilitySlot(**{**valid_slot_kwargs, "kind": invalid_kind})
 
-    def test_invalid_start_time_raises(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_invalid_start_time_raises(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A non time-like start_time is rejected."""
         with pytest.raises(MTAvailabilitySlotInvalidStartTime):
             AvailabilitySlot(**{**valid_slot_kwargs, "start_time": 900})
 
-    def test_invalid_end_time_raises(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_invalid_end_time_raises(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A non time-like end_time is rejected."""
         with pytest.raises(MTAvailabilitySlotInvalidEndTime):
             AvailabilitySlot(**{**valid_slot_kwargs, "end_time": 1200})
 
-    def test_a_blank_note_becomes_none(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_a_blank_note_becomes_none(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A whitespace-only note is stored as absent."""
         slot = AvailabilitySlot(**{**valid_slot_kwargs, "note": "   "})
         assert slot.note is None
 
-    def test_invalid_note_raises(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_invalid_note_raises(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A non-string note is rejected."""
         with pytest.raises(MTAvailabilitySlotInvalidNote):
             AvailabilitySlot(**{**valid_slot_kwargs, "note": 42})
@@ -174,7 +189,7 @@ class TestAvailabilitySlot:
     # ------------------------------------------------------------------ #
 
     def test_an_end_before_the_start_raises(
-        self, valid_slot_kwargs: Dict[str, Any]
+        self, valid_slot_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The period cannot run backwards."""
         with pytest.raises(MTAvailabilitySlotInvalidEndDate):
@@ -194,7 +209,10 @@ class TestAvailabilitySlot:
         ],
     )
     def test_a_half_set_time_window_raises(
-        self, valid_slot_kwargs: Dict[str, Any], start_time: Any, end_time: Any
+        self,
+        valid_slot_kwargs: Dict[str, ModelInput],
+        start_time: ModelInput,
+        end_time: ModelInput,
     ) -> None:
         """Both times are set or neither is.
 
@@ -219,7 +237,7 @@ class TestAvailabilitySlot:
         ],
     )
     def test_an_invalid_time_window_raises(
-        self, valid_slot_kwargs: Dict[str, Any], start_time: time, end_time: time
+        self, valid_slot_kwargs: Dict[str, ModelInput], start_time: time, end_time: time
     ) -> None:
         """The blocked window must have a positive width."""
         with pytest.raises(MTAvailabilitySlotInvalidEndTime):
@@ -236,13 +254,13 @@ class TestAvailabilitySlot:
     # ------------------------------------------------------------------ #
 
     def test_a_slot_without_times_is_a_whole_day(
-        self, valid_slot_kwargs: Dict[str, Any]
+        self, valid_slot_kwargs: Dict[str, ModelInput]
     ) -> None:
         """No time window means the whole day is blocked."""
         assert AvailabilitySlot(**valid_slot_kwargs).is_whole_day() is True
 
     def test_a_slot_with_times_is_partial(
-        self, valid_slot_kwargs: Dict[str, Any]
+        self, valid_slot_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A time window carves out part of the day only."""
         slot = AvailabilitySlot(
@@ -261,7 +279,7 @@ class TestAvailabilitySlot:
         ],
     )
     def test_covers(
-        self, valid_slot_kwargs: Dict[str, Any], day: date, expected: bool
+        self, valid_slot_kwargs: Dict[str, ModelInput], day: date, expected: bool
     ) -> None:
         """The range is inclusive at both ends."""
         assert AvailabilitySlot(**valid_slot_kwargs).covers(day) is expected
@@ -291,7 +309,9 @@ class TestAvailabilitySlot:
     #  Serialization
     # ------------------------------------------------------------------ #
 
-    def test_model_dump_round_trip(self, valid_slot_kwargs: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(
+        self, valid_slot_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A slot survives a dump-and-rebuild unchanged."""
         slot = AvailabilitySlot(
             **{**valid_slot_kwargs, "start_time": time(9, 0), "end_time": time(12, 0)}

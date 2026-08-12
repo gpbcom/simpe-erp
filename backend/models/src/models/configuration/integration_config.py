@@ -192,15 +192,13 @@ class IntegrationConfig(BaseModel):
             return ()
         if isinstance(value, (str, bytes, dict)):
             raise MTIntegrationConfigInvalidProviders(
-                f"Invalid providers: {value!r}. Must be a list of platform "
-                f"entries."
+                f"Invalid providers: {value!r}. Must be a list of platform entries."
             )
         try:
             declared = list(value)
         except TypeError:
             raise MTIntegrationConfigInvalidProviders(
-                f"Invalid providers: {value!r}. Must be a list of platform "
-                f"entries."
+                f"Invalid providers: {value!r}. Must be a list of platform entries."
             ) from None
         entries: List[ProviderDescriptor] = []
         seen: List[EInvoicingProvider] = []
@@ -236,9 +234,7 @@ class IntegrationConfig(BaseModel):
         """
         return self.providers
 
-    def describe_provider(
-        self, provider: EInvoicingProvider
-    ) -> ProviderDescriptor:
+    def describe_provider(self, provider: EInvoicingProvider) -> ProviderDescriptor:
         """Return the declared entry for one platform.
 
         Args:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, datetime
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -18,14 +18,15 @@ from models.catalog.exceptions import (
     MTCertificationTypeInvalidLabel,
     MTInvalidCertificationTypeException,
 )
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_kwargs() -> Dict[str, Any]:
+def valid_kwargs() -> Dict[str, ModelInput]:
     """Return the smallest set of fields a catalogue entry needs.
 
     Returns:
-        Dict[str, Any]: Constructor keywords for a valid entry.
+        Dict[str, ModelInput]: Constructor keywords for a valid entry.
     """
     return {
         "code": "DEAES",
@@ -40,18 +41,22 @@ class TestCertificationType:
     #  Construction
     # ------------------------------------------------------------------ #
 
-    def test_a_code_and_a_label_are_enough(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_a_code_and_a_label_are_enough(
+        self, valid_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """An entry needs only what it is called and what it is keyed by."""
         entry = CertificationType(**valid_kwargs)
         assert entry.code == "DEAES"
         assert entry.description is None
         assert entry.id is None
 
-    def test_an_entry_is_active_by_default(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_an_entry_is_active_by_default(
+        self, valid_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A newly added qualification may be required straight away."""
         assert CertificationType(**valid_kwargs).is_active is True
 
-    def test_full_construction(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_full_construction(self, valid_kwargs: Dict[str, ModelInput]) -> None:
         """Every field is accepted together."""
         entry = CertificationType(
             id=" 42 ",
@@ -69,7 +74,7 @@ class TestCertificationType:
     #  code validation
     # ------------------------------------------------------------------ #
 
-    def test_the_code_is_upper_cased(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_the_code_is_upper_cased(self, valid_kwargs: Dict[str, ModelInput]) -> None:
         """``deaes`` and ``DEAES`` are the same qualification.
 
         Notes:
@@ -80,7 +85,7 @@ class TestCertificationType:
         assert CertificationType(**{**valid_kwargs, "code": " deaes "}).code == "DEAES"
 
     def test_hyphens_and_underscores_are_accepted(
-        self, valid_kwargs: Dict[str, Any]
+        self, valid_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The key stays usable in an export or a URL without escaping."""
         entry = CertificationType(**{**valid_kwargs, "code": "SST_1-A"})
@@ -100,7 +105,7 @@ class TestCertificationType:
         ],
     )
     def test_invalid_code_raises(
-        self, valid_kwargs: Dict[str, Any], invalid_code: Any
+        self, valid_kwargs: Dict[str, ModelInput], invalid_code: ModelInput
     ) -> None:
         """A code that cannot serve as a stable key is refused."""
         with pytest.raises(MTCertificationTypeInvalidCode):
@@ -110,12 +115,14 @@ class TestCertificationType:
     #  label validation
     # ------------------------------------------------------------------ #
 
-    def test_the_label_keeps_its_accents(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_the_label_keeps_its_accents(
+        self, valid_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """The label is read by a person; the code carries the machine-safe form."""
         entry = CertificationType(**valid_kwargs)
         assert entry.label.startswith("Diplôme d'État")
 
-    def test_the_label_is_stripped(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_the_label_is_stripped(self, valid_kwargs: Dict[str, ModelInput]) -> None:
         """Surrounding whitespace is removed."""
         entry = CertificationType(**{**valid_kwargs, "label": "  Sauveteur  "})
         assert entry.label == "Sauveteur"
@@ -130,7 +137,7 @@ class TestCertificationType:
         ],
     )
     def test_invalid_label_raises(
-        self, valid_kwargs: Dict[str, Any], invalid_label: Any
+        self, valid_kwargs: Dict[str, ModelInput], invalid_label: ModelInput
     ) -> None:
         """An entry nobody could identify on screen is refused."""
         with pytest.raises(MTCertificationTypeInvalidLabel):
@@ -141,7 +148,7 @@ class TestCertificationType:
     # ------------------------------------------------------------------ #
 
     def test_a_blank_description_reads_as_absent(
-        self, valid_kwargs: Dict[str, Any]
+        self, valid_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An emptied text box means "no description", not an empty one."""
         entry = CertificationType(**{**valid_kwargs, "description": "   "})
@@ -155,7 +162,7 @@ class TestCertificationType:
         ],
     )
     def test_invalid_description_raises(
-        self, valid_kwargs: Dict[str, Any], invalid_description: Any
+        self, valid_kwargs: Dict[str, ModelInput], invalid_description: ModelInput
     ) -> None:
         """A description that is not text is rejected."""
         with pytest.raises(MTCertificationTypeInvalidDescription):
@@ -174,7 +181,7 @@ class TestCertificationType:
         ],
     )
     def test_invalid_id_raises(
-        self, valid_kwargs: Dict[str, Any], invalid_id: Any
+        self, valid_kwargs: Dict[str, ModelInput], invalid_id: ModelInput
     ) -> None:
         """An identifier that is neither None nor a non-empty string is refused."""
         with pytest.raises(MTCertificationTypeInvalidId):
@@ -193,7 +200,7 @@ class TestCertificationType:
         ],
     )
     def test_invalid_is_active_raises(
-        self, valid_kwargs: Dict[str, Any], invalid_flag: Any
+        self, valid_kwargs: Dict[str, ModelInput], invalid_flag: ModelInput
     ) -> None:
         """A retirement flag is a boolean, never a truthy string.
 
@@ -205,7 +212,7 @@ class TestCertificationType:
             CertificationType(**{**valid_kwargs, "is_active": invalid_flag})
 
     def test_a_none_flag_falls_back_to_active(
-        self, valid_kwargs: Dict[str, Any]
+        self, valid_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A row written before the column existed reads back as in use."""
         assert CertificationType(**{**valid_kwargs, "is_active": None}).is_active
@@ -214,7 +221,9 @@ class TestCertificationType:
     #  Timestamps
     # ------------------------------------------------------------------ #
 
-    def test_iso_timestamps_are_parsed(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_iso_timestamps_are_parsed(
+        self, valid_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A timestamp may arrive as an ISO-8601 string."""
         entry = CertificationType(
             **{**valid_kwargs, "updated_at": "2026-01-01T00:00:00Z"}
@@ -229,14 +238,14 @@ class TestCertificationType:
         ],
     )
     def test_invalid_timestamp_raises(
-        self, valid_kwargs: Dict[str, Any], invalid_timestamp: Any
+        self, valid_kwargs: Dict[str, ModelInput], invalid_timestamp: ModelInput
     ) -> None:
         """A timestamp that is not datetime-like is rejected."""
         with pytest.raises(MTCertificationTypeInvalidDate):
             CertificationType(**{**valid_kwargs, "created_at": invalid_timestamp})
 
     def test_timestamps_serialize_to_iso_text(
-        self, valid_kwargs: Dict[str, Any]
+        self, valid_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The store column is text, so a dump hands back a string."""
         entry = CertificationType(
@@ -249,7 +258,7 @@ class TestCertificationType:
     # ------------------------------------------------------------------ #
 
     def test_describe_names_both_the_code_and_the_label(
-        self, valid_kwargs: Dict[str, Any]
+        self, valid_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The planner's diagnosis must be actionable where it is read.
 
@@ -288,7 +297,7 @@ class TestCertificationType:
     #  Serialization
     # ------------------------------------------------------------------ #
 
-    def test_model_dump_round_trip(self, valid_kwargs: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(self, valid_kwargs: Dict[str, ModelInput]) -> None:
         """An entry survives a dump-and-rebuild unchanged."""
         entry = CertificationType(**valid_kwargs, description="Diplôme.")
         assert CertificationType(**entry.model_dump()) == entry

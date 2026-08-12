@@ -4,7 +4,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.schemas.responses.auth.user_response import UserResponse
 
 

@@ -210,6 +210,7 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
         return Quote(
             id=row.id,
             company_id=row.company_id,
+            team_id=row.team_id,
             reference=row.reference,
             customer_id=row.customer_id,
             status=row.status,
@@ -250,6 +251,7 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
             model.status.value,
         )
         row.company_id = model.company_id
+        row.team_id = model.team_id
         row.reference = model.reference
         row.customer_id = model.customer_id
         row.status = model.status.value

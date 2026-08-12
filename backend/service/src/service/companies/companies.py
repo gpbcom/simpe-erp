@@ -5,8 +5,8 @@ from logging import Logger, getLogger
 from typing import List, Optional
 
 # First-party imports
-from models.companies.company import Company
-from models.companies.company_choice import CompanyChoice
+from models.organisation.companies.company import Company
+from models.organisation.companies.company_choice import CompanyChoice
 from service.companies.exceptions import (
     MTCompanyLogoStorageUnavailable,
     MTCompanyNameTaken,
@@ -224,7 +224,7 @@ class CompanyService:
             - **Served without a credential, so the shape is the protection.**
               Returning whole companies here would publish a directory of every
               agency's registered office and contact address to anybody who asks;
-              :class:`~models.companies.company_choice.CompanyChoice` cannot
+              :class:`~models.organisation.companies.company_choice.CompanyChoice` cannot
               carry them.
             - Companies that have closed their applications are omitted rather
               than shown greyed out: an applicant cannot act on them, and an

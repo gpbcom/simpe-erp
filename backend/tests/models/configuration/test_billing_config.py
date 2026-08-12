@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Standard library imports
 from decimal import Decimal
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -21,6 +20,7 @@ from models.configuration.s3_config import S3Config
 from models.configuration.webhook_config import WebhookConfig
 from models.enums import BillingPeriodicity
 from models.settings.billing_settings import BillingSettings
+from tests.annotations import ModelInput
 
 
 class TestBillingConfig:
@@ -104,7 +104,7 @@ class TestBillingConfig:
         ],
     )
     def test_a_bad_configuration_fails_at_start_up(
-        self, field: str, value: Any, expected: type
+        self, field: str, value: ModelInput, expected: type
     ) -> None:
         """A wrong value in a file must not wait for the first billing run.
 
@@ -178,7 +178,7 @@ class TestInvoiceKeyPrefix:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_an_unusable_invoice_prefix_names_itself(self, value: Any) -> None:
+    def test_an_unusable_invoice_prefix_names_itself(self, value: ModelInput) -> None:
         """Each prefix raises its own exception.
 
         Notes:

@@ -39,7 +39,7 @@ describe('customer query keys', () => {
     }
   });
 
-  it('keeps a customer\'s quotes distinct from the customer', () => {
+  it("keeps a customer's quotes distinct from the customer", () => {
     expect(keys.customerQuotes('c-1')).not.toEqual(keys.customer('c-1'));
   });
 
@@ -115,5 +115,30 @@ describe('billing query keys', () => {
     // mutation quietly emptying the billing caches.
     expect(keys.billingSettings[0]).toBe('billing');
     expect(keys.planningSettings[0]).toBe('planning');
+  });
+});
+
+describe('the two planning lenses', () => {
+  it('do not share a cache entry', () => {
+    // Both live under the `['planning']` prefix so a replan invalidates them
+    // together, and they must still be told apart: one is grouped by assistant
+    // and the other by household, over different spans.
+    expect(keys.allPlannings('2026-08-03', '2026-09-13')).not.toEqual(
+      keys.customerPlannings('2026-08-03', '2026-09-13'),
+    );
+  });
+
+  it('keep the collection and one household apart', () => {
+    // The two differ only in length, which is exactly the shape a key factory
+    // gets wrong: `['planning','customers',from,to]` against
+    // `['planning','customers',id,from,to]`.
+    expect(keys.customerPlannings('2026-08-03', '2026-09-13')).not.toEqual(
+      keys.customerPlanning('customer-1', '2026-08-03', '2026-09-13'),
+    );
+  });
+
+  it('stay under the prefix every mutation invalidates', () => {
+    expect(keys.customerPlannings('a', 'b')[0]).toBe('planning');
+    expect(keys.customerPlanning('c', 'a', 'b')[0]).toBe('planning');
   });
 });

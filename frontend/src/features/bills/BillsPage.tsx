@@ -155,10 +155,7 @@ export function BillsPage() {
       </Box>
 
       <BillDetailDrawer selected={selected} onClose={() => setSelected(null)} />
-      <GenerateBillsDialog
-        open={generating}
-        onClose={() => setGenerating(false)}
-      />
+      <GenerateBillsDialog open={generating} onClose={() => setGenerating(false)} />
     </Box>
   );
 }

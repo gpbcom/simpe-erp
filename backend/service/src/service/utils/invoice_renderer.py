@@ -28,7 +28,7 @@ from reportlab.platypus import (
 
 # First-party imports
 from models.billing.bill import Bill
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language
 from models.people.customer import Customer
 from models.settings.billing_settings import BillingSettings
@@ -482,7 +482,7 @@ class InvoiceRenderer:
               :meth:`~models.settings.billing_settings.BillingSettings.describe_terms`
               has no branch that omits it.
             - **The IBAN is printed in full**, and deliberately not through
-              :meth:`~models.companies.company.Company.masked_iban`. That method
+              :meth:`~models.organisation.companies.company.Company.masked_iban`. That method
               exists so a manager reading the API does not see the whole
               account; a customer cannot pay into a masked one.
             - The *services à la personne* mention prints only when the agency

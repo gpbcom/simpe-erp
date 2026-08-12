@@ -24,6 +24,7 @@ from models.planning.planning_run.exceptions import (
     MTPlanningRunInvalidId,
     MTPlanningRunInvalidPeriod,
     MTPlanningRunInvalidStatus,
+    MTPlanningRunInvalidTeamId,
     MTPlanningRunInvalidUnassigned,
 )
 
@@ -35,6 +36,7 @@ class PlanningRun(BaseModel):
         id (Optional[str]): Identifier, populated on read from the store.
         status (PlanningRunStatus): Where the run is.
         company_id (str): The agency whose calendar this run rewrites.
+        team_id (str): The team whose half of that calendar it rewrites.
         requested_by (str): The administrator who started it.
         period_start (date): First day planned, inclusive.
         period_end (date): Last day planned, inclusive.
@@ -46,14 +48,13 @@ class PlanningRun(BaseModel):
         error_message (Optional[str]): Why the run failed, when it did.
 
     Notes:
-        The run is a record, not a lock. It exists so a caller who asked for a
-        planning can poll for the answer: the solve is CPU-bound and runs in a
-        worker thread, so the request that started it returns immediately.
-
-        ``unassigned_requirement_ids`` is the honest part of the result. The
-        solver is allowed to leave work unplaced rather than fail, so a
-        succeeded run with a non-empty list means "here is a plan, and here is
-        what would not fit" — which is far more useful than no plan at all.
+        - The run is a record, not a lock. It exists so a caller who asked for a
+          planning can poll for the answer: the solve is CPU-bound and runs in a
+          worker thread, so the request that started it returns immediately.
+        - ``unassigned_requirement_ids`` is the honest part of the result. The
+          solver is allowed to leave work unplaced rather than fail, so a
+          succeeded run with a non-empty list means "here is a plan, and here is
+          what would not fit" — which is far more useful than no plan at all.
     """
 
     id: Optional[str] = Field(
@@ -65,6 +66,7 @@ class PlanningRun(BaseModel):
         description="Where the run is.",
     )
     company_id: str = Field(description="The agency whose calendar this run rewrites.")
+    team_id: str = Field(description="The team whose calendar this run rewrites.")
     requested_by: str = Field(description="The administrator who started it.")
     period_start: date = Field(description="First day planned, inclusive.")
     period_end: date = Field(description="Last day planned, inclusive.")
@@ -137,20 +139,48 @@ class PlanningRun(BaseModel):
             MTPlanningRunInvalidId: If ``value`` is not a non-empty string.
 
         Notes:
-            **Required, and with no default.** A run selects the accepted work
-            it schedules and then *deletes and rewrites* every visit in its
-            period; both of those are scoped by this field. A run that did not
-            name an agency would take the whole platform's calendar as its
-            subject, which is precisely the bug this field exists to close — so
-            the absence is refused here rather than interpreted downstream.
-
-            The same reasoning already makes ``company_id`` a required
-            parameter of :meth:`~service.messaging.publisher.EventPublisher.publish`.
+            - **Required, and with no default.** A run selects the accepted work
+              it schedules and then *deletes and rewrites* every visit in its
+              period; both of those are scoped by this field. A run that did not
+              name an agency would take the whole platform's calendar as its
+              subject, which is precisely the bug this field exists to close — so
+              the absence is refused here rather than interpreted downstream.
+            - The same reasoning already makes ``company_id`` a required
+              parameter of :meth:`~service.messaging.publisher.EventPublisher.publish`.
         """
         if not isinstance(value, str) or not value.strip():
             raise MTPlanningRunInvalidId(
                 f"Invalid company_id: {value!r}. Must be a non-empty string "
                 f"naming the agency whose calendar this run rewrites."
+            )
+        return value.strip()
+
+    @field_validator("team_id", mode="before")
+    def validate_team_id(cls, value: Optional[str]) -> str:
+        """Validates that ``team_id`` names the team this run plans.
+
+        Args:
+            value (Optional[str]): Raw ``team_id`` value.
+
+        Returns:
+            str: The stripped identifier.
+
+        Raises:
+            MTPlanningRunInvalidTeamId: If ``value`` is not a non-empty string.
+
+        Notes:
+            **Required, for exactly the reason ``company_id`` is, one level
+            down.** A run reads its team's accepted quotes and deletes its
+            team's visits; a run that could not name its team would read every
+            team's work and clear every team's calendar. Recorded on the run
+            rather than resolved from ``requested_by`` when a worker picks it
+            up, because that column carries no foreign key and the account is
+            allowed to be gone by then.
+        """
+        if not isinstance(value, str) or not value.strip():
+            raise MTPlanningRunInvalidTeamId(
+                f"Invalid team_id: {value!r}. Must be a non-empty string naming "
+                f"the team whose calendar this run rewrites."
             )
         return value.strip()
 

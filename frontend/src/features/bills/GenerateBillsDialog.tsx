@@ -9,11 +9,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import {
-  useBillingRun,
-  useBillingSettings,
-  useStartBillingRun,
-} from '@/api/queries';
+import { useBillingRun, useBillingSettings, useStartBillingRun } from '@/api/queries';
 import { windowFor } from './billingWindow';
 
 interface GenerateBillsDialogProps {
@@ -59,8 +55,7 @@ export function GenerateBillsDialog({ open, onClose }: GenerateBillsDialogProps)
   const [runId, setRunId] = useState('');
   const { data: run } = useBillingRun(runId);
 
-  const preview =
-    day && settings ? windowFor(day, settings.periodicity) : null;
+  const preview = day && settings ? windowFor(day, settings.periodicity) : null;
 
   const submit = () => {
     start.mutate(

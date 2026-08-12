@@ -50,23 +50,6 @@ class Dataset:
     NAMESPACE: ClassVar[str] = "https://simple-erp.fr/seed"
     COMPANY_NAME: ClassVar[str] = "Aide et Presence Paris"
     PASSWORD: ClassVar[str] = "simple-erp-demo-2026"
-
-    #: The hourly rate every seeded service bills at, excluding tax.
-    #:
-    #: One constant rather than a figure per entry. "Every service costs the
-    #: same" is then a property of the seed rather than eight literals that
-    #: happen to agree today — an edit to one of them could not silently break
-    #: it, because there is only one.
-    #:
-    #: It is the same figure as ``PricingConfig.base_hourly_rate_ht``, so a
-    #: seeded quote costs what it would cost if the entry named no rate at all.
-    #: That makes a total easy to check by hand: hours x 31.905, times any
-    #: surcharge, and the only thing that varies between two lines is the VAT
-    #: their categories carry.
-    #:
-    #: Three decimal places, and the column is ``Numeric(12, 3)``, so it stores
-    #: exactly. The screens print 31,91 € because money is *displayed* to the
-    #: cent; the stored figure is what pricing multiplies.
     HOURLY_RATE_HT: ClassVar[str] = "31.905"
 
     # (code, name, category)
@@ -80,19 +63,6 @@ class Dataset:
         ("COM", "Compagnie et stimulation", ServiceCategory.COMFORT),
         ("NUI", "Garde de nuit", ServiceCategory.NECESSITY),
     )
-
-    #: The qualifications the agency recognises, as ``(code, label)``.
-    #:
-    #: Seeded so the catalogue screen has something in it and an assistant's
-    #: qualifications resolve to a readable label on a fresh install.
-    #:
-    #: **No seeded service requires any of them.** A requirement no seeded
-    #: assistant satisfies fails every seeded planning run, with a diagnosis
-    #: that reads as a staffing problem — which is exactly the shape of the
-    #: 08:00-window bug that made every run fail before
-    #: ``tests/seed/test_seeded_windows.py`` was written. The feature is made
-    #: visible by giving some assistants a qualification, not by gating work
-    #: behind one.
     CERTIFICATIONS: ClassVar[Tuple[Tuple[str, str], ...]] = (
         ("DEAES", "Diplome d'Etat d'Accompagnant Educatif et Social"),
         ("DEAVS", "Diplome d'Etat d'Auxiliaire de Vie Sociale"),
@@ -100,14 +70,6 @@ class Dataset:
         ("AS", "Diplome d'Etat d'Aide-Soignant"),
         ("SST", "Sauveteur Secouriste du Travail"),
     )
-
-    #: The skill catalogue an assistant picks from on their own account screen.
-    #:
-    #: **No seeded service requires any of them either**, for the reason set
-    #: out above the certification catalogue: a requirement no seeded assistant
-    #: satisfies fails every seeded planning run with a diagnosis that reads as
-    #: a staffing problem. What makes the feature visible is the declarations
-    #: below, not a gate.
     SKILLS: ClassVar[Tuple[Tuple[str, str], ...]] = (
         ("LEVE-PERSONNE", "Manipulation d'un leve-personne"),
         ("TOILETTE", "Toilette et aide a l'habillage"),
@@ -116,14 +78,6 @@ class Dataset:
         ("ARABE", "Arabe parle"),
         ("ALZHEIMER", "Accompagnement de troubles cognitifs"),
     )
-
-    #: Which seeded assistants have declared which skill, by ``"First Last"``.
-    #:
-    #: Deliberately partial and deliberately *different* from who holds which
-    #: certification: an assistant with a diploma and no declared skill, and one
-    #: with a declared skill and no diploma, are both ordinary — and the two
-    #: unplaced reasons only look distinct in seeded data where the two lists
-    #: do not coincide.
     ASSISTANT_SKILLS: ClassVar[Tuple[Tuple[str, str], ...]] = (
         ("Luc Martin", "LEVE-PERSONNE"),
         ("Luc Martin", "CUISINE"),
@@ -132,38 +86,13 @@ class Dataset:
         ("Nadia Bouzid", "ARABE"),
         ("Nadia Bouzid", "TOILETTE"),
     )
-
-    #: Which seeded assistants hold which qualification, by ``"First Last"``.
-    #:
-    #: Deliberately partial: a workforce where everybody holds everything would
-    #: make the certification constraint impossible to see working, and one
-    #: where nobody holds anything would make the catalogue look unused.
     ASSISTANT_CERTIFICATIONS: ClassVar[Tuple[Tuple[str, str], ...]] = (
         ("Luc Martin", "DEAES"),
         ("Luc Martin", "SST"),
         ("Sophie Bernard", "DEAVS"),
         ("Nadia Bouzid", "ADVF"),
     )
-
-    #: Which seeded assistants also hold a manager's account, by ``"First Last"``.
-    #:
-    #: A manager who still covers rounds is an ordinary arrangement in a small
-    #: agency, and it is the *only* arrangement in which the employment section
-    #: of the account page is both visible and editable: the section renders
-    #: from an assistant record, and it unlocks on a manager's role. With every
-    #: seeded manager holding no assistant record, that combination existed
-    #: nowhere, so the editable half of the screen could not be reached — and
-    #: neither could ``field_employee``, which lives on it.
-    #:
-    #: Not Luc Martin: the field-employee suite signs in as him precisely to
-    #: assert the *locked* half, and promoting him would make both halves
-    #: unreachable instead of one. Not Amina Benali either, who is the QA
-    #: campaign's ``${OTHER_ASSISTANT}`` — the colleague an assistant is
-    #: refused permission to edit. That check would still pass with her
-    #: promoted, but for a reason it does not mean to be testing.
     ASSISTANT_MANAGERS: ClassVar[Tuple[str, ...]] = ("Marc Dubois",)
-
-    # (first name, last name, contract, street, postcode, city, lat, lon, drives)
     ASSISTANTS: ClassVar[Tuple[Tuple, ...]] = (
         (
             "Luc",
@@ -298,21 +227,8 @@ class Dataset:
             False,
         ),
     )
-
-    #: The customers seeded as **prospects** rather than active ones, by name.
-    #:
-    #: A prospect may be quoted and is never planned, so the seeded book needs
-    #: a few of them for the customers screen's status filter and its promote
-    #: button to have anything to act on — and for the planning suites to prove
-    #: that a prospect's accepted work really is left out of a run.
-    #:
-    #: Deliberately **not** the first customer of any seeded assistant: that is
-    #: the one the portfolio, quote-editor and customer-file suites resolve to
-    #: with ``[0]``, and making them unschedulable would break those suites for
-    #: a reason they are not testing. Kept to two, at the end of the book.
     PROSPECTS: ClassVar[Tuple[str, ...]] = ("Lucien Guillot", "Renee Berger")
-
-    # (first name, last name, street, postcode, city, lat, lon)
+    PORTAL_CUSTOMERS: ClassVar[Tuple[str, ...]] = ("Marie Durand", "Lucien Guillot")
     CUSTOMERS: ClassVar[Tuple[Tuple, ...]] = (
         ("Marie", "Durand", "12 rue de Rivoli", "75004", "Paris", 48.8558, 2.3588),
         ("Jean", "Bernard", "8 rue Saint-Antoine", "75004", "Paris", 48.8543, 2.3646),
@@ -428,16 +344,6 @@ class Dataset:
         (QuoteStatus.ACCEPTED, 26),
         (QuoteStatus.REJECTED, 5),
     )
-
-    # (earliest start, latest end, minutes) — the windows a quote line offers.
-    #
-    # **Every window sits inside the configured working day**, 09:00–20:00 by
-    # `planning.day_start_minute` and `day_end_minute`. It did not: the first
-    # window opened at 08:00, an hour before the day starts, so sixteen of
-    # seventy-seven seeded visits were unschedulable and the planning run failed
-    # as a whole rather than partially — which is why a freshly seeded stack had
-    # no planning at all. A seeded window outside the seeded working day is a
-    # fixture that cannot be satisfied by construction.
     SERVICE_WINDOWS: ClassVar[Tuple[Tuple[time, time, int], ...]] = (
         (time(9, 0), time(11, 0), 60),
         (time(9, 0), time(12, 0), 90),
@@ -449,6 +355,26 @@ class Dataset:
     ############################
     # Publicly Exposed Methods #
     ############################
+
+    def portal_email(self, full_name: str) -> str:
+        """Return the sign-in address of a household's portal account.
+
+        Args:
+            full_name (str): The household's display name.
+
+        Returns:
+            str: The derived address.
+
+        Notes:
+            Derived rather than taken from the customer record, and prefixed so
+            it cannot collide with a staff address. Seeding the sign-in under
+            the household's own contact email would make the demo credentials
+            and the address the agency writes to one string — so correcting a
+            typo on the customer screen would silently change what you sign in
+            with.
+        """
+        slug = full_name.strip().lower().replace(" ", ".")
+        return f"portal.{slug}@simple-erp.fr"
 
     def identifier(self, kind: str, key: str) -> str:
         """Return the stable identifier for one seeded record.

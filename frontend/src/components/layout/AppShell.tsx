@@ -135,10 +135,13 @@ const NAV: { headingKey: string; entries: NavEntry[] }[] = [
       { to: '/bills', labelKey: 'nav.bills', icon: 'bill', minimum: 'manager' },
       { to: '/hcas', labelKey: 'nav.hcas', icon: 'hca', minimum: 'manager' },
       {
+        // Neutral label and open to assistants: the screen now holds both the
+        // assistants' calendar and the households', and "Team planning" would
+        // be a lie to an assistant who only ever sees the second.
         to: '/plannings',
-        labelKey: 'nav.teamPlanning',
+        labelKey: 'nav.plannings',
         icon: 'planning',
-        minimum: 'manager',
+        minimum: 'hca',
       },
       {
         // Back after being removed: the entry was here for a long time with no

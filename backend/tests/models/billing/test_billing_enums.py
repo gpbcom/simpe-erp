@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, datetime
-from typing import Any, Tuple
+from typing import Tuple
 
 # Third-party imports
 import pytest
@@ -10,6 +10,7 @@ import pytest
 # First-party imports
 from models.enums import BillingPeriodicity, BillingRunStatus, BillStatus
 from models.exceptions.enum_exceptions import MTInvalidBillingPeriodicity
+from tests.annotations import ModelInput
 
 
 class TestBillingPeriodicity:
@@ -221,7 +222,9 @@ class TestBillingPeriodicity:
             pytest.param(object(), id="Invalid - arbitrary object"),
         ],
     )
-    def test_window_for_refuses_anything_that_is_not_a_date(self, value: Any) -> None:
+    def test_window_for_refuses_anything_that_is_not_a_date(
+        self, value: ModelInput
+    ) -> None:
         """Only a date names a period.
 
         Notes:

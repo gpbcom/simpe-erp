@@ -29,9 +29,7 @@ router = APIRouter(prefix="/api/v1/billing", tags=["E-invoicing integrations"])
 
 @router.get("/integrations", response_model=List[IntegrationCardResponse])
 async def list_integrations(
-    service: InvoicingService = Depends(
-        get_invoicing_service
-    ),
+    service: InvoicingService = Depends(get_invoicing_service),
     caller: User = Depends(get_manager_user),
 ) -> List[IntegrationCardResponse]:
     """Return every certified platform, with this agency's state against each.
@@ -59,9 +57,7 @@ async def list_integrations(
 async def enable_integration(
     request: EInvoicingIntegrationRequest,
     provider: EInvoicingProvider = Path(description="The platform to connect."),
-    service: InvoicingService = Depends(
-        get_invoicing_service
-    ),
+    service: InvoicingService = Depends(get_invoicing_service),
     caller: User = Depends(get_manager_user),
 ) -> IntegrationCardResponse:
     """Connect a platform, making it the one this agency transmits through.
@@ -106,9 +102,7 @@ async def enable_integration(
 @router.delete("/integrations/{provider}", response_model=IntegrationCardResponse)
 async def disable_integration(
     provider: EInvoicingProvider = Path(description="The platform to switch off."),
-    service: InvoicingService = Depends(
-        get_invoicing_service
-    ),
+    service: InvoicingService = Depends(get_invoicing_service),
     caller: User = Depends(get_manager_user),
 ) -> IntegrationCardResponse:
     """Stop transmitting through a platform, keeping its credentials.
@@ -142,9 +136,7 @@ async def disable_integration(
 @router.post("/integrations/{provider}/check", response_model=IntegrationCardResponse)
 async def check_integration(
     provider: EInvoicingProvider = Path(description="The platform to check."),
-    service: InvoicingService = Depends(
-        get_invoicing_service
-    ),
+    service: InvoicingService = Depends(get_invoicing_service),
     caller: User = Depends(get_manager_user),
 ) -> IntegrationCardResponse:
     """Prove stored credentials again and record what happened.

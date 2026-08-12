@@ -212,6 +212,10 @@ s3:
   # document is only ever read back through the authenticated
   # download endpoint.
   invoice_key_prefix: invoices/
+  # Private, like the invoices and unlike the images: a team's shared
+  # paperwork is streamed through an authenticated endpoint and never
+  # handed to a browser as a URL.
+  team_document_key_prefix: team-documents/
   max_upload_bytes: 5242880   # 5 MiB
 
 email:

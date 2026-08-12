@@ -134,6 +134,95 @@ class ContractType(StrEnum):
 
 
 @unique
+class AgencyType(StrEnum):
+    """Enumeration for what one of a company's locations is used for.
+
+    Attributes:
+        HQ (str): The head office. A company has exactly one.
+        WAREHOUSE (str): A storage site, with staff but rarely a round.
+        OFFICE (str): A branch office, which is what most sites are.
+
+    Notes:
+        - **The type is descriptive, not a permission.** Nothing in the planner
+          reads it: a team based at a warehouse plans exactly like a team based
+          at the head office. It exists so an operator opening the list can tell
+          the sites apart, and so "which one is the head office" has an answer
+          that is not a name somebody typed.
+        - :attr:`HQ` is singular per company and that is enforced in
+          :class:`~service.organisation.agencies.AgencyService`, not here. It is
+          a question about *other rows*, which a value cannot answer about
+          itself.
+        - :attr:`OFFICE` is the default for a site created after the first, and
+          the default is the whole reason the enum is safe to add: a company
+          that already had one location keeps it as its head office, and every
+          site opened afterwards is an ordinary branch until somebody says
+          otherwise.
+    """
+
+    HQ = "hq"
+    WAREHOUSE = "warehouse"
+    OFFICE = "office"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every agency-type value.
+
+        Returns:
+            Tuple[str, ...]: ``("hq", "warehouse", "office")``.
+        """
+        return tuple(agency_type.value for agency_type in cls)
+
+    def is_headquarters(self) -> bool:
+        """Return whether this type is the company's head office.
+
+        Returns:
+            bool: ``True`` only for :attr:`HQ`.
+
+        Notes:
+            Written as a method so the singularity rule has one spelling. A
+            caller comparing to the literal ``"hq"`` is a caller that keeps
+            working when the value is renamed and stops meaning what it says.
+        """
+        return self is AgencyType.HQ
+
+
+@unique
+class MemberKind(StrEnum):
+    """Enumeration for which kind of person a membership row points at.
+
+    Attributes:
+        USER (str): A sign-in account — an administrator, a manager, or an
+            assistant's account.
+        HCA (str): A home care assistant record, which is what the planner
+            schedules.
+
+    Notes:
+        - **Two kinds rather than one, because the two records are genuinely
+          different things.** A manager has an account and no assistant record;
+          an assistant has a record and may or may not have an account. Storing
+          only accounts would make an assistant without one unplannable, and
+          storing only assistant records would leave every administrator and
+          back-office manager outside every agency.
+        - The membership row is *polymorphic on purpose*: the alternative was a
+          column on ``users`` and another on ``hcas``, which is a change to the
+          person models this feature is explicitly not allowed to make — and
+          which would have put the same fact in two places free to disagree.
+    """
+
+    USER = "user"
+    HCA = "hca"
+
+    @classmethod
+    def values(cls) -> Tuple[str, ...]:
+        """Return every member-kind value.
+
+        Returns:
+            Tuple[str, ...]: ``("user", "hca")``.
+        """
+        return tuple(kind.value for kind in cls)
+
+
+@unique
 class ServiceCategory(StrEnum):
     """Enumeration for the VAT category an intervention type falls under.
 

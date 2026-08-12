@@ -41,6 +41,8 @@ Row-level checks, and what each stops:
 | Check | Stops |
 |---|---|
 | `PlanningService.planning_for` | One assistant reading another's diary |
+| `PlanningService.planning_for_customer` | An assistant reading the calendar of a household outside their portfolio — **404, not 403** |
+| `PlanningService._require_staff` | A household reaching either staff planning route |
 | `HcaService._check_owns` | Filing an absence against a colleague, taking them off the rota |
 | `QuoteService.submit_for_validation` | Submitting somebody else's draft |
 | `CustomerRepository.is_served_by` | Reading a customer outside your portfolio |
@@ -98,6 +100,13 @@ An assistant sees the customers they have a planned visit with, **union** those
 on quotes they wrote — not the agency's book. A home-care record carries an
 address, a telephone number and a care schedule; there is no reason for every
 assistant to hold every one of them.
+
+That rule now governs a second surface. `/plannings` shows the households'
+calendars as well as the assistants', and an assistant opening it reads the same
+portfolio — the union is spelled once, in
+`CustomerRepository._portfolio_scope`, and the list, the single-household check
+and the planning rail all build on it. Three answers to "is this household
+theirs?" that could disagree would be worse than any one of them.
 
 The scoping is applied **in the SQL statement**, not by filtering rows
 afterwards. A page of fifty narrowed to three has already read forty-seven

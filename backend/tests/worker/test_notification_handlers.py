@@ -15,6 +15,7 @@ from models.enums import EventRoutingKey, NotificationKind, UserRole
 from models.messaging.event_envelope import EventEnvelope
 from models.notifications.notification import Notification
 from worker.runner import WorkerRunner
+from tests.annotations import ModelInput
 
 
 def supervisor(identifier: str) -> User:
@@ -172,11 +173,11 @@ def runner(
     built = WorkerRunner(config=AppConfig())
 
     @asynccontextmanager
-    async def _session() -> AsyncIterator[object]:
+    async def _session() -> AsyncIterator[ModelInput]:
         """Yield a stand-in session.
 
         Yields:
-            object: A placeholder the recording stores ignore.
+            ModelInput: A placeholder the recording stores ignore.
         """
         yield object()
 

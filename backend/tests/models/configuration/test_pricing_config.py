@@ -3,7 +3,6 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -18,6 +17,7 @@ from models.configuration.exceptions import (
 from models.configuration.holiday_surcharge import HolidaySurcharge
 from models.configuration.pricing_config import PricingConfig
 from models.enums import Weekday
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
@@ -94,7 +94,7 @@ class TestPricingConfig:
             pytest.param(float("inf"), id="Invalid - infinity"),
         ],
     )
-    def test_invalid_base_rate_raises(self, invalid_rate: Any) -> None:
+    def test_invalid_base_rate_raises(self, invalid_rate: ModelInput) -> None:
         """A non-positive or unparsable rate is rejected."""
         with pytest.raises(MTPricingConfigInvalidBaseHourlyRate):
             PricingConfig(base_hourly_rate_ht=invalid_rate)
@@ -120,7 +120,7 @@ class TestPricingConfig:
         ],
     )
     def test_invalid_weekday_surcharges_container_raises(
-        self, invalid_value: Any
+        self, invalid_value: ModelInput
     ) -> None:
         """A weekday-surcharge section that is not a mapping is rejected."""
         with pytest.raises(MTPricingConfigInvalidWeekdaySurcharges):
@@ -141,7 +141,7 @@ class TestPricingConfig:
         ],
     )
     def test_invalid_weekday_surcharge_value_raises(
-        self, invalid_surcharge: Any
+        self, invalid_surcharge: ModelInput
     ) -> None:
         """A surcharge that is not a sane non-negative ratio is rejected."""
         with pytest.raises(MTPricingConfigInvalidWeekdaySurcharges):
@@ -172,7 +172,7 @@ class TestPricingConfig:
         ],
     )
     def test_invalid_holiday_surcharges_container_raises(
-        self, invalid_value: Any
+        self, invalid_value: ModelInput
     ) -> None:
         """A holiday section that is not a list is rejected."""
         with pytest.raises(MTPricingConfigInvalidHolidaySurcharges):

@@ -7,6 +7,7 @@ from typing import AsyncIterator, Dict, List, Tuple
 from unittest.mock import AsyncMock
 
 # Third-party imports
+from pydantic import JsonValue
 import pytest
 
 # First-party imports
@@ -22,9 +23,10 @@ from models.enums import (
 from models.messaging.event_envelope import EventEnvelope
 from models.notifications.notification import Notification
 from worker.runner import WorkerRunner
+from tests.annotations import ModelInput
 
 
-def an_envelope(**payload: object) -> EventEnvelope:
+def an_envelope(**payload: ModelInput) -> EventEnvelope:
     """Build a broker message.
 
     Args:
@@ -62,11 +64,11 @@ def a_run(
 
 
 @pytest.fixture
-def published() -> List[Tuple[EventRoutingKey, str, Dict[str, object]]]:
+def published() -> List[Tuple[EventRoutingKey, str, Dict[str, JsonValue]]]:
     """Collect what the runner announces.
 
     Returns:
-        List[Tuple[EventRoutingKey, str, Dict[str, object]]]: The routing key,
+        List[Tuple[EventRoutingKey, str, Dict[str, JsonValue]]]: The routing key,
         agency and payload of every publish.
     """
     return []
@@ -95,7 +97,7 @@ def announced() -> List[str]:
 @pytest.fixture
 def runner(
     monkeypatch: pytest.MonkeyPatch,
-    published: List[Tuple[EventRoutingKey, str, Dict[str, object]]],
+    published: List[Tuple[EventRoutingKey, str, Dict[str, JsonValue]]],
     notified: List[Notification],
     announced: List[str],
 ) -> WorkerRunner:
@@ -103,7 +105,7 @@ def runner(
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Replaces every I/O seam.
-        published (List[Tuple[EventRoutingKey, str, Dict[str, object]]]): Where
+        published (List[Tuple[EventRoutingKey, str, Dict[str, JsonValue]]]): Where
             announcements are collected.
         notified (List[Notification]): Where notifications are collected.
         announced (List[str]): Where webhook announcements are collected.
@@ -114,11 +116,11 @@ def runner(
     built = WorkerRunner(config=AppConfig(), role=WorkerRole.BILLING)
 
     @asynccontextmanager
-    async def _session() -> AsyncIterator[object]:
+    async def _session() -> AsyncIterator[ModelInput]:
         """Yield a stand-in session.
 
         Yields:
-            object: A placeholder the recording stores ignore.
+            ModelInput: A placeholder the recording stores ignore.
         """
         yield object()
 
@@ -139,22 +141,22 @@ def runner(
     )
 
     async def _notify(
-        session: object,
+        session: ModelInput,
         company_id: str,
         kind: NotificationKind,
         title: str,
         body: str,
-        quote_id: object = None,
+        quote_id: ModelInput = None,
     ) -> List[str]:
         """Record a supervisor notification instead of writing one.
 
         Args:
-            session (object): The stand-in session.
+            session (ModelInput): The stand-in session.
             company_id (str): The agency told.
             kind (NotificationKind): What it is about.
             title (str): The heading.
             body (str): The text.
-            quote_id (object): Unused here.
+            quote_id (ModelInput): Unused here.
 
         Returns:
             List[str]: The recipients, stubbed.
@@ -176,7 +178,7 @@ class TestRunningAGeneration:
         self,
         runner: WorkerRunner,
         monkeypatch: pytest.MonkeyPatch,
-        published: List[Tuple[EventRoutingKey, str, Dict[str, object]]],
+        published: List[Tuple[EventRoutingKey, str, Dict[str, JsonValue]]],
     ) -> None:
         """The agency has to hear that a month is ready to validate.
 
@@ -215,7 +217,7 @@ class TestRunningAGeneration:
         self,
         runner: WorkerRunner,
         monkeypatch: pytest.MonkeyPatch,
-        published: List[Tuple[EventRoutingKey, str, Dict[str, object]]],
+        published: List[Tuple[EventRoutingKey, str, Dict[str, JsonValue]]],
     ) -> None:
         """**A routing key cannot be scoped to nobody.**
 

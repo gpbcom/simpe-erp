@@ -13,9 +13,12 @@ from models.enums import QuoteStatus
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
+from models.auth.user import User
+from models.schemas.requests.quoting.quote_create_request import QuoteCreateRequest
 from models.schemas.requests.quoting.quote_filter import QuoteFilter
 from service.certifications.certifications import CertificationTypeService
 from service.certifications.exceptions import MTCertificationTypeUnknownCode
+from service.organisation.teams import TeamService
 from service.quotes.exceptions import (
     MTPricingUnknownInterventionType,
     MTQuoteForbidden,
@@ -23,10 +26,13 @@ from service.quotes.exceptions import (
     MTQuoteNotEditable,
     MTQuoteNotFound,
     MTQuoteNotPriced,
+    MTQuoteTeamForbidden,
+    MTQuoteUnassignable,
 )
 from service.skills.exceptions import MTSkillTypeUnknownCode
 from service.skills.skills import SkillTypeService
 from storage.repositories.catalog.intervention_type import InterventionTypeRepository
+from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.quoting.quote import QuoteRepository
 
 
@@ -63,6 +69,8 @@ class QuoteService:
         quotes: QuoteRepository,
         types: InterventionTypeRepository,
         config: PricingConfig,
+        teams: TeamService,
+        customers: CustomerRepository,
         certifications: Optional[CertificationTypeService] = None,
         skills: Optional[SkillTypeService] = None,
         logger: Optional[Logger] = None,
@@ -74,6 +82,9 @@ class QuoteService:
             types (InterventionTypeRepository): The catalog store.
             CENTS (ClassVar[Decimal]): The quantum every amount is rounded to.
         config (PricingConfig): The agency-wide pricing rules.
+            teams (TeamService): Decides which team a new quote belongs to.
+            customers (CustomerRepository): Read for the household's
+                coordinate, which is what "the closest team" is measured from.
             certifications (Optional[CertificationTypeService]): The
                 certification catalogue, consulted before a line's requirement
                 override is stored.
@@ -81,10 +92,19 @@ class QuoteService:
                 the same way and for the same reason.
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
+
+        Notes:
+            ``teams`` and ``customers`` are **required**, unlike the two
+            catalogues. A quote that reached the store without a team would be
+            priced, sent and then read by no planning run — so a service that
+            could be built without the means to attribute one would be a service
+            that can quietly write unschedulable work.
         """
         self.quotes = quotes
         self.types = types
         self.config = config
+        self.teams = teams
+        self.customers = customers
         self.certifications = certifications
         self.skills = skills
         self.logger = logger if logger else getLogger(__name__)
@@ -323,9 +343,14 @@ class QuoteService:
             Quote: The stored successor.
 
         Notes:
-            The shift is the parent's own span — first service to last — plus a
-            day, so a four-week arrangement renews into the four weeks that
-            follow rather than overlapping itself.
+            - The shift is the parent's own span — first service to last — plus
+              a day, so a four-week arrangement renews into the four weeks that
+              follow rather than overlapping itself.
+            - The successor **inherits the parent's team** rather than being
+              re-attributed. The household has not moved and the arrangement has
+              not changed; re-running the rule would hand a continuing customer
+              to whichever team happened to be least busy that morning, and the
+              assistants they already know would stop coming.
         """
         days = [line.service_date for line in parent.lines]
         span = (max(days) - min(days)).days + 1 if days else self.VALIDITY_DAYS
@@ -334,6 +359,7 @@ class QuoteService:
         successor = Quote(
             reference=f"{parent.reference}-R{today:%Y%m}",
             company_id=parent.company_id,
+            team_id=parent.team_id,
             customer_id=parent.customer_id,
             status=parent.status,
             authored_by=parent.authored_by,
@@ -375,22 +401,84 @@ class QuoteService:
         )
         return stored
 
+    async def _attribute(self, company_id: str, customer_id: str) -> str:
+        """Return the team a new quote for this household belongs to.
+
+        Args:
+            company_id (str): The company writing the quote.
+            customer_id (str): The household it is addressed to.
+
+        Returns:
+            str: The chosen team's identifier.
+
+        Raises:
+            MTQuoteUnassignable: If the household is unknown, or the company has
+                no team to give the work to.
+
+        Notes:
+            - **The rule itself is not here.** Nearest site, then fewest
+              assigned minutes, then first by identifier lives in
+              :meth:`~service.organisation.teams.TeamService.attribute`. What is
+              here is the refusal, because only the quote knows that failing to
+              choose means the quote cannot exist.
+            - The two causes carry **different messages**, deliberately. One is
+              fixed by correcting a household's address and the other by forming
+              a team; a single "could not be assigned" sends somebody to look
+              for both.
+            - A household with no resolved coordinate is **not** refused here.
+              It falls through to the busyness tie-break, which is the honest
+              answer: the quote is filed with the least loaded team and the
+              WARNING in ``attribute`` says no distance was measured. Refusing
+              would make a geocoding outage stop the business taking work.
+        """
+        customer = await self.customers.get(customer_id)
+        if customer is None:
+            self.logger.warning(
+                "Quote refused: customer %s does not exist.", customer_id
+            )
+            raise MTQuoteUnassignable(
+                f"No customer {customer_id!r} exists, so no team can be given "
+                f"this work."
+            )
+        team_id = await self.teams.attribute(company_id, customer)
+        if team_id is None:
+            self.logger.error(
+                "Quote refused: company %s could attribute no team to customer %s.",
+                company_id,
+                customer_id,
+            )
+            raise MTQuoteUnassignable(
+                "No team could be given this work. Either this company has no "
+                "team yet, or none of its teams has anybody on it. Form a team "
+                "at the site nearest the household first."
+            )
+        self.logger.debug("Customer %s is attributed to team %s.", customer_id, team_id)
+        return team_id
+
     ############################
     # Publicly Exposed Methods #
     ############################
 
-    async def create(self, quote: Quote, author_id: Optional[str] = None) -> Quote:  # noqa: E501
-        """Create a quote and price whatever lines it arrives with.
+    async def create(
+        self,
+        payload: QuoteCreateRequest,
+        company_id: str,
+        author_id: Optional[str] = None,
+    ) -> Quote:
+        """Create a quote, attribute it to a team and price its lines.
 
         Args:
-            quote (Quote): The quote to create.
+            payload (QuoteCreateRequest): What the caller asked for.
+            company_id (str): The agency the quote belongs to, taken from the
+                caller's credential.
             author_id (Optional[str]): The account writing it, recorded as the
-                author. ``None`` leaves whatever the payload carried.
+                author. ``None`` leaves the quote unattributed to anybody.
 
         Returns:
             Quote: The stored, priced quote.
 
         Raises:
+            MTQuoteUnassignable: If no team can be given the work; 422.
             MTPricingUnknownInterventionType: If a line names a missing type.
             MTCertificationTypeUnknownCode: If a line requires a qualification
                 the certification catalogue does not offer.
@@ -398,23 +486,106 @@ class QuoteService:
                 catalogue does not offer.
 
         Notes:
-            The author is taken from the caller's own account, never from the
-            payload. A quote naming somebody else as its author would land in
-            their list, and they would be the one a manager asks about a price
-            they never set.
+            - **This takes the payload rather than a built quote, and that is
+              the whole point of the change.** Both writing paths — a manager at
+              ``POST /api/v1/quotes`` and an assistant at
+              ``POST /api/v1/me/quotes`` — arrive here, so the attribution rule
+              is written once. Had the routes built the quote, each would have
+              needed the team service, and the assistant's path is the one that
+              would have been forgotten.
+            - The company and the author are taken from the caller's own
+              credential, never from the payload. A quote naming somebody else
+              as its author would land in their list, and they would be the one
+              a manager asks about a price they never set.
+            - The team is resolved **before** the lines are validated or priced.
+              Both orders give the same answer; this one means a company with no
+              team is told so instead of being told about a missing catalogue
+              entry on a quote it could never have filed.
         """
         self.logger.info(
             "Creating quote %s for customer %s, authored by %s.",
-            quote.reference,
-            quote.customer_id,
+            payload.reference,
+            payload.customer_id,
             author_id,
         )
+        team_id = await self._attribute(company_id, payload.customer_id)
+        quote = payload.to_quote(company_id, team_id)
         await self._assert_line_requirements_known(quote)
         await self._assert_line_skills_known(quote)
         priced = await self._price(quote)
         if author_id is not None:
             priced = priced.model_copy(update={"authored_by": author_id})
         return await self.quotes.create(priced)
+
+    async def reassign_team(self, quote_id: str, team_id: str, caller: User) -> Quote:  # noqa: E501
+        """Move a quote to a different team.
+
+        Args:
+            quote_id (str): The quote to move.
+            team_id (str): The team that will deliver it instead.
+            caller (User): The manager or administrator moving it.
+
+        Returns:
+            Quote: The stored quote, now naming the new team.
+
+        Raises:
+            MTQuoteNotFound: If no such quote exists, or it belongs to another
+                company; answered as a 404.
+            MTQuoteTeamForbidden: If the caller may read neither the team the
+                quote leaves nor the one it joins; answered as a 403.
+
+        Notes:
+            - **Explicit rather than automatic.** Attribution runs once, when
+              the quote is written. Re-running it whenever a household moved or
+              a team's load changed would silently move work a manager has
+              already validated, and with it visits somebody has been told
+              about.
+            - Both ends are checked. Moving work *out* of a team the caller does
+              not run takes it off a colleague's plan; moving it *into* one
+              commits assistants the caller does not manage. An administrator
+              passes both because they read every team.
+            - The visits already planned are **not** moved. They belong to a run
+              that has been carried out, and rewriting history is not what this
+              is for — the next run of each team picks the change up, which is
+              why the caller is told to re-plan both.
+        """
+        quote = await self.get(quote_id)
+        if quote.company_id != caller.company_id:
+            self.logger.warning(
+                "Account %s cannot move quote %s of company %s.",
+                caller.id,
+                quote_id,
+                quote.company_id,
+            )
+            raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
+        readable = await self.teams.readable_team_ids(caller)
+        if readable is not None and (
+            quote.team_id not in readable or team_id not in readable
+        ):
+            self.logger.warning(
+                "Account %s may not move quote %s from team %s to team %s.",
+                caller.id,
+                quote_id,
+                quote.team_id,
+                team_id,
+            )
+            raise MTQuoteTeamForbidden(
+                "A quote may only be moved between teams you run."
+            )
+        await self.teams.get_for(team_id, caller)
+        self.logger.info(
+            "Moving quote %s from team %s to team %s, requested by %s; both "
+            "teams need re-planning.",
+            quote_id,
+            quote.team_id,
+            team_id,
+            caller.id,
+        )
+        stored = await self.quotes.update(quote.model_copy(update={"team_id": team_id}))
+        if stored is None:
+            self.logger.error("Quote %s vanished while being moved.", quote_id)
+            raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
+        return stored
 
     async def get(self, quote_id: str) -> Quote:
         """Return a quote by identifier.
@@ -493,6 +664,7 @@ class QuoteService:
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
         quote_filter: Optional[QuoteFilter] = None,
+        team_ids: Optional[List[str]] = None,
     ) -> List[Quote]:
         """Return a page of quotes.
 
@@ -503,15 +675,17 @@ class QuoteService:
             status (Optional[QuoteStatus]): Restrict to one status.
             authored_by (Optional[str]): Restrict to one author's quotes.
             quote_filter (Optional[QuoteFilter]): The screen's filter.
+            team_ids (Optional[List[str]]): The teams the caller may read.
+                ``None`` means every team; an empty list means none.
 
         Returns:
             List[Quote]: The matching quotes.
 
         Notes:
-            ``authored_by`` is passed separately from the filter and stays
-            separate all the way down. It is the caller's scope rather than
-            their preference, and the store is what refuses to let the filter
-            widen it.
+            ``authored_by`` and ``team_ids`` are both passed separately from the
+            filter and stay separate all the way down. They are the caller's
+            *scope* rather than their preference, and the store is what refuses
+            to let the filter widen either.
         """
         return await self.quotes.list(
             page=page,
@@ -520,6 +694,53 @@ class QuoteService:
             status=status,
             authored_by=authored_by,
             quote_filter=quote_filter,
+            team_ids=team_ids,
+        )
+
+    async def list_for(
+        self,
+        caller: User,
+        page: int = 1,
+        size: Optional[int] = None,
+        customer_id: Optional[str] = None,
+        status: Optional[QuoteStatus] = None,
+        quote_filter: Optional[QuoteFilter] = None,
+    ) -> List[Quote]:
+        """Return the quotes a caller is allowed to see.
+
+        Args:
+            caller (User): The authenticated caller.
+            page (int): One-based page number.
+            size (Optional[int]): Page size.
+            customer_id (Optional[str]): Restrict to one customer.
+            status (Optional[QuoteStatus]): Restrict to one status.
+            quote_filter (Optional[QuoteFilter]): The screen's filter.
+
+        Returns:
+            List[Quote]: The matching quotes of the teams they may read.
+
+        Notes:
+            - **The narrowing is resolved here and applied in the statement**,
+              never by filtering the page afterwards. A page of fifty cut down
+              to three has already read forty-seven quotes the caller may not
+              see, which is the rule ``docs/11-security.md`` states and the
+              reason this method exists beside :meth:`list`.
+            - An administrator's ``None`` and a manager-with-no-team's ``[]``
+              travel unchanged to the store, which knows the difference.
+        """
+        team_ids = await self.teams.readable_team_ids(caller)
+        self.logger.debug(
+            "Listing quotes for %s, narrowed to %s.",
+            caller.id,
+            "every team" if team_ids is None else f"{len(team_ids)} team(s)",
+        )
+        return await self.list(
+            page=page,
+            size=size,
+            customer_id=customer_id,
+            status=status,
+            quote_filter=quote_filter,
+            team_ids=team_ids,
         )
 
     async def replace_lines(

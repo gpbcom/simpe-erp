@@ -26,8 +26,8 @@ from api.v1.auth.accounts import router as accounts_router
 from api.v1.companies.companies import router as companies_router
 from api.v1.hcas.applications import router as applications_router
 from models.auth.user import User
-from models.companies.company import Company
-from models.companies.company_choice import CompanyChoice
+from models.organisation.companies.company import Company
+from models.organisation.companies.company_choice import CompanyChoice
 from models.enums import (
     AccountOrigin,
     ContractType,

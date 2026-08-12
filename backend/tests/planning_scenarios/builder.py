@@ -6,7 +6,7 @@ from datetime import date, time
 from typing import ClassVar, List, Optional, Tuple
 
 # Third-party imports
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # First-party imports
 from models.configuration.planning_config import PlanningConfig
@@ -329,5 +329,6 @@ class ScenarioBuilder:
             hcas=MagicMock(),
             types=MagicMock(),
             settings=MagicMock(),
+            teams=AsyncMock(),
             config=config,
         )

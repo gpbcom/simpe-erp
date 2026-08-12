@@ -34,6 +34,7 @@ from service.integrations.exceptions import (
 )
 from service.integrations.invoicing import InvoicingService
 from service.security.credential_cipher import CredentialCipher
+from tests.annotations import ModelInput
 
 #: The catalogue as the shipped configuration declares it. Read from the file
 #: rather than hand-written, because the gallery this service feeds is only as
@@ -193,7 +194,11 @@ def _bill(kind: RecipientKind = RecipientKind.INDIVIDUAL) -> Bill:
         "latitude": 48.86,
         "longitude": 2.33,
     }
-    recipient: Dict[str, object] = {"kind": kind, "name": "Payeur", "address": address}
+    recipient: Dict[str, ModelInput] = {
+        "kind": kind,
+        "name": "Payeur",
+        "address": address,
+    }
     if kind is not RecipientKind.INDIVIDUAL:
         recipient["siren"] = "552100554"
     if kind is RecipientKind.PUBLIC:
@@ -235,12 +240,14 @@ def _bill(kind: RecipientKind = RecipientKind.INDIVIDUAL) -> Bill:
     )
 
 
-def _client(status: int, body: object, seen: List[httpx.Request]) -> httpx.AsyncClient:
+def _client(
+    status: int, body: ModelInput, seen: List[httpx.Request]
+) -> httpx.AsyncClient:
     """Build a client answering everything the same way.
 
     Args:
         status (int): The status to answer.
-        body (object): The JSON body to answer.
+        body (ModelInput): The JSON body to answer.
         seen (List[httpx.Request]): Collects every request made.
 
     Returns:
@@ -427,9 +434,7 @@ class TestConnectingAPlatform:
 
         assert cipher.open(stored.credential_ciphertext) == credentials
 
-    async def test_a_refused_key_is_not_stored(
-        self, cipher: CredentialCipher
-    ) -> None:
+    async def test_a_refused_key_is_not_stored(self, cipher: CredentialCipher) -> None:
         """**Proven first, stored second.**
 
         Args:
@@ -453,9 +458,7 @@ class TestConnectingAPlatform:
         assert repository.rows == {}
         assert await service.has_active_platform(COMPANY) is False
 
-    async def test_the_refusal_says_what_to_do(
-        self, cipher: CredentialCipher
-    ) -> None:
+    async def test_the_refusal_says_what_to_do(self, cipher: CredentialCipher) -> None:
         """The connector's message is the actionable half.
 
         Args:
@@ -527,9 +530,7 @@ class TestTransmittingASettledInvoice:
             ACTOR,
         )
 
-        receipt = await integrations.transmit(
-            _bill(kind), DOCUMENT
-        )
+        receipt = await integrations.transmit(_bill(kind), DOCUMENT)
 
         assert receipt.kind is expected
         assert receipt.succeeded() is True
@@ -566,9 +567,7 @@ class TestTransmittingASettledInvoice:
             which would then be redelivered.
         """
         repository = _Repository()
-        integrations = _service(
-            repository, cipher, _client(200, {"id": "REF-1"}, [])
-        )
+        integrations = _service(repository, cipher, _client(200, {"id": "REF-1"}, []))
         await integrations.enable(
             COMPANY,
             EInvoicingProvider.B2BROUTER,
@@ -593,9 +592,7 @@ class TestTransmittingASettledInvoice:
             cipher (CredentialCipher): The cipher.
         """
         repository = _Repository()
-        integrations = _service(
-            repository, cipher, _client(200, {"guid": "REF-1"}, [])
-        )
+        integrations = _service(repository, cipher, _client(200, {"guid": "REF-1"}, []))
         await integrations.enable(
             COMPANY,
             EInvoicingProvider.STORECOVE,
@@ -605,9 +602,7 @@ class TestTransmittingASettledInvoice:
             ACTOR,
         )
 
-        receipt = await integrations.transmit(
-            _bill(RecipientKind.PUBLIC), DOCUMENT
-        )
+        receipt = await integrations.transmit(_bill(RecipientKind.PUBLIC), DOCUMENT)
 
         assert receipt.status is TransmissionStatus.FAILED
         assert "Chorus Pro" in receipt.error

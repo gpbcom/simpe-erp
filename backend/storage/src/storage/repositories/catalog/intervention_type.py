@@ -40,13 +40,12 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(
             session=session,
             row_class=InterventionTypeRow,
-            logger=resolved_logger,
         )
-        self.mapper = InterventionMapper(logger=resolved_logger)
+        self.mapper = InterventionMapper()
 
     ############################
     # Internal Helpers Methods #

@@ -6,7 +6,15 @@ from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
 # Third-party imports
-from sqlalchemy import ColumnElement, Select, func, literal, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    CompoundSelect,
+    Select,
+    func,
+    literal,
+    or_,
+    select,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -41,9 +49,9 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(session=session, row_class=CustomerRow)
-        self.mapper = CustomerMapper(logger=resolved_logger)
+        self.mapper = CustomerMapper()
 
     ############################
     # Internal Helpers Methods #
@@ -142,6 +150,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
         customer_filter: Optional[CustomerFilter] = None,
+        customer_ids: Optional[List[str]] = None,
     ) -> Select[Tuple[CustomerRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
@@ -151,6 +160,9 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             customer_filter (Optional[CustomerFilter]): The richer filter. Its
                 ``search`` and ``status`` win over the two positional arguments
                 when both are given.
+            customer_ids (Optional[List[str]]): The households the caller may
+                read. ``None`` means every household; an **empty list means
+                none**.
 
         Returns:
             Select[Tuple[CustomerRow]]: The filtered statement, without ordering or pagination.
@@ -181,8 +193,18 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             self.logger.info("No filter was given; the query is the whole book.")
 
         statement = select(CustomerRow)
+        if customer_ids is not None:
+            # A permission rather than a filter, applied in the statement for
+            # the reason `authored_by` is on the quote side. `None` and `[]` are
+            # opposites: reading the empty list as falsy would show a manager
+            # who runs no team the whole customer book.
+            if not customer_ids:
+                self.logger.warning(
+                    "The caller may read no household; the query matches nothing."
+                )
+            statement = statement.where(CustomerRow.id.in_(customer_ids))
         if status is not None:
-            statement = statement.where(CustomerRow.registration_status == status.value)
+            statement = statement.where(CustomerRow.registration_status == status.value)  # noqa: E501
         if search:
             pattern = f"%{search.strip().lower()}%"
             statement = statement.where(
@@ -222,7 +244,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                     self._dialable_digits(CustomerRow.phone_number).like(f"%{typed}%")
                 )
         if applied.is_geocoded is not None:
-            resolved = CustomerRow.latitude.is_not(None) & CustomerRow.longitude.is_not(
+            resolved = CustomerRow.latitude.is_not(None) & CustomerRow.longitude.is_not(  # noqa: E501
                 None
             )
             statement = statement.where(resolved if applied.is_geocoded else ~resolved)
@@ -232,6 +254,43 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 ongoing if applied.has_ongoing_arrangement else ~ongoing
             )
         return statement
+
+    def _portfolio_scope(self, hca_id: str, account_id: str) -> CompoundSelect:
+        """Return the statement selecting the customers an assistant may see.
+
+        Args:
+            hca_id (str): The assistant whose portfolio is being scoped.
+            account_id (str): The sign-in account that assistant holds.
+
+        Returns:
+            CompoundSelect: A statement yielding customer identifiers.
+
+        Notes:
+            - **One definition of the portfolio, three readers.** The list, the
+              single-customer check and the planning rail all have to agree; a
+              rail that offers a household whose detail view then refuses is
+              worse than either behaviour alone. Written once here, the three
+              cannot drift.
+            - The portfolio is the **union** of two sets: customers the
+              assistant has a planned intervention with, and customers of quotes
+              they wrote. Without the second half a newly hired assistant's list
+              is empty on their first day, so they can quote for nobody and the
+              feature looks broken.
+            - **The two halves are keyed differently, and that is why both
+              identifiers are taken.** An intervention names the assistant, so
+              it joins on ``hca_id``; a quote records the *account* that wrote
+              it — see :attr:`QuoteRow.authored_by` — so it joins on
+              ``account_id``. Comparing ``authored_by`` to an assistant
+              identifier matches nothing, which quietly reduces the union to its
+              first half.
+        """
+        by_intervention = select(InterventionRow.customer_id).where(
+            InterventionRow.hca_id == hca_id
+        )
+        by_quote = select(QuoteRow.customer_id).where(
+            QuoteRow.authored_by == account_id
+        )
+        return by_intervention.union(by_quote)
 
     ############################
     # Publicly Exposed Methods #
@@ -291,7 +350,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             return None
         row = await self._get_row(customer.id)
         if row is None:
-            self.logger.warning("Update requested for absent customer %s.", customer.id)
+            self.logger.warning("Update requested for absent customer %s.", customer.id)  # noqa: E501
             return None
         self.mapper.apply_to_row(row, customer)
         await self.session.flush()
@@ -402,6 +461,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
         customer_filter: Optional[CustomerFilter] = None,
+        customer_ids: Optional[List[str]] = None,
     ) -> List[Customer]:
         """Return a page of customers.
 
@@ -412,6 +472,8 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 the names, the email and the city.
             status (Optional[RegistrationStatus]): Restrict to one status.
             customer_filter (Optional[CustomerFilter]): The richer filter.
+            customer_ids (Optional[List[str]]): The households the caller may
+                read. ``None`` means every household; an empty list means none.
 
         Returns:
             List[Customer]: The matching customers, ordered by family name.
@@ -424,7 +486,10 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             customer_filter.model_dump(exclude_none=True) if customer_filter else None,  # noqa: E501
         )
         statement = self._build_query(
-            search=search, status=status, customer_filter=customer_filter
+            search=search,
+            status=status,
+            customer_filter=customer_filter,
+            customer_ids=customer_ids,
         )
         statement = statement.order_by(CustomerRow.last_name, CustomerRow.first_name)  # noqa: E501
         try:
@@ -448,6 +513,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         search: Optional[str] = None,
         status: Optional[RegistrationStatus] = None,
         customer_filter: Optional[CustomerFilter] = None,
+        customer_ids: Optional[List[str]] = None,
     ) -> int:
         """Return how many customers match a query.
 
@@ -456,6 +522,8 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 the names, the email and the city.
             status (Optional[RegistrationStatus]): Restrict to one status.
             customer_filter (Optional[CustomerFilter]): The richer filter.
+            customer_ids (Optional[List[str]]): The households the caller may
+                read, so the total is narrowed exactly as the page is.
 
         Returns:
             int: The number of matching customers.
@@ -471,7 +539,8 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 self._build_query(
                     search=search,
                     status=status,
-                    customer_filter=customer_filter,  # noqa: E501
+                    customer_filter=customer_filter,
+                    customer_ids=customer_ids,
                 )
             )
         except SQLAlchemyError:
@@ -521,17 +590,9 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               A page of fifty narrowed to three has already read forty-seven
               customers this assistant is not entitled to.
         """
-        by_intervention = select(InterventionRow.customer_id).where(
-            InterventionRow.hca_id == hca_id
-        )
-        by_quote = select(QuoteRow.customer_id).where(
-            QuoteRow.authored_by == account_id
-        )
         statement = (
             self._build_query(search=search)
-            .where(
-                CustomerRow.id.in_(by_intervention.union(by_quote)),
-            )
+            .where(CustomerRow.id.in_(self._portfolio_scope(hca_id, account_id)))
             .order_by(CustomerRow.last_name, CustomerRow.first_name)
         )
         self.logger.debug(
@@ -547,6 +608,89 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 "quote of their own.",
                 hca_id,
             )
+        return self.mapper.to_models(rows)
+
+    async def portfolio_ids(self, hca_id: str, account_id: str) -> List[str]:
+        """Return every customer an assistant is entitled to see.
+
+        Args:
+            hca_id (str): The assistant whose portfolio is being read.
+            account_id (str): The sign-in account that assistant holds.
+
+        Returns:
+            List[str]: Their customers' identifiers, in a stable order.
+
+        Notes:
+            - **Not ``list_for_hca(size=None)``**, and the difference is a bug
+              waiting to happen: :meth:`~storage.repositories.base.BaseRepository._paginate`
+              turns an absent size into the default page of a hundred. A screen
+              built from that would silently omit the hundred-and-first
+              household — a calendar missing a family, with nothing on it
+              saying so.
+            - Identifiers only. The caller that needs the records asks for them
+              by name afterwards; a rail of forty households does not need forty
+              addresses and telephone numbers read out of the database to draw
+              it.
+            - Ordered so two reads of an unchanged portfolio produce the same
+              rail rather than the same set in a different order.
+        """
+        statement = (
+            select(CustomerRow.id)
+            .where(CustomerRow.id.in_(self._portfolio_scope(hca_id, account_id)))  # noqa: E501
+            .order_by(CustomerRow.last_name, CustomerRow.first_name)
+        )
+        rows = await self.session.execute(statement)
+        identifiers = [row[0] for row in rows.all()]
+        if not identifiers:
+            self.logger.info(
+                "Assistant %s has no customer yet: no planned visit and no "
+                "quote of their own.",
+                hca_id,
+            )
+        self.logger.debug(
+            "Assistant %s has %d customer(s) in their portfolio.",
+            hca_id,
+            len(identifiers),
+        )
+        return identifiers
+
+    async def list_by_ids(self, customer_ids: List[str]) -> List[Customer]:
+        """Return several customers at once.
+
+        Args:
+            customer_ids (List[str]): The customers wanted.
+
+        Returns:
+            List[Customer]: The matching customers, by family name. Identifiers
+            that match nothing are simply absent.
+
+        Notes:
+            - Exists to replace a loop of :meth:`get` calls. Drawing a rail of
+              four hundred households one query at a time is four hundred round
+              trips on a screen somebody opens every morning.
+            - **An empty input answers without a query.** ``IN ()`` is a syntax
+              error on some engines and a pointless round trip on the rest, and
+              an empty portfolio is an ordinary state rather than an error.
+            - The caller decides what a missing identifier means. Here it can
+              only be a household deleted between two reads, which is a rail
+              entry that quietly disappears rather than a failure.
+        """
+        if not customer_ids:
+            self.logger.debug("No customer identifier was given; reading none.")
+            return []
+        statement = (
+            self._build_query()
+            .where(CustomerRow.id.in_(customer_ids))
+            .order_by(CustomerRow.last_name, CustomerRow.first_name)
+        )
+        rows = await self._fetch_all(statement)
+        if len(rows) != len(set(customer_ids)):
+            self.logger.warning(
+                "Asked for %d customer(s) and found %d; some no longer exist.",
+                len(set(customer_ids)),
+                len(rows),
+            )
+        self.logger.debug("Read %d customer(s) by identifier.", len(rows))
         return self.mapper.to_models(rows)
 
     async def is_served_by(
@@ -571,17 +715,9 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               stay that way: a portfolio that lists a customer the detail view
               then refuses is worse than either behaviour on its own.
         """
-        by_intervention = select(InterventionRow.customer_id).where(
-            InterventionRow.hca_id == hca_id,
-            InterventionRow.customer_id == customer_id,
-        )
-        by_quote = select(QuoteRow.customer_id).where(
-            QuoteRow.authored_by == account_id,
-            QuoteRow.customer_id == customer_id,
-        )
         statement = select(CustomerRow.id).where(
             CustomerRow.id == customer_id,
-            CustomerRow.id.in_(by_intervention.union(by_quote)),
+            CustomerRow.id.in_(self._portfolio_scope(hca_id, account_id)),
         )
         found = await self._fetch_one(statement)
         if found is None:

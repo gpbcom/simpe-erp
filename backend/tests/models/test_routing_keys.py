@@ -6,6 +6,7 @@ import pytest
 # First-party imports
 from models.enums import EventRoutingKey
 from models.exceptions import MTRoutingKeyMissingCompany
+from tests.annotations import ModelInput
 
 COMPANY = "156940b2-f71e-5aeb-8bfd-22a452311d8c"
 
@@ -65,11 +66,11 @@ class TestRoutingKeysAreScopedToAnAgency:
             pytest.param(None, id="Refused - missing"),
         ],
     )
-    def test_an_agencyless_key_is_refused(self, company_id: object) -> None:
+    def test_an_agencyless_key_is_refused(self, company_id: ModelInput) -> None:
         """``"quote.submitted."`` is valid, and binds to nothing.
 
         Args:
-            company_id (object): The identifier to refuse.
+            company_id (ModelInput): The identifier to refuse.
 
         Notes:
             That is the point of raising: a key that silently reaches no queue

@@ -132,12 +132,14 @@ class QuoteCreateRequest(BaseModel):
     # Publicly Exposed Methods #
     ############################
 
-    def to_quote(self, company_id: str) -> Quote:
+    def to_quote(self, company_id: str, team_id: str) -> Quote:
         """Build the quote this payload asks for, inside an agency.
 
         Args:
             company_id (str): The agency the quote belongs to, taken from the
                 caller's credential.
+            team_id (str): The team that will deliver the work, decided by
+                :meth:`~service.organisation.teams.TeamService.attribute`.
 
         Returns:
             Quote: A draft quote carrying the payload's three fields.
@@ -147,12 +149,19 @@ class QuoteCreateRequest(BaseModel):
               class notes, and the conversion lives here rather than in the route
               so that the one place a payload becomes a quote is the one place
               that has to be read to know what a payload can and cannot set.
+            - **The team is a parameter for a stronger reason than the agency.**
+              It decides whose week the planner rewrites to deliver this work; a
+              payload able to name one could file a household onto another
+              manager's queue and commit their assistants to it. It is not
+              chosen by the caller at all — it is derived from where the
+              household lives and how much each team already carries.
             - The status is left to :class:`~models.quoting.quote.Quote`'s own
               default, which is ``draft``. A quote that arrived already accepted
               would have skipped every step that makes acceptance mean anything.
         """
         return Quote(
             company_id=company_id,
+            team_id=team_id,
             reference=self.reference,
             customer_id=self.customer_id,
             lines=list(self.lines),

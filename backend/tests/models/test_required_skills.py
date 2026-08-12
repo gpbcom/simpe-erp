@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, time
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -23,14 +23,15 @@ from models.schemas.exceptions import MTInterventionTypeUpdateRequestInvalidSkil
 from models.schemas.requests.catalog.intervention_type_update_request import (
     InterventionTypeUpdateRequest,
 )
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_type_kwargs() -> Dict[str, Any]:
+def valid_type_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid catalogue entry.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "name": "Soin infirmier",
@@ -40,11 +41,11 @@ def valid_type_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_line_kwargs() -> Dict[str, Any]:
+def valid_line_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid quote line.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "name": "Soin infirmier",
@@ -58,11 +59,11 @@ def valid_line_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_requirement_kwargs() -> Dict[str, Any]:
+def valid_requirement_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid solver requirement.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "id": "req-1",
@@ -79,11 +80,11 @@ def valid_requirement_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_hca_kwargs() -> Dict[str, Any]:
+def valid_hca_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid assistant.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "first_name": "Luc",
@@ -109,13 +110,13 @@ class TestRequiredSkills:
     # ------------------------------------------------------------------ #
 
     def test_a_catalogue_entry_requires_no_skill_by_default(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Adding the field changed nothing about work already sold."""
         assert InterventionType(**valid_type_kwargs).required_skill_codes == []
 
     def test_catalogue_codes_are_normalised(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Upper-cased on the way in so matching is a plain equality test."""
         entry = InterventionType(
@@ -124,7 +125,7 @@ class TestRequiredSkills:
         assert entry.required_skill_codes == ["LEVE-PERSONNE", "TOILETTE"]
 
     def test_catalogue_codes_are_de_duplicated(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The same code twice means what it means once."""
         entry = InterventionType(
@@ -134,14 +135,14 @@ class TestRequiredSkills:
 
     @pytest.mark.parametrize("invalid", ["TOILETTE", 42, [""], ["  "], [42], [None]])
     def test_a_malformed_catalogue_requirement_is_refused(
-        self, valid_type_kwargs: Dict[str, Any], invalid: object
+        self, valid_type_kwargs: Dict[str, ModelInput], invalid: ModelInput
     ) -> None:
         """A malformed requirement is refused rather than silently dropped."""
         with pytest.raises(MTInterventionTypeInvalidRequiredSkills):
             InterventionType(**valid_type_kwargs, required_skill_codes=invalid)
 
     def test_the_two_requirement_lists_are_independent(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A service may need a diploma, a skill, both or neither.
 
@@ -158,7 +159,7 @@ class TestRequiredSkills:
         assert entry.required_skill_codes == ["TOILETTE"]
 
     def test_a_malformed_skill_names_the_skill_exception(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The message must send whoever reads it to the right catalogue."""
         with pytest.raises(MTInterventionTypeInvalidRequiredSkills) as raised:
@@ -170,18 +171,20 @@ class TestRequiredSkills:
     # ------------------------------------------------------------------ #
 
     def test_a_line_inherits_by_default(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """``None`` means "whatever the catalogue entry requires"."""
         assert QuoteLine(**valid_line_kwargs).required_skill_codes is None
 
-    def test_a_line_may_override(self, valid_line_kwargs: Dict[str, Any]) -> None:
+    def test_a_line_may_override(
+        self, valid_line_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """An array means "these, instead of the catalogue's"."""
         line = QuoteLine(**valid_line_kwargs, required_skill_codes=["toilette"])
         assert line.required_skill_codes == ["TOILETTE"]
 
     def test_an_empty_override_survives_as_one(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An empty array means "this hour needs no skill at all".
 
@@ -196,35 +199,35 @@ class TestRequiredSkills:
 
     @pytest.mark.parametrize("invalid", ["TOILETTE", 42, [""], [42]])
     def test_a_malformed_line_override_is_refused(
-        self, valid_line_kwargs: Dict[str, Any], invalid: object
+        self, valid_line_kwargs: Dict[str, ModelInput], invalid: ModelInput
     ) -> None:
         """A malformed override is refused rather than stored."""
         with pytest.raises(MTQuoteLineInvalidRequiredSkills):
             QuoteLine(**valid_line_kwargs, required_skill_codes=invalid)
 
     def test_effective_codes_fall_back_to_the_catalogue(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """No override means the catalogue's."""
         line = QuoteLine(**valid_line_kwargs)
         assert line.effective_skill_codes(["TOILETTE"]) == ["TOILETTE"]
 
     def test_effective_codes_honour_an_override(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An override wins over the catalogue's default."""
         line = QuoteLine(**valid_line_kwargs, required_skill_codes=["ARABE"])
         assert line.effective_skill_codes(["TOILETTE"]) == ["ARABE"]
 
     def test_an_empty_override_is_honoured_not_treated_as_absent(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The distinction is the whole reason the field is nullable."""
         line = QuoteLine(**valid_line_kwargs, required_skill_codes=[])
         assert line.effective_skill_codes(["TOILETTE"]) == []
 
     def test_the_two_overrides_resolve_independently(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A line may keep the catalogue's diplomas and drop its skills."""
         line = QuoteLine(**valid_line_kwargs, required_skill_codes=[])
@@ -236,7 +239,7 @@ class TestRequiredSkills:
     # ------------------------------------------------------------------ #
 
     def test_a_requirement_needs_no_skill_by_default(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Most work needs nothing, which is what makes the skip worthwhile."""
         requirement = InterventionRequirement(**valid_requirement_kwargs)
@@ -244,7 +247,7 @@ class TestRequiredSkills:
         assert requirement.requires_skills() is False
 
     def test_a_requirement_reports_that_it_needs_a_skill(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The solver adds its constraint only for these."""
         requirement = InterventionRequirement(
@@ -253,7 +256,7 @@ class TestRequiredSkills:
         assert requirement.requires_skills() is True
 
     def test_requirement_codes_are_normalised_and_de_duplicated(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Normalised again here, because a requirement is also built directly.
 
@@ -269,7 +272,7 @@ class TestRequiredSkills:
 
     @pytest.mark.parametrize("invalid", ["TOILETTE", 42, [""], [42]])
     def test_a_malformed_requirement_is_refused(
-        self, valid_requirement_kwargs: Dict[str, Any], invalid: object
+        self, valid_requirement_kwargs: Dict[str, ModelInput], invalid: ModelInput
     ) -> None:
         """The solver never sees a requirement it cannot match."""
         with pytest.raises(MTRequirementInvalidRequiredSkills):
@@ -278,7 +281,7 @@ class TestRequiredSkills:
             )
 
     def test_the_two_requirements_reach_the_solver_separately(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Kept apart all the way in, so the diagnosis can tell them apart."""
         requirement = InterventionRequirement(
@@ -319,7 +322,9 @@ class TestRequiredSkills:
         assert payload.required_skill_codes == ["TOILETTE"]
 
     @pytest.mark.parametrize("invalid", ["TOILETTE", 42, [""], [42]])
-    def test_a_malformed_request_requirement_is_refused(self, invalid: object) -> None:
+    def test_a_malformed_request_requirement_is_refused(
+        self, invalid: ModelInput
+    ) -> None:
         """Refused on the way in, where the message can name the field."""
         with pytest.raises(MTInterventionTypeUpdateRequestInvalidSkills):
             InterventionTypeUpdateRequest(required_skill_codes=invalid)
@@ -329,14 +334,14 @@ class TestRequiredSkills:
     # ------------------------------------------------------------------ #
 
     def test_work_needing_nothing_is_satisfied_by_everybody(
-        self, valid_hca_kwargs: Dict[str, Any]
+        self, valid_hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An assistant with no declared skill can still take ungated work."""
         assistant = Hca(**valid_hca_kwargs)
         assert assistant.holds_skills([], date(2026, 8, 5)) is True
 
     def test_every_code_is_needed_not_any(
-        self, valid_hca_kwargs: Dict[str, Any]
+        self, valid_hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A requirement listing two skills means the person needs both.
 
@@ -352,14 +357,14 @@ class TestRequiredSkills:
         assert assistant.holds_skills(["TOILETTE", "ARABE"], date(2026, 8, 5)) is False
 
     def test_an_uncoded_declaration_satisfies_nothing(
-        self, valid_hca_kwargs: Dict[str, Any]
+        self, valid_hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A free-text skill is a record, not a claim the planner can act on."""
         assistant = Hca(**valid_hca_kwargs, skills=[Skill(name="TOILETTE")])
         assert assistant.holds_skills(["TOILETTE"], date(2026, 8, 5)) is False
 
     def test_a_lapsed_declaration_does_not_qualify(
-        self, valid_hca_kwargs: Dict[str, Any]
+        self, valid_hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Judged on the day of the visit, not the day of the solve."""
         assistant = Hca(
@@ -370,7 +375,7 @@ class TestRequiredSkills:
         assert assistant.holds_skills(["SST"], date(2026, 8, 5)) is False
 
     def test_skills_and_certifications_are_answered_separately(
-        self, valid_hca_kwargs: Dict[str, Any]
+        self, valid_hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The two lists do not satisfy each other.
 
@@ -387,7 +392,7 @@ class TestRequiredSkills:
         assert assistant.holds_certifications(["TOILETTE"], date(2026, 8, 5)) is False
 
     def test_an_assistant_declares_nothing_by_default(
-        self, valid_hca_kwargs: Dict[str, Any]
+        self, valid_hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A row written before the table existed reads back as assignable."""
         assert Hca(**valid_hca_kwargs, skills=None).skills == []

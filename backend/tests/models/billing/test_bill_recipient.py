@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -23,6 +23,7 @@ from models.billing.exceptions import (
 )
 from models.enums import RecipientKind
 from models.geo.postal_address import PostalAddress
+from tests.annotations import ModelInput
 
 ADDRESS = PostalAddress(
     street="1 rue des Lilas",
@@ -38,11 +39,11 @@ VALID_SIREN = "130025265"
 
 
 @pytest.fixture
-def household() -> Dict[str, Any]:
+def household() -> Dict[str, ModelInput]:
     """Return the arguments for a private individual.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {"name": "Jeanne Vincent", "address": ADDRESS}
 
@@ -55,7 +56,7 @@ class TestBillRecipient:
     # ------------------------------------------------------------------ #
 
     def test_a_recipient_is_a_private_individual_by_default(
-        self, household: Dict[str, Any]
+        self, household: Dict[str, ModelInput]
     ) -> None:
         """**The safe default, and the ordinary one.**
 
@@ -141,7 +142,7 @@ class TestBillRecipient:
             )
 
     def test_a_household_with_a_siren_is_refused(
-        self, household: Dict[str, Any]
+        self, household: Dict[str, ModelInput]
     ) -> None:
         """**The other direction is an error too.**
 
@@ -208,7 +209,7 @@ class TestBillRecipient:
     # ------------------------------------------------------------------ #
 
     def test_an_unset_share_means_the_whole_invoice(
-        self, household: Dict[str, Any]
+        self, household: Dict[str, ModelInput]
     ) -> None:
         """Which is what a single payer owes, and therefore most invoices."""
         recipient = BillRecipient(**household)
@@ -237,7 +238,7 @@ class TestBillRecipient:
         ],
     )
     def test_an_unusable_share_is_refused(
-        self, household: Dict[str, Any], value: str
+        self, household: Dict[str, ModelInput], value: str
     ) -> None:
         """Zero included: a party owing nothing is not a recipient."""
         with pytest.raises(MTBillRecipientInvalidShare):
@@ -255,7 +256,7 @@ class TestBillRecipient:
             pytest.param("x" * 256, id="Invalid - too long"),
         ],
     )
-    def test_an_unnamed_recipient_is_refused(self, value: Any) -> None:
+    def test_an_unnamed_recipient_is_refused(self, value: ModelInput) -> None:
         """An invoice with no addressee is not an invoice."""
         with pytest.raises(MTBillRecipientInvalidName):
             BillRecipient(name=value, address=ADDRESS)
@@ -265,7 +266,7 @@ class TestBillRecipient:
         with pytest.raises(MTBillRecipientInvalidAddress):
             BillRecipient(name="Jeanne Vincent", address="1 rue des Lilas, Paris")
 
-    def test_an_unknown_kind_is_refused(self, household: Dict[str, Any]) -> None:
+    def test_an_unknown_kind_is_refused(self, household: Dict[str, ModelInput]) -> None:
         """The kind decides the regime, so it is refused rather than defaulted."""
         with pytest.raises(MTBillRecipientInvalidKind):
             BillRecipient(**{**household, "kind": "charity"})
@@ -292,7 +293,7 @@ class TestBillRecipient:
         """Per-field exceptions inherit from the family the API maps."""
         assert issubclass(exception_class, MTInvalidBillRecipientException)
 
-    def test_model_dump_round_trip(self, household: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(self, household: Dict[str, ModelInput]) -> None:
         """A recipient survives a dump-and-rebuild unchanged."""
         recipient = BillRecipient(**household)
 

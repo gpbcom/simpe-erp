@@ -21,6 +21,7 @@ from models.settings.planning_settings import PlanningSettings
 
 # First-party imports
 from service.planning.plannings import PlanningService
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 TUESDAY = date(2026, 8, 4)
@@ -45,7 +46,7 @@ def _hca(
     hca_id: str = "hca-1",
     home: GeoPoint = NEAR,
     can_drive: bool = True,
-    availability: Optional[List[Dict[str, object]]] = None,
+    availability: Optional[List[Dict[str, ModelInput]]] = None,
 ) -> Hca:
     """Build an assistant whose home is already geocoded.
 
@@ -53,7 +54,7 @@ def _hca(
         hca_id (str): The identifier to assign.
         home (GeoPoint): Where they live.
         can_drive (bool): Whether they hold a car licence.
-        availability (Optional[List[Dict[str, object]]]): Absences to record.
+        availability (Optional[List[Dict[str, ModelInput]]]): Absences to record.
 
     Returns:
         Hca: The assistant.
@@ -138,6 +139,7 @@ def _planner(
         hcas=AsyncMock(),
         types=AsyncMock(),
         settings=AsyncMock(),
+        teams=AsyncMock(),
         config=config,
     )
     service.build_travel(assistants, requirements)
@@ -193,6 +195,7 @@ def _solve(
         hcas=MagicMock(),
         types=MagicMock(),
         settings=MagicMock(),
+        teams=AsyncMock(),
         config=config,
     )
     solver.build_travel(assistants, requirements)
@@ -549,6 +552,7 @@ class TestPlanningService:
             hcas=MagicMock(),
             types=MagicMock(),
             settings=MagicMock(),
+            teams=AsyncMock(),
             config=config,
         )
         assistants = [_hca()]

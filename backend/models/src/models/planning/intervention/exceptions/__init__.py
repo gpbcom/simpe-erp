@@ -4,6 +4,7 @@ from .intervention_exceptions import (
     MTInterventionInvalidId,
     MTInterventionInvalidName,
     MTInterventionInvalidStatus,
+    MTInterventionInvalidTeamId,
     MTInterventionInvalidTime,
     MTInvalidInterventionException,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "MTInterventionInvalidId",
     "MTInterventionInvalidName",
     "MTInterventionInvalidStatus",
+    "MTInterventionInvalidTeamId",
     "MTInterventionInvalidTime",
     "MTInvalidInterventionException",
     "MTInvalidInterventionRequirementException",

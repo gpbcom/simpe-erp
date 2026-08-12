@@ -254,7 +254,9 @@ export function WelcomePage() {
       </Container>
 
       {/* ── Who it is for ────────────────────────────────────────────── */}
-      <Box sx={{ bgcolor: alpha(BRAND.primary, dark ? 0.12 : 0.05), py: { xs: 5, md: 8 } }}>
+      <Box
+        sx={{ bgcolor: alpha(BRAND.primary, dark ? 0.12 : 0.05), py: { xs: 5, md: 8 } }}
+      >
         <Container maxWidth="lg">
           <Typography variant="h2" sx={{ mb: 1 }}>
             {t('welcome.rolesTitle')}
@@ -266,11 +268,7 @@ export function WelcomePage() {
           <Grid container spacing={2.5} data-testid="welcome-roles">
             {ROLES.map((role) => (
               <Grid size={{ xs: 12, md: 4 }} key={role.title}>
-                <Stack
-                  direction="row"
-                  spacing={1.5}
-                  data-testid={`role-${role.icon}`}
-                >
+                <Stack direction="row" spacing={1.5} data-testid={`role-${role.icon}`}>
                   <Box sx={{ color: BRAND.secondary, pt: 0.25 }}>
                     <AppIcon name={role.icon} />
                   </Box>

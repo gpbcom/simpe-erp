@@ -9,12 +9,13 @@ import re
 from typing import ClassVar, Optional, Union
 
 # Third-party imports
-from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationInfo, field_validator  # noqa: E501
 
-from models.companies.company_choice import CompanyChoice
+from models.geo.postal_address import PostalAddress
+from models.organisation.companies.company_choice import CompanyChoice
 
 # First-party imports
-from models.companies.exceptions import (
+from models.organisation.companies.exceptions import (
     MTCompanyInvalidBic,
     MTCompanyInvalidDate,
     MTCompanyInvalidEmail,
@@ -27,11 +28,10 @@ from models.companies.exceptions import (
     MTCompanyInvalidPhoneNumber,
     MTCompanyInvalidRcsNumber,
     MTCompanyInvalidRegistrationNumber,
-    MTCompanyInvalidShareCapital,
     MTCompanyInvalidSapDeclarationNumber,
+    MTCompanyInvalidShareCapital,
     MTCompanyInvalidVatNumber,
 )
-from models.geo.postal_address import PostalAddress
 
 
 class Company(BaseModel):
@@ -89,7 +89,6 @@ class Company(BaseModel):
     MAX_LEGAL_FORM_LENGTH: ClassVar[int] = 64
     MAX_RCS_LENGTH: ClassVar[int] = 64
     MAX_SAP_DECLARATION_LENGTH: ClassVar[int] = 64
-    #: The longest IBAN any country issues.
     MAX_IBAN_LENGTH: ClassVar[int] = 34
     VAT_NUMBER_PATTERN: ClassVar[str] = r"^[A-Z]{2}[0-9A-Z]{2}[0-9]{9}$"
     IBAN_PATTERN: ClassVar[str] = r"^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$"
@@ -490,7 +489,8 @@ class Company(BaseModel):
             ) from None
         if amount <= 0:
             raise MTCompanyInvalidShareCapital(
-                f"Invalid share_capital: {amount!r}. Must be greater than zero."
+                f"Invalid share_capital: {amount!r}. "  # noqa: E501
+                "Must be greater than zero."
             )
         return amount
 
@@ -746,6 +746,7 @@ class Company(BaseModel):
         if f"/{cls.LOGO_KEY_PREFIX}" not in stripped:
             raise MTCompanyInvalidLogoUrl(
                 f"Invalid logo_url: {stripped!r}. Must point at a logo stored "
-                f"by this application, under the {cls.LOGO_KEY_PREFIX!r} prefix."
+                f"by this application, under the "
+                f"{cls.LOGO_KEY_PREFIX!r} prefix."
             )
         return stripped

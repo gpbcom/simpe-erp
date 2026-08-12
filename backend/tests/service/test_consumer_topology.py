@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, List
+from typing import Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
@@ -12,6 +12,7 @@ from models.configuration.rabbitmq_config import RabbitMqConfig
 from models.enums import EventRoutingKey
 from service.messaging.consumer import EventConsumer
 from service.messaging.exceptions import MTConsumerNotStarted
+from tests.annotations import ModelInput
 
 PLANNING_KEYS: List[EventRoutingKey] = [EventRoutingKey.PLANNING_RUN_REQUESTED]
 NOTIFICATION_KEYS: List[EventRoutingKey] = [
@@ -44,7 +45,7 @@ def consumer() -> EventConsumer:
     return consumer
 
 
-def _declared(consumer: EventConsumer, name: str) -> Dict[str, Any]:
+def _declared(consumer: EventConsumer, name: str) -> Dict[str, ModelInput]:
     """Return the keyword arguments one queue was declared with.
 
     Args:
@@ -52,7 +53,7 @@ def _declared(consumer: EventConsumer, name: str) -> Dict[str, Any]:
         name (str): The queue's full name.
 
     Returns:
-        Dict[str, Any]: The declaration's keyword arguments.
+        Dict[str, ModelInput]: The declaration's keyword arguments.
     """
     for call in consumer.channel.declare_queue.await_args_list:
         if call.args and call.args[0] == name:
@@ -162,7 +163,7 @@ class TestDeadLetterQueueTopology:
         """
         queues: Dict[str, AsyncMock] = {}
 
-        def declare(name: str, **_: Any) -> AsyncMock:
+        def declare(name: str, **_: ModelInput) -> AsyncMock:
             queues[name] = queues.get(name, AsyncMock())
             return queues[name]
 
@@ -190,7 +191,7 @@ class TestDeadLetterQueueTopology:
         """
         queues: Dict[str, AsyncMock] = {}
 
-        def declare(name: str, **_: Any) -> AsyncMock:
+        def declare(name: str, **_: ModelInput) -> AsyncMock:
             queues[name] = queues.get(name, AsyncMock())
             return queues[name]
 

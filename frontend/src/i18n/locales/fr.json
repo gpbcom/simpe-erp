@@ -19,7 +19,6 @@
     "planningSettings": "Paramètres de planning",
     "users": "Comptes",
     "companies": "Agences",
-    "teamPlanning": "Plannings des intervenants",
     "operations": "Exploitation",
     "administration": "Administration",
     "company": "Mon agence",
@@ -27,7 +26,8 @@
     "skills": "Compétences",
     "bills": "Factures",
     "billingSettings": "Paramètres de facturation",
-    "myPortal": "Mon espace"
+    "myPortal": "Mon espace",
+    "plannings": "Plannings"
   },
   "auth": {
     "signIn": "Se connecter",
@@ -323,7 +323,11 @@
       "missing-skill": "personne n'a déclaré la compétence requise",
       "customer-conflict": "les visites du bénéficiaire se chevauchent et ne peuvent pas toutes tenir",
       "no-feasible-slot": "la journée était pleine : trajets, pause et autres visites ne laissaient pas de place"
-    }
+    },
+    "byAssistant": "Par intervenant",
+    "byCustomer": "Par bénéficiaire",
+    "everyHousehold": "Tous les bénéficiaires",
+    "noHouseholdPlanned": "Aucune intervention n'est planifiée pour vos bénéficiaires."
   },
   "notification": {
     "title": "Notifications",

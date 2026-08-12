@@ -219,6 +219,7 @@ def service(
         hcas=hcas,
         types=types,
         settings=planning_settings,
+        teams=AsyncMock(),
         config=PlanningConfig(),
     )
 
@@ -714,6 +715,7 @@ class TestPlanningSettingsLifecycle:
             hcas=AsyncMock(),
             types=AsyncMock(),
             settings=settings,
+            teams=AsyncMock(),
             config=PlanningConfig(
                 day_start_minute=8 * 60,
                 day_end_minute=19 * 60,

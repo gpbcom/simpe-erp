@@ -3,10 +3,12 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date
 from decimal import Decimal
-from typing import Any, Dict, Iterator
+from typing import Dict, Iterator
 from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
+from fastapi import Request, Response
+from starlette.middleware.base import RequestResponseEndpoint
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
@@ -42,8 +44,9 @@ from service.billing.exceptions import (
     MTBillTransitionNotAllowed,
 )
 from service.messaging.publisher import EventPublisher
+from tests.annotations import ModelInput
 
-ADDRESS: Dict[str, Any] = {
+ADDRESS: Dict[str, ModelInput] = {
     "street": "1 rue des Lilas",
     "postal_code": "75011",
     "city": "Paris",
@@ -74,7 +77,7 @@ def a_user(role: UserRole = UserRole.MANAGER) -> User:
     )
 
 
-def a_bill(**overrides: Any) -> Bill:
+def a_bill(**overrides: ModelInput) -> Bill:
     """Build a stored invoice.
 
     Args:
@@ -83,7 +86,7 @@ def a_bill(**overrides: Any) -> Bill:
     Returns:
         Bill: The invoice.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "id": "bill-1",
         "company_id": "company-1",
         "customer_id": "customer-1",
@@ -445,9 +448,7 @@ class TestTheLifecycleEndpoint:
             return_value=a_bill(status=BillStatus.WAITING_PAYMENT)
         )
 
-        client.patch(
-            "/api/v1/bills/bill-1/status", json={"status": "waiting-payment"}
-        )
+        client.patch("/api/v1/bills/bill-1/status", json={"status": "waiting-payment"})
 
         publisher.publish.assert_not_awaited()
 
@@ -626,15 +627,17 @@ class TestTheGuards:
         app.dependency_overrides[get_event_publisher] = lambda: publisher
 
         @app.middleware("http")
-        async def _authenticate(request: Any, call_next: Any) -> Any:
+        async def _authenticate(
+            request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             """Plant an assistant where the real middleware would.
 
             Args:
-                request (Any): The incoming request.
-                call_next (Any): The rest of the stack.
+                request (Request): The incoming request.
+                call_next (RequestResponseEndpoint): The rest of the stack.
 
             Returns:
-                Any: The response.
+                Response: The response.
             """
             request.state.user = a_user(UserRole.HCA)
             return await call_next(request)

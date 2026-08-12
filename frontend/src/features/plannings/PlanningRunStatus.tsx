@@ -85,11 +85,7 @@ export function PlanningRunStatus({ run }: PlanningRunStatusProps) {
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 3 }}>
               {quote.visits.map((visit) => (
-                <Typography
-                  component="li"
-                  variant="body2"
-                  key={visit.requirement_id}
-                >
+                <Typography component="li" variant="body2" key={visit.requirement_id}>
                   {t('planning.runPartialVisit', {
                     service: visit.name,
                     day: visit.day,

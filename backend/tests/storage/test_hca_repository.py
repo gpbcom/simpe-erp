@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, time
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -14,6 +14,7 @@ from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.hca.certification import Certification
 from models.people.hca import Hca
 from storage.repositories.people.hca import HcaRepository
+from tests.annotations import ModelInput
 
 
 def _slot(
@@ -96,7 +97,7 @@ class TestHcaRepository:
         assert loaded.can_drive() is False
 
     async def test_a_licence_survives_the_round_trip(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Categories flattened into one column rebuild into a licence."""
         repository = HcaRepository(session)
@@ -120,7 +121,7 @@ class TestHcaRepository:
         assert loaded.can_drive() is True
 
     async def test_removing_a_licence_clears_every_column(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An assistant who loses their licence keeps no trace of it.
 
@@ -152,7 +153,7 @@ class TestHcaRepository:
     # ------------------------------------------------------------------ #
 
     async def test_certifications_survive_the_round_trip(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Qualifications are stored in their own table and read back."""
         repository = HcaRepository(session)
@@ -196,7 +197,7 @@ class TestHcaRepository:
         assert [entry.name for entry in updated.certifications] == ["DEAVS"]
 
     async def test_set_employment_touches_nothing_else(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Contact details, address and licence are left alone.
 
@@ -224,7 +225,7 @@ class TestHcaRepository:
         assert reloaded.can_drive() is True
 
     async def test_set_employment_replaces_certifications_wholesale(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """What is sent is what the assistant now holds."""
         repository = HcaRepository(session)
@@ -342,7 +343,7 @@ class TestHcaRepository:
         assert slot.hca_id == stored.id
 
     async def test_an_absence_cannot_be_filed_against_another_assistant(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The owning assistant comes from the path, never from the payload.
 
@@ -455,7 +456,7 @@ class TestHcaRepository:
         assert await repository.list_availability(stored.id) == []
 
     async def test_an_absence_cannot_be_removed_by_another_assistant(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Knowing a slot id is not enough to delete a colleague's absence."""
         repository = HcaRepository(session)
@@ -482,7 +483,7 @@ class TestHcaRepository:
     # ------------------------------------------------------------------ #
 
     async def test_list_all_returns_the_whole_workforce(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The planning run needs everyone at once, unpaginated."""
         repository = HcaRepository(session)
@@ -504,7 +505,7 @@ class TestHcaRepository:
         assert await HcaRepository(session).list_all() == []
 
     async def test_the_contract_filter_restricts_the_page(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Filtering by contract returns only that contract."""
         repository = HcaRepository(session)
@@ -525,7 +526,7 @@ class TestHcaRepository:
         assert listed[0].last_name == "Bernard"
 
     async def test_count_matches_the_list_filters(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A page total is computed from the filters that built the page."""
         repository = HcaRepository(session)
@@ -538,7 +539,7 @@ class TestHcaRepository:
     # ------------------------------------------------------------------ #
 
     async def test_delete_removes_the_assistant_and_its_children(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Certifications and absences go with the assistant.
 

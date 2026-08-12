@@ -15,6 +15,7 @@ from api.dependencies import (
     get_event_publisher,
     get_manager_user,
     get_planning_service,
+    get_team_service,
 )
 from models.auth.user import User
 from models.people.customer import Customer
@@ -34,6 +35,7 @@ from models.schemas.responses.auth.temporary_credentials_response import (
 from service.auth.auth import AuthService
 from service.auth.exceptions import MTAuthCustomerAlreadyHasAccount
 from service.customers.customers import CustomerService
+from service.organisation.teams import TeamService
 from service.customers.exceptions import MTCustomerNotPromotable
 from service.messaging.publisher import EventPublisher
 from service.planning.plannings import PlanningService
@@ -74,9 +76,10 @@ async def list_customers(
     size: int = Query(default=50, ge=1, le=500),
     customer_filter: CustomerFilter = Depends(),
     service: CustomerService = Depends(get_customer_service),
-    _: User = Depends(get_manager_user),
+    teams: TeamService = Depends(get_team_service),
+    caller: User = Depends(get_manager_user),
 ) -> List[Customer]:
-    """List customers, narrowed by whichever filters were sent.
+    """List the households the caller's teams serve, narrowed by any filters.
 
     Args:
         customer_filter (CustomerFilter): The filters, bound from the query
@@ -84,10 +87,11 @@ async def list_customers(
         page (int): One-based page number.
         size (int): Page size.
         service (CustomerService): The customer service.
-        _ (User): The authenticated caller; enforces manager access.
+        teams (TeamService): Decides which households the caller may read.
+        caller (User): The authenticated caller; enforces manager access.
 
     Returns:
-        List[Customer]: The matching customers.
+        List[Customer]: The matching households of the caller's teams.
 
     Raises:
         MTInvalidCustomerFilterException: If a filter is malformed; answered as
@@ -111,6 +115,10 @@ async def list_customers(
         - Filtering happens **here**, not in the browser. The grid asks for one
           page; a client-side filter would search only the rows it happens to
           hold and silently miss the rest of the book.
+        - **A manager sees the households their teams hold quotes for**, and an
+          administrator sees the whole book. The scope comes from the *quotes*
+          rather than from the calendar, so a prospect who has been quoted and
+          not yet planned is still the manager's to chase.
     """
     logger.debug(
         "Listing customers: page=%d size=%d filter=%s.",
@@ -126,7 +134,10 @@ async def list_customers(
         logger.warning("A page of %d customers was asked for.", size)
     try:
         customers = await service.list(
-            page=page, size=size, customer_filter=customer_filter
+            page=page,
+            size=size,
+            customer_filter=customer_filter,
+            customer_ids=await teams.readable_customer_ids(caller),
         )
     except SQLAlchemyError:
         logger.error(
@@ -431,7 +442,7 @@ async def list_customer_quotes(
 
 @router.delete(
     "/{customer_id}",
-    response_model=Optional[PlanningRun],
+    response_model=Optional[List[PlanningRun]],
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_customer(
@@ -441,7 +452,7 @@ async def delete_customer(
     plannings: PlanningService = Depends(get_planning_service),
     publisher: EventPublisher = Depends(get_event_publisher),
     caller: User = Depends(get_manager_user),
-) -> Optional[PlanningRun]:
+) -> Optional[List[PlanningRun]]:
     """Remove a customer, every quote written for them, and replan.
 
     Args:
@@ -454,8 +465,10 @@ async def delete_customer(
         caller (User): The authenticated caller; enforces manager access.
 
     Returns:
-        Optional[PlanningRun]: The pending replan with the identifier to poll,
-        or ``None`` when the customer had no future visits.
+        Optional[List[PlanningRun]]: One pending replan per team that still
+        held future visits for them — more than one is possible, because a
+        household's quotes are attributed one at a time — or ``None`` when the
+        customer had no future visits at all.
 
     Raises:
         MTCustomerNotFound: If no such customer exists; answered as a 404.
@@ -474,6 +487,7 @@ async def delete_customer(
           gap that no other work has been moved into.
     """
     period = await plannings.future_period_for_customer(customer_id)
+    team_ids = await plannings.future_teams_for_customer(customer_id)
     await service.delete(customer_id)
     logger.info("%s deleted customer %s.", caller.email, customer_id)
     if period is None:
@@ -482,10 +496,12 @@ async def delete_customer(
         )
         response.status_code = status.HTTP_204_NO_CONTENT
         return None
-    return await plannings.queue_replan(
+    runs = await plannings.queue_replan(
         requested_by=caller.id or caller.email,
         company_id=caller.company_id,
+        team_ids=team_ids,
         period=period,
         publisher=publisher,
         reason=f"customer {customer_id} was removed",
     )
+    return runs

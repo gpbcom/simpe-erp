@@ -13,11 +13,12 @@ from models.schemas.exceptions import (
     MTCompanyProfileUpdateRequestInvalidName,
     MTCompanyProfileUpdateRequestInvalidRegistrationNumber,
 )
-from models.companies.company import Company
-from models.companies.exceptions import MTCompanyInvalidIban
+from models.organisation.companies.company import Company
+from models.organisation.companies.exceptions import MTCompanyInvalidIban
 from models.schemas.requests.companies.company_profile_update_request import (
     CompanyProfileUpdateRequest,
 )
+from tests.annotations import ModelInput
 
 
 class TestCompanyProfileUpdateRequest:
@@ -93,11 +94,13 @@ class TestCompanyProfileUpdateRequest:
         assert request.registration_number == "12345"
 
     @pytest.mark.parametrize("value", [42, [], {}])
-    def test_a_non_string_registration_number_is_refused(self, value: object) -> None:
+    def test_a_non_string_registration_number_is_refused(
+        self, value: ModelInput
+    ) -> None:
         """Tidying is not the same as accepting anything.
 
         Args:
-            value (object): The rejected ``registration_number``.
+            value (ModelInput): The rejected ``registration_number``.
         """
         with pytest.raises(MTCompanyProfileUpdateRequestInvalidRegistrationNumber):
             CompanyProfileUpdateRequest(name="Agency", registration_number=value)

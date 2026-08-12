@@ -40,13 +40,12 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(
             session=session,
             row_class=SkillTypeRow,
-            logger=resolved_logger,
         )
-        self.mapper = SkillTypeMapper(logger=resolved_logger)
+        self.mapper = SkillTypeMapper()
 
     ############################
     # Internal Helpers Methods #

@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Dict, List
 
 # Third-party imports
 import pytest
@@ -31,9 +31,10 @@ from storage.repositories.billing.billing_settings import (
     BillingSettingsRepository,
 )
 from storage.repositories.people.customer import CustomerRepository
+from tests.annotations import ModelInput
 
 COMPANY = "company-1"
-ADDRESS: Dict[str, Any] = {
+ADDRESS: Dict[str, ModelInput] = {
     "street": "12 rue de Rivoli",
     "postal_code": "75004",
     "city": "Paris",
@@ -41,7 +42,9 @@ ADDRESS: Dict[str, Any] = {
 }
 
 
-def a_charge(service_date: date = date(2026, 3, 9), **overrides: Any) -> BillLine:
+def a_charge(
+    service_date: date = date(2026, 3, 9), **overrides: ModelInput
+) -> BillLine:
     """Build one priced charge.
 
     Args:
@@ -51,7 +54,7 @@ def a_charge(service_date: date = date(2026, 3, 9), **overrides: Any) -> BillLin
     Returns:
         BillLine: A charge a bill accepts.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "quote_line_id": "quote-line-1",
         "name": "Aide à la toilette",
         "service_category": ServiceCategory.NECESSITY,
@@ -67,7 +70,7 @@ def a_charge(service_date: date = date(2026, 3, 9), **overrides: Any) -> BillLin
     return BillLine(**payload)
 
 
-def a_bill(customer_id: str, **overrides: Any) -> Bill:
+def a_bill(customer_id: str, **overrides: ModelInput) -> Bill:
     """Build a March invoice for a customer.
 
     Args:
@@ -78,7 +81,7 @@ def a_bill(customer_id: str, **overrides: Any) -> Bill:
         Bill: An invoice ready to store.
     """
     lines: List[BillLine] = overrides.pop("lines", [a_charge()])
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "company_id": COMPANY,
         "customer_id": customer_id,
         "number": "FA-2026-000001",
@@ -436,7 +439,10 @@ class TestBillFiltering:
 
     @pytest.mark.asyncio
     async def test_a_filter_cannot_escape_the_caller_s_scope(
-        self, session: AsyncSession, customer: Customer, customer_kwargs: Dict[str, Any]
+        self,
+        session: AsyncSession,
+        customer: Customer,
+        customer_kwargs: Dict[str, ModelInput],
     ) -> None:
         """**The scope wins, always.**
 
@@ -831,9 +837,7 @@ class TestTheRecipientSurvivesStorage:
             "service_code": "APA",
         }
 
-        stored = await repository.create(
-            a_bill(customer_id, recipient=payer)
-        )
+        stored = await repository.create(a_bill(customer_id, recipient=payer))
         read = await repository.get(stored.id)
 
         assert read is not None

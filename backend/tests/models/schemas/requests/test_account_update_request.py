@@ -13,6 +13,7 @@ from models.schemas.exceptions import (
     MTAccountUpdateRequestInvalidFullName,
 )
 from models.schemas.requests.account.account_update_request import AccountUpdateRequest
+from tests.annotations import ModelInput
 
 
 class TestAccountUpdateRequest:
@@ -115,13 +116,13 @@ class TestAccountUpdateRequest:
         ],
     )
     def test_a_privileged_field_cannot_be_carried(
-        self, field: str, value: object
+        self, field: str, value: ModelInput
     ) -> None:
         """**The permission, asserted as the shape of the model.**
 
         Args:
             field (str): The field somebody might try to smuggle in.
-            value (object): What they would set it to.
+            value (ModelInput): What they would set it to.
 
         Notes:
             None of these exist on the model, so a payload carrying one parses

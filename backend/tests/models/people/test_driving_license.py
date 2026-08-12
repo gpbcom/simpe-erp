@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date
-from typing import Any, List
+from typing import List
 
 # Third-party imports
 import pytest
@@ -16,6 +16,7 @@ from models.people.hca.exceptions import (
     MTDrivingLicenseInvalidObtainedOn,
     MTInvalidDrivingLicenseException,
 )
+from tests.annotations import ModelInput
 
 
 class TestDrivingLicense:
@@ -71,7 +72,9 @@ class TestDrivingLicense:
             pytest.param({"B": True}, id="Invalid - mapping"),
         ],
     )
-    def test_invalid_categories_container_raises(self, invalid_categories: Any) -> None:
+    def test_invalid_categories_container_raises(
+        self, invalid_categories: ModelInput
+    ) -> None:
         """The categories must be a list."""
         with pytest.raises(MTDrivingLicenseInvalidCategories):
             DrivingLicense(categories=invalid_categories)
@@ -86,7 +89,7 @@ class TestDrivingLicense:
             pytest.param(1, id="Invalid - int"),
         ],
     )
-    def test_invalid_category_entry_raises(self, invalid_entry: Any) -> None:
+    def test_invalid_category_entry_raises(self, invalid_entry: ModelInput) -> None:
         """An entry that is not a known licence category is rejected."""
         with pytest.raises(MTDrivingLicenseInvalidCategories):
             DrivingLicense(categories=[invalid_entry])
@@ -108,7 +111,7 @@ class TestDrivingLicense:
             pytest.param(12345, id="Invalid - int"),
         ],
     )
-    def test_invalid_number_raises(self, invalid_number: Any) -> None:
+    def test_invalid_number_raises(self, invalid_number: ModelInput) -> None:
         """A number that is neither None nor a non-empty string is rejected."""
         with pytest.raises(MTDrivingLicenseInvalidNumber):
             DrivingLicense(number=invalid_number)

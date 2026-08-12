@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 from pydantic import ValidationError
@@ -14,6 +13,7 @@ from models.schemas.exceptions import (
     MTWorkingDaysRequestInvalidWeekdays,
 )
 from models.schemas.requests.hca.working_days_request import WorkingDaysRequest
+from tests.annotations import ModelInput
 
 
 class TestWorkingDaysRequest:
@@ -70,11 +70,11 @@ class TestWorkingDaysRequest:
             pytest.param(3, id="Invalid - not a collection"),
         ],
     )
-    def test_an_unusable_week_is_refused(self, value: Any) -> None:
+    def test_an_unusable_week_is_refused(self, value: ModelInput) -> None:
         """A week the assistant cannot have worked is a 422, not a default.
 
         Args:
-            value (Any): The rejected payload.
+            value (ModelInput): The rejected payload.
 
         Notes:
             The empty list is the one that matters. Clearing every box is a

@@ -17,12 +17,7 @@ import { BillStatusChip } from './BillStatusChip';
 import type { Bill, BillStatus } from '@/api/types';
 
 /** The lifecycle, in the order it is walked. */
-const ORDER: BillStatus[] = [
-  'to-be-validated',
-  'accepted',
-  'waiting-payment',
-  'paid',
-];
+const ORDER: BillStatus[] = ['to-be-validated', 'accepted', 'waiting-payment', 'paid'];
 
 /** The label the move *into* each status is offered under. */
 const FORWARD_LABELS: Partial<Record<BillStatus, string>> = {
@@ -159,12 +154,8 @@ export function BillDetailDrawer({ selected, onClose }: BillDetailDrawerProps) {
                 <TableRow key={line.id ?? `${line.quote_line_id}-${position}`}>
                   <TableCell>{line.day ?? line.service_date}</TableCell>
                   <TableCell>{line.name}</TableCell>
-                  <TableCell>
-                    {line.hca_full_name ?? t('bill.notPlanned')}
-                  </TableCell>
-                  <TableCell align="right">
-                    {hours(line.duration_minutes)}
-                  </TableCell>
+                  <TableCell>{line.hca_full_name ?? t('bill.notPlanned')}</TableCell>
+                  <TableCell align="right">{hours(line.duration_minutes)}</TableCell>
                   <TableCell align="right">{money(line.hourly_rate_ht)}</TableCell>
                   <TableCell align="right">
                     {`${(Number(line.vat_rate) * 100).toFixed(1)} %`}
@@ -202,9 +193,7 @@ export function BillDetailDrawer({ selected, onClose }: BillDetailDrawerProps) {
         <Stack direction="row" spacing={1} sx={{ mt: 3, flexWrap: 'wrap', gap: 1 }}>
           <Button
             startIcon={<AppIcon name="export" />}
-            onClick={() =>
-              download.mutate({ id: bill.id ?? '', number: bill.number })
-            }
+            onClick={() => download.mutate({ id: bill.id ?? '', number: bill.number })}
             disabled={!bill.document_key || download.isPending}
             data-testid="bill-download"
           >

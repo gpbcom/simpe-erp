@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, time
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -25,14 +25,15 @@ from models.schemas.exceptions import (
 from models.schemas.requests.catalog.intervention_type_update_request import (
     InterventionTypeUpdateRequest,
 )
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_type_kwargs() -> Dict[str, Any]:
+def valid_type_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid catalogue entry.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "name": "Soin infirmier",
@@ -42,11 +43,11 @@ def valid_type_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_line_kwargs() -> Dict[str, Any]:
+def valid_line_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid quote line.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "name": "Soin infirmier",
@@ -60,11 +61,11 @@ def valid_line_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def valid_requirement_kwargs() -> Dict[str, Any]:
+def valid_requirement_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid solver requirement.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "id": "req-1",
@@ -88,7 +89,7 @@ class TestRequiredCertifications:
     # ------------------------------------------------------------------ #
 
     def test_a_catalogue_entry_requires_nothing_by_default(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Adding the field changed nothing about work already sold.
 
@@ -100,7 +101,7 @@ class TestRequiredCertifications:
         assert InterventionType(**valid_type_kwargs).required_certification_codes == []
 
     def test_catalogue_codes_are_upper_cased(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Requirements and held qualifications must compare by equality."""
         entry = InterventionType(
@@ -109,7 +110,7 @@ class TestRequiredCertifications:
         assert entry.required_certification_codes == ["DEAES", "SST"]
 
     def test_repeated_catalogue_codes_are_de_duplicated(
-        self, valid_type_kwargs: Dict[str, Any]
+        self, valid_type_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The same code twice means what it means once.
 
@@ -134,7 +135,7 @@ class TestRequiredCertifications:
         ],
     )
     def test_invalid_catalogue_codes_raise(
-        self, valid_type_kwargs: Dict[str, Any], invalid_codes: Any
+        self, valid_type_kwargs: Dict[str, ModelInput], invalid_codes: ModelInput
     ) -> None:
         """A malformed requirement is refused rather than dropped.
 
@@ -152,7 +153,7 @@ class TestRequiredCertifications:
     # ------------------------------------------------------------------ #
 
     def test_a_line_inherits_the_catalogue_by_default(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """``None`` means "whatever the catalogue entry requires"."""
         line = QuoteLine(**valid_line_kwargs)
@@ -160,14 +161,14 @@ class TestRequiredCertifications:
         assert line.effective_certification_codes(["DEAES"]) == ["DEAES"]
 
     def test_a_line_override_replaces_the_catalogue(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A list means "these, instead of the catalogue's"."""
         line = QuoteLine(**valid_line_kwargs, required_certification_codes=["sst"])
         assert line.effective_certification_codes(["DEAES"]) == ["SST"]
 
     def test_an_empty_override_requires_nothing(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An empty list means "this hour needs no qualification at all".
 
@@ -181,7 +182,7 @@ class TestRequiredCertifications:
         assert line.effective_certification_codes(["DEAES"]) == []
 
     def test_the_resolved_list_is_a_copy(
-        self, valid_line_kwargs: Dict[str, Any]
+        self, valid_line_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Mutating the answer must not edit the catalogue entry it came from.
 
@@ -207,7 +208,7 @@ class TestRequiredCertifications:
         ],
     )
     def test_invalid_line_codes_raise(
-        self, valid_line_kwargs: Dict[str, Any], invalid_codes: Any
+        self, valid_line_kwargs: Dict[str, ModelInput], invalid_codes: ModelInput
     ) -> None:
         """A malformed override is refused."""
         with pytest.raises(MTQuoteLineInvalidRequiredCertifications):
@@ -218,7 +219,7 @@ class TestRequiredCertifications:
     # ------------------------------------------------------------------ #
 
     def test_a_requirement_needs_nothing_by_default(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Most work needs no qualification, and that is the cheap path."""
         requirement = InterventionRequirement(**valid_requirement_kwargs)
@@ -226,7 +227,7 @@ class TestRequiredCertifications:
         assert requirement.requires_certifications() is False
 
     def test_a_requirement_reports_when_it_needs_something(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The solver skips the whole constraint when nothing is required."""
         requirement = InterventionRequirement(
@@ -235,7 +236,7 @@ class TestRequiredCertifications:
         assert requirement.requires_certifications() is True
 
     def test_requirement_codes_are_normalised_again(
-        self, valid_requirement_kwargs: Dict[str, Any]
+        self, valid_requirement_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A requirement built directly still reaches the solver comparable.
 
@@ -260,7 +261,7 @@ class TestRequiredCertifications:
         ],
     )
     def test_invalid_requirement_codes_raise(
-        self, valid_requirement_kwargs: Dict[str, Any], invalid_codes: Any
+        self, valid_requirement_kwargs: Dict[str, ModelInput], invalid_codes: ModelInput
     ) -> None:
         """A malformed requirement never reaches the solver."""
         with pytest.raises(MTRequirementInvalidRequiredCertifications):
@@ -308,7 +309,7 @@ class TestRequiredCertifications:
             pytest.param([7], id="Invalid - int entry"),
         ],
     )
-    def test_invalid_requested_codes_raise(self, invalid_codes: Any) -> None:
+    def test_invalid_requested_codes_raise(self, invalid_codes: ModelInput) -> None:
         """A malformed payload is refused with a message naming the field."""
         with pytest.raises(MTInterventionTypeUpdateRequestInvalidCertifications):
             InterventionTypeUpdateRequest(required_certification_codes=invalid_codes)

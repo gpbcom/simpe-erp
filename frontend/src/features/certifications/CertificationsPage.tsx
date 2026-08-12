@@ -16,7 +16,6 @@ import { useCertificationTypes } from '@/api/queries';
 import { CertificationTypeDialog } from './CertificationTypeDialog';
 import type { CertificationType } from '@/api/types';
 
-
 /** Which of the certification filter's fields are text, flags and closed lists. */
 const CERTIFICATION_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'code', 'label'],
@@ -64,7 +63,10 @@ const CERTIFICATION_DETAILS: FilterDetail[] = [
 export function CertificationsPage() {
   const { t } = useTranslation();
   const certificationFilter = useEntityFilter(CERTIFICATION_FILTER_SPEC);
-  const { data: entries, isLoading } = useCertificationTypes(true, certificationFilter.filter);
+  const { data: entries, isLoading } = useCertificationTypes(
+    true,
+    certificationFilter.filter,
+  );
   const [editing, setEditing] = useState<CertificationType | null>(null);
   const [creating, setCreating] = useState(false);
 

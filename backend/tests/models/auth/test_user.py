@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, datetime
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 from pydantic import ValidationError
@@ -30,14 +30,15 @@ from models.auth.exceptions import (
 from models.auth.user import User
 from models.base.person import Person
 from models.enums import Language, UserRole
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_manager_kwargs() -> Dict[str, Any]:
+def valid_manager_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid manager account.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "email": "manager@example.com",
@@ -56,7 +57,7 @@ class TestUser:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An account is an address, a display name and a role."""
         user = User(**valid_manager_kwargs)
@@ -114,14 +115,14 @@ class TestUser:
         ],
     )
     def test_a_missing_email_raises_the_model_exception(
-        self, valid_manager_kwargs: Dict[str, Any], invalid_email: Any
+        self, valid_manager_kwargs: Dict[str, ModelInput], invalid_email: ModelInput
     ) -> None:
         """A missing address raises the model's own exception."""
         with pytest.raises(MTUserInvalidEmail):
             User(**{**valid_manager_kwargs, "email": invalid_email})
 
     def test_a_malformed_email_is_rejected(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An address without a domain is rejected."""
         with pytest.raises(ValidationError):
@@ -171,9 +172,9 @@ class TestUser:
     )
     def test_invalid_fields_raise(
         self,
-        valid_manager_kwargs: Dict[str, Any],
+        valid_manager_kwargs: Dict[str, ModelInput],
         field: str,
-        invalid_value: Any,
+        invalid_value: ModelInput,
         expected_exception: type,
     ) -> None:
         """Each field rejects its own invalid values with its own exception."""
@@ -481,7 +482,7 @@ class TestUser:
     )
     def test_a_display_name_is_stored_as_two_names(
         self,
-        valid_manager_kwargs: Dict[str, Any],
+        valid_manager_kwargs: Dict[str, ModelInput],
         display_name: str,
         given: str,
         family: str,
@@ -489,7 +490,7 @@ class TestUser:
         """**The compatibility shim the whole rebase rests on.**
 
         Args:
-            valid_manager_kwargs (Dict[str, Any]): A valid account.
+            valid_manager_kwargs (Dict[str, ModelInput]): A valid account.
             display_name (str): What the caller passes.
             given (str): The given name expected.
             family (str): The family name expected.
@@ -513,12 +514,12 @@ class TestUser:
         ],
     )
     def test_the_display_name_round_trips_exactly(
-        self, valid_manager_kwargs: Dict[str, Any], display_name: str
+        self, valid_manager_kwargs: Dict[str, ModelInput], display_name: str
     ) -> None:
         """What went in comes back out.
 
         Args:
-            valid_manager_kwargs (Dict[str, Any]): A valid account.
+            valid_manager_kwargs (Dict[str, ModelInput]): A valid account.
             display_name (str): The name to round-trip.
 
         Notes:
@@ -533,7 +534,7 @@ class TestUser:
         assert user.full_name() == display_name
 
     def test_explicit_names_win_over_a_display_name(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A caller that knows both names is not second-guessed."""
         user = User(
@@ -548,7 +549,7 @@ class TestUser:
         assert user.full_name() == "Claire Bernard"
 
     def test_a_mononym_renders_without_a_leading_space(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An empty given name must not reach a screen as " Root".
 
@@ -563,7 +564,7 @@ class TestUser:
         assert user.full_name() == "Root"
 
     def test_a_missing_display_name_raises_the_models_exception(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A blank name is refused as a name, not as a missing field.
 
@@ -576,7 +577,7 @@ class TestUser:
             User(**{**valid_manager_kwargs, "full_name": "   "})
 
     def test_the_public_view_still_carries_the_display_name(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**The API surface did not move.**
 
@@ -594,12 +595,12 @@ class TestUser:
 
     @pytest.mark.parametrize("field", ["phone_number", "address"])
     def test_the_contact_fields_are_optional_on_an_account(
-        self, valid_manager_kwargs: Dict[str, Any], field: str
+        self, valid_manager_kwargs: Dict[str, ModelInput], field: str
     ) -> None:
         """An account is a credential, not a contact record.
 
         Args:
-            valid_manager_kwargs (Dict[str, Any]): A valid account.
+            valid_manager_kwargs (Dict[str, ModelInput]): A valid account.
             field (str): The field expected to default to None.
 
         Notes:
@@ -611,21 +612,21 @@ class TestUser:
         assert getattr(User(**valid_manager_kwargs), field) is None
 
     def test_a_supplied_telephone_number_is_still_checked(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Optional means absent or usable, never present and blank."""
         with pytest.raises(MTUserInvalidPhoneNumber):
             User(**{**valid_manager_kwargs, "phone_number": "   "})
 
     def test_a_supplied_address_is_still_checked(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Same rule as the telephone number."""
         with pytest.raises(MTUserInvalidAddress):
             User(**{**valid_manager_kwargs, "address": "12 rue de Rivoli"})
 
     def test_the_sign_in_address_is_lower_cased(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The account overrides the base, which leaves case alone.
 
@@ -644,13 +645,13 @@ class TestUser:
     # ------------------------------------------------------------------ #
 
     def test_an_account_has_no_portrait_until_one_is_uploaded(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A manager's account is valid with no photograph at all."""
         assert User(**valid_manager_kwargs).photo_url is None
 
     def test_a_portrait_the_object_store_issued_is_accepted(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A URL under the photo prefix is what an upload hands back."""
         user = User(
@@ -662,7 +663,7 @@ class TestUser:
         assert str(user.photo_url).endswith("/hca-photos/user-1/abc.jpg")
 
     def test_a_blank_portrait_reads_as_none(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An empty form field means "no photo", not "invalid photo"."""
         user = User(**{**valid_manager_kwargs, "photo_url": "   "})
@@ -678,7 +679,7 @@ class TestUser:
         ],
     )
     def test_a_portrait_this_application_did_not_store_is_refused(
-        self, valid_manager_kwargs: Dict[str, Any], photo_url: Any
+        self, valid_manager_kwargs: Dict[str, ModelInput], photo_url: ModelInput
     ) -> None:
         """Only a URL under the photo prefix may be stored.
 
@@ -690,7 +691,7 @@ class TestUser:
             User(**{**valid_manager_kwargs, "photo_url": photo_url})
 
     def test_a_portrait_serializes_as_plain_text(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The store column is text, so a dump must not carry a URL object."""
         user = User(
@@ -731,7 +732,7 @@ class TestUser:
     # ------------------------------------------------------------------ #
 
     def test_to_public_dict_excludes_the_password_hash(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The credential never leaves the backend.
 
@@ -744,7 +745,7 @@ class TestUser:
         assert public["email"] == "manager@example.com"
 
     def test_to_public_dict_is_json_serializable(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The public view survives a JSON round-trip."""
         # Standard library imports
@@ -759,7 +760,7 @@ class TestUser:
         assert json.loads(json.dumps(user.to_public_dict()))["role"] == "manager"
 
     def test_timestamps_serialize_to_iso_strings(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Timestamps leave the model as ISO-8601 text."""
         user = User(
@@ -770,7 +771,9 @@ class TestUser:
         )
         assert user.model_dump()["updated_at"] == "2026-08-05T12:00:00+00:00"
 
-    def test_model_dump_round_trip(self, valid_manager_kwargs: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(
+        self, valid_manager_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """An account survives a dump-and-rebuild unchanged."""
         user = User(**valid_manager_kwargs)
         assert User(**user.model_dump()) == user
@@ -779,12 +782,14 @@ class TestUser:
 class TestAccountLanguage:
     """Tests for the language preference the emailed documents follow."""
 
-    def test_french_is_the_default(self, valid_manager_kwargs: Dict[str, Any]) -> None:
+    def test_french_is_the_default(
+        self, valid_manager_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """An account nobody has set a preference on is a French one."""
         assert User(**valid_manager_kwargs).language is Language.FR
 
     def test_a_known_language_is_coerced_from_a_string(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The API sends ``"en"``; the model holds a member."""
         assert (
@@ -792,7 +797,7 @@ class TestAccountLanguage:
         )
 
     def test_none_reads_as_the_default(
-        self, valid_manager_kwargs: Dict[str, Any]
+        self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The column arrived after the rows did.
 
@@ -814,13 +819,13 @@ class TestAccountLanguage:
         ],
     )
     def test_an_unknown_language_is_refused(
-        self, valid_manager_kwargs: Dict[str, Any], value: Any
+        self, valid_manager_kwargs: Dict[str, ModelInput], value: ModelInput
     ) -> None:
         """**Refused rather than quietly defaulted.**
 
         Args:
-            valid_manager_kwargs (Dict[str, Any]): Base arguments.
-            value (Any): The rejected language.
+            valid_manager_kwargs (Dict[str, ModelInput]): Base arguments.
+            value (ModelInput): The rejected language.
 
         Notes:
             A preference the holder set and the server ignored is worse than

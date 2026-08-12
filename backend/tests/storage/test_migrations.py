@@ -11,23 +11,24 @@ from sqlalchemy import Engine, create_engine, inspect
 # First-party imports
 from migration_templates import MigrationTemplates
 from storage.orm import Base
+from tests.annotations import ModelInput
 
 ColumnSnapshot = Dict[str, Tuple[str, bool]]
-ForeignKeySnapshot = List[Tuple[Tuple[str, ...], str, object]]
+ForeignKeySnapshot = List[Tuple[Tuple[str, ...], str, Tuple[str, ...]]]
 IndexSnapshot = List[Tuple[str, Tuple[str, ...], bool]]
 
 
 class TestMigrations:
     """Tests that the migrations and the ORM metadata describe one schema."""
 
-    def _snapshot(self, engine: Engine) -> Dict[str, object]:
+    def _snapshot(self, engine: Engine) -> Dict[str, ModelInput]:
         """Describe every table an engine holds.
 
         Args:
             engine (Engine): The engine to inspect.
 
         Returns:
-            Dict[str, object]: Per table, its columns, foreign keys and
+            Dict[str, ModelInput]: Per table, its columns, foreign keys and
             indexes, in a form that compares by value.
 
         Notes:
@@ -35,7 +36,7 @@ class TestMigrations:
             migrated database and is not part of the application schema.
         """
         inspector = inspect(engine)
-        snapshot: Dict[str, object] = {}
+        snapshot: Dict[str, ModelInput] = {}
         for table in sorted(inspector.get_table_names()):
             if table == "alembic_version":
                 continue

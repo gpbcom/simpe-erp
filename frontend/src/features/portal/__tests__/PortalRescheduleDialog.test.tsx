@@ -43,9 +43,7 @@ describe('PortalRescheduleDialog', () => {
     // A window exactly as long as the work leaves the solver nowhere to put it,
     // so the visit comes back unplaced — which reads to the household as their
     // change having been ignored rather than refused.
-    render(
-      <PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />,
-    );
+    render(<PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />);
 
     expect(screen.getByTestId('portal-not-before')).toHaveValue('08:00');
     expect(screen.getByTestId('portal-not-after')).toHaveValue('11:00');
@@ -54,9 +52,7 @@ describe('PortalRescheduleDialog', () => {
 
   it('refuses a window that ends before it starts', async () => {
     const user = userEvent.setup();
-    render(
-      <PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />,
-    );
+    render(<PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />);
 
     await user.clear(screen.getByTestId('portal-not-after'));
     await user.type(screen.getByTestId('portal-not-after'), '07:00');
@@ -70,9 +66,7 @@ describe('PortalRescheduleDialog', () => {
     // The unit the solver works in, and what every other time on the wire uses.
     const user = userEvent.setup();
     mutate.mockClear();
-    render(
-      <PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />,
-    );
+    render(<PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />);
 
     await user.click(screen.getByTestId('portal-reschedule-confirm'));
 
@@ -91,17 +85,13 @@ describe('PortalRescheduleDialog', () => {
     // The change is not applied when the household presses the button — it is
     // requested. A dialog that does not say so leaves them expecting a calendar
     // that updates.
-    render(
-      <PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />,
-    );
+    render(<PortalRescheduleDialog visit={VISIT} onClose={vi.fn()} onDone={vi.fn()} />);
 
     expect(screen.getByText('portal.rescheduleWarning')).toBeInTheDocument();
   });
 
   it('is closed when there is no visit', () => {
-    render(
-      <PortalRescheduleDialog visit={null} onClose={vi.fn()} onDone={vi.fn()} />,
-    );
+    render(<PortalRescheduleDialog visit={null} onClose={vi.fn()} onDone={vi.fn()} />);
 
     expect(screen.queryByTestId('portal-reschedule-dialog')).not.toBeInTheDocument();
   });

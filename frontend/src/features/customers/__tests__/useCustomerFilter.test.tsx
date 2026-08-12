@@ -2,7 +2,11 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { customerFilterParams, parseCustomerFilter, useCustomerFilter } from '../useCustomerFilter';
+import {
+  customerFilterParams,
+  parseCustomerFilter,
+  useCustomerFilter,
+} from '../useCustomerFilter';
 
 /**
  * Render the hook under a router started at one URL.
@@ -14,10 +18,9 @@ function atUrl(initial: string) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[initial]}>{children}</MemoryRouter>
   );
-  return renderHook(
-    () => ({ filter: useCustomerFilter(), location: useLocation() }),
-    { wrapper },
-  );
+  return renderHook(() => ({ filter: useCustomerFilter(), location: useLocation() }), {
+    wrapper,
+  });
 }
 
 describe('parseCustomerFilter', () => {

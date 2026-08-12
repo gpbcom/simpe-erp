@@ -14,7 +14,7 @@ from api.dependencies import get_company_service, get_manager_user
 from api.exception_handlers import ExceptionHandlers
 from api.v1.companies.companies import router as companies_router
 from models.auth.user import User
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import UserRole
 from models.schemas.responses.companies.company_view import CompanyView
 
@@ -183,7 +183,7 @@ class TestTheShapeIsThePermission:
         Notes:
             Both manager-facing routes declare ``CompanyView``. However the
             service changes, they physically cannot hand back a
-            :class:`~models.companies.company.Company` — which is what would
+            :class:`~models.organisation.companies.company.Company` — which is what would
             put an unmasked account number on the wire.
         """
         for path in ("/api/v1/companies", "/api/v1/companies/{company_id}"):

@@ -59,7 +59,10 @@ export function PortalBillsPage() {
                     })}
                   </Typography>
                 </Stack>
-                <Typography variant="h3" data-testid={`portal-bill-total-${bill.number}`}>
+                <Typography
+                  variant="h3"
+                  data-testid={`portal-bill-total-${bill.number}`}
+                >
                   {formatMoney(bill.total_ttc, i18n.language)}
                 </Typography>
                 <BillStatusChip status={bill.status} />

@@ -160,9 +160,7 @@ export function IntegrationsGallery() {
           size="small"
           label={t('integrations.sortBy')}
           value={sort}
-          onChange={(event) =>
-            setSort(event.target.value as (typeof SORTS)[number])
-          }
+          onChange={(event) => setSort(event.target.value as (typeof SORTS)[number])}
           sx={{ minWidth: 240 }}
           slotProps={{
             select: { native: true },

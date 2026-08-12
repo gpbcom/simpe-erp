@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
@@ -13,7 +13,7 @@ import pytest
 from models.billing.bill import Bill
 from models.billing.bill_recipient import BillRecipient
 from models.billing.billing_run import BillingRun
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.configuration.billing_config import BillingConfig
 from models.enums import (
     BillingPeriodicity,
@@ -53,6 +53,7 @@ from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.planning.intervention import InterventionRepository
 from storage.repositories.quoting.quote import QuoteRepository
 from storage.s3.s3_storage import S3Storage
+from tests.annotations import ModelInput
 
 COMPANY = "company-1"
 CUSTOMER = "customer-1"
@@ -89,7 +90,7 @@ def a_quote_line(
     Returns:
         QuoteLine: The line.
     """
-    money: Dict[str, Any] = {}
+    money: Dict[str, ModelInput] = {}
     if priced:
         vat = (Decimal(total_ht) * Decimal("0.055")).quantize(Decimal("0.01"))
         money = {
@@ -111,7 +112,7 @@ def a_quote_line(
     )
 
 
-def a_quote(lines: List[QuoteLine], **overrides: Any) -> Quote:
+def a_quote(lines: List[QuoteLine], **overrides: ModelInput) -> Quote:
     """Build an accepted quote.
 
     Args:
@@ -121,7 +122,7 @@ def a_quote(lines: List[QuoteLine], **overrides: Any) -> Quote:
     Returns:
         Quote: The quote.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "company_id": COMPANY,
         "reference": "D-2648",
         "customer_id": CUSTOMER,

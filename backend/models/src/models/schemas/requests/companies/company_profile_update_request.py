@@ -8,7 +8,7 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.geo.postal_address import PostalAddress
 from models.schemas.exceptions import (
     MTCompanyProfileUpdateRequestInvalidBic,
@@ -168,7 +168,7 @@ class CompanyProfileUpdateRequest(BaseModel):
 
         Notes:
             The shape and the check digits are **not** verified here. That rule
-            lives on :class:`~models.companies.company.Company`, which is what
+            lives on :class:`~models.organisation.companies.company.Company`, which is what
             the service writes; duplicating it would mean two definitions of a
             valid IBAN and, sooner or later, two different answers.
 

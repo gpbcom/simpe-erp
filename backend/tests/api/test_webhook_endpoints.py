@@ -24,7 +24,7 @@ from api.exception_handlers import ExceptionHandlers
 from api.middleware.auth_middleware import AuthMiddleware
 from api.v1.webhooks.webhooks import router as webhooks_router
 from models.auth.user import User
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language, PlanningRunStatus, UserRole
 from models.planning.planning_run import PlanningRun
 from service.planning.exceptions import MTPlanningRunNotFound

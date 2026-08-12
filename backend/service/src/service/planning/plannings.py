@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 # Standard library imports
+
+# isort: on
 import asyncio
-from collections import defaultdict
 import copy
+import math
+# iosrt: off
+
+from collections import defaultdict
 from datetime import UTC, date, datetime, time
 from logging import Logger, getLogger
-import math
 from time import monotonic
 from typing import ClassVar, Dict, List, Optional, Tuple
 
@@ -17,11 +21,18 @@ from ortools.sat.python import cp_model
 from models.auth.user import User
 from models.catalog.intervention_type import InterventionType
 from models.configuration.planning_config import PlanningConfig
-from models.enums import QuoteStatus, EventRoutingKey, PlanningRunStatus, UnplacedReason
+from models.enums import (
+    EventRoutingKey,
+    MemberKind,
+    PlanningRunStatus,
+    QuoteStatus,
+    UnplacedReason,
+)
 from models.geo.geo_point import GeoPoint
 from models.geo.postal_address import PostalAddress
 from models.people.customer import Customer
 from models.people.hca import Hca
+from models.planning.customer_planning import CustomerPlanning
 from models.planning.hca_planning import HcaPlanning
 from models.planning.intervention import Intervention
 from models.planning.intervention.intervention_requirement import (
@@ -41,15 +52,18 @@ from models.quoting.quote import Quote
 from models.settings.planning_settings import PlanningSettings
 from service.messaging.publisher import EventPublisher
 from service.observability.metrics import ApplicationMetrics
-from service.planning.slot_finder import SlotFinder
+from service.organisation.teams import TeamService
 from service.planning.exceptions import (
+    MTPlanningCustomerNotFound,
     MTPlanningForbidden,
+    MTPlanningTeamForbidden,
     MTPlanningInconsistentSolution,
     MTPlanningInfeasible,
     MTPlanningInvalidSpeed,
     MTPlanningRunNotFound,
     MTPlanningSettingsUnavailable,
 )
+from service.planning.slot_finder import SlotFinder
 from storage.repositories.catalog.intervention_type import (
     InterventionTypeRepository,  # noqa: E501
 )
@@ -116,6 +130,7 @@ class PlanningService:
         hcas: HcaRepository,
         types: InterventionTypeRepository,
         settings: PlanningSettingsRepository,
+        teams: TeamService,
         config: PlanningConfig,
         metrics: Optional[ApplicationMetrics] = None,
         logger: Optional[Logger] = None,
@@ -130,6 +145,8 @@ class PlanningService:
             hcas (HcaRepository): The workforce.
             types (InterventionTypeRepository): The service catalogue.
             settings (PlanningSettingsRepository): The manager-owned rules.
+            teams (TeamService): Whose members a run may schedule, and which
+                teams a caller may run — the one definition of both.
             config (PlanningConfig): Planning parameters.
             metrics (Optional[ApplicationMetrics]): Where run figures are
                 recorded. ``None`` records nothing.
@@ -150,6 +167,7 @@ class PlanningService:
         self.hcas = hcas
         self.types = types
         self.settings = settings
+        self.teams = teams
         self.config = config
         self.metrics = metrics
         self.logger = logger if logger else getLogger(__name__)
@@ -162,11 +180,46 @@ class PlanningService:
     # Internal Helpers Methods #
     ############################
 
+    async def _workforce(self, team_id: str) -> List[Hca]:
+        """Return the people one team's run may schedule.
+
+        Args:
+            team_id (str): The team being planned.
+
+        Returns:
+            List[Hca]: That team's field employees.
+
+        Notes:
+            - **The workforce is the team's, not the agency's**, and that is
+              what makes solving the teams apart an *exact* decomposition
+              rather than an approximation: teams share no assistant, so a plan
+              built per team is the same plan solving them together would give.
+              A run that took the agency's whole workforce would place a sister
+              team's assistants on this team's rounds, and then that team's own
+              run would place them somewhere else at the same hour.
+            - Membership is polymorphic and carries no foreign key, so the
+              identifiers come from the team and the records from the workforce
+              store. A member who is an *account* only — a manager who runs the
+              team from an office — has no assistant record and simply does not
+              appear, which is right.
+            - An empty team is a WARNING and an empty plan, not a failure. It is
+              a legitimate state of a team just formed, and the run's report is
+              where an operator should learn about it.
+        """
+        member_ids = await self.teams.teams.list_member_ids(team_id, MemberKind.HCA)
+        if not member_ids:
+            self.logger.warning(
+                "Team %s has no assistant on it; its run has nobody to schedule.",
+                team_id,
+            )
+            return []
+        return self._field_employees(await self.hcas.list_by_ids(member_ids))
+
     def _field_employees(self, workforce: List[Hca]) -> List[Hca]:
         """Keep only the people the planner may put on a round.
 
         Args:
-            workforce (List[Hca]): Every assistant record the agency holds.
+            workforce (List[Hca]): Every assistant record the team holds.
 
         Returns:
             List[Hca]: Those marked as field employees.
@@ -309,7 +362,7 @@ class PlanningService:
             sum of all.
         """
         quotes = await self.quotes.list_schedulable(
-            run.company_id, run.period_start, run.period_end
+            run.company_id, run.team_id, run.period_start, run.period_end
         )
         customers: Dict[str, Customer] = {}
         for quote in quotes:
@@ -323,7 +376,7 @@ class PlanningService:
         requirements = self.build(
             quotes, customers, catalog, run.period_start, run.period_end
         )
-        assistants = self._field_employees(await self.hcas.list_all())
+        assistants = await self._workforce(run.team_id)
         self.build_travel(assistants, requirements)
         settings = await self.current_settings()
 
@@ -335,7 +388,7 @@ class PlanningService:
             settings.lunch_break_minutes,
         )
         solution = await self.solve_period(requirements, assistants, settings)
-        unplaced = self._report_unplaced(solution, requirements, assistants, settings)
+        unplaced = self._report_unplaced(solution, requirements, assistants, settings)  # noqa: E501
         return solution, requirements, assistants, unplaced
 
     def _report_unplaced(
@@ -381,7 +434,7 @@ class PlanningService:
               symptoms.
         """
         if solution.is_feasible and not solution.unassigned_requirement_ids:
-            self.logger.info("Every requirement was placed within the constraints.")
+            self.logger.info("Every requirement was placed within the constraints.")  # noqa: E501
             return []
 
         unplaced_ids = (
@@ -392,23 +445,11 @@ class PlanningService:
         explained = self.explain_unplaced(
             unplaced_ids, requirements, assistants, settings
         )
-        # When the solver produced no plan at all, the per-visit reasons below
-        # are not findings about those visits. `explain_unplaced` re-checks the
-        # things it can decide on its own — the radius, the qualifications, the
-        # working day — and falls through to `no-feasible-slot` for everything
-        # else, which reads as "travel and lunch left no room". Nothing
-        # established that. The search simply stopped, and saying otherwise
-        # sends a manager to move windows and widen radii for a problem whose
-        # answer is a bigger budget.
         specific = [
             item
             for item in explained
             if item.reason is not UnplacedReason.NO_FEASIBLE_SLOT
         ]
-        # Recorded here rather than in the diagnosis, because this is the point
-        # at which a visit is definitely not going to happen. `explain_unplaced`
-        # is also called by the screen that asks "why?" about a past run, and
-        # counting there would inflate the figure every time somebody looked.
         if self.metrics is not None:
             for item in explained:
                 self.metrics.record_unplaced(item.reason.value)
@@ -421,7 +462,7 @@ class PlanningService:
                 len(requirements),
                 len(specific),
             )
-            raise MTPlanningInfeasible(self._describe_empty_solve(solution, specific))
+            raise MTPlanningInfeasible(self._describe_empty_solve(solution, specific))  # noqa: E501
 
         grouped = self._group_by_quote(explained)
         self.logger.warning(
@@ -434,7 +475,7 @@ class PlanningService:
         )
         return grouped
 
-    async def _return_for_validation(self, report: List[UnplacedQuote]) -> None:
+    async def _return_for_validation(self, report: List[UnplacedQuote]) -> None:  # noqa: E501
         """Send every quote that could not be fitted back to be validated.
 
         Args:
@@ -459,7 +500,7 @@ class PlanningService:
         """
         for entry in report:
             try:
-                quote = await self.quotes.get_by_reference(entry.quote_reference)
+                quote = await self.quotes.get_by_reference(entry.quote_reference)  # noqa: E501
                 if quote is None or quote.id is None:
                     self.logger.error(
                         "Quote %s could not be found to return it for "
@@ -469,7 +510,7 @@ class PlanningService:
                     )
                     continue
                 await self.quotes.set_planning_feedback(quote.id, entry)
-                await self.quotes.set_status(quote.id, QuoteStatus.PENDING_VALIDATION)
+                await self.quotes.set_status(quote.id, QuoteStatus.PENDING_VALIDATION)  # noqa: E
                 self.logger.info(
                     "Quote %s returned for validation: %d visit(s) unplaced, "
                     "%d alternative slot(s) offered.",
@@ -505,14 +546,13 @@ class PlanningService:
             List[UnplacedQuote]: The same report, with offers added.
 
         Notes:
-            Being told a visit did not fit leaves an operator to telephone a
-            customer with nothing to propose. The point of this step is that
-            the call becomes a decision — "Wednesday at 14:00 with Amina, or
-            Thursday at 09:00 with Luc" — rather than an apology.
-
-            Failures are swallowed on purpose. A suggestion is a convenience;
-            losing the report itself, which names what went wrong, because a
-            search for extras raised would be a bad trade.
+            - Being told a visit did not fit leaves an operator to telephone a
+              customer with nothing to propose. The point of this step is that
+              the call becomes a decision — "Wednesday at 14:00 with Amina, or
+              Thursday at 09:00 with Luc" — rather than an apology.
+            - Failures are swallowed on purpose. A suggestion is a convenience;
+              losing the report itself, which names what went wrong, because a
+              search for extras raised would be a bad trade.
         """
         finder = SlotFinder(settings, logger=self.logger)
         by_id = {item.id: item for item in requirements}
@@ -543,14 +583,10 @@ class PlanningService:
                         visit.requirement_id,
                         exc,
                     )
-                # Kept against the visit as well as pooled on the quote. Two
-                # unplaced visits have two different sets of free times, and a
-                # flat list leaves an operator to guess which slot answers
-                # which problem — and a screen no way to make them clickable.
                 visits.append(visit.model_copy(update={"alternatives": found}))
                 slots.extend(found)
             offered.append(
-                entry.model_copy(update={"visits": visits, "alternatives": slots})
+                entry.model_copy(update={"visits": visits, "alternatives": slots})  # noqa: E
             )
         return offered
 
@@ -627,7 +663,7 @@ class PlanningService:
               real reason the rest would not fit around it.
         """
         found = (
-            " " + "; ".join(item.describe() for item in specific) if specific else ""
+            " " + "; ".join(item.describe() for item in specific) if specific else ""  # noqa: E
         )
         return (
             f"The best plan found within the budget leaves "
@@ -669,7 +705,7 @@ class PlanningService:
               got nowhere.
         """
         found = (
-            " " + "; ".join(item.describe() for item in specific) if specific else ""
+            " " + "; ".join(item.describe() for item in specific) if specific else ""  # noqa: E501
         )
         if solution.status_name == "INFEASIBLE":
             return (
@@ -735,6 +771,7 @@ class PlanningService:
                 Intervention(
                     planning_run_id=run.id,
                     company_id=run.company_id,
+                    team_id=run.team_id,
                     name=requirement.name,
                     intervention_type_id=requirement.intervention_type_id,
                     quote_line_id=requirement.quote_line_id or requirement.id,
@@ -758,7 +795,7 @@ class PlanningService:
                 run.period_end,
             )
         written = await self.interventions.replace_for_period(
-            run.company_id, run.period_start, run.period_end, visits
+            run.company_id, run.team_id, run.period_start, run.period_end, visits
         )
         self.logger.info("Planning run %s wrote %d visit(s).", run.id, written)
         return written
@@ -1877,23 +1914,23 @@ class PlanningService:
             if other.id != requirement.id
         ]
 
-        is_first = self.model.new_bool_var(f"first_{assistant.id}_{requirement.id}")
-        is_last = self.model.new_bool_var(f"last_{assistant.id}_{requirement.id}")
-        self.model.add(sum(predecessors) == 0).only_enforce_if([holds, is_first])
+        is_first = self.model.new_bool_var(f"first_{assistant.id}_{requirement.id}")  # noqa: E501
+        is_last = self.model.new_bool_var(f"last_{assistant.id}_{requirement.id}")  # noqa: E501
+        self.model.add(sum(predecessors) == 0).only_enforce_if([holds, is_first])  # noqa: E501
         self.model.add(sum(predecessors) >= 1).only_enforce_if(
             [holds, is_first.negated()]
         )
         self.model.add(sum(successors) == 0).only_enforce_if([holds, is_last])
-        self.model.add(sum(successors) >= 1).only_enforce_if([holds, is_last.negated()])
+        self.model.add(sum(successors) >= 1).only_enforce_if([holds, is_last.negated()])  # noqa: E501
         self.model.add(is_first == 0).only_enforce_if(holds.negated())
         self.model.add(is_last == 0).only_enforce_if(holds.negated())
 
-        outbound = self.travel_between_points(assistant.id, home, requirement.location)
+        outbound = self.travel_between_points(assistant.id, home, requirement.location)  # noqa: E501
         inbound = self.travel_between_points(assistant.id, requirement.location, home)
         self.travel_terms.append(outbound * is_first)
         self.travel_terms.append(inbound * is_last)
         self.model.add(
-            self.starts[requirement.id] >= self.settings.day_start_minute + outbound
+            self.starts[requirement.id] >= self.settings.day_start_minute + outbound  # noqa: E501
         ).only_enforce_if(is_first)
 
     def _add_objective(self, requirements: List[InterventionRequirement]) -> None:  # noqa: E501
@@ -1935,7 +1972,7 @@ class PlanningService:
               those.
         """
         self.model.minimize(
-            sum(self.unassigned[requirement.id] for requirement in requirements)
+            sum(self.unassigned[requirement.id] for requirement in requirements)  # noqa: E501
         )
 
     def _minimise_travel(self, placed: PlanningSolution) -> None:
@@ -1969,100 +2006,6 @@ class PlanningService:
         self.model.minimize(
             sum(self.config.travel_weight * term for term in self.travel_terms)
         )
-
-    def _run(
-        self,
-        requirements: List[InterventionRequirement],
-        budget: float,
-        phase: str,
-    ) -> PlanningSolution:
-        """Search for a solution and read it back.
-
-        Args:
-            requirements (List[InterventionRequirement]): The work.
-            budget (float): The deterministic budget this pass may spend.
-            phase (str): Which pass this is, for the log. A run makes two of
-                them and they fail in different ways, so a log line that did
-                not say which would be unreadable.
-
-        Returns:
-            PlanningSolution: What was found.
-
-        Notes:
-            - The time limit is what makes this bounded work rather than an open
-              question. An optimal answer is preferred, but a good feasible one
-              inside the budget is what a planning screen actually needs.
-            - **The search is made reproducible on purpose.** Re-planning the
-              same week used to give a different answer every time — 77 visits
-              at 404 minutes of travel, then 371, then 355 — because a
-              wall-clock budget stops the search wherever it happens to have
-              got to, and parallel workers race each other to the incumbent.
-              A manager who reruns a plan and sees three different numbers has
-              no way to tell an improvement from noise, and no way to tell
-              whether the quote they just accepted changed anything.
-            - Three things together make it reproducible, and **a fixed seed
-              alone was not enough** — that was tried first and still gave
-              502, 495, 502 minutes across three runs of one input.
-              ``random_seed`` fixes the tie-breaking; ``num_search_workers``
-              of one stops parallel workers racing to the incumbent; and
-              ``max_deterministic_time`` is what actually stops the search at
-              the same place every time. A wall-clock budget cannot: it halts
-              wherever elapsed time happens to land, so a loaded machine
-              explores less and returns a worse plan for the same week.
-            - The wall-clock limit is kept as a **safety net, not a budget**.
-              Deterministic time is a measure of work rather than of seconds,
-              so a pathological instance could grind for a very long time
-              inside its allowance; the clock bounds that. If it ever fires
-              the run is no longer reproducible, and it says so at WARNING —
-              a plan that silently stopped being comparable is worse than one
-              that admits it.
-        """
-        solver = cp_model.CpSolver()
-        solver.parameters.max_deterministic_time = budget
-        solver.parameters.max_time_in_seconds = self.config.solver_time_limit_seconds  # noqa: E501
-        solver.parameters.num_search_workers = self.config.solver_workers
-        solver.parameters.random_seed = self.config.solver_seed
-        self.logger.info(
-            "Solving the %s pass with a deterministic budget of %.1f, a "
-            "%.1fs safety net, %d worker(s) and seed %d.",
-            phase,
-            budget,
-            self.config.solver_time_limit_seconds,
-            self.config.solver_workers,
-            self.config.solver_seed,
-        )
-        status = solver.solve(self.model)
-        status_name = solver.status_name(status)
-        if solver.wall_time >= self.config.solver_time_limit_seconds:
-            self.logger.warning(
-                "The solve hit its %.1fs wall-clock safety net rather than its "
-                "deterministic budget; this plan is not reproducible, and the "
-                "same week may plan differently next time.",
-                self.config.solver_time_limit_seconds,
-            )
-
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            if status == cp_model.INFEASIBLE:
-                self.logger.error(
-                    "The solver proved no plan exists (%s); the constraints are "
-                    "contradictory rather than merely tight.",
-                    status_name,
-                )
-            else:
-                self.logger.error(
-                    "The solver found no plan within its budget (%s) after "
-                    "%.1fs. Nothing was proved about feasibility — the search "
-                    "stopped. A larger planning.solver_deterministic_budget, or "
-                    "less work in the period, is the lever.",
-                    status_name,
-                    solver.wall_time,
-                )
-            return PlanningSolution(
-                unassigned_requirement_ids=[item.id for item in requirements],
-                is_feasible=False,
-                status_name=status_name,
-            )
-        return self._extract(solver, requirements, status_name)
 
     def _extract(
         self,
@@ -2201,7 +2144,7 @@ class PlanningService:
                 if origin_index == destination_index:
                     minutes[(origin_index, destination_index)] = 0
                     continue
-                minutes[(origin_index, destination_index)] = self._estimate_minutes(
+                minutes[(origin_index, destination_index)] = self._estimate_minutes(  # noqa: E501
                     average_speed_kmh, origin, destination
                 )
         return minutes
@@ -2272,7 +2215,9 @@ class PlanningService:
             decomposition exact rather than an approximation.
         """
         self.logger.debug(
-            "Building the model for %s: %d requirement(s).", day, len(requirements)
+            "Building the model for %s: %d requirement(s).",
+            day,
+            len(requirements),  # noqa: E501
         )
         self._reset()
         self.settings = settings
@@ -2288,7 +2233,7 @@ class PlanningService:
             reachable = self._reachable_work(assistant, requirements)
             if not reachable:
                 self.logger.debug(
-                    "%s can take none of %s's %d requirement(s); skipping their round.",
+                    "%s can take none of %s's %d requirement(s); skipping their round.",  # noqa: E501
                     assistant.id,
                     day,
                     len(requirements),
@@ -2397,6 +2342,218 @@ class PlanningService:
             is_optimised=all(day.is_optimised for day in solutions),
             status_name="OPTIMAL" if proven else "FEASIBLE",
         )
+
+    def _require_staff(self, caller: User, what: str) -> None:
+        """Refuse a caller who does not work for the agency.
+
+        Args:
+            caller (User): Who is asking.
+            what (str): What they asked for, for the log line.
+
+        Raises:
+            MTPlanningForbidden: If the caller is not staff.
+
+        Notes:
+            **Asked before anything that ranks, and that ordering is the whole
+            point.** :meth:`~models.enums.UserRole.rank` refuses to rank a
+            customer — there is no number that is correct for an axis rather
+            than a rung — and the refusal surfaces as a 422 whose body discusses
+            role ladders. A household reaching a staff route is not sending a
+            malformed request; it is asking for something that is not theirs.
+            That is a 403, and this is what makes it one. The same reasoning,
+            and the same ordering, as
+            :func:`~api.dependencies.get_manager_user`.
+        """
+        if not caller.role.is_staff():
+            self.logger.warning(
+                "Account %s asked for %s, which is not open to a household.",
+                caller.email,
+                what,
+            )
+            raise MTPlanningForbidden(
+                "This planning is reserved for the agency's own staff."
+            )
+
+    async def _assert_diary_is_readable(self, hca_id: str, caller: User) -> None:
+        """Refuse a manager reading a diary outside the teams they run.
+
+        Args:
+            hca_id (str): The assistant whose diary is wanted.
+            caller (User): Who is asking.
+
+        Raises:
+            MTPlanningForbidden: If the assistant is on no team the caller runs.
+
+        Notes:
+            - Silent for an **administrator** — their narrowing is ``None``,
+              meaning every team — and silent for an assistant reading their
+              own, which the caller has already proved.
+            - An assistant on **no team at all** is refused rather than allowed
+              through. A record nobody is responsible for is not one every
+              manager may read; it is one somebody has to place on a team first.
+            - The membership is looked up rather than read off the visits. A
+              diary that is empty for the period still belongs to somebody, and
+              deciding by the visits would make an assistant on holiday readable
+              by anybody.
+        """
+        readable = await self.teams.readable_team_ids(caller)
+        if readable is None or caller.owns_hca(hca_id) and caller.hca_id == hca_id:
+            return
+        team = await self.teams.teams.team_for_member(MemberKind.HCA, hca_id)
+        if team is None or str(team.id) not in readable:
+            self.logger.warning(
+                "Account %s may not read the diary of assistant %s, who is on team %s.",
+                caller.id,
+                hca_id,
+                team.id if team else None,
+            )
+            raise MTPlanningForbidden(
+                "You may only view the plannings of the teams you manage."
+            )
+
+    async def _readable_customer_ids(
+        self, caller: User, period_start: date, period_end: date
+    ) -> List[str]:
+        """Return the households whose calendar this caller may read.
+
+        Args:
+            caller (User): Who is asking.
+            period_start (date): First day of interest, inclusive.
+            period_end (date): Last day of interest, inclusive.
+
+        Returns:
+            List[str]: The households' identifiers.
+
+        Raises:
+            MTPlanningForbidden: If an assistant's account names no assistant
+                record.
+
+        Notes:
+            - **The scoping is the statement, not a filter afterwards.** A
+              manager gets the households with work in the period; an assistant
+              gets their portfolio, which the customer repository already
+              defines as "households I visit, union households I quoted". A list
+              built wide and narrowed in Python has already read records the
+              caller is not entitled to.
+            - The two identifiers matter. A quote records the *account* that
+              wrote it, not the assistant, so passing the assistant's identifier
+              for both quietly halves the portfolio — the failure the customer
+              repository documents at length.
+            - A manager's households are now **their teams'** rather than the
+              whole agency's. An administrator's narrowing is ``None`` and
+              passes through unchanged, which is why the value travels to the
+              statement rather than being turned into a boolean here.
+        """
+        if caller.is_manager():
+            return await self.interventions.list_customer_ids_for_period(
+                period_start,
+                period_end,
+                await self.teams.readable_team_ids(caller),
+            )
+        if caller.hca_id is None:
+            self.logger.warning(
+                "Account %s asked for the customers planning but is bound to "
+                "no assistant record.",
+                caller.email,
+            )
+            raise MTPlanningForbidden("You may only view your own customers.")
+        return await self.customers.portfolio_ids(
+            caller.hca_id, caller.id or caller.email
+        )
+
+    def _run(
+        self,
+        requirements: List[InterventionRequirement],
+        budget: float,
+        phase: str,
+    ) -> PlanningSolution:
+        """Search for a solution and read it back.
+
+        Args:
+            requirements (List[InterventionRequirement]): The work.
+            budget (float): The deterministic budget this pass may spend.
+            phase (str): Which pass this is, for the log. A run makes two of
+                them and they fail in different ways, so a log line that did
+                not say which would be unreadable.
+
+        Returns:
+            PlanningSolution: What was found.
+
+        Notes:
+            - The time limit is what makes this bounded work rather than an open
+              question. An optimal answer is preferred, but a good feasible one
+              inside the budget is what a planning screen actually needs.
+            - **The search is made reproducible on purpose.** Re-planning the
+              same week used to give a different answer every time — 77 visits
+              at 404 minutes of travel, then 371, then 355 — because a
+              wall-clock budget stops the search wherever it happens to have
+              got to, and parallel workers race each other to the incumbent.
+              A manager who reruns a plan and sees three different numbers has
+              no way to tell an improvement from noise, and no way to tell
+              whether the quote they just accepted changed anything.
+            - Three things together make it reproducible, and **a fixed seed
+              alone was not enough** — that was tried first and still gave
+              502, 495, 502 minutes across three runs of one input.
+              ``random_seed`` fixes the tie-breaking; ``num_search_workers``
+              of one stops parallel workers racing to the incumbent; and
+              ``max_deterministic_time`` is what actually stops the search at
+              the same place every time. A wall-clock budget cannot: it halts
+              wherever elapsed time happens to land, so a loaded machine
+              explores less and returns a worse plan for the same week.
+            - The wall-clock limit is kept as a **safety net, not a budget**.
+              Deterministic time is a measure of work rather than of seconds,
+              so a pathological instance could grind for a very long time
+              inside its allowance; the clock bounds that. If it ever fires
+              the run is no longer reproducible, and it says so at WARNING —
+              a plan that silently stopped being comparable is worse than one
+              that admits it.
+        """
+        solver = cp_model.CpSolver()
+        solver.parameters.max_deterministic_time = budget
+        solver.parameters.max_time_in_seconds = self.config.solver_time_limit_seconds  # noqa: E501
+        solver.parameters.num_search_workers = self.config.solver_workers
+        solver.parameters.random_seed = self.config.solver_seed
+        self.logger.info(
+            "Solving the %s pass with a deterministic budget of %.1f, a "
+            "%.1fs safety net, %d worker(s) and seed %d.",
+            phase,
+            budget,
+            self.config.solver_time_limit_seconds,
+            self.config.solver_workers,
+            self.config.solver_seed,
+        )
+        status = solver.solve(self.model)
+        status_name = solver.status_name(status)
+        if solver.wall_time >= self.config.solver_time_limit_seconds:
+            self.logger.warning(
+                "The solve hit its %.1fs wall-clock safety net rather than its "  # noqa: E501
+                "deterministic budget; this plan is not reproducible, and the "
+                "same week may plan differently next time.",
+                self.config.solver_time_limit_seconds,
+            )
+
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            if status == cp_model.INFEASIBLE:
+                self.logger.error(
+                    "The solver proved no plan exists (%s); the constraints are "  # noqa: E501
+                    "contradictory rather than merely tight.",
+                    status_name,
+                )
+            else:
+                self.logger.error(
+                    "The solver found no plan within its budget (%s) after "
+                    "%.1fs. Nothing was proved about feasibility — the search "
+                    "stopped. A larger planning.solver_deterministic_budget, or "
+                    "less work in the period, is the lever.",
+                    status_name,
+                    solver.wall_time,
+                )
+            return PlanningSolution(
+                unassigned_requirement_ids=[item.id for item in requirements],
+                is_feasible=False,
+                status_name=status_name,
+            )
+        return self._extract(solver, requirements, status_name)
 
     ############################
     # Publicly Exposed Methods #
@@ -2705,72 +2862,194 @@ class PlanningService:
         self,
         requested_by: str,
         company_id: str,
+        team_ids: List[str],
         period: Tuple[date, date],
         publisher: EventPublisher,
         reason: str,
-    ) -> PlanningRun:
-        """Record a replan and hand it to a worker.
+    ) -> List[PlanningRun]:
+        """Record one replan per team and hand each to a worker.
 
         Args:
             requested_by (str): Who caused it.
-            company_id (str): The agency whose queue it belongs on.
+            company_id (str): The agency whose queue they belong on.
+            team_ids (List[str]): The teams whose weeks need rebuilding.
             period (Tuple[date, date]): First and last day to replan,
                 inclusive.
-            publisher (EventPublisher): Queues the solve.
+            publisher (EventPublisher): Queues the solves.
             reason (str): What made the replan necessary, for the log.
 
         Returns:
-            PlanningRun: The pending run, carrying the identifier to poll.
+            List[PlanningRun]: The pending runs, carrying the identifiers to
+            poll. Empty when no team was affected.
 
         Notes:
-            - **Recorded before it is queued.** A caller handed a 202 must get
-              back an identifier that is already real; a run published first
-              and stored second could be picked up by a worker before the row
-              it names exists.
-            - A broker that will not take the message is an ``ERROR`` and not a
-              failure: the run stays ``pending`` and the next worker to reach a
+            - **One run per team**, because a run rewrites one team's week. A
+              deleted household may hold work with two teams and a cancelled
+              visit with exactly one; the caller resolves which, and this
+              queues a run for each.
+            - **Recorded before queued.** A caller handed a 202 must get back
+              identifiers that are already real; a run published first and
+              stored second could be picked up by a worker before the row it
+              names exists.
+            - A broker that will not take a message is an ``ERROR`` and not a
+              failure: that run stays ``pending`` and the next worker to reach a
               reachable broker will find it. Raising instead would undo a
-              deletion that has already happened for a reason unrelated to it.
-            - This is the same shape
-              :func:`~api.v1.planning.interventions.delete_intervention` has
-              used since visits became cancellable, lifted here so the three
-              deletions that now end in a replan cannot drift apart.
+              deletion that has already happened for a reason unrelated to it —
+              and, now that there may be several, would leave the earlier teams
+              queued and the later ones not.
+            - An empty list of teams is not an error. Nobody had future work, so
+              nothing needs rebuilding, and queueing a run that would place the
+              same visits in the same slots is thirty seconds of a worker and a
+              calendar that flickers for no reason.
         """
         period_start, period_end = period
-        self.logger.info(
-            "Replanning %s to %s because %s.", period_start, period_end, reason
-        )
-        run = await self.request_run(
-            requested_by=requested_by,
-            company_id=company_id,
-            period_start=period_start,
-            period_end=period_end,
-        )
-        queued = await publisher.publish(
-            EventRoutingKey.PLANNING_RUN_REQUESTED,
-            company_id,
-            {"run_id": run.id, "company_id": company_id},
-        )
-        if not queued:
-            self.logger.error(
-                "Replan %s is recorded but could not be queued; it stays "
-                "pending until the broker is reachable.",
-                run.id,
+        if not team_ids:
+            self.logger.info(
+                "Nothing to replan between %s and %s after %s: no team holds "
+                "affected work.",
+                period_start,
+                period_end,
+                reason,
             )
-        return run
+            return []
+        self.logger.info(
+            "Replanning %d team(s) from %s to %s because %s.",
+            len(team_ids),
+            period_start,
+            period_end,
+            reason,
+        )
+        runs: List[PlanningRun] = []
+        for team_id in team_ids:
+            run = await self.request_run(
+                requested_by=requested_by,
+                company_id=company_id,
+                team_id=team_id,
+                period_start=period_start,
+                period_end=period_end,
+            )
+            queued = await publisher.publish(
+                EventRoutingKey.PLANNING_RUN_REQUESTED,
+                company_id,
+                {"run_id": run.id, "company_id": company_id},
+            )
+            if not queued:
+                self.logger.error(
+                    "Replan %s of team %s is recorded but could not be queued; "
+                    "it stays pending until the broker is reachable.",
+                    run.id,
+                    team_id,
+                )
+            runs.append(run)
+        return runs
+
+    async def teams_to_plan(
+        self, caller: User, team_id: Optional[str] = None
+    ) -> List[str]:
+        """Return the teams a caller may ask for a planning of.
+
+        Args:
+            caller (User): The account asking.
+            team_id (Optional[str]): One team, or ``None`` for all of theirs.
+
+        Returns:
+            List[str]: The teams to run, possibly empty.
+
+        Raises:
+            MTPlanningTeamForbidden: If the named team is not one they run.
+
+        Notes:
+            - **A route guard cannot do this.** It proves the caller is a
+              manager; it cannot stop manager A naming manager B's team, and a
+              run against that team would rewrite a colleague's week.
+            - Naming no team means *every team you run* — for a manager, theirs;
+              for an administrator, the whole company. That is what makes the
+              administrator's button a fan-out rather than a company-wide solve
+              that would have to be scoped somewhere else again.
+            - An administrator with no teams at all gets an empty list rather
+              than an error, and the caller reports it. It means a company that
+              has not formed a team yet, which is a state of the data rather
+              than a mistake by the person pressing the button.
+        """
+        readable = await self.teams.readable_team_ids(caller)
+        if team_id is not None:
+            if readable is not None and team_id not in readable:
+                self.logger.warning(
+                    "Account %s asked to plan team %s, which is not theirs.",
+                    caller.id,
+                    team_id,
+                )
+                raise MTPlanningTeamForbidden(
+                    "A planning may only be run for a team you manage."
+                )
+            return [team_id]
+        if readable is not None:
+            if not readable:
+                self.logger.warning(
+                    "Account %s runs no team; there is nothing to plan.", caller.id
+                )
+            return readable
+        every = await self.teams.teams.list(caller.company_id, page=1, size=None)
+        identifiers = [str(team.id) for team in every]
+        if not identifiers:
+            self.logger.warning(
+                "Company %s has no team; there is nothing to plan.",
+                caller.company_id,
+            )
+        else:
+            self.logger.info(
+                "Administrator %s plans all %d team(s) of company %s.",
+                caller.id,
+                len(identifiers),
+                caller.company_id,
+            )
+        return identifiers
+
+    async def future_teams_for_hca(self, hca_id: str) -> List[str]:
+        """Return the teams still holding future visits by an assistant.
+
+        Args:
+            hca_id (str): The assistant being removed.
+
+        Returns:
+            List[str]: The teams whose weeks their departure invalidates.
+        """
+        return await self.interventions.future_teams_for_person(
+            hca_id, is_customer=False, from_day=datetime.now(UTC).date()
+        )
+
+    async def future_teams_for_customer(self, customer_id: str) -> List[str]:
+        """Return the teams still holding future visits for a household.
+
+        Args:
+            customer_id (str): The household whose work is changing.
+
+        Returns:
+            List[str]: The teams whose weeks the change invalidates.
+
+        Notes:
+            More than one is possible and is not a bug: a household's quotes are
+            attributed one at a time, so a customer taken on before a second
+            branch opened may hold work with two teams.
+        """
+        return await self.interventions.future_teams_for_person(
+            customer_id, is_customer=True, from_day=datetime.now(UTC).date()
+        )
 
     async def request_run(
         self,
         requested_by: str,
         company_id: str,
+        team_id: str,
         period_start: date,
         period_end: date,
     ) -> PlanningRun:
-        """Record a planning request, before any work is done.
+        """Record a planning request for one team, before any work is done.
 
         Args:
-            requested_by (str): The administrator asking for it.
+            requested_by (str): The account asking for it.
             company_id (str): The agency whose calendar the run rewrites.
+            team_id (str): The team whose part of it the run rewrites.
             period_start (date): First day to plan, inclusive.
             period_end (date): Last day to plan, inclusive.
 
@@ -2781,14 +3060,15 @@ class PlanningService:
             - Separate from :meth:`execute_run` so the endpoint can answer 202
               immediately with something to poll, rather than holding the request
               open for the length of the solve.
-            - The agency is recorded on the run rather than resolved from
-              ``requested_by`` when the worker picks it up. The account is allowed
-              to be gone by then — it carries no foreign key precisely so an
-              administrator can leave — and a run that could not name its own
-              agency would be a run nothing could safely execute.
+            - **One run, one team.** Both are recorded on the run rather than
+              resolved when the worker picks it up: the account is allowed to be
+              gone by then — it carries no foreign key precisely so somebody can
+              leave — and a run that could not name its own team would clear the
+              wrong calendars, or every calendar.
         """
         self.logger.info(
-            "Planning requested for agency %s from %s to %s by %s.",
+            "Planning requested for team %s at agency %s from %s to %s by %s.",
+            team_id,
             company_id,
             period_start,
             period_end,
@@ -2798,6 +3078,7 @@ class PlanningService:
             PlanningRun(
                 status=PlanningRunStatus.PENDING,
                 company_id=company_id,
+                team_id=team_id,
                 requested_by=requested_by,
                 period_start=period_start,
                 period_end=period_end,
@@ -2838,8 +3119,6 @@ class PlanningService:
             solution, requirements, assistants, unplaced = await self._solve(run)
             scheduled = await self._store(run, solution, requirements, assistants)  # noqa: E501
             if unplaced:
-                # Offers are computed against the plan that was just stored,
-                # so a suggested slot is one the next run can actually take.
                 unplaced = self._offer_alternatives(
                     unplaced,
                     assistants,
@@ -2856,9 +3135,6 @@ class PlanningService:
                 status=PlanningRunStatus.FAILED,
                 error_message=str(exc),
             )
-        # A week with a gap in it is stored and named, not withheld. What it
-        # must never be is indistinguishable from a complete one, so it gets
-        # its own status rather than SUCCEEDED with a field nobody reads.
         status = PlanningRunStatus.PARTIAL if unplaced else PlanningRunStatus.SUCCEEDED
         self._record_outcome(status, monotonic() - started, scheduled)
         return await self._finish(
@@ -2917,10 +3193,14 @@ class PlanningService:
             MTPlanningForbidden: If an assistant asks for somebody else's.
 
         Notes:
-            **This is the row-level check.** A route guard proves only that the
-            caller is *an* assistant; it cannot stop assistant A passing
-            assistant B's identifier. Managers and administrators pass through
-            — they are meant to see every diary.
+            - **This is the row-level check.** A route guard proves only that
+              the caller is *an* assistant; it cannot stop assistant A passing
+              assistant B's identifier, nor manager A passing an assistant of
+              manager B's team.
+            - Two checks, not one, because they answer different questions. An
+              assistant may read **their own** diary; a manager may read
+              **their teams'**. An administrator passes both, and is the only
+              caller who reads any diary in the company.
         """
         if not caller.owns_hca(hca_id):
             self.logger.warning(
@@ -2929,6 +3209,7 @@ class PlanningService:
                 hca_id,
             )
             raise MTPlanningForbidden("You may only view your own planning.")
+        await self._assert_diary_is_readable(hca_id, caller)
         assistant = await self.hcas.get(hca_id)
         if assistant is None:
             self.logger.warning("Diary requested for absent assistant %s.", hca_id)  # noqa: E501
@@ -2966,10 +3247,15 @@ class PlanningService:
             MTPlanningForbidden: If an assistant asks for the whole workforce.
 
         Notes:
-            An assistant calling this gets their own diary back, not an error
-            — the screen is the same one, and refusing it would be gratuitous.
-            What they must never get is anybody else's, which the per-assistant
-            check below still enforces.
+            - An assistant calling this gets their own diary back, not an error
+              — the screen is the same one, and refusing it would be gratuitous.
+              What they must never get is anybody else's, which the
+              per-assistant check below still enforces.
+            - **A manager sees their own teams' assistants**, narrowed in the
+              statement that lists who has work rather than by dropping diaries
+              afterwards. Dropping them afterwards would have read every
+              assistant's visits first, which is the whole thing being
+              prevented.
         """
         if not caller.is_manager():
             if caller.hca_id is None:
@@ -2987,7 +3273,7 @@ class PlanningService:
                 await self.planning_for(caller.hca_id, caller, period_start, period_end)  # noqa: E501
             ]
         hca_ids = await self.interventions.list_hca_ids_for_period(
-            period_start, period_end
+            period_start, period_end, await self.teams.readable_team_ids(caller)
         )
         self.logger.info(
             "Serving %d planning(s) for %s to %s.",
@@ -3000,6 +3286,166 @@ class PlanningService:
             plannings.append(
                 await self.planning_for(hca_id, caller, period_start, period_end)  # noqa: E501
             )
+        return plannings
+
+    async def planning_for_customer(
+        self,
+        customer_id: str,
+        caller: User,
+        period_start: date,
+        period_end: date,
+    ) -> CustomerPlanning:
+        """Return one household's care, if the caller may see it.
+
+        Args:
+            customer_id (str): The household whose care is wanted.
+            caller (User): Who is asking.
+            period_start (date): First day of interest, inclusive.
+            period_end (date): Last day of interest, inclusive.
+
+        Returns:
+            CustomerPlanning: The household's visits over the period.
+
+        Raises:
+            MTPlanningForbidden: If the caller is not staff.
+            MTPlanningCustomerNotFound: If the household does not exist, or is
+                not in the asking assistant's portfolio.
+
+        Notes:
+            - **This reads through the same method the household's own portal
+              reads through**, with the same arguments and no filter of its own.
+              That is what "the agency sees what the family sees" means here: it
+              is one query, not two that agree today. A status filter added on
+              either side without the other would be the drift, and
+              ``test_planning_customer_sync`` exists to fail on it.
+            - **Absent and not-yours answer identically.** Telling the two apart
+              lets a caller walk the identifier space and learn which households
+              the agency serves.
+            - Managers and administrators pass through: they are meant to see
+              every household. An assistant is checked against their portfolio,
+              which is the same predicate their customer list is built from — a
+              rail offering a household whose calendar then refuses would be
+              worse than either behaviour alone.
+        """
+        self._require_staff(caller, f"the care of household {customer_id}")
+        if not caller.is_manager():
+            if caller.hca_id is None:
+                self.logger.warning(
+                    "Account %s asked for a household's care but is bound to "
+                    "no assistant record.",
+                    caller.email,
+                )
+                raise MTPlanningForbidden("You may only view your own customers.")
+            allowed = await self.customers.is_served_by(
+                customer_id, caller.hca_id, caller.id or caller.email
+            )
+            if not allowed:
+                self.logger.warning(
+                    "Assistant %s asked for household %s, who is not theirs.",
+                    caller.hca_id,
+                    customer_id,
+                )
+                raise MTPlanningCustomerNotFound(
+                    f"No household {customer_id!r} is available to you."
+                )
+        household = await self.customers.get(customer_id)
+        if household is None:
+            self.logger.warning("Care requested for absent household %s.", customer_id)
+            raise MTPlanningCustomerNotFound(f"No household {customer_id!r} exists.")
+        visits = await self.interventions.list_for_customer(
+            customer_id, period_start, period_end
+        )
+        self.logger.info(
+            "Serving %d visit(s) for household %s from %s to %s.",
+            len(visits),
+            customer_id,
+            period_start,
+            period_end,
+        )
+        return CustomerPlanning(
+            customer_id=customer_id,
+            customer_full_name=household.full_name(),
+            period_start=period_start,
+            period_end=period_end,
+            interventions=visits,
+        )
+
+    async def customer_plannings(
+        self, caller: User, period_start: date, period_end: date
+    ) -> List[CustomerPlanning]:
+        """Return every household's care the caller may see over a period.
+
+        Args:
+            caller (User): Who is asking.
+            period_start (date): First day of interest, inclusive.
+            period_end (date): Last day of interest, inclusive.
+
+        Returns:
+            List[CustomerPlanning]: One entry per household with care in the
+            period, by family name.
+
+        Raises:
+            MTPlanningForbidden: If the caller is not staff.
+
+        Notes:
+            - **Three queries, whatever the agency's size.** The households, then
+              their visits in one read, then their names in one read. Written the
+              way :meth:`all_plannings` is — a planning per party in a loop — a
+              manager with four hundred households would hold a connection for
+              eight hundred round trips, on the screen an assistant now lands on
+              every morning.
+            - The batched read is contractually the same as the per-household
+              one; the repository documents that and a test asserts it. Without
+              that equivalence the batching would quietly break the agreement
+              with the portal, which is the one property this feature exists to
+              have.
+            - A household named by the visits but since deleted simply drops
+              out. It cannot be shown — there is no name to put on the rail —
+              and refusing the whole screen over one missing record would be the
+              wrong trade.
+        """
+        self._require_staff(caller, "the customers planning")
+        customer_ids = await self._readable_customer_ids(
+            caller, period_start, period_end
+        )
+        if not customer_ids:
+            self.logger.info(
+                "No household is readable by %s between %s and %s.",
+                caller.email,
+                period_start,
+                period_end,
+            )
+            return []
+        visits = await self.interventions.list_for_customers(
+            customer_ids, period_start, period_end
+        )
+        households = await self.customers.list_by_ids(customer_ids)
+        grouped: Dict[str, List[Intervention]] = {}
+        for visit in visits:
+            grouped.setdefault(visit.customer_id, []).append(visit)
+        plannings: List[CustomerPlanning] = []
+        for household in households:
+            if household.id is None:
+                self.logger.error(
+                    "A household read back without an identifier was left off "
+                    "the customers planning."
+                )
+                continue
+            plannings.append(
+                CustomerPlanning(
+                    customer_id=household.id,
+                    customer_full_name=household.full_name(),
+                    period_start=period_start,
+                    period_end=period_end,
+                    interventions=grouped.get(household.id, []),
+                )
+            )
+        self.logger.info(
+            "Serving %d household planning(s) for %s to %s.",
+            len(plannings),
+            period_start,
+            period_end,
+        )
         return plannings
 
     def build(

@@ -86,9 +86,11 @@ async def _queue_replan(
         reason,
     )
     try:
-        run = await plannings.queue_replan(
+        team_ids = await plannings.future_teams_for_customer(str(caller.customer_id))
+        runs = await plannings.queue_replan(
             requested_by=caller.id or caller.email,
             company_id=caller.company_id,
+            team_ids=team_ids,
             period=period,
             publisher=publisher,
             reason=f"household {caller.customer_id} {reason}",
@@ -101,7 +103,7 @@ async def _queue_replan(
             reason,
         )
         return
-    logger.debug("Replan %s queued.", run.id)
+    logger.debug("Queued %d replan(s).", len(runs))
 
 
 @router.get("/profile", response_model=Customer)

@@ -15,8 +15,8 @@ from api.dependencies import (
     get_manager_user,
 )
 from models.auth.user import User
-from models.companies.company import Company
-from models.companies.company_choice import CompanyChoice
+from models.organisation.companies.company import Company
+from models.organisation.companies.company_choice import CompanyChoice
 from models.schemas.requests.companies.company_registration_request import (
     CompanyRegistrationRequest,
 )
@@ -107,7 +107,7 @@ async def list_company_choices(
         seeing the list.
 
         What that costs is bounded by the response model: a
-        :class:`~models.companies.company_choice.CompanyChoice` carries an
+        :class:`~models.organisation.companies.company_choice.CompanyChoice` carries an
         identifier and a name, so this cannot become a directory of every
         agency's registered office however the service changes.
     """

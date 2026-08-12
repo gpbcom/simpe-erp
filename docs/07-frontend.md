@@ -632,9 +632,36 @@ The Edit button renders only on a draft, and on the assistant's grid only on
 quotes they wrote. Neither is the control: the server checks both, and suite 20
 sends the forbidden request by hand to prove it.
 
-**Team planning** — `/plannings`, manager-gated. The endpoint already existed
-and only the map used it; the map answers *where*, while a manager asking
-whether Monday is covered needs *who and when*.
+**Plannings** — `/plannings`, open to every member of staff. The endpoint
+already existed and only the map used it; the map answers *where*, while a
+manager asking whether Monday is covered needs *who and when*.
+
+**Two lenses, one screen.** An intervention names an assistant *and* a
+household, so the same visits group two ways: **by assistant** answers "is
+Thursday covered", **by customer** answers "what is happening at Madame
+Vincent's this week". Neither is a filter over the other's answer, which is why
+the switch is a two-segment control naming both states rather than a checkbox
+whose unchecked half is unlabelled.
+
+The switch is rendered **only for a manager**. An assistant opens the screen
+directly on the households lens and is offered no segment: the assistants lens
+is not theirs to read, and a control whose other side answers 403 is a control
+that lies. Their households are scoped server-side to their own portfolio — the
+ones they visit, union the ones they quoted — so the screen can hold nothing
+they could not already reach.
+
+**The households lens is the household's own calendar.** It reads the span
+`customerPlanningWindow()` from `utils/planningWindow.ts`, which
+`/portal/planning` reads too; it shows weekends, because care does not stop on a
+Sunday and the family's own screen shows them; and narrowed to one household it
+colours by status, which is what that family sees. On the whole-agency grid the
+hue answers "whose visit is that" instead — there is no portal counterpart to a
+view of forty households.
+
+It is **read-only**. Retyping a visit reprices the quote it came from and
+cancelling it takes it off the customer's bill; both stay on the assistants
+lens, where a manager arrived to schedule rather than to answer a telephone
+call.
 
 It is a calendar — the same `FullCalendar` an assistant reads their own week
 off, so the two screens read alike and a fix to one is a fix to both — with a

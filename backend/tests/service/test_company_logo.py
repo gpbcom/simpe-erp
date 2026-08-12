@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from service.companies.companies import CompanyService
 from service.companies.exceptions import (
     MTCompanyLogoStorageUnavailable,

@@ -29,6 +29,7 @@ class PlanningRunRow(Base):
         id (str): UUID primary key.
         status (str): Where the run is.
         company_id (str): The agency whose calendar this run rewrites.
+        team_id (str): The team whose half of that calendar it rewrites.
         requested_by (str): The administrator who started it.
         period_start (date): First day planned, inclusive.
         period_end (date): Last day planned, inclusive.
@@ -53,6 +54,11 @@ class PlanningRunRow(Base):
           for exactly that reason: the requester is allowed to vanish, and the
           agency a run belongs to must not vanish with them. It is what scopes
         - the work the run schedules and the calendar it rewrites.
+        - ``team_id`` is stored on the run for the same reason and with the same
+          force. It is what the worker scopes both halves of the computation by
+          — which accepted quotes it reads, and whose visits it deletes — and a
+          run that could not name its own team would be one nothing could safely
+          execute. It carries no foreign key either, matching ``company_id``.
           The unassigned ids are a delimited string rather than a table. They are
           only ever read back whole, alongside the run, and a table would add a
           join to serve a list nothing queries into.
@@ -63,11 +69,13 @@ class PlanningRunRow(Base):
         Index("ix_planning_runs_status", "status"),
         Index("ix_planning_runs_period", "period_start", "period_end"),
         Index("ix_planning_runs_company", "company_id", "status"),
+        Index("ix_planning_runs_team", "team_id", "period_start"),
     )
 
     id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), primary_key=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
+    team_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     requested_by: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)

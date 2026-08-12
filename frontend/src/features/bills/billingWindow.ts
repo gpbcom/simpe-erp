@@ -33,9 +33,7 @@ export function windowFor(
     return { start: iso(start), end: iso(end) };
   }
   if (periodicity === 'monthly') {
-    const start = new Date(
-      Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1),
-    );
+    const start = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
     const end = new Date(
       Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0),
     );

@@ -15,6 +15,7 @@ from models.schemas.exceptions import (
     MTPricingRulesResponseInvalidSurcharges,
 )
 from models.schemas.responses.catalog.pricing_rules_response import PricingRulesResponse
+from tests.annotations import ModelInput
 
 
 class TestPricingRulesResponse:
@@ -86,11 +87,11 @@ class TestPricingRulesResponse:
             PricingRulesResponse(base_hourly_rate_ht="thirty euros")
 
     @pytest.mark.parametrize("value", [[], "sunday", 5])
-    def test_a_malformed_rate_mapping_is_refused(self, value: object) -> None:
+    def test_a_malformed_rate_mapping_is_refused(self, value: ModelInput) -> None:
         """A list where a mapping is expected names neither field otherwise.
 
         Args:
-            value (object): The rejected mapping.
+            value (ModelInput): The rejected mapping.
         """
         with pytest.raises(MTPricingRulesResponseInvalidSurcharges):
             PricingRulesResponse(

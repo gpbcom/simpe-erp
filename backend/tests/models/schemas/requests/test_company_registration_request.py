@@ -14,15 +14,16 @@ from models.schemas.exceptions import (
 from models.schemas.requests.companies.company_registration_request import (
     CompanyRegistrationRequest,
 )
+from tests.annotations import ModelInput
 
 GOOD_PASSWORD = "a-founder-password-2026"
 
 
-def _payload(**overrides: object) -> dict:
+def _payload(**overrides: ModelInput) -> dict:
     """Build a valid payload, with fields replaced.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         dict: The payload.
@@ -127,11 +128,11 @@ class TestCompanyRegistrationRequestValidation:
             pytest.param(42, id="Refused - not a string"),
         ],
     )
-    def test_a_company_needs_a_name(self, value: object) -> None:
+    def test_a_company_needs_a_name(self, value: ModelInput) -> None:
         """An agency without a name cannot be told apart from another.
 
         Args:
-            value (object): The name to refuse.
+            value (ModelInput): The name to refuse.
         """
         with pytest.raises(MTCompanyRegistrationRequestInvalidCompanyName):
             CompanyRegistrationRequest(**_payload(company_name=value))
@@ -144,11 +145,11 @@ class TestCompanyRegistrationRequestValidation:
             pytest.param(None, id="Refused - missing"),
         ],
     )
-    def test_a_founder_needs_a_name(self, value: object) -> None:
+    def test_a_founder_needs_a_name(self, value: ModelInput) -> None:
         """The display name is what a manager screen shows.
 
         Args:
-            value (object): The name to refuse.
+            value (ModelInput): The name to refuse.
         """
         with pytest.raises(MTCompanyRegistrationRequestInvalidFullName):
             CompanyRegistrationRequest(**_payload(full_name=value))
@@ -161,11 +162,11 @@ class TestCompanyRegistrationRequestValidation:
             pytest.param(None, id="Refused - missing"),
         ],
     )
-    def test_a_founder_needs_an_address(self, value: object) -> None:
+    def test_a_founder_needs_an_address(self, value: ModelInput) -> None:
         """The address is the credential; there is no account without one.
 
         Args:
-            value (object): The address to refuse.
+            value (ModelInput): The address to refuse.
         """
         with pytest.raises(MTCompanyRegistrationRequestInvalidEmail):
             CompanyRegistrationRequest(**_payload(email=value))

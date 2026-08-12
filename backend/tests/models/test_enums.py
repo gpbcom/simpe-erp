@@ -3,18 +3,19 @@ from __future__ import annotations
 # Standard library imports
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
 
 # Third-party imports
 import pytest
 
 from models.enums import (
+    AgencyType,
     AvailabilityKind,
     BillingPeriodicity,
     BillingRunStatus,
     BillStatus,
     ContractType,
     InterventionStatus,
+    MemberKind,
     PlanningRunStatus,
     QuoteStatus,
     RegistrationStatus,
@@ -25,14 +26,17 @@ from models.enums import (
 
 # First-party imports
 from models.exceptions.enum_exceptions import MTInvalidWeekday, MTRoleNotRankable
+from tests.annotations import ModelInput
 
 ALL_ENUMS = (
+    AgencyType,
     AvailabilityKind,
     BillingPeriodicity,
     BillingRunStatus,
     BillStatus,
     ContractType,
     InterventionStatus,
+    MemberKind,
     PlanningRunStatus,
     QuoteStatus,
     RegistrationStatus,
@@ -61,7 +65,7 @@ class TestEnums:
         assert len(values) == len(set(values))
 
     @pytest.mark.parametrize("enum_class", ALL_ENUMS)
-    def test_values_helper_matches_the_members(self, enum_class: Any) -> None:
+    def test_values_helper_matches_the_members(self, enum_class: ModelInput) -> None:
         """``values()`` returns every member value, in declaration order."""
         assert enum_class.values() == tuple(member.value for member in enum_class)
 
@@ -195,7 +199,9 @@ class TestEnums:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_from_iso_weekday_rejects_out_of_range(self, invalid_number: Any) -> None:
+    def test_from_iso_weekday_rejects_out_of_range(
+        self, invalid_number: ModelInput
+    ) -> None:
         """An ISO weekday outside 1..7 is rejected.
 
         Notes:
@@ -293,3 +299,44 @@ class TestEnums:
     def test_intervention_statuses_include_planned(self) -> None:
         """Planned is the status the solver writes."""
         assert InterventionStatus.PLANNED in set(InterventionStatus)
+
+    # ------------------------------------------------------------------ #
+    #  AgencyType
+    # ------------------------------------------------------------------ #
+
+    def test_agency_types_are_head_office_warehouse_and_branch(self) -> None:
+        """The three operational meanings a site can have."""
+        assert set(AgencyType.values()) == {"hq", "warehouse", "office"}
+
+    @pytest.mark.parametrize(
+        ("agency_type", "expected"),
+        [
+            pytest.param(AgencyType.HQ, True, id="head office"),
+            pytest.param(AgencyType.WAREHOUSE, False, id="warehouse"),
+            pytest.param(AgencyType.OFFICE, False, id="branch office"),
+        ],
+    )
+    def test_only_hq_is_the_head_office(
+        self, agency_type: AgencyType, expected: bool
+    ) -> None:
+        """The singularity rule has one spelling, and this is it.
+
+        Notes:
+            A caller comparing to the literal ``"hq"`` is a caller that keeps
+            working when the value is renamed and stops meaning what it says.
+        """
+        assert agency_type.is_headquarters() is expected
+
+    # ------------------------------------------------------------------ #
+    #  MemberKind
+    # ------------------------------------------------------------------ #
+
+    def test_member_kinds_cover_both_person_records(self) -> None:
+        """An account and an assistant record are different things.
+
+        Notes:
+            A manager has an account and no assistant record; an assistant has
+            a record and may or may not have an account. One kind would leave
+            one of those two outside every agency.
+        """
+        assert set(MemberKind.values()) == {"user", "hca"}

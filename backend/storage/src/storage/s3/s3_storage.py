@@ -73,6 +73,11 @@ class S3Storage:
         "image/jpeg": "jpg",
         "image/png": "png",
         "image/webp": "webp",
+        "application/pdf": "pdf",
+        # A Zip container, because the signature cannot tell an .docx from an
+        # .xlsx. The stored file name keeps the real one; this only decides
+        # what the object key ends in.
+        "application/zip": "zip",
     }
     MAGIC_SIGNATURES: ClassVar[Tuple[Tuple[bytes, str], ...]] = (
         (b"\xff\xd8\xff", "image/jpeg"),
@@ -83,6 +88,19 @@ class S3Storage:
     DOCUMENT_SIGNATURE: ClassVar[bytes] = b"%PDF-"
     DOCUMENT_CONTENT_TYPE: ClassVar[str] = "application/pdf"
     DOCUMENT_CACHE_CONTROL: ClassVar[str] = "private, no-store"
+    #: What a team may share. Wider than the invoice sniffer because a team
+    #: swaps rotas, protocols and photographs of a front door, and narrower
+    #: than "anything" because these bytes are handed back to a browser.
+    TEAM_DOCUMENT_SIGNATURES: ClassVar[Tuple[Tuple[bytes, str], ...]] = (
+        (b"%PDF-", "application/pdf"),
+        (b"\x89PNG\r\n\x1a\n", "image/png"),
+        (b"\xff\xd8\xff", "image/jpeg"),
+        # Both an .docx and an .xlsx are Zip containers, so the signature
+        # cannot tell them apart. The generic type is stored rather than a
+        # guess: a browser downloads it either way, and a wrong specific
+        # type would open the wrong application.
+        (b"PK\x03\x04", "application/zip"),
+    )
 
     def __init__(self, config: S3Config, logger: Optional[Logger] = None) -> None:  # noqa: E501
         """Initialize the storage without opening a connection.
@@ -676,6 +694,220 @@ class S3Storage:
             self.logger.error("Could not delete the invoice document %s: %s.", key, exc)
             return False
         self.logger.debug("Deleted the invoice document at %s.", key)
+        return True
+
+    def detect_team_document_type(self, payload: bytes) -> str:
+        """Return the media type a team document actually is.
+
+        Args:
+            payload (bytes): The uploaded bytes.
+
+        Returns:
+            str: The detected media type.
+
+        Raises:
+            MTS3EmptyPayload: If ``payload`` carries no bytes.
+            MTS3UnsupportedContentType: If the leading bytes match nothing in
+                :attr:`TEAM_DOCUMENT_SIGNATURES`.
+
+        Notes:
+            - **A third sniffer, and deliberately not a widening of either
+              existing one.** :meth:`detect_content_type` guards a bucket
+              serving portraits to a browser and :meth:`detect_document_type`
+              exists to prove a payload is an invoice; admitting a spreadsheet
+              to either would admit it for photographs or for legal documents
+              too. A team's shared space gets its own allow-list, its own prefix
+              and the private cache header.
+            - Detected from **magic bytes, never the declared ``Content-Type``**,
+              which is a claim by whoever uploaded the file. The stored value is
+              what a download hands back, so trusting the header would let an
+              uploader choose how a colleague's browser treats their bytes.
+        """
+        if not payload:
+            self.logger.warning("Refused an empty team document.")
+            raise MTS3EmptyPayload("The document is empty.")
+        for signature, content_type in self.TEAM_DOCUMENT_SIGNATURES:
+            if payload.startswith(signature):
+                self.logger.debug("Detected a team document of type %s.", content_type)
+                return content_type
+        accepted = ", ".join(
+            content_type for _, content_type in self.TEAM_DOCUMENT_SIGNATURES
+        )
+        self.logger.warning("Refused a team document of an unrecognised type.")
+        raise MTS3UnsupportedContentType(
+            f"That file type cannot be shared. Accepted types are {accepted}."
+        )
+
+    def build_team_document_key(self, team_id: str, content_type: str) -> str:
+        """Return the object key a team document is written under.
+
+        Args:
+            team_id (str): The team whose space the file joins.
+            content_type (str): The detected media type, for the extension.
+
+        Returns:
+            str: The key, under the configured team-document prefix.
+
+        Notes:
+            **The key is random, not derived from the file name.** A key built
+            from what somebody called their file would be guessable by anybody
+            who has seen the name, and these objects are a team's private
+            paperwork. The file name stays the human-facing identity, stored on
+            the row; the key stays unguessable.
+        """
+        if not team_id.strip():
+            self.logger.warning(
+                "Building a team-document key for an unnamed team; the object "
+                "would land directly under %s and no record could claim it.",
+                self.config.team_document_key_prefix,
+            )
+        extension = self.CONTENT_TYPE_EXTENSIONS.get(content_type, "bin")
+        key = (
+            f"{self.config.team_document_key_prefix}{team_id}/{uuid4().hex}.{extension}"
+        )
+        self.logger.info("A document for team %s will be written to %s.", team_id, key)
+        return key
+
+    async def upload_team_document(
+        self, team_id: str, payload: bytes
+    ) -> Tuple[str, str]:
+        """Store a shared team document and return its key and type.
+
+        Args:
+            team_id (str): The team whose space the file joins.
+            payload (bytes): The uploaded bytes.
+
+        Returns:
+            Tuple[str, str]: The **object key** and the detected media type.
+
+        Raises:
+            MTS3EmptyPayload: If the file carries no bytes.
+            MTS3UnsupportedContentType: If the file is not a shareable type.
+            MTS3PayloadTooLarge: If the file exceeds the configured size.
+            MTS3BucketUnavailable: If the client cannot be built.
+            MTS3UploadFailed: If the object could not be written.
+
+        Notes:
+            - **Returns a key and never a URL**, like the invoice path and
+              unlike the portrait one. A team's documents are read back
+              server-side and streamed through an authenticated endpoint, so
+              there is no public URL to build and storing one would invite
+              somebody to use it.
+            - The detected type comes back with the key because the caller has
+              to store it: it is what the download hands to a browser, and
+              re-sniffing the object on every read would mean fetching it twice.
+        """
+        if len(payload) > self.config.max_upload_bytes:
+            self.logger.warning(
+                "Refused a %d-byte document for team %s; the limit is %d.",
+                len(payload),
+                team_id,
+                self.config.max_upload_bytes,
+            )
+            raise MTS3PayloadTooLarge(
+                f"The file is {len(payload)} bytes; the limit is "
+                f"{self.config.max_upload_bytes}."
+            )
+        content_type = self.detect_team_document_type(payload)
+        key = self.build_team_document_key(team_id, content_type)
+        client = self.get_client()
+        self.logger.info(
+            "Uploading a %d-byte %s document for team %s to %s.",
+            len(payload),
+            content_type,
+            team_id,
+            key,
+        )
+        try:
+            await asyncio.to_thread(
+                client.put_object,
+                Bucket=self.config.bucket,
+                Key=key,
+                Body=payload,
+                ContentType=content_type,
+                CacheControl=self.DOCUMENT_CACHE_CONTROL,
+            )
+        except (BotoCoreError, ClientError) as exc:
+            self.logger.error(
+                "Failed to upload a document for team %s: %s.", team_id, exc
+            )
+            raise MTS3UploadFailed(
+                f"Could not store the shared document: {exc}."
+            ) from exc
+        self.logger.info("Stored a document for team %s at %s.", team_id, key)
+        return key, content_type
+
+    async def fetch_team_document(self, document_key: str) -> Optional[bytes]:
+        """Read a stored team document back.
+
+        Args:
+            document_key (str): The object key the file was written under.
+
+        Returns:
+            Optional[bytes]: The bytes, or ``None`` when the key is not a team
+            document in this bucket or the object could not be read.
+
+        Notes:
+            The prefix is re-checked here rather than trusted from the row. The
+            key reaches this method from a stored record, and a record pointing
+            outside the team-document prefix would let an authenticated download
+            address any object in the bucket — the invoices among them.
+        """
+        key = document_key.strip()
+        if not key.startswith(self.config.team_document_key_prefix):
+            self.logger.warning(
+                "Refused to read %s: it does not lie under %s.",
+                key,
+                self.config.team_document_key_prefix,
+            )
+            return None
+        client = self.get_client()
+        self.logger.debug("Reading the team document at %s.", key)
+        try:
+            response = await asyncio.to_thread(
+                client.get_object, Bucket=self.config.bucket, Key=key
+            )
+            payload = response["Body"].read()
+        except (BotoCoreError, ClientError) as exc:
+            self.logger.error("Failed to read the team document %s: %s.", key, exc)
+            return None
+        self.logger.info(
+            "Read %d byte(s) from the team document %s.", len(payload), key
+        )
+        return payload
+
+    async def delete_team_document(self, document_key: str) -> bool:
+        """Remove a stored team document.
+
+        Args:
+            document_key (str): The object key the file was written under.
+
+        Returns:
+            bool: ``True`` when the object was removed.
+
+        Notes:
+            The same prefix check as the read, and for the stronger reason:
+            getting it wrong here removes somebody else's object rather than
+            merely reading one.
+        """
+        key = document_key.strip()
+        if not key.startswith(self.config.team_document_key_prefix):
+            self.logger.warning(
+                "Refused to delete %s: it does not lie under %s.",
+                key,
+                self.config.team_document_key_prefix,
+            )
+            return False
+        client = self.get_client()
+        self.logger.info("Deleting the team document at %s.", key)
+        try:
+            await asyncio.to_thread(
+                client.delete_object, Bucket=self.config.bucket, Key=key
+            )
+        except (BotoCoreError, ClientError) as exc:
+            self.logger.error("Failed to delete the team document %s: %s.", key, exc)
+            return False
+        self.logger.info("Deleted the team document at %s.", key)
         return True
 
     async def delete_photo(self, photo_url: str) -> bool:

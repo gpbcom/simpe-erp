@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, date, datetime
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -22,6 +22,7 @@ from models.schemas.exceptions import (
     MTInvalidHcaResponseException,
 )
 from models.schemas.responses.hca.hca_response import HcaResponse
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
@@ -41,14 +42,14 @@ def address() -> PostalAddress:
 
 
 @pytest.fixture
-def valid_response_kwargs(address: PostalAddress) -> Dict[str, Any]:
+def valid_response_kwargs(address: PostalAddress) -> Dict[str, ModelInput]:
     """Return the minimal keyword arguments for a valid response.
 
     Args:
         address (PostalAddress): The home address to attach.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "id": "hca-1",
@@ -69,7 +70,7 @@ class TestHcaResponse:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An assistant publishes its identity, address and contract."""
         response = HcaResponse(**valid_response_kwargs)
@@ -78,7 +79,7 @@ class TestHcaResponse:
         assert response.address.city == "Paris"
 
     def test_collections_default_to_empty(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A new assistant holds no qualification and declares no absence."""
         response = HcaResponse(**valid_response_kwargs)
@@ -87,7 +88,9 @@ class TestHcaResponse:
         assert response.driving_license is None
         assert response.photo_url is None
 
-    def test_names_are_stripped(self, valid_response_kwargs: Dict[str, Any]) -> None:
+    def test_names_are_stripped(
+        self, valid_response_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """Surrounding whitespace never reaches a client."""
         response = HcaResponse(
             **{
@@ -112,7 +115,7 @@ class TestHcaResponse:
         ],
     )
     def test_an_invalid_id_raises(
-        self, valid_response_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_response_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """An identifier that is neither None nor a real string is rejected."""
         with pytest.raises(MTHcaResponseInvalidId):
@@ -126,28 +129,28 @@ class TestHcaResponse:
         ],
     )
     def test_an_empty_name_raises(
-        self, valid_response_kwargs: Dict[str, Any], field: str
+        self, valid_response_kwargs: Dict[str, ModelInput], field: str
     ) -> None:
         """A name that is not a non-empty string is rejected."""
         with pytest.raises(MTHcaResponseInvalidName):
             HcaResponse(**{**valid_response_kwargs, field: "   "})
 
     def test_an_unknown_contract_type_raises(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A contract the stack does not know is rejected."""
         with pytest.raises(MTHcaResponseInvalidContractType):
             HcaResponse(**{**valid_response_kwargs, "contract_type": "freelance"})
 
     def test_a_contract_string_is_coerced(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A stored contract value rebuilds into its enum."""
         response = HcaResponse(**{**valid_response_kwargs, "contract_type": "cdd"})
         assert response.contract_type is ContractType.CDD
 
     def test_an_unparseable_timestamp_raises(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A timestamp that is not ISO-8601 is rejected."""
         with pytest.raises(MTHcaResponseInvalidDate):

@@ -30,7 +30,9 @@ const HCA: Hca = {
     geocoding_error: null,
   },
   contract_type: 'cdd',
-  certifications: [{ name: 'DEAES', code: 'DEAES', issuer: null, obtained_on: null, expires_on: null }],
+  certifications: [
+    { name: 'DEAES', code: 'DEAES', issuer: null, obtained_on: null, expires_on: null },
+  ],
   skills: [],
   driving_license: null,
   photo_url: null,

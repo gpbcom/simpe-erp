@@ -97,6 +97,7 @@ A Customer Account Is Refused Every Staff Route
     ...    /api/v1/quotes
     ...    /api/v1/bills
     ...    /api/v1/planning/hcas
+    ...    /api/v1/planning/customers
         GET    ${API_URL}${path}    headers=${headers}    expected_status=403
     END
 
@@ -227,6 +228,48 @@ An Assistant Cannot Invite A Household
     ...    data=${body}
     ...    headers=${{ {**$headers, "Content-Type": "application/json"} }}
     ...    expected_status=403
+
+
+The Agency And The Household Read The Same Calendar
+    [Documentation]    **The property the staff-side households view exists for.**
+    ...
+    ...    A manager on the telephone to a family has to be looking at what the
+    ...    family is looking at. The two screens read through one query on the
+    ...    server, and this is what proves it end to end: the same household,
+    ...    the same window, one list of visit identifiers, in one order.
+    ...
+    ...    Compared as **ordered** lists. Two sets that agree would still let one
+    ...    side sort differently, and a calendar rendered from a differently
+    ...    ordered list draws the afternoon visit first.
+    ...
+    ...    The service-level test asserts the same thing against the repository;
+    ...    this one is what catches a filter added in the API layer to one route
+    ...    and not the other, which the service test cannot see.
+    [Tags]    portal    planning    synchronisation
+    ${today}=    Get Current Date    result_format=%Y-%m-%d
+    ${later}=    Add Time To Date    ${today}    41 days    result_format=%Y-%m-%d
+    ${params}=    Create Dictionary    period_start=${today}    period_end=${later}
+
+    ${household_token}=    Sign In Through The API    ${PORTAL_EMAIL}    ${PORTAL_PASSWORD}
+    ${household_headers}=    Authorisation Header    ${household_token}
+    ${theirs}=    GET
+    ...    ${API_URL}/api/v1/portal/planning
+    ...    params=${params}
+    ...    headers=${household_headers}
+    ...    expected_status=200
+
+    ${manager_token}=    Sign In Through The API    ${MANAGER_EMAIL}
+    ${manager_headers}=    Authorisation Header    ${manager_token}
+    ${ours}=    GET
+    ...    ${API_URL}/api/v1/planning/customers/${PORTAL_CUSTOMER_ID}
+    ...    params=${params}
+    ...    headers=${manager_headers}
+    ...    expected_status=200
+
+    ${household_visits}=    Evaluate    [v["id"] for v in $theirs.json()]
+    ${agency_visits}=    Evaluate    [v["id"] for v in $ours.json()["interventions"]]
+    Should Be Equal    ${household_visits}    ${agency_visits}
+    ...    msg=The household reads ${household_visits} and the agency ${agency_visits}.
 
 
 *** Keywords ***

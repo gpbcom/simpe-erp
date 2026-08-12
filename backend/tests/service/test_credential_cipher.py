@@ -144,9 +144,7 @@ class TestRefusingToOpen:
     """Tests for the ciphertexts that must not yield credentials."""
 
     @pytest.mark.parametrize("value", ["", "not-a-token", "gAAAAA-nonsense"])
-    def test_rubbish_will_not_open(
-        self, cipher: CredentialCipher, value: str
-    ) -> None:
+    def test_rubbish_will_not_open(self, cipher: CredentialCipher, value: str) -> None:
         """Args:
         cipher (CredentialCipher): The cipher.
         value (str): The rejected ciphertext.

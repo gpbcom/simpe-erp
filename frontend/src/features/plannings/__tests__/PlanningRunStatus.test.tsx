@@ -107,8 +107,8 @@ describe('PlanningRunStatus', () => {
           day: '2026-08-17',
           reason: 'missing-certification',
           detail: null,
-  quote_line_id: 'line-1',
-  alternatives: [],
+          quote_line_id: 'line-1',
+          alternatives: [],
         },
       ],
       alternatives: [],
@@ -145,8 +145,8 @@ describe('PlanningRunStatus', () => {
       day: '2026-08-17',
       reason: 'out-of-radius' as const,
       detail: null,
-  quote_line_id: 'line-1',
-  alternatives: [],
+      quote_line_id: 'line-1',
+      alternatives: [],
     });
     render(
       <PlanningRunStatus

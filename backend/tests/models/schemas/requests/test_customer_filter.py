@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Optional
+from typing import Optional
 
 # Third-party imports
 import pytest
@@ -15,6 +15,7 @@ from models.schemas.exceptions import (
     MTInvalidCustomerFilterException,
 )
 from models.schemas.requests.customers.customer_filter import CustomerFilter
+from tests.annotations import ModelInput
 
 #: Every text filter, so the shared rules are asserted on all of them rather
 #: than on whichever one somebody thought of.
@@ -99,13 +100,13 @@ class TestCustomerFilter:
         [pytest.param(42, id="int"), pytest.param(["Paris"], id="list")],
     )
     def test_a_fragment_of_the_wrong_type_is_refused(
-        self, field: str, value: Any
+        self, field: str, value: ModelInput
     ) -> None:
         """Only a string or nothing.
 
         Args:
             field (str): The text filter under test.
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
         """
         with pytest.raises(MTCustomerFilterInvalidFragment):
             CustomerFilter(**{field: value})
@@ -189,13 +190,13 @@ class TestCustomerFilter:
         ],
     )
     def test_a_flag_that_is_not_a_boolean_is_refused(
-        self, field: str, value: Any
+        self, field: str, value: ModelInput
     ) -> None:
         """``"false"`` is truthy, and a filter read backwards is silent.
 
         Args:
             field (str): The flag under test.
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
 
         Notes:
             Over the wire this never happens — the endpoint binds the filter

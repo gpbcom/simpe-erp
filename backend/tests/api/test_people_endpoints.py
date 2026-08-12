@@ -18,6 +18,7 @@ from api.dependencies import (
     get_planning_service,
     get_current_user,
     get_customer_service,
+    get_team_service,
     get_hca_service,
     get_manager_user,
 )
@@ -176,6 +177,15 @@ def _client(
         plannings.future_period_for_hca.return_value = None
         plannings.future_period_for_customer.return_value = None
     app.dependency_overrides[get_planning_service] = lambda: plannings
+    # The customer book narrows to the households the caller's teams serve, so
+    # the route reaches the team service. This double answers as an
+    # administrator does — ``None`` means every household — which keeps these
+    # fixtures asserting what they were written to assert.
+    scoped_teams = AsyncMock()
+    scoped_teams.readable_customer_ids.return_value = None
+    scoped_teams.readable_hca_ids.return_value = None
+    scoped_teams.readable_team_ids.return_value = None
+    app.dependency_overrides[get_team_service] = lambda: scoped_teams
     app.dependency_overrides[get_event_publisher] = lambda: AsyncMock()
     if auth is None:
         auth = AsyncMock()

@@ -14,6 +14,7 @@ from api.dependencies import (
     get_current_user,
     get_event_publisher,
     get_hca_service,
+    get_team_service,
     get_manager_user,
     get_planning_service,
 )
@@ -31,6 +32,7 @@ from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.hca import Hca
 from service.hcas.exceptions import MTHcaHasAccount, MTHcaNotFound
 from service.hcas.hcas import HcaService
+from tests.annotations import ModelInput
 
 
 def _hca(hca_id: str = "hca-1") -> Hca:
@@ -117,6 +119,14 @@ def client(service: MagicMock, plannings: AsyncMock) -> TestClient:
     # is the 204 path; the replan test replaces it.
     app.dependency_overrides[get_planning_service] = lambda: plannings
     app.dependency_overrides[get_event_publisher] = lambda: AsyncMock()
+    # The workforce list narrows to the teams the caller runs, so the route
+    # reaches the team service. This double is an administrator's answer —
+    # `None` means every assistant — which keeps these fixtures asserting what
+    # they were written to assert; the narrowing itself is tested where it
+    # lives.
+    teams = AsyncMock()
+    teams.readable_hca_ids.return_value = None
+    app.dependency_overrides[get_team_service] = lambda: teams
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
 
@@ -257,23 +267,30 @@ class TestHcaEndpoints:
             date(2026, 8, 10),
             date(2026, 8, 14),
         )
-        plannings.queue_replan.return_value = PlanningRun(
-            company_id="company-1",
-            id="run-1",
-            status=PlanningRunStatus.PENDING,
-            requested_by="user-1",
-            period_start=date(2026, 8, 10),
-            period_end=date(2026, 8, 14),
-        )
+        plannings.future_teams_for_hca.return_value = ["team-1"]
+        plannings.queue_replan.return_value = [
+            PlanningRun(
+                company_id="company-1",
+                team_id="team-1",
+                id="run-1",
+                status=PlanningRunStatus.PENDING,
+                requested_by="user-1",
+                period_start=date(2026, 8, 10),
+                period_end=date(2026, 8, 14),
+            )
+        ]
 
         response = client.delete("/api/v1/hcas/hca-1")
 
         assert response.status_code == 202
-        assert response.json()["id"] == "run-1"
+        # A list, because a departing assistant may have held work with more
+        # than one team and a run rebuilds one team's week.
+        assert [run["id"] for run in response.json()] == ["run-1"]
         assert plannings.queue_replan.await_args.kwargs["period"] == (
             date(2026, 8, 10),
             date(2026, 8, 14),
         )
+        assert plannings.queue_replan.await_args.kwargs["team_ids"] == ["team-1"]
 
     def test_the_period_is_measured_before_the_assistant_goes(
         self, client: TestClient, service: MagicMock, plannings: AsyncMock
@@ -485,14 +502,14 @@ class TestAvailabilityEndpoints:
         ],
     )
     def test_an_unusable_week_answers_422(
-        self, client: TestClient, service: MagicMock, payload: Dict[str, object]
+        self, client: TestClient, service: MagicMock, payload: Dict[str, ModelInput]
     ) -> None:
         """A week nobody could work is refused before it reaches the service.
 
         Args:
             client (TestClient): The client under test.
             service (MagicMock): The service double.
-            payload (Dict[str, object]): The rejected body.
+            payload (Dict[str, ModelInput]): The rejected body.
         """
         service.set_working_days = AsyncMock(return_value=_hca())
         response = client.put("/api/v1/hcas/hca-1/working-days", json=payload)

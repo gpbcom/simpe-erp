@@ -19,6 +19,7 @@ class InterventionRow(Base):
         id (str): UUID primary key.
         planning_run_id (str): The run that produced this visit.
         company_id (str): The agency whose calendar this visit sits on.
+        team_id (str): The team whose half of that calendar it sits on.
         name (str): What the service is.
         intervention_type_id (str): The catalog entry it sells.
         quote_line_id (str): The accepted quote line it delivers.
@@ -51,6 +52,12 @@ class InterventionRow(Base):
           it takes every agency's calendar with it — so the column is not merely
           recorded, it is the filter on the most destructive statement in the
           application.
+        - ``(team_id, day)`` is the second half of that same filter, and it is
+          newer than the rest. A run now replans **one team**, so without the
+          team in the delete a single team's run would clear every other team's
+          visits in those days and write none of them back. The emptiest run is
+          the most dangerous one: with nothing to insert, an under-scoped delete
+          leaves nothing behind at all.
     """
 
     __tablename__ = "interventions"
@@ -60,6 +67,7 @@ class InterventionRow(Base):
         Index("ix_interventions_run", "planning_run_id"),
         Index("ix_interventions_day", "day"),
         Index("ix_interventions_customer", "customer_id"),
+        Index("ix_interventions_team_day", "team_id", "day"),
     )
 
     id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), primary_key=True)
@@ -69,6 +77,7 @@ class InterventionRow(Base):
         nullable=False,
     )
     company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
+    team_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     intervention_type_id: Mapped[str] = mapped_column(
         String(Base.ID_LENGTH), nullable=False

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -16,6 +15,7 @@ from models.configuration.exceptions import (
     MTObservabilityConfigInvalidTimeout,
 )
 from models.configuration.observability_config import ObservabilityConfig
+from tests.annotations import ModelInput
 
 
 class TestObservabilityConfig:
@@ -68,7 +68,9 @@ class TestObservabilityConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_an_unusable_service_name_is_refused(self, invalid_name: Any) -> None:
+    def test_an_unusable_service_name_is_refused(
+        self, invalid_name: ModelInput
+    ) -> None:
         """A blank name does not fail; it merges every process into one series.
 
         Notes:
@@ -116,7 +118,7 @@ class TestObservabilityConfig:
         ],
     )
     def test_a_switch_must_be_a_real_boolean(
-        self, field: str, invalid_flag: Any
+        self, field: str, invalid_flag: ModelInput
     ) -> None:
         """``"false"`` is truthy, and reading it leniently is the whole risk."""
         with pytest.raises(MTObservabilityConfigInvalidFlag):
@@ -141,7 +143,9 @@ class TestObservabilityConfig:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_an_unusable_endpoint_is_refused(self, invalid_endpoint: Any) -> None:
+    def test_an_unusable_endpoint_is_refused(
+        self, invalid_endpoint: ModelInput
+    ) -> None:
         """A relative endpoint is accepted by the exporter and never resolves.
 
         Notes:
@@ -170,7 +174,7 @@ class TestObservabilityConfig:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_an_unusable_port_is_refused(self, invalid_port: Any) -> None:
+    def test_an_unusable_port_is_refused(self, invalid_port: ModelInput) -> None:
         """Zero is refused rather than read as "pick one".
 
         Notes:
@@ -193,7 +197,7 @@ class TestObservabilityConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_an_unusable_timeout_is_refused(self, invalid_timeout: Any) -> None:
+    def test_an_unusable_timeout_is_refused(self, invalid_timeout: ModelInput) -> None:
         """Zero is not "wait forever"; it fails every export immediately."""
         with pytest.raises(MTObservabilityConfigInvalidTimeout):
             ObservabilityConfig(export_timeout_seconds=invalid_timeout)

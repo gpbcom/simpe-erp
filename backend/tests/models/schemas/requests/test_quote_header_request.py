@@ -15,6 +15,7 @@ from models.schemas.exceptions import (
     MTQuoteHeaderRequestInvalidValidity,
 )
 from models.schemas.requests.quoting.quote_header_request import QuoteHeaderRequest
+from tests.annotations import ModelInput
 
 
 class TestAcceptingAHeaderEdit:
@@ -72,27 +73,27 @@ class TestRefusingAnUnusableHeader:
     """Tests for the values that would leave a quote unusable."""
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_a_missing_reference_is_refused(self, value: object) -> None:
+    def test_a_missing_reference_is_refused(self, value: ModelInput) -> None:
         """It is the handle a customer and the planning report both use.
 
         Args:
-            value (object): The rejected reference.
+            value (ModelInput): The rejected reference.
         """
         with pytest.raises(MTQuoteHeaderRequestInvalidReference):
             QuoteHeaderRequest(reference=value, customer_id="c-1")
 
     @pytest.mark.parametrize("value", ["", "   ", None, 7])
-    def test_a_quote_addressed_to_nobody_is_refused(self, value: object) -> None:
+    def test_a_quote_addressed_to_nobody_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected customer identifier.
+        value (ModelInput): The rejected customer identifier.
         """
         with pytest.raises(MTQuoteHeaderRequestInvalidCustomer):
             QuoteHeaderRequest(reference="D-1", customer_id=value)
 
     @pytest.mark.parametrize("value", ["not-a-date", 20260801, ["2026-08-01"]])
-    def test_a_date_that_is_not_a_date_is_refused(self, value: object) -> None:
+    def test_a_date_that_is_not_a_date_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected date.
+        value (ModelInput): The rejected date.
         """
         with pytest.raises(MTQuoteHeaderRequestInvalidDate):
             QuoteHeaderRequest(reference="D-1", customer_id="c-1", issued_on=value)
@@ -125,9 +126,9 @@ class TestRefusingAnUnusableHeader:
         assert payload.valid_until == payload.issued_on
 
     @pytest.mark.parametrize("value", ["yes", 1, [], {}])
-    def test_a_non_boolean_auto_renew_is_refused(self, value: object) -> None:
+    def test_a_non_boolean_auto_renew_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected flag.
+        value (ModelInput): The rejected flag.
         """
         with pytest.raises(MTQuoteHeaderRequestInvalidAutoRenew):
             QuoteHeaderRequest(reference="D-1", customer_id="c-1", auto_renew=value)

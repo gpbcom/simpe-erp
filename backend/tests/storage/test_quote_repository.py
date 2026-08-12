@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, time
 from decimal import Decimal
-from typing import Any, Dict, List
+from typing import Dict, List
 
 # Third-party imports
 import pytest
@@ -20,17 +20,18 @@ from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.catalog.intervention_type import InterventionTypeRepository
 from storage.repositories.quoting.quote import QuoteRepository
+from tests.annotations import ModelInput
 
 TUESDAY = date(2026, 8, 4)
 NEXT_WEEK = date(2026, 8, 11)
 
 
-async def _customer(session: AsyncSession, kwargs: Dict[str, Any]) -> str:
+async def _customer(session: AsyncSession, kwargs: Dict[str, ModelInput]) -> str:
     """Store a customer and return its identifier.
 
     Args:
         session (AsyncSession): The open session.
-        kwargs (Dict[str, Any]): Customer constructor arguments.
+        kwargs (Dict[str, ModelInput]): Customer constructor arguments.
 
     Returns:
         str: The stored customer's identifier.
@@ -155,7 +156,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_a_quote_round_trips_whole(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The header, its lines and its aggregates are written and read together."""
         customer_id = await _customer(session, customer_kwargs)
@@ -174,7 +175,7 @@ class TestQuoteRepository:
         assert loaded.lines[0].name == "Toilette matin"
 
     async def test_the_vat_category_survives_the_round_trip(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**A line comes back taxed the way it was written.**
 
@@ -201,7 +202,7 @@ class TestQuoteRepository:
         assert loaded.lines[0].service_category is ServiceCategory.COMFORT
 
     async def test_two_lines_on_one_quote_can_be_taxed_differently(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The same catalog entry, two customers' arrangements, two rates.
 
@@ -233,7 +234,7 @@ class TestQuoteRepository:
         ]
 
     async def test_the_stored_amounts_survive_exactly(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Money comes back as the same Decimal, to the cent.
 
@@ -256,7 +257,7 @@ class TestQuoteRepository:
         assert loaded.total_ttc() == Decimal("67.32")
 
     async def test_line_order_is_preserved(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A quote is a document; the operator's order is what prints.
 
@@ -288,7 +289,7 @@ class TestQuoteRepository:
         assert await QuoteRepository(session).get("no-such-id") is None
 
     async def test_lookup_by_reference_is_case_insensitive(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The model upper-cases the reference, so lookups match either way."""
         customer_id = await _customer(session, customer_kwargs)
@@ -304,7 +305,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_the_reference_is_unique(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Two quotes cannot share a number."""
         customer_id = await _customer(session, customer_kwargs)
@@ -319,7 +320,7 @@ class TestQuoteRepository:
             )
 
     async def test_a_customer_with_quotes_cannot_be_deleted(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Deleting a quoted customer would erase commercial history.
 
@@ -340,7 +341,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_updating_replaces_the_lines_wholesale(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Re-pricing a quote drops the lines that went away."""
         customer_id = await _customer(session, customer_kwargs)
@@ -363,7 +364,7 @@ class TestQuoteRepository:
         assert [line.name for line in reloaded.lines] == ["New"]
 
     async def test_a_line_keeps_its_identifier_across_a_reprice(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A line the customer has seen is not renumbered by repricing."""
         customer_id = await _customer(session, customer_kwargs)
@@ -393,7 +394,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_set_status_leaves_the_lines_alone(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Accepting a quote must not be able to change what was accepted."""
         customer_id = await _customer(session, customer_kwargs)
@@ -415,7 +416,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_only_accepted_quotes_are_schedulable(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A draft is still being composed and must not reach the planner."""
         customer_id = await _customer(session, customer_kwargs)
@@ -440,12 +441,12 @@ class TestQuoteRepository:
             )
         )
         schedulable = await repository.list_schedulable(
-            "company-1", date(2026, 8, 1), date(2026, 8, 31)
+            "company-1", None, date(2026, 8, 1), date(2026, 8, 31)
         )
         assert [quote.id for quote in schedulable] == [accepted.id]
 
     async def test_only_the_asking_agencys_work_is_schedulable(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Another agency's accepted quote is not this agency's workload.
 
@@ -481,13 +482,13 @@ class TestQuoteRepository:
         )
 
         schedulable = await repository.list_schedulable(
-            "company-1", date(2026, 8, 1), date(2026, 8, 31)
+            "company-1", None, date(2026, 8, 1), date(2026, 8, 31)
         )
 
         assert [quote.id for quote in schedulable] == [ours.id]
 
     async def test_an_agency_with_no_accepted_work_schedules_nothing(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A quiet agency reads as quiet, however busy its neighbours are."""
         customer_id = await _customer(session, customer_kwargs)
@@ -506,13 +507,13 @@ class TestQuoteRepository:
 
         assert (
             await repository.list_schedulable(
-                "company-7", date(2026, 8, 1), date(2026, 8, 31)
+                "company-7", None, date(2026, 8, 1), date(2026, 8, 31)
             )
             == []
         )
 
     async def test_the_agency_survives_the_round_trip(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A stored quote still knows which agency offered the work."""
         customer_id = await _customer(session, customer_kwargs)
@@ -528,7 +529,7 @@ class TestQuoteRepository:
         assert loaded.company_id == "company-1"
 
     async def test_the_window_filters_on_line_dates(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A quote is schedulable when its *work* falls in the window.
 
@@ -551,21 +552,21 @@ class TestQuoteRepository:
         )
         assert (
             await repository.list_schedulable(
-                "company-1", date(2026, 8, 1), date(2026, 8, 7)
+                "company-1", None, date(2026, 8, 1), date(2026, 8, 7)
             )
             == []
         )
         assert (
             len(
                 await repository.list_schedulable(
-                    "company-1", date(2026, 8, 10), date(2026, 8, 14)
+                    "company-1", None, date(2026, 8, 10), date(2026, 8, 14)
                 )
             )
             == 1
         )
 
     async def test_a_quote_appears_once_however_many_lines_match(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The join must not multiply the quote by its matching lines."""
         customer_id = await _customer(session, customer_kwargs)
@@ -584,7 +585,7 @@ class TestQuoteRepository:
         assert (
             len(
                 await repository.list_schedulable(
-                    "company-1", date(2026, 8, 1), date(2026, 8, 31)
+                    "company-1", None, date(2026, 8, 1), date(2026, 8, 31)
                 )
             )
             == 1
@@ -594,7 +595,7 @@ class TestQuoteRepository:
         """No accepted work is an empty list, not an error."""
         assert (
             await QuoteRepository(session).list_schedulable(
-                "company-1", date(2026, 8, 1), date(2026, 8, 31)
+                "company-1", None, date(2026, 8, 1), date(2026, 8, 31)
             )
             == []
         )
@@ -604,7 +605,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_the_customer_filter_restricts_the_page(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A customer screen shows only that customer's quotes."""
         first = await _customer(session, customer_kwargs)
@@ -625,7 +626,7 @@ class TestQuoteRepository:
         assert [quote.reference for quote in listed] == ["Q-B"]
 
     async def test_deleting_a_quote_takes_its_lines_and_aggregates(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Both children cascade; neither has meaning without the quote."""
         customer_id = await _customer(session, customer_kwargs)
@@ -639,7 +640,7 @@ class TestQuoteRepository:
         assert await repository.get(stored.id) is None
 
     async def test_an_intervention_type_in_use_cannot_be_deleted(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A type referenced by a quote line is protected by the schema.
 
@@ -669,7 +670,7 @@ class TestQuoteRepository:
     # ------------------------------------------------------------------ #
 
     async def test_a_quote_is_findable_by_one_of_its_lines(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The lookup a scheduled visit needs.
 
@@ -691,7 +692,7 @@ class TestQuoteRepository:
         assert found.id == stored.id
 
     async def test_the_whole_quote_comes_back_not_the_line(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A quote always travels whole, however it was looked up."""
         customer_id = await _customer(session, customer_kwargs)

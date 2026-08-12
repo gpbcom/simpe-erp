@@ -53,11 +53,12 @@ describe('requestBlob', () => {
   it('falls back to the caller’s name when the server sends none', async () => {
     // Derived at the call site the name would be the route path, and an
     // invoice would save as `document`.
-    globalThis.fetch = vi.fn(async () =>
-      pdfResponse(),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(async () => pdfResponse()) as unknown as typeof fetch;
 
-    const { filename } = await requestBlob('/api/v1/bills/b-1/document', 'fallback.pdf');
+    const { filename } = await requestBlob(
+      '/api/v1/bills/b-1/document',
+      'fallback.pdf',
+    );
 
     expect(filename).toBe('fallback.pdf');
   });
@@ -74,19 +75,20 @@ describe('requestBlob', () => {
 
     await requestBlob('/api/v1/bills/b-1/document');
 
-    expect(
-      (calls[0]?.headers as Record<string, string>).Authorization,
-    ).toBe('Bearer token-1');
+    expect((calls[0]?.headers as Record<string, string>).Authorization).toBe(
+      'Bearer token-1',
+    );
   });
 
   it('reads the server’s own detail out of a failure', async () => {
     // **An error body is JSON but a success body is not.** The text is read
     // first and parsed inside a try, so a failure still reports what the server
     // said while a success never attempts to parse a document.
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ detail: 'The document is unavailable.' }), {
-        status: 503,
-      }),
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ detail: 'The document is unavailable.' }), {
+          status: 503,
+        }),
     ) as unknown as typeof fetch;
 
     await expect(requestBlob('/api/v1/bills/b-1/document')).rejects.toThrow(
@@ -97,11 +99,12 @@ describe('requestBlob', () => {
   it('falls back to the status text on a non-JSON failure', async () => {
     // A proxy's own 502 page is markup, and the status is a better answer than
     // the markup would be.
-    globalThis.fetch = vi.fn(async () =>
-      new Response('<html>bad gateway</html>', {
-        status: 502,
-        statusText: 'Bad Gateway',
-      }),
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response('<html>bad gateway</html>', {
+          status: 502,
+          statusText: 'Bad Gateway',
+        }),
     ) as unknown as typeof fetch;
 
     await expect(requestBlob('/api/v1/bills/b-1/document')).rejects.toBeInstanceOf(
@@ -115,10 +118,11 @@ describe('requestBlob', () => {
     writeToken('stale');
     const rejected = vi.fn();
     setUnauthorizedHandler(rejected);
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ detail: 'Not authenticated.' }), {
-        status: 401,
-      }),
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ detail: 'Not authenticated.' }), {
+          status: 401,
+        }),
     ) as unknown as typeof fetch;
 
     await expect(requestBlob('/api/v1/bills/b-1/document')).rejects.toThrow();

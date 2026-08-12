@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, time
 from decimal import Decimal
 from io import BytesIO
-from typing import Any, Dict, List
+from typing import Dict, List
 
 # Third-party imports
 from PIL import Image as PilImage
@@ -13,12 +13,13 @@ import pytest
 # First-party imports
 from models.billing.bill import Bill
 from models.billing.bill_line import BillLine
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import BillingPeriodicity, Language, ServiceCategory
 from models.people.customer import Customer
 from models.settings.billing_settings import BillingSettings
 from service.utils.exceptions import MTInvoiceRenderFailed
 from service.utils.invoice_renderer import InvoiceRenderer
+from tests.annotations import ModelInput
 
 
 def a_png() -> bytes:
@@ -74,7 +75,7 @@ def a_charge(
     )
 
 
-def a_bill(**overrides: Any) -> Bill:
+def a_bill(**overrides: ModelInput) -> Bill:
     """Build a March invoice.
 
     Args:
@@ -84,7 +85,7 @@ def a_bill(**overrides: Any) -> Bill:
         Bill: The invoice.
     """
     lines: List[BillLine] = overrides.pop("lines", [a_charge()])
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "customer_id": "customer-1",
         "number": "FA-2026-000001",
@@ -122,7 +123,7 @@ def a_bill(**overrides: Any) -> Bill:
     return Bill(**payload)
 
 
-def an_agency(**overrides: Any) -> Company:
+def an_agency(**overrides: ModelInput) -> Company:
     """Build an agency with a complete legal identity.
 
     Args:
@@ -131,7 +132,7 @@ def an_agency(**overrides: Any) -> Company:
     Returns:
         Company: The agency.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "name": "Aide et Présence Paris",
         "legal_form": "SARL",
         "registration_number": "12345678901234",
@@ -508,7 +509,7 @@ class TestTheMandatoryMentions:
         """**Never the masked form.**
 
         Notes:
-            :meth:`~models.companies.company.Company.masked_iban` exists so a
+            :meth:`~models.organisation.companies.company.Company.masked_iban` exists so a
             manager reading the API does not see a whole account number. A
             customer cannot pay into a masked one, so the document prints it
             whole — which is what an IBAN is for.

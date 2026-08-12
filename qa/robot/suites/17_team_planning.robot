@@ -168,18 +168,95 @@ The Service Selector Offers The Catalogue
     Should Not Be Empty    ${chosen}
     [Teardown]    Close The Drawer And Show Everybody
 
-An Assistant Cannot Reach The Screen
-    [Documentation]    It is about the workforce, not about oneself.
+A Manager Chooses Which Planning To Read
+    [Documentation]    **One screen, two lenses, and the switch says which.**
     ...
-    ...    A convenience, not a control — the API refuses an assistant either
-    ...    way. What this asserts is that the navigation does not offer a screen
-    ...    that would only show them errors.
-    [Tags]    planning    access
+    ...    The same visits group two ways: by who delivers the care, and by who
+    ...    receives it. Neither is a filter over the other's answer, so the
+    ...    control names both states rather than being a checkbox whose
+    ...    unchecked half nobody can read off the screen.
+    [Tags]    planning    audience
+    Wait For Elements State    [data-testid="planning-audience"]    visible
+    ...    message=A manager is offered no choice of planning.
+    ${assistants}=    Get Element Count    [data-testid^="planning-hca-"]
+    Should Be True    ${assistants} > 0
+    ...    msg=The screen did not open on the assistants.
+
+Switching To The Households Swaps The Rail
+    [Documentation]    The rail answers "whose week am I reading".
+    ...
+    ...    Asserted on the rail rather than on the grid: the calendar draws the
+    ...    same visits either way, so a switch that changed nothing but the
+    ...    colours would still look as though it had worked.
+    [Tags]    planning    audience
+    Show The Households
+    ${households}=    Get Element Count    [data-testid^="planning-customer-"]
+    Should Be True    ${households} > 0
+    ...    msg=The households lens listed nobody.
+    ${assistants}=    Get Element Count    [data-testid^="planning-hca-"]
+    Should Be Equal As Integers    ${assistants}    0
+    ...    msg=The assistants are still in the rail after switching.
+    [Teardown]    Show The Assistants
+
+A Household's Visit Cannot Be Edited From Here
+    [Documentation]    **The read-only claim, walked.**
+    ...
+    ...    Retyping a visit reprices the quote it came from and cancelling it
+    ...    takes it off the customer's bill. Both belong to the assistants lens,
+    ...    where a manager arrived to schedule rather than to answer a family's
+    ...    question. A drawer that rendered the controls and ignored them would
+    ...    look entirely right until somebody pressed one.
+    [Tags]    planning    audience
+    Show The Households
+    Open The First Visit
+    ${selector}=    Get Element Count    [data-testid="intervention-type-select"]
+    Should Be Equal As Integers    ${selector}    0
+    ...    msg=The households lens offers a service change; it is read-only.
+    ${delete}=    Get Element Count    [data-testid="delete-intervention"]
+    Should Be Equal As Integers    ${delete}    0
+    ...    msg=The households lens offers a delete; it is read-only.
+    [Teardown]    Close The Drawer And Show The Assistants
+
+An Assistant Reaches Only The Households Planning
+    [Documentation]    **Requirement and privacy rule in one test.**
+    ...
+    ...    The screen is now theirs to open — the households they visit are
+    ...    exactly the ones they need a week of. What they must not get is the
+    ...    workforce: an assistant has no business reading a colleague's diary,
+    ...    and a switch whose other side answers 403 would be a control that
+    ...    lies about what it does.
+    [Tags]    planning    access    audience
     Sign Out
     Sign In As    ${ASSISTANT_EMAIL}
     ${entries}=    Get Element Count    [data-testid="nav--plannings"]
-    Should Be Equal As Integers    ${entries}    0
+    Should Be Equal As Integers    ${entries}    1
+    ...    msg=The plannings screen is no longer offered to an assistant.
+    Navigate To    /plannings
+    Wait For Elements State    [data-testid="team-planning-calendar"]    visible
+    ...    message=An assistant was redirected away from the plannings screen.
+    ${switch}=    Get Element Count    [data-testid="planning-audience"]
+    Should Be Equal As Integers    ${switch}    0
+    ...    msg=An assistant is offered a lens they may not read.
+    ${assistants}=    Get Element Count    [data-testid^="planning-hca-"]
+    Should Be Equal As Integers    ${assistants}    0
+    ...    msg=An assistant can see the workforce rail.
     [Teardown]    Return To The Manager
+
+An Assistant Sees Fewer Households Than A Manager
+    [Documentation]    **The portfolio scoping, asserted as a number.**
+    ...
+    ...    An assistant sees the households they visit, union those they quoted
+    ...    — not the agency's book. Read over the API rather than by counting
+    ...    rail entries: the assertion is about what the server is willing to
+    ...    hand over, and a rail is only what a screen chose to draw.
+    [Tags]    planning    access    audience
+    ${theirs}=    Households Readable By    ${ASSISTANT_EMAIL}
+    ${everybody}=    Households Readable By    ${MANAGER_EMAIL}
+    ${extra}=    Evaluate    sorted(set($theirs) - set($everybody))
+    Should Be Empty    ${extra}
+    ...    msg=An assistant can read households the manager cannot: ${extra}.
+    Should Be True    len($theirs) <= len($everybody)
+    ...    msg=An assistant reads ${theirs} households, a manager ${everybody}.
 
 
 *** Keywords ***
@@ -195,6 +272,43 @@ Open The Team Planning
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /plannings
     Wait For Elements State    [data-testid="team-planning-calendar"]    visible
+
+Show The Households
+    [Documentation]    Switch the screen to the households lens and wait for it.
+    ...
+    ...    Waits for a rail entry rather than for the segment to look pressed:
+    ...    the dataset arrives over the network, and a test that carried on
+    ...    would read the previous lens's rail.
+    Click    [data-testid="planning-audience-customers"]
+    Wait For Elements State    [data-testid^="planning-customer-"] >> nth=0    visible
+    ...    message=The households lens never populated its rail.
+
+Show The Assistants
+    [Documentation]    Switch the screen back to the assistants lens.
+    Click    [data-testid="planning-audience-assistants"]
+    Wait For Elements State    [data-testid^="planning-hca-"] >> nth=0    visible
+    ...    message=The assistants lens never populated its rail.
+
+Close The Drawer And Show The Assistants
+    [Documentation]    Leave the screen on the lens the other tests expect.
+    Run Keyword And Ignore Error    Keyboard Key    press    Escape
+    Run Keyword And Ignore Error    Show The Assistants
+
+Households Readable By
+    [Documentation]    Return the household identifiers an account may read.
+    [Arguments]    ${email}
+    ${token}=    Sign In Through The API    ${email}
+    ${headers}=    Authorisation Header    ${token}
+    ${today}=    Get Current Date    result_format=%Y-%m-%d
+    ${later}=    Add Time To Date    ${today}    41 days    result_format=%Y-%m-%d
+    ${params}=    Create Dictionary    period_start=${today}    period_end=${later}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/planning/customers
+    ...    params=${params}
+    ...    headers=${headers}
+    ...    expected_status=200
+    ${identifiers}=    Evaluate    sorted(p["customer_id"] for p in $response.json())
+    RETURN    ${identifiers}
 
 Show Everybody
     [Documentation]    Select the rail entry that draws the whole workforce.

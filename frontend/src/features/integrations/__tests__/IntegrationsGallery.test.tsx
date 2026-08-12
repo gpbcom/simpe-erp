@@ -229,7 +229,9 @@ describe('IntegrationsGallery', () => {
 
       await user.click(screen.getByTestId('integration-card-storecove'));
 
-      expect(screen.getByTestId('integration-field-legal_entity_id')).toBeInTheDocument();
+      expect(
+        screen.getByTestId('integration-field-legal_entity_id'),
+      ).toBeInTheDocument();
       expect(screen.queryByTestId('integration-field-account_id')).toBeNull();
     });
 
@@ -248,9 +250,7 @@ describe('IntegrationsGallery', () => {
 
       await user.click(screen.getByTestId('integration-card-iopole'));
 
-      expect(
-        screen.getByTestId('integration-dialog-unverified'),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId('integration-dialog-unverified')).toBeInTheDocument();
     });
 
     it('shows the masked tail of a key already stored, never the key', async () => {
@@ -262,9 +262,7 @@ describe('IntegrationsGallery', () => {
 
       await user.click(screen.getByTestId('integration-card-b2brouter'));
 
-      expect(screen.getByTestId('integration-dialog-hint')).toHaveTextContent(
-        '…cdef',
-      );
+      expect(screen.getByTestId('integration-dialog-hint')).toHaveTextContent('…cdef');
     });
 
     it('offers to disconnect the platform that is transmitting', async () => {

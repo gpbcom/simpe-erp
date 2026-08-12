@@ -6,6 +6,7 @@ from .planning_run_exceptions import (
     MTPlanningRunInvalidId,
     MTPlanningRunInvalidPeriod,
     MTPlanningRunInvalidStatus,
+    MTPlanningRunInvalidTeamId,
     MTPlanningRunInvalidUnassigned,
 )
 from .suggested_slot_exceptions import (
@@ -48,6 +49,7 @@ __all__ = [
     "MTPlanningRunInvalidId",
     "MTPlanningRunInvalidPeriod",
     "MTPlanningRunInvalidStatus",
+    "MTPlanningRunInvalidTeamId",
     "MTPlanningRunInvalidUnassigned",
     "MTUnplacedRequirementInvalidDay",
     "MTUnplacedRequirementInvalidDetail",

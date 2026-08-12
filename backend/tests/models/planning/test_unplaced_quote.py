@@ -16,6 +16,7 @@ from models.planning.planning_run.exceptions import (
 )
 from models.planning.planning_run.unplaced_quote import UnplacedQuote
 from models.planning.planning_run.unplaced_requirement import UnplacedRequirement
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 
@@ -85,21 +86,23 @@ class TestRefusingAnUnusableReport:
     """Tests for the values that would make the report meaningless."""
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_a_missing_reference_is_refused(self, value: object) -> None:
+    def test_a_missing_reference_is_refused(self, value: ModelInput) -> None:
         """A blank heading collapses every quote into one anonymous bucket.
 
         Args:
-            value (object): The rejected reference.
+            value (ModelInput): The rejected reference.
         """
         with pytest.raises(MTUnplacedQuoteInvalidReference):
             UnplacedQuote(quote_reference=value, visits=[_visit()])
 
     @pytest.mark.parametrize("value", [42, ["Marie"], {"name": "Marie"}])
-    def test_a_customer_name_that_is_not_text_is_refused(self, value: object) -> None:
+    def test_a_customer_name_that_is_not_text_is_refused(
+        self, value: ModelInput
+    ) -> None:
         """Tolerating a missing name is not tolerating any value at all.
 
         Args:
-            value (object): The rejected customer name.
+            value (ModelInput): The rejected customer name.
         """
         with pytest.raises(MTUnplacedQuoteInvalidCustomer):
             UnplacedQuote(

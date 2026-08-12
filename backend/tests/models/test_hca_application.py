@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 # Third-party imports
 import pytest
@@ -24,18 +24,19 @@ from models.people.hca_application.exceptions import (
     MTInvalidHcaApplicationException,
 )
 from models.people.hca_application import HcaApplication
+from tests.annotations import ModelInput
 
 HASH = "$2b$12$" + "a" * 53
 
 
-def _kwargs(**overrides: Any) -> Dict[str, Any]:
+def _kwargs(**overrides: ModelInput) -> Dict[str, ModelInput]:
     """Return the arguments for a valid application.
 
     Args:
-        **overrides (Any): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     base = {
         "company_id": "company-1",

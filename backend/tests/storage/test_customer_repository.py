@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date, timedelta
-from typing import Any, Dict
+from typing import Dict, List
 
 # Third-party imports
 import pytest
@@ -15,6 +15,7 @@ from models.quoting.quote import Quote
 from models.schemas.requests.customers.customer_filter import CustomerFilter
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.quoting.quote import QuoteRepository
+from tests.annotations import ModelInput
 
 
 class TestCustomerRepository:
@@ -228,7 +229,7 @@ class TestCustomerRepository:
         )
 
     async def test_the_granularities_in_use_are_listed_once_each(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**What stops a monthly run reading a whole year of quotes.**
 
@@ -263,7 +264,7 @@ class TestCustomerRepository:
     # ------------------------------------------------------------------ #
 
     async def test_list_orders_by_family_name(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Customers come back alphabetically, which is how they are browsed."""
         repository = CustomerRepository(session)
@@ -279,7 +280,7 @@ class TestCustomerRepository:
         ]
 
     async def test_search_matches_the_name_case_insensitively(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A lower-case fragment finds a capitalised name."""
         repository = CustomerRepository(session)
@@ -298,7 +299,7 @@ class TestCustomerRepository:
         assert found[0].last_name == "Durand"
 
     async def test_search_matches_the_email(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The email is searchable, so a customer can be found from a mail."""
         repository = CustomerRepository(session)
@@ -317,7 +318,7 @@ class TestCustomerRepository:
         assert found[0].last_name == "Bernard"
 
     async def test_search_matches_the_city(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The city is searchable, since rounds are organised by area."""
         repository = CustomerRepository(session)
@@ -337,7 +338,7 @@ class TestCustomerRepository:
     async def test_each_named_filter_matches_only_its_own_column(
         self,
         session: AsyncSession,
-        customer_kwargs: Dict[str, Any],
+        customer_kwargs: Dict[str, ModelInput],
         field: str,
         matching: str,
         other: str,
@@ -346,7 +347,7 @@ class TestCustomerRepository:
 
         Args:
             session (AsyncSession): The database session.
-            customer_kwargs (Dict[str, Any]): A valid customer.
+            customer_kwargs (Dict[str, ModelInput]): A valid customer.
             field (str): The filter under test.
             matching (str): The value the wanted customer carries.
             other (str): The value the unwanted one carries.
@@ -361,7 +362,7 @@ class TestCustomerRepository:
         column = {"phone": "phone_number"}.get(field, field)
         address_fields = {"city", "postal_code"}
 
-        def _kwargs(value: str, last_name: str) -> Dict[str, Any]:
+        def _kwargs(value: str, last_name: str) -> Dict[str, ModelInput]:
             """Build a customer carrying one distinguishing value."""
             built = {**customer_kwargs, "last_name": last_name}
             if column in address_fields:
@@ -388,13 +389,13 @@ class TestCustomerRepository:
         ],
     )
     async def test_the_phone_filter_matches_however_it_was_typed(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any], typed: str
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput], typed: str
     ) -> None:
         """**A stored number does not look like a typed one.**
 
         Args:
             session (AsyncSession): The database session.
-            customer_kwargs (Dict[str, Any]): A valid customer.
+            customer_kwargs (Dict[str, ModelInput]): A valid customer.
             typed (str): One of the forms a manager might type.
 
         Notes:
@@ -424,13 +425,13 @@ class TestCustomerRepository:
         assert [entry.id for entry in listed] == [wanted.id]
 
     async def test_the_geocoding_filter_separates_the_two_kinds(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Whose address resolved, and whose did not.
 
         Args:
             session (AsyncSession): The database session.
-            customer_kwargs (Dict[str, Any]): A valid customer.
+            customer_kwargs (Dict[str, ModelInput]): A valid customer.
 
         Notes:
             An operational worklist rather than a search: a customer with no
@@ -464,13 +465,13 @@ class TestCustomerRepository:
         assert [entry.id for entry in unresolved] == [unlocated.id]
 
     async def test_the_ongoing_filter_finds_who_is_being_served(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**Who are we serving right now, as opposed to who is on the book.**
 
         Args:
             session (AsyncSession): The database session.
-            customer_kwargs (Dict[str, Any]): A valid customer.
+            customer_kwargs (Dict[str, ModelInput]): A valid customer.
 
         Notes:
             The one filter that is a join rather than a column. "Ongoing" means
@@ -506,13 +507,13 @@ class TestCustomerRepository:
         assert [entry.id for entry in without_work] == [idle.id]
 
     async def test_an_interrupted_arrangement_is_no_longer_ongoing(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A quote ended before today is history, not current work.
 
         Args:
             session (AsyncSession): The database session.
-            customer_kwargs (Dict[str, Any]): A valid customer.
+            customer_kwargs (Dict[str, ModelInput]): A valid customer.
 
         Notes:
             The interruption date is **inclusive**, so a quote interrupted today
@@ -539,13 +540,13 @@ class TestCustomerRepository:
         assert with_work == []
 
     async def test_a_page_and_its_total_agree_about_the_filter(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**The reason the predicates live in the shared query builder.**
 
         Args:
             session (AsyncSession): The database session.
-            customer_kwargs (Dict[str, Any]): A valid customer.
+            customer_kwargs (Dict[str, ModelInput]): A valid customer.
 
         Notes:
             ``list`` and ``count`` build from one statement so a filtered page
@@ -571,7 +572,7 @@ class TestCustomerRepository:
         assert len(listed) == total == 1
 
     async def test_the_status_filter_restricts_the_page(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Filtering by status returns only that status."""
         repository = CustomerRepository(session)
@@ -591,7 +592,7 @@ class TestCustomerRepository:
         assert [entry.id for entry in listed] == [active.id]
 
     async def test_pagination_splits_the_result(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Pages are one-based and do not overlap."""
         repository = CustomerRepository(session)
@@ -619,7 +620,7 @@ class TestCustomerRepository:
         assert len(await repository.list(page=0)) == 1
 
     async def test_count_matches_the_same_filters_as_list(
-        self, session: AsyncSession, customer_kwargs: Dict[str, Any]
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A page total is computed from the filters that built the page."""
         repository = CustomerRepository(session)
@@ -658,3 +659,87 @@ class TestCustomerRepository:
     ) -> None:
         """Deleting an absent customer is a no-op, not an error."""
         assert await CustomerRepository(session).delete("no-such-id") is False
+
+    # ------------------------------------------------------------------ #
+    #  portfolio_ids and list_by_ids
+    # ------------------------------------------------------------------ #
+
+    async def test_the_portfolio_is_not_capped_at_a_page(
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """**The bug this method exists to avoid.**
+
+        Notes:
+            ``list_for_hca(size=None)`` does not mean "everything" — the base
+            repository turns an absent size into the default page of a hundred.
+            A calendar built from that would silently omit the
+            hundred-and-first household, with nothing on the screen saying so.
+            The fixture goes past that boundary on purpose.
+        """
+        repository = CustomerRepository(session)
+        quotes = QuoteRepository(session)
+        stored: List[str] = []
+        for index in range(105):
+            customer = await repository.create(
+                Customer(**{**customer_kwargs, "email": f"p{index}@example.fr"})
+            )
+            stored.append(customer.id)
+            await quotes.create(
+                Quote(
+                    company_id="company-1",
+                    reference=f"P-{index:04d}",
+                    customer_id=customer.id,
+                    status=QuoteStatus.DRAFT,
+                    authored_by="account-1",
+                )
+            )
+
+        paged = await repository.list_for_hca("hca-1", "account-1")
+        whole = await repository.portfolio_ids("hca-1", "account-1")
+
+        assert len(paged) == 100
+        assert len(whole) == len(stored)
+
+    async def test_an_empty_portfolio_reads_as_empty(
+        self, session: AsyncSession
+    ) -> None:
+        """A newly hired assistant has visited nobody and quoted nobody."""
+        assert await CustomerRepository(session).portfolio_ids("hca-9", "acc-9") == []
+
+    async def test_several_customers_are_read_in_one_call(
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """The replacement for a loop of single reads."""
+        repository = CustomerRepository(session)
+        first = await repository.create(
+            Customer(**{**customer_kwargs, "email": "a@example.fr"})
+        )
+        second = await repository.create(
+            Customer(**{**customer_kwargs, "email": "b@example.fr"})
+        )
+
+        found = await repository.list_by_ids([first.id, second.id])
+
+        assert {customer.id for customer in found} == {first.id, second.id}
+
+    async def test_reading_no_identifier_answers_without_a_query(
+        self, session: AsyncSession
+    ) -> None:
+        """``IN ()`` is a syntax error on some engines and useless on the rest."""
+        assert await CustomerRepository(session).list_by_ids([]) == []
+
+    async def test_an_identifier_matching_nothing_is_simply_absent(
+        self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """A household deleted between two reads drops off the rail.
+
+        Notes:
+            Refusing the whole screen over one missing record would be the wrong
+            trade: the other thirty-nine households still have care to show.
+        """
+        repository = CustomerRepository(session)
+        stored = await repository.create(Customer(**customer_kwargs))
+
+        found = await repository.list_by_ids([stored.id, "no-such-customer"])
+
+        assert [customer.id for customer in found] == [stored.id]

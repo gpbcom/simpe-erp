@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from api.dependencies import (
     get_event_publisher,
     get_hca_service,
+    get_team_service,
     get_manager_user,
     get_planning_service,
 )
@@ -24,6 +25,7 @@ from models.schemas.requests.hca.employment_update_request import (
 )
 from models.schemas.responses.hca.hca_response import HcaResponse
 from service.hcas.hcas import HcaService
+from service.organisation.teams import TeamService
 from service.messaging.publisher import EventPublisher
 from service.planning.plannings import PlanningService
 
@@ -65,9 +67,10 @@ async def list_hcas(
     contract_type: Optional[ContractType] = Query(default=None),
     hca_filter: HcaFilter = Depends(),
     service: HcaService = Depends(get_hca_service),
-    _: User = Depends(get_manager_user),
+    teams: TeamService = Depends(get_team_service),
+    caller: User = Depends(get_manager_user),
 ) -> List[HcaResponse]:
-    """List assistants, narrowed by whichever filters were sent.
+    """List the assistants of the caller's teams, narrowed by any filters.
 
     Args:
         page (int): One-based page number.
@@ -77,20 +80,26 @@ async def list_hcas(
         hca_filter (HcaFilter): The filters, bound from the query string. Every
             field is optional and an absent one narrows nothing.
         service (HcaService): The assistant service.
-        _ (User): The authenticated caller; enforces manager access.
+        teams (TeamService): Decides which assistants the caller may read.
+        caller (User): The authenticated caller; enforces manager access.
 
     Returns:
-        List[HcaResponse]: The matching assistants.
+        List[HcaResponse]: The matching assistants of the caller's teams.
 
     Raises:
         MTInvalidHcaFilterException: If a filter is malformed; answered as a
             422.
 
     Notes:
-        ``search`` and ``contract_type`` survive as their own parameters
-        because other callers still pass them alone. When both they and the
-        filter are given, the filter wins — and the store says so in a warning
-        rather than leaving the caller to guess which fragment ran.
+        - ``search`` and ``contract_type`` survive as their own parameters
+          because other callers still pass them alone. When both they and the
+          filter are given, the filter wins — and the store says so in a warning
+          rather than leaving the caller to guess which fragment ran.
+        - **A manager sees the assistants on the teams they run**, and an
+          administrator sees everybody. The scope is resolved here and applied
+          in the statement, exactly like ``authored_by`` on the quote list: it
+          is a permission rather than a filter, and no query parameter can
+          widen it.
     """
     logger.debug("Listing assistants: page=%d search=%r.", page, search)
     assistants = await service.list(
@@ -99,6 +108,7 @@ async def list_hcas(
         search=search,
         contract_type=contract_type,
         hca_filter=hca_filter,
+        hca_ids=await teams.readable_hca_ids(caller),
     )
     return [HcaResponse.from_hca(assistant) for assistant in assistants]
 
@@ -192,7 +202,7 @@ async def set_hca_employment(
 
 @router.delete(
     "/{hca_id}",
-    response_model=Optional[PlanningRun],
+    response_model=Optional[List[PlanningRun]],
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def delete_hca(
@@ -202,7 +212,7 @@ async def delete_hca(
     plannings: PlanningService = Depends(get_planning_service),
     publisher: EventPublisher = Depends(get_event_publisher),
     caller: User = Depends(get_manager_user),
-) -> Optional[PlanningRun]:
+) -> Optional[List[PlanningRun]]:
     """Remove an assistant, their account, and replan what they were due.
 
     Args:
@@ -216,8 +226,9 @@ async def delete_hca(
             authorises removing the bound account.
 
     Returns:
-        Optional[PlanningRun]: The pending replan with the identifier to poll,
-        or ``None`` when the assistant had no future visits.
+        Optional[List[PlanningRun]]: One pending replan per team that still
+        held future visits by them, each with an identifier to poll, or
+        ``None`` when the assistant had no future visits at all.
 
     Raises:
         MTHcaNotFound: If no such assistant exists; answered as a 404.
@@ -242,16 +253,19 @@ async def delete_hca(
           no reason, so an assistant with no future work is simply removed.
     """
     period = await plannings.future_period_for_hca(hca_id)
+    team_ids = await plannings.future_teams_for_hca(hca_id)
     await service.delete(hca_id, requested_by=caller)
     logger.info("%s deleted assistant %s.", caller.email, hca_id)
     if period is None:
         logger.info("Assistant %s had no future visit; no replan is queued.", hca_id)
         response.status_code = status.HTTP_204_NO_CONTENT
         return None
-    return await plannings.queue_replan(
+    runs = await plannings.queue_replan(
         requested_by=caller.id or caller.email,
         company_id=caller.company_id,
+        team_ids=team_ids,
         period=period,
         publisher=publisher,
         reason=f"assistant {hca_id} was removed",
     )
+    return runs

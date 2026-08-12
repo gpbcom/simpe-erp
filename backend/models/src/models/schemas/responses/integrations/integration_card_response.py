@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 
 # Third-party imports
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, JsonValue, field_validator
 
 # First-party imports
 from models.enums import EInvoicingProvider, TransmissionKind
@@ -88,11 +88,11 @@ class IntegrationCardResponse(BaseModel):
     ############################
 
     @field_validator("provider", mode="before")
-    def validate_provider(cls, value: Optional[object]) -> EInvoicingProvider:
+    def validate_provider(cls, value: JsonValue) -> EInvoicingProvider:
         """Validates that ``provider`` names a supported platform.
 
         Args:
-            value (Optional[object]): Raw platform.
+            value (JsonValue): Raw platform.
 
         Returns:
             EInvoicingProvider: The coerced platform.

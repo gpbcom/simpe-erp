@@ -6,6 +6,7 @@ cannot be written is a record that is missing something, while an assembly
 failure is the library refusing to combine two files that were both fine.
 """
 
+
 class MTInvalidCiiInvoiceException(Exception):
     """Exception raised when a structured invoice cannot be built."""
 

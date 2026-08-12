@@ -47,3 +47,15 @@ class MTS3ConfigInvalidMaxUploadBytes(MTInvalidS3ConfigException):
 
 class MTS3ConfigMissingCredentials(MTInvalidS3ConfigException):
     """Exception raised when the configured credential env vars are not set."""
+
+
+class MTS3ConfigInvalidTeamDocumentPrefix(MTInvalidS3ConfigException):
+    """Exception raised when the team-document key prefix is unusable.
+
+    Notes:
+        Shares the rule every prefix follows and, like the invoice one, guards
+        objects that are written private and never handed to a browser. A wrong
+        value there does not merely misplace a team's shared paperwork — it puts
+        it under a prefix the download check no longer recognises, so every file
+        already stored becomes unreachable.
+    """

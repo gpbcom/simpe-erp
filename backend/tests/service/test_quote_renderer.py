@@ -3,31 +3,32 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 # Third-party imports
 import pytest
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language
 from models.people.customer import Customer
 from models.quoting.quote import Quote
 from service.quotes.exceptions import MTQuoteNotPriced
 from service.utils.quote_renderer import QuoteRenderer
+from tests.annotations import ModelInput
 
 
-def _line(priced: bool = True, **overrides: Any) -> Dict[str, Any]:
+def _line(priced: bool = True, **overrides: ModelInput) -> Dict[str, ModelInput]:
     """Build a quote line.
 
     Args:
         priced (bool): Whether the amounts have been computed.
-        **overrides (Any): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
-        Dict[str, Any]: The line, as the model takes it.
+        Dict[str, ModelInput]: The line, as the model takes it.
     """
-    amounts: Dict[str, Any] = (
+    amounts: Dict[str, ModelInput] = (
         {
             "hourly_rate_ht": Decimal("25.00"),
             "total_ht": Decimal("25.00"),
@@ -51,12 +52,14 @@ def _line(priced: bool = True, **overrides: Any) -> Dict[str, Any]:
     }
 
 
-def _quote(lines: Optional[List[Dict[str, Any]]] = None, **overrides: Any) -> Quote:
+def _quote(
+    lines: Optional[List[Dict[str, ModelInput]]] = None, **overrides: ModelInput
+) -> Quote:
     """Build a quote.
 
     Args:
-        lines (Optional[List[Dict[str, Any]]]): Its lines, or one priced line.
-        **overrides (Any): Fields to replace.
+        lines (Optional[List[Dict[str, ModelInput]]]): Its lines, or one priced line.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         Quote: The quote.

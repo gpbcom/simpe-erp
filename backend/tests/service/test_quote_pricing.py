@@ -64,7 +64,13 @@ def service(pricing_config: PricingConfig) -> QuoteService:
         arithmetic, which reads nothing and writes nothing. Handing them real
         ones would make every rounding assertion depend on a database.
     """
-    return QuoteService(quotes=MagicMock(), types=MagicMock(), config=pricing_config)
+    return QuoteService(
+        quotes=MagicMock(),
+        types=MagicMock(),
+        config=pricing_config,
+        teams=MagicMock(),
+        customers=MagicMock(),
+    )
 
 
 def _type(

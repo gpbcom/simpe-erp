@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 import json
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -15,9 +15,10 @@ from service.observability.json_formatter import JsonLogFormatter
 from service.observability.metrics import ApplicationMetrics
 from service.observability.probe_server import ProbeServer
 from service.observability.trace_context import TraceContext
+from tests.annotations import ModelInput
 
 
-def _record(**extra: Any) -> logging.LogRecord:
+def _record(**extra: ModelInput) -> logging.LogRecord:
     """Build a log record the way ``logging`` does.
 
     Args:
@@ -41,7 +42,9 @@ def _record(**extra: Any) -> logging.LogRecord:
     return record
 
 
-def _rendered(formatter: JsonLogFormatter, record: logging.LogRecord) -> Dict[str, Any]:
+def _rendered(
+    formatter: JsonLogFormatter, record: logging.LogRecord
+) -> Dict[str, ModelInput]:
     """Render a record and parse it back.
 
     Args:
@@ -49,7 +52,7 @@ def _rendered(formatter: JsonLogFormatter, record: logging.LogRecord) -> Dict[st
         record (logging.LogRecord): The record to render.
 
     Returns:
-        Dict[str, Any]: The parsed object.
+        Dict[str, ModelInput]: The parsed object.
     """
     return json.loads(formatter.format(record))
 
@@ -270,7 +273,7 @@ class TestApplicationMetrics:
 class TestProbeServer:
     """Tests for the port that makes a worker schedulable."""
 
-    def _server(self, ready: bool, **overrides: Any) -> ProbeServer:
+    def _server(self, ready: bool, **overrides: ModelInput) -> ProbeServer:
         """Build a probe server over a fixed readiness answer.
 
         Args:

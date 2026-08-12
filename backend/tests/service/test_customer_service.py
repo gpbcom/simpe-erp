@@ -152,6 +152,9 @@ class TestCustomerReads:
             search="dur",
             status=RegistrationStatus.ACTIVE,
             customer_filter=None,
+            # No caller scope was given, so none is applied: `None` is every
+            # household, which is what an unscoped call has always meant.
+            customer_ids=None,
         )
 
     async def test_listing_passes_the_rich_filter_through(

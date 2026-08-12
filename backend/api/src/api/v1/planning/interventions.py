@@ -15,7 +15,6 @@ from api.dependencies import (
     get_planning_service,
 )
 from models.auth.user import User
-from models.enums import EventRoutingKey
 from models.planning.planning_run import PlanningRun
 from models.quoting.quote import Quote
 from models.schemas.requests.quoting.intervention_type_change_request import (
@@ -90,32 +89,23 @@ async def delete_intervention(
         raise MTPlanningPeriodTooLong(
             f"Invalid period: {period_end} precedes {period_start}."
         )
-    quote = await interventions.delete(intervention_id)
+    team_id, quote = await interventions.delete(intervention_id)
     logger.info(
-        "%s cancelled intervention %s; quote %s.",
+        "%s cancelled intervention %s of team %s; quote %s.",
         caller.email,
         intervention_id,
+        team_id,
         quote.reference if quote else "deleted with its last line",
     )
-    run = await plannings.request_run(
+    runs = await plannings.queue_replan(
         requested_by=caller.id or caller.email,
         company_id=caller.company_id,
-        period_start=period_start,
-        period_end=period_end,
+        team_ids=[team_id],
+        period=(period_start, period_end),
+        publisher=publisher,
+        reason=f"intervention {intervention_id} was cancelled",
     )
-    queued = await publisher.publish(
-        EventRoutingKey.PLANNING_RUN_REQUESTED,
-        caller.company_id,
-        {"run_id": run.id, "company_id": caller.company_id},
-    )
-    if not queued:
-        logger.error(
-            "Replan %s after cancelling intervention %s is recorded but could "
-            "not be queued; it stays pending until the broker is reachable.",
-            run.id,
-            intervention_id,
-        )
-    return run
+    return runs[0]
 
 
 @router.patch("/{intervention_id}/type", response_model=Quote)

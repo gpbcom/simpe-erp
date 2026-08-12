@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import UTC, datetime
 import json
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -22,14 +22,15 @@ from models.schemas.exceptions import (
     MTUserResponseInvalidRole,
 )
 from models.schemas.responses.auth.user_response import UserResponse
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_response_kwargs() -> Dict[str, Any]:
+def valid_response_kwargs() -> Dict[str, ModelInput]:
     """Return the minimal keyword arguments for a valid response.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "id": "user-1",
@@ -48,7 +49,7 @@ class TestUserResponse:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An account publishes its identity, role and state."""
         response = UserResponse(**valid_response_kwargs)
@@ -57,7 +58,7 @@ class TestUserResponse:
         assert response.is_active is True
 
     def test_optional_fields_default_to_unset(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An unlinked account carries no assistant and no timestamps."""
         response = UserResponse(**valid_response_kwargs)
@@ -66,7 +67,7 @@ class TestUserResponse:
         assert response.updated_at is None
 
     def test_the_address_is_lower_cased(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The published address matches the stored one, which is lower-cased."""
         response = UserResponse(
@@ -89,7 +90,7 @@ class TestUserResponse:
         assert "hashed_password" not in UserResponse.model_fields
 
     def test_a_supplied_password_hash_is_dropped(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An extra field on the payload does not survive into the response."""
         response = UserResponse(
@@ -124,13 +125,15 @@ class TestUserResponse:
         ],
     )
     def test_invalid_id_raises(
-        self, valid_response_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_response_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """An identifier that is neither None nor a real string is rejected."""
         with pytest.raises(MTUserResponseInvalidId):
             UserResponse(**{**valid_response_kwargs, "id": invalid_value})
 
-    def test_a_none_id_is_accepted(self, valid_response_kwargs: Dict[str, Any]) -> None:
+    def test_a_none_id_is_accepted(
+        self, valid_response_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """An account that has not been stored yet has no identifier."""
         assert UserResponse(**{**valid_response_kwargs, "id": None}).id is None
 
@@ -143,7 +146,7 @@ class TestUserResponse:
         ],
     )
     def test_invalid_email_raises(
-        self, valid_response_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_response_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """An address that is not a non-empty string is rejected."""
         with pytest.raises(MTUserResponseInvalidEmail):
@@ -157,21 +160,21 @@ class TestUserResponse:
         ],
     )
     def test_invalid_full_name_raises(
-        self, valid_response_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_response_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A display name that is not a non-empty string is rejected."""
         with pytest.raises(MTUserResponseInvalidFullName):
             UserResponse(**{**valid_response_kwargs, "full_name": invalid_value})
 
     def test_an_unknown_role_raises(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A role the stack does not know is rejected rather than published."""
         with pytest.raises(MTUserResponseInvalidRole):
             UserResponse(**{**valid_response_kwargs, "role": "superuser"})
 
     def test_a_role_string_is_coerced(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A stored role value rebuilds into its enum."""
         response = UserResponse(**{**valid_response_kwargs, "role": "admin"})
@@ -186,7 +189,7 @@ class TestUserResponse:
         ],
     )
     def test_invalid_is_active_raises(
-        self, valid_response_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_response_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A truthy value is not a boolean.
 
@@ -198,21 +201,21 @@ class TestUserResponse:
             UserResponse(**{**valid_response_kwargs, "is_active": invalid_value})
 
     def test_an_invalid_hca_id_raises(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An assistant link that is not a real identifier is rejected."""
         with pytest.raises(MTUserResponseInvalidHcaId):
             UserResponse(**{**valid_response_kwargs, "hca_id": "   "})
 
     def test_an_unparseable_timestamp_raises(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A timestamp that is not ISO-8601 is rejected."""
         with pytest.raises(MTUserResponseInvalidDate):
             UserResponse(**{**valid_response_kwargs, "created_at": "last tuesday"})
 
     def test_an_iso_timestamp_is_parsed(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A stored ISO-8601 string rebuilds into a datetime."""
         response = UserResponse(
@@ -245,7 +248,7 @@ class TestUserResponse:
     # ------------------------------------------------------------------ #
 
     def test_timestamps_serialize_to_iso_8601(
-        self, valid_response_kwargs: Dict[str, Any]
+        self, valid_response_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A client reads a string, not a Python datetime."""
         response = UserResponse(
@@ -278,6 +281,10 @@ class TestUserResponse:
             "language": "fr",
             "is_active": True,
             "hca_id": "hca-1",
+            # Published even when null. The screens ask "is this account bound
+            # to a household" as well as "what role is it", and an absent key
+            # and a null one are different answers to a hand-written client.
+            "customer_id": None,
             "company_id": "company-1",
             "photo_url": None,
             "must_change_password": False,

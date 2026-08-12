@@ -27,6 +27,7 @@ import type {
   CompanyProfileUpdate,
   Customer,
   CustomerFilter,
+  CustomerPlanning,
   CustomerProfileUpdate,
   NewCustomer,
   RegistrationStatus,
@@ -96,6 +97,10 @@ export const keys = {
   myPlanning: (hcaId: string, from: string, to: string) =>
     ['planning', hcaId, from, to] as const,
   allPlannings: (from: string, to: string) => ['planning', 'all', from, to] as const,
+  customerPlannings: (from: string, to: string) =>
+    ['planning', 'customers', from, to] as const,
+  customerPlanning: (customerId: string, from: string, to: string) =>
+    ['planning', 'customers', customerId, from, to] as const,
   quotes: (status?: QuoteStatus, filter?: EntityFilterRecord) =>
     // `list` for the same reason the customer keys carry it: without it a
     // quote whose identifier happened to equal a filter string would share a
@@ -230,8 +235,7 @@ export function useUploadCompanyLogo() {
 export function useRemoveCompanyLogo() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      request<Company>('/api/v1/me/company/logo', { method: 'DELETE' }),
+    mutationFn: () => request<Company>('/api/v1/me/company/logo', { method: 'DELETE' }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myCompany });
     },
@@ -391,10 +395,7 @@ export function useDeleteCertificationType() {
  * hidden unless asked for, so the picker offers only what may still be
  * declared.
  */
-export function useSkillTypes(
-  includeInactive = false,
-  filter?: EntityFilterRecord,
-) {
+export function useSkillTypes(includeInactive = false, filter?: EntityFilterRecord) {
   const query = filterQuery(filter);
   return useQuery({
     queryKey: [...keys.skillTypes, includeInactive, query] as const,
@@ -865,13 +866,54 @@ export function usePlanning(hcaId: string | null, from: string, to: string) {
   });
 }
 
-/** Every assistant's diary over a period. */
-export function useAllPlannings(from: string, to: string) {
+/**
+ * Every assistant's diary over a period.
+ *
+ * @param from - First day, inclusive.
+ * @param to - Last day, inclusive.
+ * @param enabled - Whether to fetch at all.
+ *
+ * @remarks
+ * Disabled rather than left to 403 when the caller may not read it. A failed
+ * query renders as an empty roster, which states a fact about the agency when
+ * it is really one about the reader's permissions.
+ */
+export function useAllPlannings(from: string, to: string, enabled = true) {
   return useQuery({
     queryKey: keys.allPlannings(from, to),
+    enabled,
     queryFn: () =>
       request<HcaPlanning[]>(
         `/api/v1/planning/hcas?period_start=${from}&period_end=${to}`,
+      ),
+  });
+}
+
+/**
+ * Every household's care the caller may see, over a period.
+ *
+ * @param from - First day, inclusive.
+ * @param to - Last day, inclusive.
+ * @param enabled - Whether to fetch at all.
+ *
+ * @remarks
+ * **The same visits the household reads in its own space**, grouped by who
+ * receives the care. The server reads both through one query, so the agency and
+ * the family cannot be shown different weeks.
+ *
+ * The narrowing happens server-side: a manager gets every household with care
+ * in the period, an assistant only their own portfolio. Nothing here filters.
+ *
+ * Keyed under the `['planning']` prefix that a dozen mutations already
+ * invalidate, so a replan refreshes this view too.
+ */
+export function useCustomerPlannings(from: string, to: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.customerPlannings(from, to),
+    enabled,
+    queryFn: () =>
+      request<CustomerPlanning[]>(
+        `/api/v1/planning/customers?period_start=${from}&period_end=${to}`,
       ),
   });
 }
@@ -1143,10 +1185,14 @@ export function useHcas(search?: string, filter?: EntityFilterRecord) {
 }
 
 /** The people served. */
-export function useCustomers(filter?: CustomerFilter) {
+export function useCustomers(filter?: CustomerFilter, enabled = true) {
   const query = customerFilterQuery(filter);
   return useQuery({
     queryKey: keys.customers(filter),
+    // Disabled rather than left to 403 for a caller who may not read the book.
+    // A failed query renders as an empty list, which states a fact about the
+    // agency when it is really one about the reader's permissions.
+    enabled,
     queryFn: () =>
       request<Customer[]>(`/api/v1/customers?size=200${query ? `&${query}` : ''}`),
   });
@@ -1568,7 +1614,6 @@ export function useMarkAllRead() {
   });
 }
 
-
 /**
  * An agency's invoices, most recent period first.
  *
@@ -1883,10 +1928,10 @@ export function useRescheduleVisit() {
       interventionId,
       ...body
     }: InterventionReschedule & { interventionId: string }) =>
-      request<Quote>(
-        `/api/v1/portal/interventions/${interventionId}/reschedule`,
-        { method: 'POST', json: body },
-      ),
+      request<Quote>(`/api/v1/portal/interventions/${interventionId}/reschedule`, {
+        method: 'POST',
+        json: body,
+      }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['portal'] });
     },
@@ -2013,10 +2058,9 @@ export function useCheckIntegration() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (provider: EInvoicingProvider) =>
-      request<IntegrationCard>(
-        `/api/v1/billing/integrations/${provider}/check`,
-        { method: 'POST' },
-      ),
+      request<IntegrationCard>(`/api/v1/billing/integrations/${provider}/check`, {
+        method: 'POST',
+      }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.integrations });
     },

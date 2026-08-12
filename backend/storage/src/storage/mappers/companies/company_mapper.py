@@ -5,7 +5,7 @@ from logging import Logger
 from typing import Optional
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.geo.postal_address import PostalAddress
 from storage.mappers.base_mapper import BaseMapper
 from storage.orm.companies.company_row import CompanyRow

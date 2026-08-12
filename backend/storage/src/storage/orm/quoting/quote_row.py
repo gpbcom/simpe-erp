@@ -24,6 +24,7 @@ class QuoteRow(Base):
     Attributes:
         id (str): UUID primary key.
         company_id (str): The agency that offers the work.
+        team_id (str): The team that will deliver it.
         reference (str): Human-facing quote number; unique.
         customer_id (str): The customer the offer is addressed to.
         status (str): Where the quote is in its lifecycle.
@@ -51,6 +52,14 @@ class QuoteRow(Base):
           leaves must not take their quotes with them — so it cannot be the path
           by which the planner decides whose work a quote is. ``(company_id,
           status)`` is what the planner's own query filters on.
+        - ``team_id`` is denormalised for exactly the same reason, one level
+          down: a run schedules one team's accepted work, and reaching the team
+          through the customer's nearest site would recompute an attribution
+          decision that was taken once, at creation, and may since have been
+          changed deliberately. It carries **no foreign key**, matching
+          ``company_id`` beside it — the team is refused deletion while it still
+          holds quotes, which is a service's refusal rather than a cascade
+          nobody confirmed.
     """
 
     __tablename__ = "quotes"
@@ -61,10 +70,12 @@ class QuoteRow(Base):
         Index("ix_quotes_status", "status"),
         Index("ix_quotes_authored_by", "authored_by"),
         Index("ix_quotes_auto_renew", "auto_renew", "valid_until"),
+        Index("ix_quotes_team_status", "team_id", "status"),
     )
 
     id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), primary_key=True)
     company_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
+    team_id: Mapped[str] = mapped_column(String(Base.ID_LENGTH), nullable=False)
     reference: Mapped[str] = mapped_column(String(64), nullable=False)
     customer_id: Mapped[str] = mapped_column(
         String(Base.ID_LENGTH),

@@ -22,6 +22,7 @@ from models.quoting.exceptions import (
     MTQuoteInvalidCustomerId,
     MTQuoteInvalidDate,
     MTQuoteInvalidId,
+    MTQuoteInvalidTeamId,
     MTQuoteInvalidInterruption,
     MTQuoteInvalidLines,
     MTQuoteInvalidReference,
@@ -41,6 +42,7 @@ class Quote(BaseModel):
             feed the planning computation.
         id (Optional[str]): Identifier, populated on read from the store.
         company_id (str): The agency that offers the work.
+        team_id (str): The team that will deliver the work.
         reference (str): Human-facing quote number.
         customer_id (str): The customer the offer is addressed to.
         status (QuoteStatus): Where the quote is in its lifecycle.
@@ -83,6 +85,7 @@ class Quote(BaseModel):
         description="Identifier, populated on read from the store.",
     )
     company_id: str = Field(description="The agency that offers the work.")
+    team_id: str = Field(description="The team that will deliver the work.")
     reference: str = Field(description="Human-facing quote number.")
     customer_id: str = Field(description="The customer the offer is addressed to.")
     status: QuoteStatus = Field(
@@ -188,6 +191,37 @@ class Quote(BaseModel):
             raise MTQuoteInvalidId(
                 f"Invalid company_id: {value!r}. Must be a non-empty string "
                 f"naming the agency that offers the work."
+            )
+        return value.strip()
+
+    @field_validator("team_id", mode="before")
+    def validate_team_id(cls, value: Optional[str]) -> str:
+        """Validates that ``team_id`` names the team delivering the work.
+
+        Args:
+            value (Optional[str]): Raw ``team_id`` value.
+
+        Returns:
+            str: The stripped identifier.
+
+        Raises:
+            MTQuoteInvalidTeamId: If ``value`` is not a non-empty string.
+
+        Notes:
+            - **Required, and never carried by a payload.** A caller able to
+              name a team could file work into another manager's queue, which is
+              the same rule that keeps ``company_id`` off
+              :class:`~models.schemas.requests.quoting.quote_create_request.QuoteCreateRequest`.
+              The value is decided once, at creation, by the attribution rule.
+            - Optional would have been the softer choice and the wrong one. A
+              planning run reads its team's accepted work, so a quote naming no
+              team is one no run ever sees — invisible rather than refused, and
+              found when a family asks why nobody came.
+        """
+        if not isinstance(value, str) or not value.strip():
+            raise MTQuoteInvalidTeamId(
+                f"Invalid team_id: {value!r}. Must be a non-empty string naming "
+                f"the team that will deliver the work."
             )
         return value.strip()
 

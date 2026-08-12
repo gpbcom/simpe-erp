@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -17,14 +17,15 @@ from models.configuration.exceptions import (
     MTInvalidHolidaySurchargeException,
 )
 from models.configuration.holiday_surcharge import HolidaySurcharge
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_holiday_kwargs() -> Dict[str, Any]:
+def valid_holiday_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for Christmas Day at +50%.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "month": 12,
@@ -42,7 +43,7 @@ class TestHolidaySurcharge:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_holiday_kwargs: Dict[str, Any]
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A holiday is a month, a day, a surcharge and a label."""
         holiday = HolidaySurcharge(**valid_holiday_kwargs)
@@ -51,7 +52,9 @@ class TestHolidaySurcharge:
         assert holiday.surcharge == Decimal("0.50")
         assert holiday.label == "Christmas Day"
 
-    def test_label_is_stripped(self, valid_holiday_kwargs: Dict[str, Any]) -> None:
+    def test_label_is_stripped(
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """Surrounding whitespace is removed from the label."""
         holiday = HolidaySurcharge(**{**valid_holiday_kwargs, "label": "  Noël  "})
         assert holiday.label == "Noël"
@@ -62,7 +65,7 @@ class TestHolidaySurcharge:
 
     @pytest.mark.parametrize("month", [1, 6, 12])
     def test_valid_months_are_accepted(
-        self, valid_holiday_kwargs: Dict[str, Any], month: int
+        self, valid_holiday_kwargs: Dict[str, ModelInput], month: int
     ) -> None:
         """Every month of the year is accepted."""
         assert (
@@ -82,7 +85,7 @@ class TestHolidaySurcharge:
         ],
     )
     def test_invalid_month_raises(
-        self, valid_holiday_kwargs: Dict[str, Any], invalid_month: Any
+        self, valid_holiday_kwargs: Dict[str, ModelInput], invalid_month: ModelInput
     ) -> None:
         """A month outside 1..12, or not an integer, is rejected."""
         with pytest.raises(MTHolidaySurchargeInvalidMonth):
@@ -104,14 +107,14 @@ class TestHolidaySurcharge:
         ],
     )
     def test_invalid_day_raises(
-        self, valid_holiday_kwargs: Dict[str, Any], invalid_day: Any
+        self, valid_holiday_kwargs: Dict[str, ModelInput], invalid_day: ModelInput
     ) -> None:
         """A day outside 1..31, or not an integer, is rejected."""
         with pytest.raises(MTHolidaySurchargeInvalidDay):
             HolidaySurcharge(**{**valid_holiday_kwargs, "day": invalid_day})
 
     def test_a_day_that_never_occurs_is_accepted_but_never_matches(
-        self, valid_holiday_kwargs: Dict[str, Any]
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
     ) -> None:
         """30 February validates, and simply matches no real date.
 
@@ -127,14 +130,14 @@ class TestHolidaySurcharge:
     # ------------------------------------------------------------------ #
 
     def test_a_float_surcharge_keeps_its_exact_decimal_value(
-        self, valid_holiday_kwargs: Dict[str, Any]
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A YAML float is routed through str, not Decimal(float)."""
         holiday = HolidaySurcharge(**{**valid_holiday_kwargs, "surcharge": 0.5})
         assert holiday.surcharge == Decimal("0.5")
 
     def test_a_zero_surcharge_is_accepted(
-        self, valid_holiday_kwargs: Dict[str, Any]
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A holiday may be listed without an uplift."""
         holiday = HolidaySurcharge(**{**valid_holiday_kwargs, "surcharge": 0})
@@ -153,7 +156,7 @@ class TestHolidaySurcharge:
         ],
     )
     def test_invalid_surcharge_raises(
-        self, valid_holiday_kwargs: Dict[str, Any], invalid_surcharge: Any
+        self, valid_holiday_kwargs: Dict[str, ModelInput], invalid_surcharge: ModelInput
     ) -> None:
         """A surcharge that is not a sane non-negative ratio is rejected."""
         with pytest.raises(MTHolidaySurchargeInvalidSurcharge):
@@ -173,7 +176,7 @@ class TestHolidaySurcharge:
         ],
     )
     def test_invalid_label_raises(
-        self, valid_holiday_kwargs: Dict[str, Any], invalid_label: Any
+        self, valid_holiday_kwargs: Dict[str, ModelInput], invalid_label: ModelInput
     ) -> None:
         """A label that is not a non-empty string is rejected."""
         with pytest.raises(MTHolidaySurchargeInvalidLabel):
@@ -183,11 +186,15 @@ class TestHolidaySurcharge:
     #  falls_on
     # ------------------------------------------------------------------ #
 
-    def test_falls_on_its_own_date(self, valid_holiday_kwargs: Dict[str, Any]) -> None:
+    def test_falls_on_its_own_date(
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """The holiday matches its configured month and day."""
         assert HolidaySurcharge(**valid_holiday_kwargs).falls_on(date(2026, 12, 25))
 
-    def test_ignores_the_year(self, valid_holiday_kwargs: Dict[str, Any]) -> None:
+    def test_ignores_the_year(
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A fixed-date holiday recurs every year."""
         holiday = HolidaySurcharge(**valid_holiday_kwargs)
         assert holiday.falls_on(date(2027, 12, 25))
@@ -202,7 +209,7 @@ class TestHolidaySurcharge:
         ],
     )
     def test_does_not_fall_on_other_dates(
-        self, valid_holiday_kwargs: Dict[str, Any], other_date: date
+        self, valid_holiday_kwargs: Dict[str, ModelInput], other_date: date
     ) -> None:
         """Neighbouring dates do not match."""
         assert HolidaySurcharge(**valid_holiday_kwargs).falls_on(other_date) is False
@@ -228,13 +235,15 @@ class TestHolidaySurcharge:
     #  Serialization
     # ------------------------------------------------------------------ #
 
-    def test_model_dump_round_trip(self, valid_holiday_kwargs: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A holiday survives a dump-and-rebuild unchanged."""
         holiday = HolidaySurcharge(**valid_holiday_kwargs)
         assert HolidaySurcharge(**holiday.model_dump()) == holiday
 
     def test_max_surcharge_is_not_a_field(
-        self, valid_holiday_kwargs: Dict[str, Any]
+        self, valid_holiday_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The bound is a ClassVar and stays out of the payload."""
         assert (

@@ -19,6 +19,7 @@ from models.planning.intervention.intervention_requirement import (
 )
 from models.settings.planning_settings import PlanningSettings
 from service.planning.plannings import PlanningService
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 
@@ -41,7 +42,7 @@ def config() -> PlanningConfig:
 def _hca(
     hca_id: str = "hca-1",
     home: GeoPoint = HOME,
-    availability: Optional[List[Dict[str, object]]] = None,
+    availability: Optional[List[Dict[str, ModelInput]]] = None,
     working_weekdays: Optional[List[str]] = None,
 ) -> Hca:
     """Build an assistant whose home is already geocoded.
@@ -49,7 +50,7 @@ def _hca(
     Args:
         hca_id (str): The identifier to assign.
         home (GeoPoint): Where they live.
-        availability (Optional[List[Dict[str, object]]]): Absences to record.
+        availability (Optional[List[Dict[str, ModelInput]]]): Absences to record.
         working_weekdays (Optional[List[str]]): The days of the week they work.
             Defaults to every day, so a test that says nothing about the
             working week is not silently constrained by one.
@@ -144,6 +145,7 @@ def _solve(
         hcas=MagicMock(),
         types=MagicMock(),
         settings=MagicMock(),
+        teams=AsyncMock(),
         config=config,
     )
     # The travel tables live on the service now, keyed by assistant, and every
@@ -574,6 +576,7 @@ class TestFeasibilityDiagnosis:
             hcas=AsyncMock(),
             types=AsyncMock(),
             settings=AsyncMock(),
+            teams=AsyncMock(),
             config=config,
         )
 

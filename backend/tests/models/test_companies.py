@@ -2,15 +2,15 @@ from __future__ import annotations
 
 # Standard library imports
 from decimal import Decimal
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 # Third-party imports
 import pytest
 
 # First-party imports
-from models.companies.company import Company
-from models.companies.company_choice import CompanyChoice
-from models.companies.exceptions import (
+from models.organisation.companies.company import Company
+from models.organisation.companies.company_choice import CompanyChoice
+from models.organisation.companies.exceptions import (
     MTCompanyInvalidBic,
     MTCompanyInvalidIban,
     MTCompanyInvalidLogoUrl,
@@ -28,6 +28,7 @@ from models.companies.exceptions import (
     MTInvalidCompanyException,
 )
 from models.configuration.s3_config import S3Config
+from tests.annotations import ModelInput
 
 
 class TestCompany:
@@ -314,11 +315,11 @@ class TestCompanyLegalIdentity:
             pytest.param("lots", id="Invalid - not a number"),
         ],
     )
-    def test_an_unusable_share_capital_is_refused(self, value: Any) -> None:
+    def test_an_unusable_share_capital_is_refused(self, value: ModelInput) -> None:
         """A company with no capital declares nothing, not zero.
 
         Args:
-            value (Any): The rejected capital.
+            value (ModelInput): The rejected capital.
         """
         with pytest.raises(MTCompanyInvalidShareCapital):
             Company(name="X", share_capital=value)
@@ -376,11 +377,13 @@ class TestCompanyLegalIdentity:
             pytest.param(12345, id="Invalid - not a string"),
         ],
     )
-    def test_an_unusable_sap_declaration_number_is_refused(self, value: object) -> None:
+    def test_an_unusable_sap_declaration_number_is_refused(
+        self, value: ModelInput
+    ) -> None:
         """Length is the one thing that can be asserted without guessing.
 
         Args:
-            value (object): The rejected value.
+            value (ModelInput): The rejected value.
         """
         with pytest.raises(MTCompanyInvalidSapDeclarationNumber):
             Company(name="X", sap_declaration_number=value)
@@ -507,11 +510,11 @@ class TestCompanyBankingDetails:
             pytest.param(12345, id="Invalid - not a string"),
         ],
     )
-    def test_an_unusable_iban_is_refused(self, value: Any) -> None:
+    def test_an_unusable_iban_is_refused(self, value: ModelInput) -> None:
         """A wrong account number must fail here, not at the bank.
 
         Args:
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
 
         Notes:
             The transposition case is the one that matters. It satisfies every
@@ -559,11 +562,11 @@ class TestCompanyBankingDetails:
             pytest.param(99, id="Invalid - not a string"),
         ],
     )
-    def test_an_unusable_bic_is_refused(self, value: Any) -> None:
+    def test_an_unusable_bic_is_refused(self, value: ModelInput) -> None:
         """A BIC has two lengths and no others.
 
         Args:
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
         """
         with pytest.raises(MTCompanyInvalidBic):
             Company(name="X", bic=value)
@@ -624,11 +627,11 @@ class TestCompanyVisualIdentity:
             pytest.param(7, id="Invalid - not a string"),
         ],
     )
-    def test_a_logo_from_anywhere_else_is_refused(self, value: Any) -> None:
+    def test_a_logo_from_anywhere_else_is_refused(self, value: ModelInput) -> None:
         """The prefix check is what stops a third-party URL being stored.
 
         Args:
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
 
         Notes:
             The logo is rendered on every screen and on the quote, so a remote
@@ -685,7 +688,7 @@ class TestTheAgencyLegalIdentifier:
         ],
     )
     def test_the_siren_is_read_out_of_the_registration_number(
-        self, registration: object, expected: object
+        self, registration: ModelInput, expected: ModelInput
     ) -> None:
         """**Derived, never stored twice.**
 

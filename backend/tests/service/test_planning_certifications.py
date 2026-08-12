@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date
 from typing import List, Optional
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
 import pytest
@@ -119,6 +119,7 @@ def _service(config: PlanningConfig) -> PlanningService:
         hcas=MagicMock(),
         types=MagicMock(),
         settings=MagicMock(),
+        teams=AsyncMock(),
         config=config,
     )
 

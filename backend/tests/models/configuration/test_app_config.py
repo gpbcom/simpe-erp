@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -23,6 +22,7 @@ from models.configuration.exceptions import (
     MTInvalidAppConfigException,
 )
 from models.configuration.planning_config import PlanningConfig
+from tests.annotations import ModelInput
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
@@ -81,7 +81,7 @@ class TestAppConfig:
         ],
     )
     def test_a_non_mapping_section_raises(
-        self, section: str, expected_exception: type, invalid_value: Any
+        self, section: str, expected_exception: type, invalid_value: ModelInput
     ) -> None:
         """Each section rejects a non-mapping payload with its own exception."""
         with pytest.raises(expected_exception):

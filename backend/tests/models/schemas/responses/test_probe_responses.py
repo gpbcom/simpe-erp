@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -17,6 +16,7 @@ from models.schemas.exceptions import (
 )
 from models.schemas.responses.observability.health_response import HealthResponse
 from models.schemas.responses.observability.readiness_response import ReadinessResponse
+from tests.annotations import ModelInput
 
 
 class TestHealthResponse:
@@ -42,7 +42,7 @@ class TestHealthResponse:
             pytest.param("", id="Invalid - empty"),
         ],
     )
-    def test_an_unknown_status_raises(self, invalid_value: Any) -> None:
+    def test_an_unknown_status_raises(self, invalid_value: ModelInput) -> None:
         """A status outside the enumeration is rejected."""
         with pytest.raises(MTHealthResponseInvalidStatus):
             HealthResponse(status=invalid_value)

@@ -60,9 +60,7 @@ describe('EmploymentSection', () => {
     const user = userEvent.setup();
     render(<EmploymentSection profile={PROFILE} editable />);
 
-    const control = within(screen.getByTestId('field-employee')).getByRole(
-      'checkbox',
-    );
+    const control = within(screen.getByTestId('field-employee')).getByRole('checkbox');
     expect(control).toBeChecked();
 
     // Saving is disabled until something changes, so the flag flipping is

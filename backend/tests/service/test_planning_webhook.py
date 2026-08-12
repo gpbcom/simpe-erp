@@ -10,6 +10,7 @@ import pytest
 # First-party imports
 from models.configuration.webhook_config import WebhookConfig
 from service.planning.webhook import PlanningWebhook
+from tests.annotations import ModelInput
 
 
 def _config(
@@ -92,12 +93,12 @@ def transport(monkeypatch: pytest.MonkeyPatch) -> _Transport:
     recorder = _Transport()
     original = httpx.AsyncClient.__init__
 
-    def _with_transport(self: httpx.AsyncClient, **kwargs: object) -> None:
+    def _with_transport(self: httpx.AsyncClient, **kwargs: ModelInput) -> None:
         """Build the client on the recording transport.
 
         Args:
             self (httpx.AsyncClient): The client being built.
-            **kwargs (object): Whatever the caller passed.
+            **kwargs (ModelInput): Whatever the caller passed.
         """
         original(self, transport=recorder, **kwargs)
 

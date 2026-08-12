@@ -28,16 +28,14 @@ afterEach(() => vi.restoreAllMocks());
  */
 describe('saveBlob', () => {
   it('saves under the name the server asked for', () => {
-    const create = vi
-      .spyOn(URL, 'createObjectURL')
-      .mockReturnValue('blob:invoice');
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:invoice');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     const clicked: string[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
-      function (this: HTMLAnchorElement) {
-        clicked.push(this.download);
-      },
-    );
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push(this.download);
+    });
 
     saveBlob(new Blob(['%PDF-1.4']), 'FA-2026-000001.pdf');
 
@@ -47,9 +45,7 @@ describe('saveBlob', () => {
 
   it('releases the object URL immediately', () => {
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:invoice');
-    const revoke = vi
-      .spyOn(URL, 'revokeObjectURL')
-      .mockImplementation(() => {});
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
     saveBlob(new Blob(['%PDF-1.4']), 'FA-2026-000001.pdf');

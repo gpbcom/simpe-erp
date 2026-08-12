@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -14,18 +14,19 @@ from models.schemas.exceptions import (
     MTQuoteLinesRequestInvalidLines,
 )
 from models.schemas.requests.quoting.quote_lines_request import QuoteLinesRequest
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 
 
-def _line(name: str = "Toilette matin") -> Dict[str, Any]:
+def _line(name: str = "Toilette matin") -> Dict[str, ModelInput]:
     """Return a service line, as a payload would carry it.
 
     Args:
         name (str): What the service is called.
 
     Returns:
-        Dict[str, Any]: The raw line.
+        Dict[str, ModelInput]: The raw line.
     """
     return {
         "intervention_type_id": "type-1",
@@ -115,7 +116,9 @@ class TestQuoteLinesRequest:
             pytest.param({"intervention_type_id": "type-1"}, id="Invalid - dict"),
         ],
     )
-    def test_services_that_are_not_a_list_are_refused(self, invalid_lines: Any) -> None:
+    def test_services_that_are_not_a_list_are_refused(
+        self, invalid_lines: ModelInput
+    ) -> None:
         """A single line sent unwrapped is a mistake, not one line."""
         with pytest.raises(MTQuoteLinesRequestInvalidLines):
             QuoteLinesRequest(lines=invalid_lines)

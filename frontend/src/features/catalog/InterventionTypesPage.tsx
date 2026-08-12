@@ -19,7 +19,6 @@ import { InterventionTypeDialog } from './InterventionTypeDialog';
 import { formatMoney } from '@/utils/format';
 import type { InterventionType } from '@/api/types';
 
-
 /** Which of the catalog filter's fields are text, flags and closed lists. */
 const CATALOG_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'code', 'name'],
@@ -166,7 +165,6 @@ export function InterventionTypesPage() {
           {t('catalog.add')}
         </Button>
       </Box>
-
 
       <EntityFilterBar
         state={catalogFilter}

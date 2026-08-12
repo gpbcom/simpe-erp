@@ -35,13 +35,12 @@ class PlanningSettingsRepository(BaseRepository[PlanningSettingsRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(
             session=session,
             row_class=PlanningSettingsRow,
-            logger=resolved_logger,
         )
-        self.mapper = PlanningSettingsMapper(logger=resolved_logger)
+        self.mapper = PlanningSettingsMapper()
 
     ############################
     # Publicly Exposed Methods #

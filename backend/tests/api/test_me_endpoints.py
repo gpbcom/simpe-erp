@@ -17,13 +17,14 @@ from api.dependencies import (
     get_company_service,
     get_current_user,
     get_customer_service,
+    get_team_service,
     get_hca_service,
     get_quote_service,
 )
 from api.exception_handlers import ExceptionHandlers
 from api.v1.me.me import router as me_router
 from models.auth.user import User
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language, ContractType, QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.people.hca import Hca
@@ -32,6 +33,7 @@ from service.auth.exceptions import MTAuthEmailAlreadyRegistered
 from service.customers.exceptions import MTCustomerNotFound
 from service.quotes.exceptions import MTQuoteForbidden
 from storage.s3.exceptions import MTS3PayloadTooLarge, MTS3UnsupportedContentType
+from tests.annotations import ModelInput
 
 ADDRESS = {
     "street": "12 rue de Rivoli",
@@ -164,6 +166,15 @@ def _client(
     app.dependency_overrides[get_hca_service] = lambda: hcas or MagicMock()
     app.dependency_overrides[get_customer_service] = lambda: customers or MagicMock()
     app.dependency_overrides[get_quote_service] = lambda: quotes or MagicMock()
+    # The customer book narrows to the households the caller's teams serve, so
+    # the route reaches the team service. This double answers as an
+    # administrator does — ``None`` means every household — which keeps these
+    # fixtures asserting what they were written to assert.
+    scoped_teams = AsyncMock()
+    scoped_teams.readable_customer_ids.return_value = None
+    scoped_teams.readable_hca_ids.return_value = None
+    scoped_teams.readable_team_ids.return_value = None
+    app.dependency_overrides[get_team_service] = lambda: scoped_teams
     app.dependency_overrides[get_auth_service] = lambda: auth or MagicMock()
     app.dependency_overrides[get_company_service] = lambda: companies or MagicMock()
     # The admin guard is a separate dependency from `get_current_user`, so the
@@ -176,7 +187,7 @@ def _client(
 class TestQuoteLineCategoryIsRequired:
     """Tests that a quote line cannot be written without a VAT category."""
 
-    def _payload(self, **overrides: object) -> dict:
+    def _payload(self, **overrides: ModelInput) -> dict:
         """Return a quote payload with one line.
 
         Args:
@@ -200,7 +211,11 @@ class TestQuoteLineCategoryIsRequired:
     def test_a_line_with_a_category_is_accepted(self) -> None:
         """The ordinary case."""
         quotes = MagicMock()
-        quotes.create = AsyncMock(side_effect=lambda quote, author_id: quote)
+        quotes.create = AsyncMock(
+            side_effect=lambda payload, company_id, author_id: payload.to_quote(
+                company_id, "team-1"
+            )
+        )
 
         response = _client(_user(), quotes=quotes).post(
             "/api/v1/me/quotes", json=self._payload()
@@ -228,11 +243,11 @@ class TestQuoteLineCategoryIsRequired:
         quotes.create.assert_not_awaited()
 
     @pytest.mark.parametrize("value", ["", "luxury", None, 5])
-    def test_an_unknown_category_is_refused(self, value: object) -> None:
+    def test_an_unknown_category_is_refused(self, value: ModelInput) -> None:
         """A category the tax code does not have a rate for.
 
         Args:
-            value (object): The rejected category.
+            value (ModelInput): The rejected category.
         """
         quotes = MagicMock()
         quotes.create = AsyncMock()
@@ -247,7 +262,11 @@ class TestQuoteLineCategoryIsRequired:
     def test_the_category_reaches_the_service_unchanged(self) -> None:
         """What the screen chose is what gets priced."""
         quotes = MagicMock()
-        quotes.create = AsyncMock(side_effect=lambda quote, author_id: quote)
+        quotes.create = AsyncMock(
+            side_effect=lambda payload, company_id, author_id: payload.to_quote(
+                company_id, "team-1"
+            )
+        )
 
         _client(_user(), quotes=quotes).post(
             "/api/v1/me/quotes", json=self._payload(service_category="comfort")

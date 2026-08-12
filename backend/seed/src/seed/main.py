@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from logging import getLogger
-from typing import Optional
+from typing import List, Optional
 
 # First-party imports
 from models.configuration.app_config import AppConfig
@@ -18,6 +18,10 @@ from storage.repositories.auth.user import UserRepository
 from storage.repositories.people.hca import HcaRepository
 
 logger = getLogger(__name__)
+
+##########################
+# Seeder Helpers Methods #
+##########################
 
 
 async def _announce(company_id: str, config: AppConfig) -> None:
@@ -66,6 +70,11 @@ async def _announce(company_id: str, config: AppConfig) -> None:
         await publisher.close()
 
 
+#####################
+# Seeder Entrypoint #
+#####################
+
+
 async def run() -> None:
     """Seed the database, then print how to sign in.
 
@@ -101,6 +110,7 @@ async def run() -> None:
             assistants = await seeder.seed_assistants(company_id)
             customers = await seeder.seed_customers()
             await seeder.seed_accounts(company_id, assistants)
+            await seeder.seed_customer_accounts(company_id, customers)
 
             author_ids = seeder.account_ids_for(assistants)
             await seeder.seed_quotes(company_id, customers, catalog, author_ids)  # noqa: E501
@@ -112,11 +122,11 @@ async def run() -> None:
         seeder.print_credentials()
 
 
-def main(argv: Optional[list] = None) -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     """Run the seeder.
 
     Args:
-        argv (Optional[list]): Unused; present so the console script matches
+        argv (Optional[List[str]]): Unused; present so the console script matches
             the shape of the other entry points.
     """
     logging.basicConfig(

@@ -17,7 +17,11 @@ from integrations.exceptions import (
     MTConnectorUnsupported,
 )
 from models.billing.bill import Bill
-from models.enums import EInvoicingProvider, TransmissionKind, TransmissionStatus
+from models.enums import (  # noqa: E501
+    EInvoicingProvider,
+    TransmissionKind,
+    TransmissionStatus,
+)
 from models.integrations.integration_credentials import IntegrationCredentials
 from models.integrations.transmission_receipt import TransmissionReceipt
 

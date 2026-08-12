@@ -14,6 +14,7 @@ from models.planning.planning_run.exceptions import (
     MTSuggestedSlotInvalidWindow,
 )
 from models.planning.planning_run.suggested_slot import SuggestedSlot
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
 
@@ -51,17 +52,17 @@ class TestRefusingAnUnusableSlot:
     """Tests for offers nobody could act on."""
 
     @pytest.mark.parametrize("value", ["not-a-date", 42, None])
-    def test_a_day_that_is_not_a_date_is_refused(self, value: object) -> None:
+    def test_a_day_that_is_not_a_date_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected day.
+        value (ModelInput): The rejected day.
         """
         with pytest.raises(MTSuggestedSlotInvalidDay):
             SuggestedSlot(day=value, start_minute=540, end_minute=600, hca_id="hca-1")
 
     @pytest.mark.parametrize("value", [-1, 24 * 60 + 1, "nine", True])
-    def test_a_minute_outside_one_day_is_refused(self, value: object) -> None:
+    def test_a_minute_outside_one_day_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected minute.
+        value (ModelInput): The rejected minute.
         """
         with pytest.raises(MTSuggestedSlotInvalidMinute):
             SuggestedSlot(
@@ -79,9 +80,9 @@ class TestRefusingAnUnusableSlot:
             SuggestedSlot(day=MONDAY, start_minute=540, end_minute=end, hca_id="hca-1")
 
     @pytest.mark.parametrize("value", ["", "   ", None, 7])
-    def test_a_slot_with_nobody_attached_is_refused(self, value: object) -> None:
+    def test_a_slot_with_nobody_attached_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected assistant identifier.
+        value (ModelInput): The rejected assistant identifier.
         """
         with pytest.raises(MTSuggestedSlotInvalidAssistant):
             SuggestedSlot(day=MONDAY, start_minute=540, end_minute=600, hca_id=value)

@@ -36,13 +36,12 @@ class BillingSettingsRepository(BaseRepository[BillingSettingsRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
+        self.logger = logger if logger else getLogger(__name__)
         super().__init__(
             session=session,
             row_class=BillingSettingsRow,
-            logger=resolved_logger,
         )
-        self.mapper = BillingSettingsMapper(logger=resolved_logger)
+        self.mapper = BillingSettingsMapper()
 
     ############################
     # Publicly Exposed Methods #

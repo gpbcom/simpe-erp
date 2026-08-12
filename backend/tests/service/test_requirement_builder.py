@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, time
 from decimal import Decimal
 from typing import Dict, Optional
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
 import pytest
@@ -122,6 +122,7 @@ def builder() -> PlanningService:
         hcas=MagicMock(),
         types=MagicMock(),
         settings=MagicMock(),
+        teams=AsyncMock(),
         config=PlanningConfig(),
     )
 

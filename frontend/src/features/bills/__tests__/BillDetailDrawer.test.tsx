@@ -164,9 +164,7 @@ describe('BillDetailDrawer', () => {
     });
     render(<BillDetailDrawer selected={unplanned} onClose={vi.fn()} />);
 
-    expect(screen.getByTestId('bill-lines')).toHaveTextContent(
-      'bill.notPlanned',
-    );
+    expect(screen.getByTestId('bill-lines')).toHaveTextContent('bill.notPlanned');
   });
 
   it('says whether the customer has actually been sent it', () => {
@@ -175,9 +173,7 @@ describe('BillDetailDrawer', () => {
     // awaited but never went.
     render(<BillDetailDrawer selected={aBill()} onClose={vi.fn()} />);
 
-    expect(screen.getByTestId('bill-sent-state')).toHaveTextContent(
-      'bill.notSent',
-    );
+    expect(screen.getByTestId('bill-sent-state')).toHaveTextContent('bill.notSent');
   });
 
   it('offers validating an invoice that is waiting for it', () => {
@@ -214,18 +210,14 @@ describe('BillDetailDrawer', () => {
       <BillDetailDrawer selected={aBill({ status: 'accepted' })} onClose={vi.fn()} />,
     );
 
-    expect(
-      screen.getByTestId('bill-step-back-to-be-validated'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('bill-step-back-to-be-validated')).toBeInTheDocument();
   });
 
   it('offers nothing forward once an invoice is settled', () => {
     render(<BillDetailDrawer selected={aBill({ status: 'paid' })} onClose={vi.fn()} />);
 
     expect(screen.queryByTestId('bill-advance-paid')).toBeNull();
-    expect(
-      screen.getByTestId('bill-step-back-waiting-payment'),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId('bill-step-back-waiting-payment')).toBeInTheDocument();
   });
 
   it('downloads the document by number, not by route', async () => {

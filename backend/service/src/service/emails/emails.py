@@ -12,7 +12,7 @@ from typing import ClassVar, Dict, List, Optional, Tuple
 # isort: on
 from models.auth.user import User
 from models.billing.bill import Bill
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 
 # isort: off
 from models.configuration.email_config import EmailConfig

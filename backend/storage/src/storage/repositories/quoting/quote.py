@@ -3,10 +3,10 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, datetime
 from logging import Logger, getLogger
-from typing import List, Optional, Tuple
+from typing import ClassVar, Dict, FrozenSet, List, Optional, Tuple
 
 # Third-party imports
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,13 +25,30 @@ class QuoteRepository(BaseRepository[QuoteRow]):
     """Reads and writes quotes, with their lines and weekly totals.
 
     Attributes:
+        LIVE_STATUSES (ClassVar[FrozenSet[QuoteStatus]]): The statuses whose
+            hours count as work a team is already carrying.
         mapper (QuoteMapper): Converts between rows and domain models.
 
     Notes:
-        A quote always travels whole. Every read loads its lines and
-        aggregates, and every write replaces them — a header without its lines
-        is a quote that prints blank, and there is no use case for one.
+        - A quote always travels whole. Every read loads its lines and
+          aggregates, and every write replaces them — a header without its lines
+          is a quote that prints blank, and there is no use case for one.
+        - :attr:`LIVE_STATUSES` is deliberately wider than
+          :attr:`~models.quoting.quote.Quote.SCHEDULABLE_STATUSES`. The planner
+          schedules only accepted work; the *workload* a team is carrying
+          includes what it has offered and is waiting on, because a team with
+          twenty quotes out is not a team to send the next one to. Rejected and
+          expired quotes are excluded — that is work the agency is not doing.
     """
+
+    LIVE_STATUSES: ClassVar[FrozenSet[QuoteStatus]] = frozenset(
+        {
+            QuoteStatus.DRAFT,
+            QuoteStatus.PENDING_VALIDATION,
+            QuoteStatus.SENT,
+            QuoteStatus.ACCEPTED,
+        }
+    )
 
     def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:
         """Initialize the repository.
@@ -41,9 +58,9 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
-        super().__init__(session=session, row_class=QuoteRow, logger=resolved_logger)
-        self.mapper = QuoteMapper(logger=resolved_logger)
+        self.logger = logger if logger else getLogger(__name__)
+        super().__init__(session=session, row_class=QuoteRow)
+        self.mapper = QuoteMapper()
 
     ############################
     # Internal Helpers Methods #
@@ -65,7 +82,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             - Cheap regardless: both collections are already loaded, and a
               repriced quote replaces all of them anyway.
         """
-        self.logger.debug("Clearing the children of quote %s before update.", row.id)
+        self.logger.debug("Clearing the children of quote %s before update.", row.id)  # noqa: E501
         row.lines.clear()
         row.aggregates.clear()
         await self.session.flush()
@@ -76,6 +93,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
         quote_filter: Optional[QuoteFilter] = None,
+        team_ids: Optional[List[str]] = None,
     ) -> Select[Tuple[QuoteRow]]:
         """Build the filtered select shared by ``list`` and ``count``.
 
@@ -85,6 +103,9 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             authored_by (Optional[str]): Restrict to one author's quotes.
             quote_filter (Optional[QuoteFilter]): The richer filter from the
                 screen. Its own fields win over the three named arguments.
+            team_ids (Optional[List[str]]): The teams whose quotes the caller
+                may read. ``None`` means every team; an **empty list means
+                none**.
 
         Returns:
             Select: The filtered statement, without ordering or pagination.
@@ -100,17 +121,29 @@ class QuoteRepository(BaseRepository[QuoteRow]):
               rather than a preference — a filter that could widen it would let
               an assistant list the agency's whole quote book by sending
               ``?authored_by=``.
+            - ``team_ids`` is the manager's narrowing, and it distinguishes
+              ``None`` from ``[]`` **because getting those the wrong way round
+              opens the whole company**. ``None`` is an administrator, who sees
+              every team; ``[]`` is a manager who runs no team, or an assistant
+              on none, and they must see nothing. Code that treated the empty
+              list as "no filter" — the natural falsy reading — would hand the
+              second group everything.
         """
         applied = quote_filter or QuoteFilter()
         self.logger.debug(
-            "Building the quote query from %s.", applied.model_dump(exclude_none=True)
+            "Building the quote query from %s.",
+            applied.model_dump(exclude_none=True),  # noqa: E501
         )
         if applied.is_empty() and not any((customer_id, status, authored_by)):
             self.logger.info("No filter was given; the query is every quote.")
 
         statement = select(QuoteRow)
-        # The caller's own scoping is never widened by the screen's filter: it
-        # is applied first and unconditionally.
+        if team_ids is not None:
+            if not team_ids:
+                self.logger.warning(
+                    "The caller may read no team; the quote query matches nothing."
+                )
+            statement = statement.where(QuoteRow.team_id.in_(team_ids))
         if customer_id is not None:
             statement = statement.where(QuoteRow.customer_id == customer_id)
         if authored_by is not None:
@@ -119,9 +152,9 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             statement = statement.where(QuoteRow.status == status.value)
 
         if applied.customer_id and customer_id is None:
-            statement = statement.where(QuoteRow.customer_id == applied.customer_id)
+            statement = statement.where(QuoteRow.customer_id == applied.customer_id)  # noqa: E501
         if applied.authored_by and authored_by is None:
-            statement = statement.where(QuoteRow.authored_by == applied.authored_by)
+            statement = statement.where(QuoteRow.authored_by == applied.authored_by)  # noqa: E501
         elif applied.authored_by and applied.authored_by != authored_by:
             self.logger.warning(
                 "A quote filter asked for author %r while the caller is scoped "
@@ -130,7 +163,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
                 authored_by,
             )
         if applied.status is not None and status is None:
-            statement = statement.where(QuoteRow.status == applied.status.value)
+            statement = statement.where(QuoteRow.status == applied.status.value)  # noqa: E501
         for fragment, column in (
             (applied.search, QuoteRow.reference),
             (applied.reference, QuoteRow.reference),
@@ -140,13 +173,8 @@ class QuoteRepository(BaseRepository[QuoteRow]):
                     column.ilike(f"%{fragment.strip().lower()}%")
                 )
         if applied.auto_renew is not None:
-            statement = statement.where(QuoteRow.auto_renew.is_(applied.auto_renew))
+            statement = statement.where(QuoteRow.auto_renew.is_(applied.auto_renew))  # noqa: E501
         if applied.is_ongoing is not None:
-            # The same definition the customer book filters by: accepted, and
-            # not past its interruption date — which is inclusive, so a quote
-            # interrupted today is still running today. Spelled once there and
-            # once here would be two definitions of "ongoing" that drift; this
-            # is the same predicate read off the quote's own row.
             today = date.today()
             self.logger.info(
                 "Ongoing means accepted and not interrupted before %s.", today
@@ -155,7 +183,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
                 QuoteRow.interrupted_on.is_(None),
                 QuoteRow.interrupted_on >= today,
             )
-            statement = statement.where(ongoing if applied.is_ongoing else ~ongoing)
+            statement = statement.where(ongoing if applied.is_ongoing else ~ongoing)  # noqa: E501
         return statement
 
     ############################
@@ -265,7 +293,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             return None
         row = await self._get_row(quote.id)
         if row is None:
-            self.logger.warning("Update requested for absent quote %s.", quote.id)
+            self.logger.warning("Update requested for absent quote %s.", quote.id)  # noqa: E501
             return None
         await self._clear_children(row)
         self.mapper.apply_to_row(row, quote)
@@ -282,6 +310,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
         quote_filter: Optional[QuoteFilter] = None,
+        team_ids: Optional[List[str]] = None,
     ) -> List[Quote]:
         """Return a page of quotes.
 
@@ -292,6 +321,8 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             status (Optional[QuoteStatus]): Restrict to one status.
             authored_by (Optional[str]): Restrict to one author's quotes.
             quote_filter (Optional[QuoteFilter]): The screen's filter.
+            team_ids (Optional[List[str]]): The teams the caller may read.
+                ``None`` means every team; an empty list means none.
 
         Returns:
             List[Quote]: The matching quotes, newest reference first.
@@ -304,7 +335,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             authored_by,
         )
         statement = self._build_query(
-            customer_id, status, authored_by, quote_filter
+            customer_id, status, authored_by, quote_filter, team_ids
         ).order_by(QuoteRow.reference.desc())
         rows = await self._fetch_all(self._paginate(statement, page, size))
         if not rows:
@@ -321,12 +352,11 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             List[Quote]: The candidates, oldest expiry first.
 
         Notes:
-            Expiry is strict: a quote whose ``valid_until`` is today is still
-            valid, and renewing it would end an arrangement a day early.
-
-            Only accepted quotes are considered. A draft that expired was never
-            an arrangement, and renewing one would put work on the planner that
-            no customer ever agreed to.
+            - Expiry is strict: a quote whose ``valid_until`` is today is still
+              valid, and renewing it would end an arrangement a day early.
+            - Only accepted quotes are considered. A draft that expired was never
+              an arrangement, and renewing one would put work on the planner that
+              no customer ever agreed to.
         """
         self.logger.debug("Listing quotes renewable as of %s.", today)
         statement = (
@@ -358,8 +388,8 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             otherwise each write a successor and the customer would be billed
             twice for the same period.
         """
-        statement = select(QuoteRow.id).where(QuoteRow.renewed_from_id == quote_id)
-        existing = await self._fetch_all(statement.limit(1))
+        statement = select(QuoteRow.id).where(QuoteRow.renewed_from_id == quote_id)  # noqa: E501
+        existing = await self._fetch_all(statement.limit(1))  # noqa: E501
         return bool(existing)
 
     async def count(
@@ -368,6 +398,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         status: Optional[QuoteStatus] = None,
         authored_by: Optional[str] = None,
         quote_filter: Optional[QuoteFilter] = None,
+        team_ids: Optional[List[str]] = None,
     ) -> int:
         """Return how many quotes match a query.
 
@@ -377,27 +408,75 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             authored_by (Optional[str]): Restrict to one author's quotes.
             quote_filter (Optional[QuoteFilter]): The screen's filter, so a
                 page and its total can never come from different filters.
+            team_ids (Optional[List[str]]): The teams the caller may read, so
+                the total is narrowed exactly as the page is.
 
         Returns:
             int: The number of matching quotes.
         """
         return await self._count(
-            self._build_query(customer_id, status, authored_by, quote_filter)
+            self._build_query(customer_id, status, authored_by, quote_filter, team_ids)
         )
 
-    async def list_schedulable(
-        self, company_id: str, period_start: date, period_end: date
-    ) -> List[Quote]:
-        """Return one agency's accepted quotes with work inside a period.
+    async def customer_ids_for_teams(self, team_ids: List[str]) -> List[str]:
+        """Return the households a set of teams holds quotes for.
 
         Args:
-            company_id (str): The agency whose workload is being planned.
-            period_start (date): First day of the planning window.
-            period_end (date): Last day of the planning window.
+            team_ids (List[str]): The teams whose book is being read.
 
         Returns:
-            List[Quote]: Every accepted quote of that agency with at least one
-            line in range.
+            List[str]: The distinct household identifiers, in identifier order.
+
+        Notes:
+            - **Read off the quotes, not off the visits.** A household that has
+              been quoted but not yet planned is still the manager's business —
+              they are the one chasing the decision — and a scope built from the
+              calendar would hide exactly the prospects a manager most needs to
+              see.
+            - Every status counts, including rejected and expired. A household
+              whose quote was declined is somebody the manager spoke to, and
+              dropping them from the book would make the record of that
+              conversation unreachable.
+            - An empty argument returns an empty list without a statement: it
+              means a caller who runs no team, and the answer is already known.
+        """
+        if not team_ids:
+            self.logger.warning("No team was given; no household is in scope.")
+            return []
+        statement = (
+            select(QuoteRow.customer_id)
+            .where(QuoteRow.team_id.in_(team_ids))
+            .distinct()
+            .order_by(QuoteRow.customer_id)
+        )
+        result = await self.session.execute(statement)
+        identifiers = [row for row in result.scalars().all() if row]
+        self.logger.info(
+            "%d household(s) are served by %d team(s).",
+            len(identifiers),
+            len(team_ids),
+        )
+        return identifiers
+
+    async def list_schedulable(
+        self,
+        company_id: str,
+        team_id: Optional[str],
+        period_start: date,
+        period_end: date,
+    ) -> List[Quote]:
+        """Return accepted quotes with work inside a period.
+
+        Args:
+            company_id (str): The agency whose workload is being read.
+            team_id (Optional[str]): The team whose share of it is wanted, or
+                ``None`` for the whole agency's.
+            period_start (date): First day of the window.
+            period_end (date): Last day of the window.
+
+        Returns:
+            List[Quote]: Every accepted quote in scope with at least one line
+            in range.
 
         Notes:
             - Unpaginated by design: a planning run needs the whole workload at
@@ -412,19 +491,27 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             - A returned quote may still hold lines outside the window; the
               requirement builder filters those. Loading the quote whole keeps
               its totals consistent with what was accepted.
-            - **Scoped to the agency.** This is the input half of what
+            - **Scoped to the agency and to the team.** This is the input half
+              of what
               :meth:`~storage.repositories.planning.intervention.InterventionRepository.replace_for_period`
-              is the output half of: unscoped, a run would build one agency's
-              week out of every agency's accepted work, hand those visits to
-              its own assistants, and then write them over everybody's
-              calendar. The agency is a parameter with no default for the same
-              reason it is one on
+              is the output half of, and the two must be scoped alike. Unscoped
+              by agency, a run would build one agency's week out of every
+              agency's accepted work; unscoped by team, it would build one
+              team's week out of a sister team's work, hand those visits to its
+              own assistants, and then — because the output half *is* scoped —
+              write them into the first team's calendar while the second team's
+              own run wrote them again into hers. The same household would be
+              visited twice by two teams, and each run would look correct on its
+              own.
+            - Both are parameters with no default, for the same reason the
+              agency is one on
               :meth:`~service.messaging.publisher.EventPublisher.publish` — a
               forgotten argument must be a ``TypeError`` at the call site, not a
               silently wider query.
         """
         self.logger.info(
-            "Loading the schedulable quotes of agency %s between %s and %s.",
+            "Loading the schedulable quotes of team %s at agency %s between %s and %s.",
+            team_id,
             company_id,
             period_start,
             period_end,
@@ -439,29 +526,96 @@ class QuoteRepository(BaseRepository[QuoteRow]):
                 QuoteLineRow.service_date <= period_end,
             )
             .distinct()
-            # A total order, and it is load-bearing rather than cosmetic. The
-            # requirement list is built by walking these rows, so their order
-            # is the order of the CP-SAT variables — and PostgreSQL guarantees
-            # no ordering for a SELECT without one. Two runs of the same week
-            # could therefore hand the solver two different models, which is
-            # what made a fixed `random_seed` and a deterministic budget stop
-            # in a different place each time and leave a different number of
-            # visits unplaced. The primary key is used because it is the only
-            # column certain to be unique: ordering by anything with ties
-            # leaves the tied rows free to swap.
             .order_by(QuoteRow.id)
         )
+        if team_id is not None:
+            statement = statement.where(QuoteRow.team_id == team_id)
         rows = await self._fetch_all(statement)
         if not rows:
             self.logger.warning(
-                "No accepted quote of agency %s covers %s to %s; a planning "
-                "run would have nothing to schedule.",
-                company_id,
+                "No accepted quote of %s covers %s to %s; a planning run "
+                "would have nothing to schedule.",
+                f"team {team_id}" if team_id else "the agency",
                 period_start,
                 period_end,
             )
         self.logger.info("Loaded %d schedulable quote(s).", len(rows))
         return [self.mapper.to_model(row) for row in rows]
+
+    async def assigned_minutes_by_team(
+        self, company_id: str, team_ids: List[str]
+    ) -> Dict[str, int]:
+        """Return how much work each team already carries, in minutes.
+
+        Args:
+            company_id (str): The company whose quotes are being measured.
+            team_ids (List[str]): The teams to measure.
+
+        Returns:
+            Dict[str, int]: Minutes per team, **one entry per team asked for**.
+
+        Notes:
+            - The busyness half of the quote-to-team rule. Measured over quotes
+              that are still live — draft, awaiting validation, sent and
+              accepted — rather than over planned visits, because a company that
+              has never run the planner would otherwise measure every team at
+              zero and send every quote to the first one.
+            - **Every team asked for gets an entry, seeded to zero.** A
+              ``GROUP BY`` returns no row for a team with no quotes at all, and
+              reading a missing key as "unknown, therefore last" would send
+              every new quote to the busiest team — the exact opposite of the
+              rule. The seeding is what makes a brand-new team the one that
+              wins.
+            - Rejected and expired quotes are excluded. They are work the agency
+              is not doing, and counting them would keep a team looking busy
+              because of offers a customer turned down.
+        """
+        if not team_ids:
+            self.logger.debug("No team to measure the workload of.")
+            return {}
+        minutes: Dict[str, int] = {team_id: 0 for team_id in team_ids}
+        statement = (
+            select(
+                QuoteRow.team_id,
+                func.coalesce(func.sum(QuoteLineRow.duration_minutes), 0),
+            )
+            .join(QuoteLineRow, QuoteLineRow.quote_id == QuoteRow.id)
+            .where(
+                QuoteRow.company_id == company_id,
+                QuoteRow.team_id.in_(team_ids),
+                QuoteRow.status.in_([status.value for status in self.LIVE_STATUSES]),  # noqa: E501
+            )
+            .group_by(QuoteRow.team_id)
+        )
+        result = await self.session.execute(statement)
+        for team_id, total in result.all():
+            minutes[str(team_id)] = int(total)
+        self.logger.debug(
+            "Measured the workload of %d team(s) of company %s.",
+            len(minutes),
+            company_id,
+        )
+        return minutes
+
+    async def count_for_team(self, team_id: str) -> int:
+        """Return how many quotes a team holds, in any status.
+
+        Args:
+            team_id (str): The team to count for.
+
+        Returns:
+            int: The number of quotes.
+
+        Notes:
+            What the team-deletion refusal is built on. ``quotes.team_id``
+            carries no foreign key, so nothing stops a quote outliving its team
+            — and a quote naming a team that no longer exists is one no planning
+            run will ever read again.
+        """
+        statement = select(QuoteRow).where(QuoteRow.team_id == team_id)
+        total = await self._count(statement)
+        self.logger.debug("Team %s holds %d quote(s).", team_id, total)
+        return total
 
     async def delete(self, quote_id: str) -> bool:
         """Delete a quote and its lines.
@@ -481,7 +635,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             self.logger.error("Error deleting quote %s: %s.", quote_id, exc)
             raise
 
-    async def set_status(self, quote_id: str, status: QuoteStatus) -> Optional[Quote]:
+    async def set_status(self, quote_id: str, status: QuoteStatus) -> Optional[Quote]:  # noqa: E501
         """Move a quote to another point in its lifecycle.
 
         Args:
@@ -503,7 +657,10 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             )
             return None
         self.logger.info(
-            "Quote %s moves from %s to %s.", row.reference, row.status, status.value
+            "Quote %s moves from %s to %s.",
+            row.reference,
+            row.status,
+            status.value,  # noqa: E501
         )
         row.status = status.value
         await self.session.flush()
@@ -548,7 +705,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
                 len(feedback.alternatives),
             )
         else:
-            self.logger.debug("Quote %s planning feedback cleared.", row.reference)
+            self.logger.debug("Quote %s planning feedback cleared.", row.reference)  # noqa: E501
         await self.session.flush()
         await self.session.refresh(row)
         return self.mapper.to_model(row)
@@ -573,7 +730,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         """
         row = await self._get_row(quote_id)
         if row is None:
-            self.logger.warning("Submission requested for absent quote %s.", quote_id)
+            self.logger.warning("Submission requested for absent quote %s.", quote_id)  # noqa: E501
             return None
         self.logger.info(
             "Quote %s moves from %s to %s.",
@@ -618,7 +775,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         """
         row = await self._get_row(quote_id)
         if row is None:
-            self.logger.warning("Validation requested for absent quote %s.", quote_id)
+            self.logger.warning("Validation requested for absent quote %s.", quote_id)  # noqa: E501
             return None
         self.logger.info(
             "Quote %s moves from %s to %s, ruled by %s.",
@@ -630,10 +787,6 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         row.status = status.value
         row.validated_by = validated_by
         row.validated_at = validated_at
-        # Only when the ruling issues the quote. A refusal sends it back to its
-        # author, and stamping an issue date on a quote nobody ever received
-        # would put a date on the customer's copy of an offer that was never
-        # made.
         if issued_on is not None:
             row.issued_on = issued_on
         if valid_until is not None:

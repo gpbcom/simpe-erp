@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -13,6 +12,7 @@ from models.geo.exceptions import (
     MTInvalidGeoPointException,
 )
 from models.geo.geo_point import GeoPoint
+from tests.annotations import ModelInput
 
 
 class TestGeoPoint:
@@ -65,7 +65,7 @@ class TestGeoPoint:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_invalid_latitude_raises(self, invalid_latitude: Any) -> None:
+    def test_invalid_latitude_raises(self, invalid_latitude: ModelInput) -> None:
         """A latitude outside -90..90, or not a number, is rejected."""
         with pytest.raises(MTGeoPointInvalidLatitude):
             GeoPoint(latitude=invalid_latitude, longitude=2.3522)
@@ -85,7 +85,7 @@ class TestGeoPoint:
             pytest.param(False, id="Invalid - bool"),
         ],
     )
-    def test_invalid_longitude_raises(self, invalid_longitude: Any) -> None:
+    def test_invalid_longitude_raises(self, invalid_longitude: ModelInput) -> None:
         """A longitude outside -180..180, or not a number, is rejected."""
         with pytest.raises(MTGeoPointInvalidLongitude):
             GeoPoint(latitude=48.8566, longitude=invalid_longitude)

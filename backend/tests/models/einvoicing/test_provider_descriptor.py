@@ -14,13 +14,14 @@ from models.integrations.exceptions import (
     MTProviderDescriptorInvalidVerified,
 )
 from models.integrations.provider_descriptor import ProviderDescriptor
+from tests.annotations import ModelInput
 
 
-def _descriptor(**overrides: object) -> ProviderDescriptor:
+def _descriptor(**overrides: ModelInput) -> ProviderDescriptor:
     """Build a descriptor with sensible defaults.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         ProviderDescriptor: The entry.
@@ -85,17 +86,17 @@ class TestRefusingAnUnusableDescriptor:
     """Tests for the values that would render a broken card."""
 
     @pytest.mark.parametrize("value", [None, "", "chorus", 7])
-    def test_an_unknown_platform_is_refused(self, value: object) -> None:
+    def test_an_unknown_platform_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected platform.
+        value (ModelInput): The rejected platform.
         """
         with pytest.raises(MTProviderDescriptorInvalidProvider):
             _descriptor(provider=value)
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_a_missing_name_is_refused(self, value: object) -> None:
+    def test_a_missing_name_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected name.
+        value (ModelInput): The rejected name.
         """
         with pytest.raises(MTProviderDescriptorInvalidName):
             _descriptor(name=value)
@@ -104,10 +105,10 @@ class TestRefusingAnUnusableDescriptor:
         "value", ["", "docs.invopop.com", "http://docs.invopop.com", 42]
     )
     def test_an_address_that_is_not_absolute_https_is_refused(
-        self, value: object
+        self, value: ModelInput
     ) -> None:
         """Args:
-        value (object): The rejected address.
+        value (ModelInput): The rejected address.
 
         Notes:
             A relative address would resolve against this application's own host
@@ -117,11 +118,11 @@ class TestRefusingAnUnusableDescriptor:
             _descriptor(documentation_url=value)
 
     @pytest.mark.parametrize("value", [None, (), [], "invoice", 42])
-    def test_a_platform_covering_nothing_is_refused(self, value: object) -> None:
+    def test_a_platform_covering_nothing_is_refused(self, value: ModelInput) -> None:
         """**Empty coverage is a contradiction, not a default.**
 
         Args:
-            value (object): The rejected coverage.
+            value (ModelInput): The rejected coverage.
 
         Notes:
             Coverage decides which tab a card appears under and whether an
@@ -147,9 +148,9 @@ class TestRefusingAnUnusableDescriptor:
             _descriptor(required_fields=("api_key", "client_secret"))
 
     @pytest.mark.parametrize("value", ["yes", 1, []])
-    def test_a_non_boolean_verified_flag_is_refused(self, value: object) -> None:
+    def test_a_non_boolean_verified_flag_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected flag.
+        value (ModelInput): The rejected flag.
         """
         with pytest.raises(MTProviderDescriptorInvalidVerified):
             _descriptor(documentation_verified=value)

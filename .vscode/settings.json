@@ -29,5 +29,6 @@
     "python.testing.pytestArgs": [
         "tests",
         "-n0"
-    ]
+    ],
+    "robotcode.disableExtension": true
 }

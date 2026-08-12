@@ -82,12 +82,13 @@ class ConnectorFactory:
         connector_class = self.CONNECTORS.get(provider)
         if connector_class is None:
             self.logger.error(
-                "No connector for %r; the enumeration and the factory have "
-                "diverged.",
+                "No connector for %r. "  # noqa: E501
+                "The enumeration and the factory have diverged.",
                 provider,
             )
             raise MTConnectorNotImplemented(
-                f"No connector for {provider!r}; the enumeration and the "
+                f"No connector for {provider!r}. "  # noqa: E501
+                "The enumeration and the "
                 f"factory have diverged."
             )
         self.logger.debug("Building the %s connector.", provider.value)

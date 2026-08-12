@@ -145,7 +145,7 @@ class B2BRouterConnector(InvoicingConnector):
         self.logger.info("Importing invoice %s into B2Brouter.", bill.number)
         imported = await self._request(
             "POST",
-            f"/accounts/{self._account()}/invoices/import?send_after_import=false", # noqa: E501
+            f"/accounts/{self._account()}/invoices/import?send_after_import=false",  # noqa: E501
             content=document,
             extra_headers={"Content-Type": "application/octet-stream"},
         )
@@ -154,7 +154,7 @@ class B2BRouterConnector(InvoicingConnector):
             "B2Brouter imported invoice %s as %s.", bill.number, reference
         )
         await self._request("POST", f"/invoices/send_invoice/{reference}")
-        self.logger.info("B2Brouter sent invoice %s (%s).", bill.number, reference) # noqa: E501
+        self.logger.info("B2Brouter sent invoice %s (%s).", bill.number, reference)  # noqa: E501
         return self._sent(TransmissionKind.INVOICE, reference)
 
     async def report_payment(self, bill: Bill) -> TransmissionReceipt:

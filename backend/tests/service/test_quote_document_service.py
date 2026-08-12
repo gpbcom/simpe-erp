@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language
 from models.people.customer import Customer
 from models.quoting.quote import Quote

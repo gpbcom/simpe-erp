@@ -1,0 +1,590 @@
+from __future__ import annotations
+
+# Standard library imports
+from logging import Logger, getLogger
+from typing import List, Optional
+
+# First-party imports
+from models.auth.user import User
+from models.enums import AgencyType, MemberKind
+from models.organisation.agency.agency import Agency
+from models.organisation.agency.agency_member import AgencyMember
+from models.schemas.responses.organisation.agency_view import AgencyView
+from service.organisation.exceptions import (
+    MTAgencyForbidden,
+    MTAgencyHeadquartersProtected,
+    MTAgencyMemberAlreadyPlaced,
+    MTAgencyNameTaken,
+    MTAgencyNotEmpty,
+    MTAgencyNotFound,
+)
+from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.organisation.agency import AgencyRepository
+from storage.repositories.organisation.team import TeamRepository
+
+
+class AgencyService:
+    """The places a company operates from, and who works at each.
+
+    Attributes:
+        agencies (AgencyRepository): Reads and writes the sites.
+        companies (CompanyRepository): Read for the legal identity a head
+            office inherits.
+        teams (TeamRepository): Consulted before a site is removed.
+        logger (Logger): Logger for the operations here.
+
+    Notes:
+        - **The first site of a company is its head office, and the payload has
+          no say in it.** The rule is here rather than on the model because it
+          is a question about *other rows*, which a value cannot answer about
+          itself, and it is enforced a second time by a partial unique index —
+          so a race between two administrators creating the first site ends with
+          one refusal rather than two head offices.
+        - Every method takes the caller and checks the site belongs to their
+          company. The route guard proves the *rank*; only this layer can prove
+          the *row*, because nothing at the routing layer stops an administrator
+          putting another company's identifier in the path.
+    """
+
+    def __init__(
+        self,
+        agencies: AgencyRepository,
+        companies: CompanyRepository,
+        teams: TeamRepository,
+        logger: Optional[Logger] = None,
+    ) -> None:
+        """Initialize the service.
+
+        Args:
+            agencies (AgencyRepository): Reads and writes the sites.
+            companies (CompanyRepository): Read for the legal identity a
+                head office inherits.
+            teams (TeamRepository): Consulted before a site is removed.
+            logger (Optional[Logger]): Logger to use. Defaults to a logger
+                named after this module.
+        """
+        self.agencies = agencies
+        self.companies = companies
+        self.teams = teams
+        self.logger = logger if logger else getLogger(__name__)
+        self.logger.debug("AgencyService created.")
+
+    ############################
+    # Internal Helpers Methods #
+    ############################
+
+    async def _owned(self, agency_id: str, caller: User) -> Agency:
+        """Return a site, having proved it is the caller's company's.
+
+        Args:
+            agency_id (str): The site to read.
+            caller (User): The authenticated caller.
+
+        Returns:
+            Agency: The site.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+        """
+        agency = await self.agencies.get(agency_id)
+        if agency is None:
+            self.logger.warning("Agency %s does not exist.", agency_id)
+            raise MTAgencyNotFound(f"No agency {agency_id!r} exists.")
+        if agency.company_id != caller.company_id:
+            self.logger.warning(
+                "Account %s of company %s tried to reach agency %s of company %s.",
+                caller.id,
+                caller.company_id,
+                agency_id,
+                agency.company_id,
+            )
+            raise MTAgencyForbidden(f"No agency {agency_id!r} exists.")
+        return agency
+
+    async def _assert_name_free(
+        self, company_id: str, name: str, except_id: Optional[str] = None
+    ) -> None:
+        """Refuse a name another of the company's sites already uses.
+
+        Args:
+            company_id (str): The company being checked.
+            name (str): The proposed name.
+            except_id (Optional[str]): A site allowed to hold the name, when
+                one is being renamed to what it already is.
+
+        Raises:
+            MTAgencyNameTaken: If the name is in use.
+
+        Notes:
+            Checked here as well as by the unique index, because the index's
+            own error is an opaque database message and this one names the
+            site somebody has to go and look at.
+        """
+        existing = await self.agencies.list(company_id, page=1, size=None)
+        for agency in existing:
+            if agency.name == name and agency.id != except_id:
+                self.logger.warning(
+                    "Company %s already has an agency named %s.",
+                    company_id,
+                    name,  # noqa: E501
+                )
+                raise MTAgencyNameTaken(
+                    f"Company already operates a site named {name!r}."
+                )
+
+    async def _with_legal_identity(self, agency: Agency) -> Agency:
+        """Copy the company's legal identity onto a head office.
+
+        Args:
+            agency (Agency): The head office being opened.
+
+        Returns:
+            Agency: The same site, carrying the business's identity.
+
+        Notes:
+            - An :class:`~models.organisation.agency.agency.Agency` *is* a
+              :class:`~models.organisation.companies.company.Company`: the head
+              office is where the business is registered, and a quote prints its
+              SIRET, its VAT number and its bank details from the site it was
+              written at. Taking those from the company at creation is what
+              makes the two agree without a join at print time.
+            - **Only fields the payload left empty are filled.** An
+              administrator who typed a corrected RCS entry into the form meant
+              it, and overwriting it with the company's stale one would make the
+              form look broken.
+            - A head office that ends up holding none of it is logged at
+              ``WARNING`` rather than refused. Every one of these fields is
+              optional on a company, so a young agency legitimately has none —
+              but a quote will print without a SIRET, and that is worth saying
+              once here rather than discovering on a customer's document.
+        """
+        company = await self.companies.get(agency.company_id)
+        if company is None:
+            self.logger.error(
+                "Company %s does not exist; its head office is opened without "
+                "a legal identity.",
+                agency.company_id,
+            )
+            return agency
+        inherited = {
+            field: getattr(company, field)
+            for field in Agency.LEGAL_IDENTITY_FIELDS
+            if getattr(agency, field) is None
+        }
+        merged = agency.model_copy(update=inherited) if inherited else agency
+        if not merged.holds_legal_identity():
+            self.logger.warning(
+                "The head office of company %s carries no legal identity: its "
+                "quotes and invoices will print without a registration number.",
+                agency.company_id,
+            )
+        else:
+            self.logger.debug(
+                "Copied %d legal-identity field(s) from company %s onto its "
+                "head office.",
+                len(inherited),
+                agency.company_id,
+            )
+        return merged
+
+    ############################
+    # Publicly Exposed Methods #
+    ############################
+
+    async def create(self, agency: Agency, caller: User) -> Agency:
+        """Open a new site for the caller's company.
+
+        Args:
+            agency (Agency): The site to create, carrying the caller's company.
+            caller (User): The administrator opening it.
+
+        Returns:
+            Agency: The stored site.
+
+        Raises:
+            MTAgencyNameTaken: If the company already has a site of that name.
+            MTAgencyHeadquartersProtected: If it would be a second head office.
+
+        Notes:
+            The type is **decided here and overwritten**, whatever the payload
+            said: the first site of a company is its head office, and every one
+            after it is a branch until somebody deliberately changes it. A
+            payload able to choose would let the second administrator through
+            the door declare their own office the head one.
+        """
+        await self._assert_name_free(agency.company_id, agency.name)
+        existing = await self.agencies.count(agency.company_id)
+        resolved_type = AgencyType.HQ if existing == 0 else AgencyType.OFFICE
+        if agency.agency_type.is_headquarters() and resolved_type is not AgencyType.HQ:  # noqa: E501
+            self.logger.warning(
+                "Company %s already has a headquarters; refusing a second.",
+                agency.company_id,
+            )
+            raise MTAgencyHeadquartersProtected(
+                "This company already has a head office. Only one site may be "
+                "the head office."
+            )
+        proposed = agency.model_copy(update={"agency_type": resolved_type})
+        if resolved_type.is_headquarters():
+            proposed = await self._with_legal_identity(proposed)
+        self.logger.info(
+            "Opening %s agency %s for company %s, requested by %s.",
+            resolved_type.value,
+            agency.name,
+            agency.company_id,
+            caller.id,
+        )
+        return await self.agencies.create(proposed)
+
+    async def get(self, agency_id: str, caller: User) -> Agency:
+        """Return one of the caller's company's sites.
+
+        Args:
+            agency_id (str): The site to read.
+            caller (User): The authenticated caller.
+
+        Returns:
+            Agency: The site.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+        """
+        return await self._owned(agency_id, caller)
+
+    async def list(
+        self, caller: User, page: int = 1, size: Optional[int] = None
+    ) -> List[Agency]:
+        """Return the caller's company's sites.
+
+        Args:
+            caller (User): The authenticated caller.
+            page (int): One-based page number.
+            size (Optional[int]): Page size.
+
+        Returns:
+            List[Agency]: The sites, by name.
+        """
+        self.logger.debug("Listing the agencies visible to account %s.", caller.id)  # noqa: E501
+        return await self.agencies.list(caller.company_id, page=page, size=size)  # noqa: E501
+
+    async def views(
+        self, caller: User, page: int = 1, size: Optional[int] = None
+    ) -> List[AgencyView]:
+        """Return the caller's company's sites, ready for a grid.
+
+        Args:
+            caller (User): The authenticated caller.
+            page (int): One-based page number.
+            size (Optional[int]): Page size.
+
+        Returns:
+            List[AgencyView]: The sites, by name, each carrying how many people
+            and teams it holds.
+
+        Notes:
+            - The two counts come from **one grouped statement each**, not one
+              per row. A page of twenty sites otherwise costs forty-one queries,
+              and the grid is the first screen an administrator opens.
+            - A site nothing is attached to is absent from both results, so the
+              default is supplied here rather than by the database. A grouped
+              count has no row to group when there is nothing to count.
+            - Projecting is what makes these routes safe to open to every signed
+              in account: a site *is* a
+              :class:`~models.organisation.companies.company.Company` and carries
+              the IBAN, which
+              :class:`~models.schemas.responses.organisation.agency_view.AgencyView`
+              does not declare.
+        """
+        agencies = await self.agencies.list(caller.company_id, page=page, size=size)  # noqa: E501
+        members = dict(await self.agencies.count_members_by_agency(caller.company_id))  # noqa: E501
+        teams = dict(await self.teams.count_by_agency(caller.company_id))
+        self.logger.info(
+            "Serving %d site(s) of company %s to account %s.",
+            len(agencies),
+            caller.company_id,
+            caller.id,
+        )
+        return [
+            AgencyView.from_agency(
+                agency,
+                member_count=members.get(str(agency.id), 0),
+                team_count=teams.get(str(agency.id), 0),
+            )
+            for agency in agencies
+        ]
+
+    async def view(self, agency_id: str, caller: User) -> AgencyView:
+        """Return one site, ready for a screen.
+
+        Args:
+            agency_id (str): The site to read.
+            caller (User): The authenticated caller.
+
+        Returns:
+            AgencyView: The site and its two counts.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+
+        Notes:
+            The per-site counts are used here rather than the grouped ones: one
+            row needs two counts, and the grouped form would read the whole
+            company to answer about a single site.
+        """
+        agency = await self._owned(agency_id, caller)
+        return AgencyView.from_agency(
+            agency,
+            member_count=await self.agencies.count_members(agency_id),
+            team_count=await self.teams.count_for_agency(agency_id),
+        )
+
+    async def update(self, agency: Agency, caller: User) -> Agency:
+        """Change a site's name, address or type.
+
+        Args:
+            agency (Agency): The site, carrying its identifier.
+            caller (User): The administrator making the change.
+
+        Returns:
+            Agency: The stored site.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+            MTAgencyNameTaken: If another site already uses the name.
+            MTAgencyHeadquartersProtected: If the change would move or
+                duplicate the head office.
+
+        Notes:
+            - The head office cannot be demoted and no branch can be promoted
+              into a second one. Moving it is deliberately not offered here: it
+              would mean two writes that must both succeed, and a half-applied
+              move leaves a company with none.
+            - **Only the three site fields are taken from the argument**; the
+              rest is kept from the stored record. A site inherits its company's
+              legal identity, so storing the argument whole would let a form
+              that asks for a name and an address blank the SIRET and the
+              account every invoice is paid into.
+        """
+        stored = await self._owned(str(agency.id), caller)
+        await self._assert_name_free(stored.company_id, agency.name, stored.id)
+        if stored.is_headquarters() != agency.agency_type.is_headquarters():
+            self.logger.warning(
+                "Refusing to change the type of agency %s to %s.",
+                stored.id,
+                agency.agency_type.value,
+            )
+            raise MTAgencyHeadquartersProtected(
+                "Which site is the head office cannot be changed here. Only one "
+                "site may hold it, and moving it would leave the company with "
+                "none if the second write failed."
+            )
+        self.logger.info("Updating agency %s, requested by %s.", stored.id, caller.id)  # noqa: E501
+        updated = await self.agencies.update(
+            stored.model_copy(
+                update={
+                    "name": agency.name,
+                    "address": agency.address,
+                    "agency_type": agency.agency_type,
+                }
+            )
+        )
+        if updated is None:
+            self.logger.error("Agency %s vanished while being updated.", stored.id)  # noqa: E501
+            raise MTAgencyNotFound(f"No agency {stored.id!r} exists.")
+        return updated
+
+    async def delete(self, agency_id: str, caller: User) -> None:
+        """Close a site.
+
+        Args:
+            agency_id (str): The site to remove.
+            caller (User): The administrator closing it.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+            MTAgencyNotEmpty: If teams or people are still attached.
+            MTAgencyHeadquartersProtected: If it is the last head office and
+                other sites remain.
+
+        Notes:
+            The counts are in the message because they are the actionable part:
+            teams are moved from one screen and people from another, and a bare
+            "cannot be deleted" sends somebody to look for both.
+        """
+        agency = await self._owned(agency_id, caller)
+        teams = await self.teams.count_for_agency(agency_id)
+        members = await self.agencies.count_members(agency_id)
+        if teams or members:
+            self.logger.warning(
+                "Refusing to delete agency %s: %d team(s) and %d member(s).",
+                agency_id,
+                teams,
+                members,
+            )
+            raise MTAgencyNotEmpty(
+                f"This site still holds {teams} team(s) and {members} "
+                f"member(s). Move them to another site first."
+            )
+        if (
+            agency.is_headquarters()
+            and await self.agencies.count(agency.company_id) > 1
+        ):
+            self.logger.warning(
+                "Refusing to delete the headquarters of company %s while %d "
+                "other site(s) remain.",
+                agency.company_id,
+                await self.agencies.count(agency.company_id) - 1,
+            )
+            raise MTAgencyHeadquartersProtected(
+                "The head office cannot be closed while the company still "
+                "operates from other sites."
+            )
+        self.logger.info("Closing agency %s, requested by %s.", agency_id, caller.id)  # noqa: E501
+        await self.agencies.delete(agency_id)
+
+    async def members(self, agency_id: str, caller: User) -> List[AgencyMember]:  # noqa: E501
+        """Return everybody attached to one of the caller's company's sites.
+
+        Args:
+            agency_id (str): The site to read.
+            caller (User): The authenticated caller.
+
+        Returns:
+            List[AgencyMember]: The memberships.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+        """
+        await self._owned(agency_id, caller)
+        return await self.agencies.list_members(agency_id)
+
+    async def add_member(
+        self, agency_id: str, member: AgencyMember, caller: User
+    ) -> AgencyMember:
+        """Attach somebody to a site.
+
+        Args:
+            agency_id (str): The site they join.
+            member (AgencyMember): Which person, and which kind of record.
+            caller (User): The administrator attaching them.
+
+        Returns:
+            AgencyMember: The stored membership.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists.
+            MTAgencyForbidden: If it belongs to another company.
+            MTAgencyMemberAlreadyPlaced: If they already belong to a site.
+
+        Notes:
+            Refused rather than moved. Somebody changing site is a deliberate
+            two-step, because an insert that quietly won would make "where does
+            this person work?" depend on which form was saved last — and their
+            team, which is tied to a site, would silently disagree with it.
+        """
+        await self._owned(agency_id, caller)
+        existing = await self.agencies.agency_for_member(
+            member.member_kind, member.member_id
+        )
+        if existing is not None:
+            self.logger.warning(
+                "%s %s already belongs to agency %s.",
+                member.member_kind.value,
+                member.member_id,
+                existing.id,
+            )
+            raise MTAgencyMemberAlreadyPlaced(
+                f"This person already works at {existing.name!r}. Detach them "
+                f"from that site first."
+            )
+        self.logger.info(
+            "Attaching %s %s to agency %s, requested by %s.",
+            member.member_kind.value,
+            member.member_id,
+            agency_id,
+            caller.id,
+        )
+        return await self.agencies.add_member(agency_id, member)
+
+    async def remove_member(
+        self,
+        agency_id: str,
+        member_kind: MemberKind,
+        member_id: str,
+        caller: User,  # noqa: E501
+    ) -> None:
+        """Detach somebody from a site.
+
+        Args:
+            agency_id (str): The site they leave.
+            member_kind (MemberKind): Whether the identifier names an account
+                or an assistant record.
+            member_id (str): The account or record to detach.
+            caller (User): The administrator detaching them.
+
+        Raises:
+            MTAgencyNotFound: If no such site exists, or the person is not on
+                it.
+            MTAgencyForbidden: If the site belongs to another company.
+
+        Notes:
+            Taking somebody off a site does **not** take them off their team.
+            The two are separate acts because a team is refused a member from
+            outside its site, so the screen has to be able to do them in the
+            order that leaves no invalid state in between.
+        """
+        await self._owned(agency_id, caller)
+        removed = await self.agencies.remove_member(member_kind, member_id)
+        if not removed:
+            self.logger.warning(
+                "%s %s is not attached to agency %s.",
+                member_kind.value,
+                member_id,
+                agency_id,
+            )
+            raise MTAgencyNotFound(
+                f"No {member_kind.value} {member_id!r} "  # noqa: E501
+                "is attached to this site."
+            )
+        self.logger.info(
+            "Detached %s %s from agency %s, requested by %s.",
+            member_kind.value,
+            member_id,
+            agency_id,
+            caller.id,
+        )
+
+    async def detach_person(self, member_kind: MemberKind, member_id: str) -> None:  # noqa: E501
+        """Remove somebody from whichever site they belong to.
+
+        Args:
+            member_kind (MemberKind): Whether the identifier names an account
+                or an assistant record.
+            member_id (str): The account or record being deleted.
+
+        Notes:
+            Called by the person-deletion paths, and deliberately silent when
+            there is nothing to remove. The membership tables carry no foreign
+            key on ``member_id`` — the column is polymorphic — so nothing
+            cascades, and a deleted assistant whose membership survived would
+            put a ghost on a roster and in a planning workforce.
+        """
+        removed = await self.agencies.remove_member(member_kind, member_id)
+        if removed:
+            self.logger.info(
+                "Detached %s %s from their agency as their record is removed.",
+                member_kind.value,
+                member_id,
+            )
+        else:
+            self.logger.debug(
+                "%s %s belonged to no agency; nothing to detach.",
+                member_kind.value,
+                member_id,
+            )

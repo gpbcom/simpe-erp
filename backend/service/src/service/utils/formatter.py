@@ -14,7 +14,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language
 from models.people.customer import Customer
 from models.planning.hca_planning import HcaPlanning

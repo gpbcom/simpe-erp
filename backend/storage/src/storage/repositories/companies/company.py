@@ -4,13 +4,14 @@ from __future__ import annotations
 from logging import Logger, getLogger
 from typing import List, Optional, Tuple
 
+from sqlalchemy import Select, select
+
 # Third-party imports
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from storage.mappers.companies.company_mapper import CompanyMapper
 from storage.orm.companies.company_row import CompanyRow
 from storage.repositories.base import BaseRepository
@@ -37,9 +38,9 @@ class CompanyRepository(BaseRepository[CompanyRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
-        super().__init__(session=session, row_class=CompanyRow, logger=resolved_logger)
-        self.mapper = CompanyMapper(logger=resolved_logger)
+        self.logger = logger if logger else getLogger(__name__)
+        super().__init__(session=session, row_class=CompanyRow)
+        self.mapper = CompanyMapper()
 
     ############################
     # Internal Helpers Methods #

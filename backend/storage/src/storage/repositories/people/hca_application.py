@@ -36,11 +36,9 @@ class HcaApplicationRepository(BaseRepository[HcaApplicationRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
-        super().__init__(
-            session=session, row_class=HcaApplicationRow, logger=resolved_logger
-        )
-        self.mapper = HcaApplicationMapper(logger=resolved_logger)
+        self.logger = logger if logger else getLogger(__name__)
+        super().__init__(session=session, row_class=HcaApplicationRow)
+        self.mapper = HcaApplicationMapper()
 
     ############################
     # Internal Helpers Methods #

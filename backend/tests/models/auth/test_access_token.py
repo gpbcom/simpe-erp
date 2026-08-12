@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -14,6 +13,7 @@ from models.auth.exceptions import (
     MTAccessTokenInvalidTokenType,
     MTInvalidAccessTokenException,
 )
+from tests.annotations import ModelInput
 
 
 class TestAccessToken:
@@ -57,7 +57,7 @@ class TestAccessToken:
             pytest.param(12345, id="Invalid - int"),
         ],
     )
-    def test_invalid_access_token_raises(self, invalid_token: Any) -> None:
+    def test_invalid_access_token_raises(self, invalid_token: ModelInput) -> None:
         """A token that is not a non-empty string is rejected."""
         with pytest.raises(MTAccessTokenInvalidAccessToken):
             AccessToken(access_token=invalid_token, expires_in=60)
@@ -91,7 +91,7 @@ class TestAccessToken:
             pytest.param(1, id="Invalid - int"),
         ],
     )
-    def test_invalid_token_type_raises(self, invalid_type: Any) -> None:
+    def test_invalid_token_type_raises(self, invalid_type: ModelInput) -> None:
         """Anything other than bearer is rejected."""
         with pytest.raises(MTAccessTokenInvalidTokenType):
             AccessToken(access_token="abc", expires_in=60, token_type=invalid_type)
@@ -111,7 +111,7 @@ class TestAccessToken:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_invalid_expires_in_raises(self, invalid_expiry: Any) -> None:
+    def test_invalid_expires_in_raises(self, invalid_expiry: ModelInput) -> None:
         """A lifetime that is not a strictly positive integer is rejected."""
         with pytest.raises(MTAccessTokenInvalidExpiresIn):
             AccessToken(access_token="abc", expires_in=invalid_expiry)

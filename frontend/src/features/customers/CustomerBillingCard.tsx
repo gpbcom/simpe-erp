@@ -3,10 +3,7 @@ import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import {
-  useBillingSettings,
-  useSetCustomerBillingPeriodicity,
-} from '@/api/queries';
+import { useBillingSettings, useSetCustomerBillingPeriodicity } from '@/api/queries';
 import type { BillingPeriodicity, Customer } from '@/api/types';
 
 /** The value the select holds when the customer follows the agency. */

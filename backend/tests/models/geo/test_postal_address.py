@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, List, Self
+from typing import Dict, List, Self
 
 # Third-party imports
 import pytest
@@ -21,6 +21,7 @@ from models.geo.exceptions import (
 )
 from models.geo.geo_point import GeoPoint
 from models.geo.postal_address import PostalAddress
+from tests.annotations import ModelInput
 
 
 class _FakeResponse:
@@ -50,11 +51,11 @@ class _FakeResponse:
         """
         return self
 
-    def __exit__(self, *exc_info: object) -> bool:
+    def __exit__(self, *exc_info: ModelInput) -> bool:
         """Leave the context manager.
 
         Args:
-            *exc_info (Any): The exception triple, if any.
+            *exc_info (ModelInput): The exception triple, if any.
 
         Returns:
             bool: ``False``, so any exception propagates.
@@ -62,12 +63,12 @@ class _FakeResponse:
         return False
 
 
-def _explode(*args: Any, **kwargs: Any) -> None:
+def _explode(*args: ModelInput, **kwargs: ModelInput) -> None:
     """Fail loudly if a lookup is attempted.
 
     Args:
-        *args (Any): Ignored.
-        **kwargs (Any): Ignored.
+        *args (ModelInput): Ignored.
+        **kwargs (ModelInput): Ignored.
 
     Raises:
         AssertionError: Always.
@@ -76,11 +77,11 @@ def _explode(*args: Any, **kwargs: Any) -> None:
 
 
 @pytest.fixture
-def valid_address_kwargs() -> Dict[str, Any]:
+def valid_address_kwargs() -> Dict[str, ModelInput]:
     """Return the minimal keyword arguments for a valid address.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "street": "12 rue de Rivoli",
@@ -97,7 +98,7 @@ class TestPostalAddress:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An address needs only a street, a postal code and a city."""
         address = PostalAddress(**valid_address_kwargs)
@@ -106,13 +107,13 @@ class TestPostalAddress:
         assert address.city == "Paris"
 
     def test_country_defaults_to_france(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An omitted country falls back to the configured default."""
         assert PostalAddress(**valid_address_kwargs).country == "France"
 
     def test_coordinates_default_to_unset(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A fresh address carries no coordinate and no error."""
         address = PostalAddress(**valid_address_kwargs)
@@ -121,7 +122,9 @@ class TestPostalAddress:
         assert address.geocoding_error is None
 
     def test_construction_is_inert_while_geocoding_is_suppressed(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The kill switch stops the lookup entirely.
 
@@ -148,7 +151,7 @@ class TestPostalAddress:
     )
     def test_text_fields_are_stripped(
         self,
-        valid_address_kwargs: Dict[str, Any],
+        valid_address_kwargs: Dict[str, ModelInput],
         field: str,
         raw: str,
         expected: str,
@@ -172,7 +175,7 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_street_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A street that is not a non-empty string is rejected."""
         with pytest.raises(MTPostalAddressInvalidStreet):
@@ -188,14 +191,14 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_postal_code_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A postal code that is not a non-empty string is rejected."""
         with pytest.raises(MTPostalAddressInvalidPostalCode):
             PostalAddress(**{**valid_address_kwargs, "postal_code": invalid_value})
 
     def test_foreign_postal_codes_are_accepted(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The format is not constrained to five digits.
 
@@ -217,7 +220,7 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_city_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A city that is not a non-empty string is rejected."""
         with pytest.raises(MTPostalAddressInvalidCity):
@@ -228,7 +231,7 @@ class TestPostalAddress:
     # ------------------------------------------------------------------ #
 
     def test_none_country_falls_back_to_the_default(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An explicit None country yields the default rather than an error."""
         address = PostalAddress(**{**valid_address_kwargs, "country": None})
@@ -243,7 +246,7 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_country_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A country that is neither None nor a non-empty string is rejected."""
         with pytest.raises(MTPostalAddressInvalidCountry):
@@ -263,7 +266,7 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_latitude_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A latitude outside -90..90, or not a number, is rejected."""
         with pytest.raises(MTPostalAddressInvalidLatitude):
@@ -279,14 +282,14 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_longitude_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """A longitude outside -180..180, or not a number, is rejected."""
         with pytest.raises(MTPostalAddressInvalidLongitude):
             PostalAddress(**{**valid_address_kwargs, "longitude": invalid_value})
 
     def test_none_coordinates_are_accepted(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An ungeocoded address holds None for both coordinates."""
         address = PostalAddress(
@@ -303,7 +306,7 @@ class TestPostalAddress:
         "code", ["service_unavailable", "not_found", "invalid_response"]
     )
     def test_known_geocoding_errors_are_accepted(
-        self, valid_address_kwargs: Dict[str, Any], code: str
+        self, valid_address_kwargs: Dict[str, ModelInput], code: str
     ) -> None:
         """Each documented stable error code is accepted."""
         address = PostalAddress(**{**valid_address_kwargs, "geocoding_error": code})
@@ -318,7 +321,7 @@ class TestPostalAddress:
         ],
     )
     def test_invalid_geocoding_error_raises(
-        self, valid_address_kwargs: Dict[str, Any], invalid_value: Any
+        self, valid_address_kwargs: Dict[str, ModelInput], invalid_value: ModelInput
     ) -> None:
         """An unknown geocoding-error code is rejected."""
         with pytest.raises(MTPostalAddressInvalidGeocodingError):
@@ -329,13 +332,13 @@ class TestPostalAddress:
     # ------------------------------------------------------------------ #
 
     def test_is_geocoded_is_false_without_coordinates(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An address with no coordinate is not geocoded."""
         assert PostalAddress(**valid_address_kwargs).is_geocoded() is False
 
     def test_is_geocoded_is_true_with_both_coordinates(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An address with both coordinates is geocoded."""
         address = PostalAddress(
@@ -352,9 +355,9 @@ class TestPostalAddress:
     )
     def test_a_half_geocoded_address_is_not_geocoded(
         self,
-        valid_address_kwargs: Dict[str, Any],
-        latitude: Any,
-        longitude: Any,
+        valid_address_kwargs: Dict[str, ModelInput],
+        latitude: ModelInput,
+        longitude: ModelInput,
     ) -> None:
         """One coordinate alone is unusable, so it does not count."""
         address = PostalAddress(
@@ -364,7 +367,7 @@ class TestPostalAddress:
         assert address.to_geo_point() is None
 
     def test_to_geo_point_returns_the_coordinate(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A geocoded address converts to the solver's coordinate type."""
         address = PostalAddress(
@@ -373,7 +376,7 @@ class TestPostalAddress:
         assert address.to_geo_point() == GeoPoint(latitude=48.8566, longitude=2.3522)
 
     def test_to_geo_point_returns_none_when_ungeocoded(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An ungeocoded address yields None rather than raising.
 
@@ -384,7 +387,7 @@ class TestPostalAddress:
         """
         assert PostalAddress(**valid_address_kwargs).to_geo_point() is None
 
-    def test_to_single_line(self, valid_address_kwargs: Dict[str, Any]) -> None:
+    def test_to_single_line(self, valid_address_kwargs: Dict[str, ModelInput]) -> None:
         """The one-line form is what is geocoded and displayed."""
         address = PostalAddress(**valid_address_kwargs)
         assert address.to_single_line() == "12 rue de Rivoli, 75004 Paris, France"
@@ -413,7 +416,9 @@ class TestPostalAddress:
     #  Serialization
     # ------------------------------------------------------------------ #
 
-    def test_model_dump_round_trip(self, valid_address_kwargs: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(
+        self, valid_address_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """An address serialises to a dict and rebuilds identically."""
         address = PostalAddress(
             **{**valid_address_kwargs, "latitude": 48.8566, "longitude": 2.3522}
@@ -421,7 +426,7 @@ class TestPostalAddress:
         assert PostalAddress(**address.model_dump()) == address
 
     def test_class_constants_are_not_fields(
-        self, valid_address_kwargs: Dict[str, Any]
+        self, valid_address_kwargs: Dict[str, ModelInput]
     ) -> None:
         """ClassVars stay out of the serialised payload."""
         dumped = PostalAddress(**valid_address_kwargs).model_dump()
@@ -445,7 +450,9 @@ class TestPostalAddressGeocoding:
     # ------------------------------------------------------------------ #
 
     def test_construction_resolves_the_coordinate(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Building an address fills in its latitude and longitude."""
         monkeypatch.setattr(
@@ -462,7 +469,9 @@ class TestPostalAddressGeocoding:
         assert address.is_geocoded() is True
 
     def test_the_request_identifies_the_deployment(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Nominatim's usage policy requires an identifying User-Agent.
 
@@ -470,9 +479,9 @@ class TestPostalAddressGeocoding:
             A generic or absent User-Agent gets the deployment's address
             blocked, which presents as every lookup silently failing.
         """
-        captured: List[Any] = []
+        captured: List[ModelInput] = []
 
-        def _capture(request: Any, timeout: float = 0) -> Any:
+        def _capture(request: ModelInput, timeout: float = 0) -> ModelInput:
             captured.append(request)
             return _FakeResponse(b'[{"lat": "48.8", "lon": "2.3"}]')
 
@@ -483,12 +492,14 @@ class TestPostalAddressGeocoding:
         assert "simple-erp" in user_agent
 
     def test_the_query_carries_the_full_address(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The one-line form is what gets searched."""
-        captured: List[Any] = []
+        captured: List[ModelInput] = []
 
-        def _capture(request: Any, timeout: float = 0) -> Any:
+        def _capture(request: ModelInput, timeout: float = 0) -> ModelInput:
             captured.append(request.full_url)
             return _FakeResponse(b'[{"lat": "48.8", "lon": "2.3"}]')
 
@@ -498,7 +509,9 @@ class TestPostalAddressGeocoding:
         assert "Rivoli" in captured[0]
 
     def test_the_operators_own_fields_are_not_overwritten(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Only the coordinate is taken from the answer.
 
@@ -524,7 +537,9 @@ class TestPostalAddressGeocoding:
     # ------------------------------------------------------------------ #
 
     def test_an_already_resolved_address_is_not_looked_up(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A supplied coordinate is trusted rather than re-checked.
 
@@ -548,7 +563,7 @@ class TestPostalAddressGeocoding:
     )
     def test_a_stored_failure_is_not_retried(
         self,
-        valid_address_kwargs: Dict[str, Any],
+        valid_address_kwargs: Dict[str, ModelInput],
         monkeypatch: pytest.MonkeyPatch,
         stored_error: str,
     ) -> None:
@@ -570,7 +585,9 @@ class TestPostalAddressGeocoding:
         assert address.latitude is None
 
     def test_clearing_the_code_makes_the_address_resolvable_again(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Rebuilding without the stored code retries the lookup."""
         monkeypatch.setattr(
@@ -588,7 +605,9 @@ class TestPostalAddressGeocoding:
         assert retried.geocoding_error is None
 
     def test_a_half_resolved_address_is_looked_up(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """One coordinate alone is unusable, so the lookup still runs."""
         monkeypatch.setattr(
@@ -608,11 +627,13 @@ class TestPostalAddressGeocoding:
     # ------------------------------------------------------------------ #
 
     def test_an_unreachable_service_records_a_code(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A network failure must not stop a customer being created."""
 
-        def _fail(request: Any, timeout: float = 0) -> Any:
+        def _fail(request: ModelInput, timeout: float = 0) -> ModelInput:
             raise postal_address_module.URLError("connection refused")
 
         monkeypatch.setattr(postal_address_module, "urlopen", _fail)
@@ -621,11 +642,13 @@ class TestPostalAddressGeocoding:
         assert address.is_geocoded() is False
 
     def test_a_timeout_records_a_code(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A slow service is recorded, not raised."""
 
-        def _timeout(request: Any, timeout: float = 0) -> Any:
+        def _timeout(request: ModelInput, timeout: float = 0) -> ModelInput:
             raise TimeoutError("timed out")
 
         monkeypatch.setattr(postal_address_module, "urlopen", _timeout)
@@ -633,7 +656,9 @@ class TestPostalAddressGeocoding:
         assert address.geocoding_error == "service_unavailable"
 
     def test_an_unknown_address_records_not_found(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """An address the map does not know is still storable.
 
@@ -663,7 +688,7 @@ class TestPostalAddressGeocoding:
     )
     def test_an_unusable_answer_records_invalid_response(
         self,
-        valid_address_kwargs: Dict[str, Any],
+        valid_address_kwargs: Dict[str, ModelInput],
         monkeypatch: pytest.MonkeyPatch,
         body: bytes,
     ) -> None:
@@ -677,7 +702,9 @@ class TestPostalAddressGeocoding:
         assert address.geocoding_error == "invalid_response"
 
     def test_the_geocoding_exceptions_never_escape(
-        self, valid_address_kwargs: Dict[str, Any], monkeypatch: pytest.MonkeyPatch
+        self,
+        valid_address_kwargs: Dict[str, ModelInput],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The typed failures are internal: construction always succeeds.
 
@@ -687,7 +714,7 @@ class TestPostalAddressGeocoding:
             caller has to handle them.
         """
 
-        def _fail(request: Any, timeout: float = 0) -> Any:
+        def _fail(request: ModelInput, timeout: float = 0) -> ModelInput:
             raise postal_address_module.URLError("connection refused")
 
         monkeypatch.setattr(postal_address_module, "urlopen", _fail)

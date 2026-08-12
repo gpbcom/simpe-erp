@@ -2,9 +2,7 @@ class MTInvalidIntegrationSchemaException(Exception):
     """Exception raised when an invalid integration payload is provided."""
 
 
-class MTEInvoicingIntegrationRequestInvalidField(
-    MTInvalidIntegrationSchemaException
-):
+class MTEInvoicingIntegrationRequestInvalidField(MTInvalidIntegrationSchemaException):
     """Exception raised when the enable payload is missing or malformed.
 
     Notes:
@@ -14,7 +12,5 @@ class MTEInvoicingIntegrationRequestInvalidField(
     """
 
 
-class MTIntegrationCardResponseInvalidProvider(
-    MTInvalidIntegrationSchemaException
-):
+class MTIntegrationCardResponseInvalidProvider(MTInvalidIntegrationSchemaException):
     """Exception raised when a gallery card names no supported platform."""

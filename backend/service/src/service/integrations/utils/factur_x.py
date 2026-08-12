@@ -12,7 +12,7 @@ from facturx import generate_from_binary, xml_check_xsd
 # First-party imports
 from models.billing.bill import Bill
 from models.billing.bill_line import BillLine
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import Language
 from models.geo.postal_address import PostalAddress
 from service.integrations.utils.exceptions import (

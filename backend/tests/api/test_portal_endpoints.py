@@ -26,6 +26,7 @@ from models.enums import Language, QuoteStatus, UserRole
 from models.people.customer import Customer
 from models.quoting.quote import Quote
 from service.customers.exceptions import MTCustomerNotFound
+from tests.annotations import ModelInput
 
 CUSTOMER_PAYLOAD = {
     "first_name": "Marie",
@@ -236,13 +237,13 @@ class TestPortalWrites:
         ],
     )
     def test_an_impossible_window_answers_422(
-        self, portal: AsyncMock, body: Dict[str, object]
+        self, portal: AsyncMock, body: Dict[str, ModelInput]
     ) -> None:
         """Refused before the solver is asked to fit work into nothing.
 
         Args:
             portal (AsyncMock): The stubbed portal service.
-            body (Dict[str, object]): The rejected payload.
+            body (Dict[str, ModelInput]): The rejected payload.
         """
         response = _client(portal).post(
             "/api/v1/portal/interventions/intervention-1/reschedule", json=body

@@ -23,6 +23,7 @@ from models.schemas.requests.catalog.skill_type_update_request import (
     SkillTypeUpdateRequest,
 )
 from models.schemas.requests.hca.skill_create_request import SkillCreateRequest
+from tests.annotations import ModelInput
 
 
 class TestSkillTypeUpdateRequest:
@@ -57,7 +58,7 @@ class TestSkillTypeUpdateRequest:
         assert SkillTypeUpdateRequest(label="  Toilette  ").label == "Toilette"
 
     @pytest.mark.parametrize("label", ["", "   ", 42])
-    def test_a_blank_label_is_refused(self, label: object) -> None:
+    def test_a_blank_label_is_refused(self, label: ModelInput) -> None:
         """A blank label shows on screen as an option nobody can identify."""
         with pytest.raises(MTSkillTypeUpdateRequestInvalidLabel):
             SkillTypeUpdateRequest(label=label)
@@ -68,7 +69,7 @@ class TestSkillTypeUpdateRequest:
             SkillTypeUpdateRequest(description=42)
 
     @pytest.mark.parametrize("value", ["false", 0, 1, "true"])
-    def test_a_non_boolean_is_active_is_refused(self, value: object) -> None:
+    def test_a_non_boolean_is_active_is_refused(self, value: ModelInput) -> None:
         """Strings are refused rather than coerced.
 
         Notes:
@@ -117,7 +118,7 @@ class TestSkillCreateRequest:
         assert request.code is None
 
     @pytest.mark.parametrize("name", ["", "   ", None, 42])
-    def test_a_blank_name_is_refused(self, name: object) -> None:
+    def test_a_blank_name_is_refused(self, name: ModelInput) -> None:
         """A declaration with no name is not a record anybody keeps."""
         with pytest.raises(MTSkillCreateRequestInvalidName):
             SkillCreateRequest(name=name)
@@ -131,7 +132,7 @@ class TestSkillCreateRequest:
         assert SkillCreateRequest(name="Bricolage", code="  ").code is None
 
     @pytest.mark.parametrize("code", [42, "A B", "LEVÉ", "A!"])
-    def test_a_malformed_code_is_refused(self, code: object) -> None:
+    def test_a_malformed_code_is_refused(self, code: ModelInput) -> None:
         """A malformed code would match nothing and quietly qualify nobody."""
         with pytest.raises(MTSkillCreateRequestInvalidCode):
             SkillCreateRequest(name="x", code=code)
@@ -144,7 +145,7 @@ class TestSkillCreateRequest:
             )
 
     @pytest.mark.parametrize("issuer", ["", "   ", 42])
-    def test_a_blank_issuer_is_refused(self, issuer: object) -> None:
+    def test_a_blank_issuer_is_refused(self, issuer: ModelInput) -> None:
         """An issuer is a name or nothing, never an empty string."""
         with pytest.raises(MTSkillCreateRequestInvalidIssuer):
             SkillCreateRequest(name="x", issuer=issuer)

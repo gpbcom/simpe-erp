@@ -17,10 +17,11 @@ from api.dependencies import (
     get_event_publisher,
     get_hca_service,
     get_quote_service,
+    get_team_service,
 )
 from models.auth.user import User
-from models.companies.company import Company
-from models.companies.exceptions import MTInvalidCompanyException
+from models.organisation.companies.company import Company
+from models.organisation.companies.exceptions import MTInvalidCompanyException
 from models.enums import EventRoutingKey
 from models.people.customer import Customer
 from models.people.hca.skill import Skill
@@ -45,6 +46,7 @@ from models.schemas.requests.quoting.quote_lines_request import (
 )
 from models.schemas.responses.auth.user_response import UserResponse
 from models.schemas.responses.hca.hca_response import HcaResponse
+from models.schemas.responses.organisation.team_view import TeamView
 from service.auth.auth import AuthService
 from service.companies.companies import CompanyService
 from service.companies.exceptions import MTInvalidCompanyServiceException
@@ -52,6 +54,7 @@ from service.customers.customers import CustomerService
 from service.hcas.exceptions import MTHcaForbidden
 from service.hcas.hcas import HcaService
 from service.messaging.publisher import EventPublisher
+from service.organisation.teams import TeamService
 from service.quotes.quotes import QuoteService
 
 logger: Logger = getLogger(__name__)
@@ -405,6 +408,37 @@ async def remove_my_account_photo(
     logger.info("Account %s is removing its own portrait.", caller.email)
     updated = await service.clear_photo(caller)
     return UserResponse.from_user(updated)
+
+
+@router.get("/team", response_model=TeamView)
+async def read_my_team(
+    service: TeamService = Depends(get_team_service),
+    caller: User = Depends(get_current_user),
+) -> TeamView:
+    """Return the team the caller is themselves on.
+
+    Args:
+        service (TeamService): The team service.
+        caller (User): The authenticated caller.
+
+    Returns:
+        TeamView: Their team and its member count.
+
+    Raises:
+        MTTeamNotFound: If the account is on no team; answered as a 404.
+
+    Notes:
+        - **The identifier comes from the credential**, as it does for the
+          caller's own agency: an assistant signing in has no way to know their
+          team's identifier, and a screen holding one it read from somewhere else
+          is a screen that can be pointed at somebody else's team.
+        - The team the caller is *on*, not the teams a manager *runs*. A manager
+          who runs two teams is a member of one, and it is that one whose roster
+          and shared space are theirs. ``GET /api/v1/teams`` serves the other
+          list.
+    """
+    logger.debug("Account %s read their own team.", caller.email)
+    return await service.own(caller)
 
 
 @router.get("/hca", response_model=HcaResponse)
@@ -775,7 +809,7 @@ async def create_my_quote(
         the figures before a manager is asked to look.
     """
     return await service.create(
-        payload.to_quote(caller.company_id), author_id=caller.id or caller.email
+        payload, caller.company_id, author_id=caller.id or caller.email
     )
 
 

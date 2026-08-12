@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, AsyncIterator, Dict
+from typing import AsyncIterator, Dict
 
 # Third-party imports
 import pytest
@@ -18,6 +18,7 @@ from models.enums import ContractType
 from models.people.customer import Customer
 from models.people.hca import Hca
 from storage.orm import Base
+from tests.annotations import ModelInput
 
 
 @pytest.fixture(scope="session")
@@ -72,11 +73,11 @@ async def session() -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-def customer_kwargs() -> Dict[str, Any]:
+def customer_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid customer.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "first_name": "Marie",
@@ -94,11 +95,11 @@ def customer_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def customer(customer_kwargs: Dict[str, Any]) -> Customer:
+def customer(customer_kwargs: Dict[str, ModelInput]) -> Customer:
     """Return an unsaved customer.
 
     Args:
-        customer_kwargs (Dict[str, Any]): Constructor keyword arguments.
+        customer_kwargs (Dict[str, ModelInput]): Constructor keyword arguments.
 
     Returns:
         Customer: A customer with no identifier yet.
@@ -107,11 +108,11 @@ def customer(customer_kwargs: Dict[str, Any]) -> Customer:
 
 
 @pytest.fixture
-def hca_kwargs() -> Dict[str, Any]:
+def hca_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid assistant.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "first_name": "Luc",
@@ -130,11 +131,11 @@ def hca_kwargs() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def hca(hca_kwargs: Dict[str, Any]) -> Hca:
+def hca(hca_kwargs: Dict[str, ModelInput]) -> Hca:
     """Return an unsaved assistant.
 
     Args:
-        hca_kwargs (Dict[str, Any]): Constructor keyword arguments.
+        hca_kwargs (Dict[str, ModelInput]): Constructor keyword arguments.
 
     Returns:
         Hca: An assistant with no identifier yet.

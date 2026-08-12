@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, date, datetime, time
-from typing import Any, Dict, List
+from typing import Dict, List
 
 # Third-party imports
 import pytest
@@ -18,18 +18,22 @@ from models.planning.planning_run import PlanningRun
 from storage.repositories.people.hca import HcaRepository
 from storage.repositories.planning.intervention import InterventionRepository
 from storage.repositories.planning.planning_run import PlanningRunRepository
+from tests.annotations import ModelInput
 
 MONDAY = date(2026, 8, 3)
+#: The team every fixture here belongs to unless it deliberately says otherwise.
+TEAM = "team-1"
+
 TUESDAY = date(2026, 8, 4)
 NEXT_MONDAY = date(2026, 8, 10)
 
 
-async def _hca(session: AsyncSession, kwargs: Dict[str, Any], email: str) -> str:
+async def _hca(session: AsyncSession, kwargs: Dict[str, ModelInput], email: str) -> str:
     """Store an assistant and return its identifier.
 
     Args:
         session (AsyncSession): The open session.
-        kwargs (Dict[str, Any]): Assistant constructor arguments.
+        kwargs (Dict[str, ModelInput]): Assistant constructor arguments.
         email (str): The address to give this one, which must be unique.
 
     Returns:
@@ -47,6 +51,7 @@ def _visit(
     day: date = MONDAY,
     start: time = time(9, 0),
     name: str = "Toilette matin",
+    team_id: str = TEAM,
 ) -> Intervention:
     """Build a visit ready to store.
 
@@ -56,12 +61,14 @@ def _visit(
         day (date): The day it happens.
         start (time): When it begins.
         name (str): What the service is.
+        team_id (str): The team whose calendar it sits on.
 
     Returns:
         Intervention: The unsaved visit.
     """
     return Intervention(
         company_id="company-1",
+        team_id=team_id,
         planning_run_id=run_id,
         name=name,
         intervention_type_id="type-1",
@@ -96,6 +103,7 @@ async def _run(session: AsyncSession, status: PlanningRunStatus) -> PlanningRun:
     return await PlanningRunRepository(session).create(
         PlanningRun(
             company_id="company-1",
+            team_id=TEAM,
             status=status,
             requested_by="admin-1",
             period_start=MONDAY,
@@ -295,7 +303,7 @@ class TestInterventionRepository:
     # ------------------------------------------------------------------ #
 
     async def test_replanning_one_agency_leaves_another_agencys_week_intact(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The delete names an agency, so it cannot reach past one.
 
@@ -316,17 +324,21 @@ class TestInterventionRepository:
         )
 
         await repository.replace_for_period(
-            "company-2", MONDAY, date(2026, 8, 9), [theirs]
+            "company-2", TEAM, MONDAY, date(2026, 8, 9), [theirs]
         )
         await repository.replace_for_period(
-            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id, name="Ours")]
+            "company-1",
+            TEAM,
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Ours")],
         )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
         assert sorted(visit.name for visit in visits) == ["Ours", "Theirs"]
 
     async def test_an_empty_plan_clears_only_its_own_agency(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A run that placed nothing still must not blank everybody else.
 
@@ -343,16 +355,170 @@ class TestInterventionRepository:
             update={"company_id": "company-2"}
         )
         await repository.replace_for_period(
-            "company-2", MONDAY, date(2026, 8, 9), [theirs]
+            "company-2", TEAM, MONDAY, date(2026, 8, 9), [theirs]
         )
 
-        await repository.replace_for_period("company-1", MONDAY, date(2026, 8, 9), [])
+        await repository.replace_for_period(
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), []
+        )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
         assert [visit.name for visit in visits] == ["Theirs"]
 
+    # ------------------------------------------------------------------ #
+    #  One team's plan is not another's
+    # ------------------------------------------------------------------ #
+
+    async def test_replanning_one_team_leaves_another_teams_week_intact(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """The delete names a team, so it cannot reach past one.
+
+        Notes:
+            **The agency test one level down, and now the likelier of the two.**
+            Two agencies replanning the same days is a coincidence; two teams of
+            the same agency doing it is an ordinary Monday, because each team's
+            manager re-plans their own week. Without the team in the delete, the
+            second manager to press the button would blank the first one's
+            calendars and write none of them back.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            "company-1",
+            "team-2",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Theirs", team_id="team-2")],
+        )
+        await repository.replace_for_period(
+            "company-1",
+            TEAM,
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Ours")],
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert sorted(visit.name for visit in visits) == ["Ours", "Theirs"]
+
+    async def test_an_empty_plan_clears_only_its_own_team(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """A team's run that placed nothing must not blank its sister team.
+
+        Notes:
+            The same reasoning as the agency case, and the same reason the team
+            is a **parameter** rather than read off the visits: there are none
+            to read it from, so an implementation that derived the scope from
+            the new plan would fall back to deleting everything precisely when
+            it matters most.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1",
+            "team-2",
+            MONDAY,
+            date(2026, 8, 9),
+            [_visit(hca_id, run.id, name="Theirs", team_id="team-2")],
+        )
+
+        await repository.replace_for_period(
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), []
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.name for visit in visits] == ["Theirs"]
+
+    async def test_the_team_survives_the_round_trip(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """A stored visit still knows whose week it is part of.
+
+        Notes:
+            It has to: the next replacement of that period finds it by exactly
+            this column, and a visit that lost it would be one no team's run
+            could ever clear again.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+
+        await repository.replace_for_period(
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+
+        visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
+        assert [visit.team_id for visit in visits] == [TEAM]
+
+    async def test_the_teams_holding_a_customers_future_work_are_reported(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """A household served by two teams needs two replans, not one.
+
+        Notes:
+            Not a contrived case: a household's quotes are attributed one at a
+            time, so a customer taken on before a second branch opened can
+            legitimately hold work with both. Replanning only the first team
+            leaves the second one's assistants going to a door for work that has
+            been withdrawn.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+        await repository.replace_for_period(
+            "company-1",
+            "team-2",
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(
+                    hca_id,
+                    run.id,
+                    start=time(14, 0),
+                    name="Theirs",
+                    team_id="team-2",
+                )
+            ],
+        )
+
+        teams = await repository.future_teams_for_person(
+            "customer-1", is_customer=True, from_day=MONDAY
+        )
+
+        assert teams == [TEAM, "team-2"]
+
+    async def test_past_visits_name_no_team_to_replan(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """Days already worked are not rebuilt, so their team is not reported.
+
+        Notes:
+            Rewriting them would move visits somebody has already made — the
+            same reason the period measurement excludes them.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+        )
+
+        teams = await repository.future_teams_for_person(
+            "customer-1", is_customer=True, from_day=NEXT_MONDAY
+        )
+
+        assert teams == []
+
     async def test_the_agency_survives_the_round_trip(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A stored visit still knows whose calendar it is on.
 
@@ -365,7 +531,7 @@ class TestInterventionRepository:
         run = await _run(session, PlanningRunStatus.RUNNING)
         repository = InterventionRepository(session)
         await repository.replace_for_period(
-            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
         )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
@@ -376,7 +542,7 @@ class TestInterventionRepository:
     # ------------------------------------------------------------------ #
 
     async def test_replacing_a_period_swaps_its_visits(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A second plan for the same week replaces the first."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -385,12 +551,14 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [_visit(hca_id, run.id, name="First")],
         )
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [_visit(hca_id, run.id, name="Second")],
@@ -400,7 +568,7 @@ class TestInterventionRepository:
         assert [visit.name for visit in visits] == ["Second"]
 
     async def test_replacing_a_period_leaves_the_next_week_alone(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Re-planning one week must not blank the week after it.
 
@@ -415,6 +583,7 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 16),
             [
@@ -424,6 +593,7 @@ class TestInterventionRepository:
         )
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [_visit(hca_id, run.id, name="Replanned")],
@@ -433,7 +603,7 @@ class TestInterventionRepository:
         assert [visit.name for visit in visits] == ["Replanned", "Next week"]
 
     async def test_an_empty_replacement_clears_the_period(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A run that placed nothing empties the period it covered."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -441,10 +611,10 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
-            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
         )
         written = await repository.replace_for_period(
-            "company-1", MONDAY, date(2026, 8, 9), []
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), []
         )
 
         assert written == 0
@@ -455,7 +625,7 @@ class TestInterventionRepository:
     # ------------------------------------------------------------------ #
 
     async def test_a_diary_is_ordered_by_day_then_start(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Visits come back in the order they will be worked.
 
@@ -470,6 +640,7 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [
@@ -483,7 +654,7 @@ class TestInterventionRepository:
         assert [visit.name for visit in visits] == ["Mon 09h", "Mon 16h", "Tue 09h"]
 
     async def test_a_diary_holds_only_that_assistants_visits(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """One assistant's read never returns another's work.
 
@@ -500,6 +671,7 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [
@@ -512,7 +684,7 @@ class TestInterventionRepository:
         assert [visit.name for visit in visits] == ["Luc's"]
 
     async def test_a_diary_is_bounded_by_the_period(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Work outside the requested window is not returned."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -521,6 +693,7 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 16),
             [
@@ -533,7 +706,7 @@ class TestInterventionRepository:
         assert [visit.name for visit in visits] == ["In"]
 
     async def test_the_address_survives_the_round_trip(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A visit remembers where it happened, coordinate included.
 
@@ -546,7 +719,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
 
         await repository.replace_for_period(
-            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
         )
 
         visits = await repository.list_for_hca(hca_id, MONDAY, date(2026, 8, 9))
@@ -558,7 +731,7 @@ class TestInterventionRepository:
     # ------------------------------------------------------------------ #
 
     async def test_the_assistants_with_work_are_listed_once_each(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An assistant with three visits appears once."""
         first = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -568,6 +741,7 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [
@@ -583,7 +757,7 @@ class TestInterventionRepository:
         assert sorted(hca_ids) == sorted([first, second])
 
     async def test_a_customer_s_visits_are_readable_over_a_period(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """What billing charges for: the hours actually worked, and by whom.
 
@@ -600,6 +774,7 @@ class TestInterventionRepository:
 
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [
@@ -616,14 +791,14 @@ class TestInterventionRepository:
         assert visits[0].hca_full_name == "Luc Martin"
 
     async def test_another_customer_s_visits_are_not_returned(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """One customer's invoice must never charge for another's care."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
         run = await _run(session, PlanningRunStatus.RUNNING)
         repository = InterventionRepository(session)
         await repository.replace_for_period(
-            "company-1", MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
+            "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit(hca_id, run.id)]
         )
 
         assert (
@@ -661,7 +836,7 @@ class TestInterventionRepository:
         run = await _run(session, PlanningRunStatus.RUNNING)
         with pytest.raises(IntegrityError):
             await InterventionRepository(session).replace_for_period(
-                "company-1", MONDAY, date(2026, 8, 9), [_visit("ghost", run.id)]
+                "company-1", TEAM, MONDAY, date(2026, 8, 9), [_visit("ghost", run.id)]
             )
 
     # ------------------------------------------------------------------ #
@@ -669,7 +844,7 @@ class TestInterventionRepository:
     # ------------------------------------------------------------------ #
 
     async def test_a_visit_is_readable_by_identifier(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The one read a caller holding a visit can make.
 
@@ -684,6 +859,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [_visit(hca_id, run.id, name="Toilette")],
@@ -700,7 +876,7 @@ class TestInterventionRepository:
         assert await InterventionRepository(session).get("visit-404") is None
 
     async def test_a_visit_can_be_relabelled(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Re-classifying a visit corrects the calendar in the same breath."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -708,6 +884,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [_visit(hca_id, run.id, name="Toilette")],
@@ -722,7 +899,7 @@ class TestInterventionRepository:
         assert updated.name == "Compagnie"
 
     async def test_updating_a_visit_with_no_identifier_reads_as_none(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Nothing to update, and nothing written."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -732,7 +909,7 @@ class TestInterventionRepository:
         assert await InterventionRepository(session).update(without_id) is None
 
     async def test_updating_an_absent_visit_reads_as_none(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A visit deleted under the caller is not silently recreated."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -742,7 +919,7 @@ class TestInterventionRepository:
         assert await InterventionRepository(session).update(absent) is None
 
     async def test_a_visit_can_be_deleted(
-        self, session: AsyncSession, hca_kwargs: Dict[str, Any]
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Cancelling one visit leaves the rest of the week standing."""
         hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
@@ -750,6 +927,7 @@ class TestInterventionRepository:
         repository = InterventionRepository(session)
         await repository.replace_for_period(
             "company-1",
+            TEAM,
             MONDAY,
             date(2026, 8, 9),
             [
@@ -769,3 +947,86 @@ class TestInterventionRepository:
     ) -> None:
         """The caller learns there was nothing there, rather than nothing."""
         assert await InterventionRepository(session).delete("visit-404") is False
+
+
+class TestReadingSeveralHouseholdsAtOnce:
+    """Tests for the batched read the whole-agency screen is built on."""
+
+    async def test_the_batched_read_equals_the_loop_of_single_reads(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """**The equivalence the customers planning rests on.**
+
+        Notes:
+            The staff screen reads every household in one statement rather than
+            one at a time; the household's own portal reads its calendar through
+            the single-household method. That optimisation is only safe while
+            the two return the same visits in the same order — otherwise the
+            agency and the family are looking at different weeks, which is the
+            one thing the feature exists not to do. Asserted here rather than
+            described, because the batched query is exactly the kind of thing a
+            later index change quietly reorders.
+        """
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1",
+            TEAM,
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(hca_id, run.id, start=time(14, 0), name="Courses"),
+                _visit(hca_id, run.id, start=time(9, 0), name="Toilette"),
+                _visit(hca_id, run.id, day=date(2026, 8, 5), name="Ménage"),
+            ],
+        )
+
+        one_at_a_time = await repository.list_for_customer(
+            "customer-1", MONDAY, date(2026, 8, 9)
+        )
+        batched = await repository.list_for_customers(
+            ["customer-1"], MONDAY, date(2026, 8, 9)
+        )
+
+        assert [visit.id for visit in batched] == [visit.id for visit in one_at_a_time]
+
+    async def test_naming_no_household_reads_nothing(
+        self, session: AsyncSession
+    ) -> None:
+        """An assistant with an empty portfolio is ordinary, not an error.
+
+        Notes:
+            And it must not reach the database: ``IN ()`` is a syntax error on
+            some engines and a pointless round trip on the rest.
+        """
+        assert (
+            await InterventionRepository(session).list_for_customers(
+                [], MONDAY, date(2026, 8, 9)
+            )
+            == []
+        )
+
+    async def test_the_households_with_care_are_listed_once_each(
+        self, session: AsyncSession, hca_kwargs: Dict[str, ModelInput]
+    ) -> None:
+        """Read off the visits, so a household with nothing planned is absent."""
+        hca_id = await _hca(session, hca_kwargs, "luc.martin@example.com")
+        run = await _run(session, PlanningRunStatus.RUNNING)
+        repository = InterventionRepository(session)
+        await repository.replace_for_period(
+            "company-1",
+            TEAM,
+            MONDAY,
+            date(2026, 8, 9),
+            [
+                _visit(hca_id, run.id),
+                _visit(hca_id, run.id, start=time(14, 0), name="Courses"),
+            ],
+        )
+
+        identifiers = await repository.list_customer_ids_for_period(
+            MONDAY, date(2026, 8, 9)
+        )
+
+        assert identifiers == ["customer-1"]

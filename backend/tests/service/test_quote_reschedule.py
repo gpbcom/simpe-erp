@@ -169,7 +169,13 @@ def service(quotes: MagicMock, types: MagicMock) -> QuoteService:
     Returns:
         QuoteService: The service.
     """
-    return QuoteService(quotes=quotes, types=types, config=_config())
+    return QuoteService(
+        quotes=quotes,
+        types=types,
+        config=_config(),
+        teams=AsyncMock(),
+        customers=AsyncMock(),
+    )
 
 
 class TestAcceptingAnOfferedSlot:

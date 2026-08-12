@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, Type
+from typing import Dict, Type
 
 # Third-party imports
 import pytest
@@ -45,6 +45,7 @@ from models.schemas.requests.notifications.notification_filter import (
     NotificationFilter,
 )
 from models.schemas.requests.quoting.quote_filter import QuoteFilter
+from tests.annotations import ModelInput
 
 #: Every screen's filter, with one text field and one flag field each.
 FILTERS = (
@@ -130,7 +131,7 @@ class TestEveryFilterObeysTheSharedRules:
     @pytest.mark.parametrize(("filter_class", "text", "flag"), FILTERS)
     @pytest.mark.parametrize("value", [7, [], {}])
     def test_a_non_string_fragment_is_refused(
-        self, filter_class: Type[EntityFilter], text: str, flag: str, value: Any
+        self, filter_class: Type[EntityFilter], text: str, flag: str, value: ModelInput
     ) -> None:
         """Tidying is not the same as accepting anything.
 
@@ -138,7 +139,7 @@ class TestEveryFilterObeysTheSharedRules:
             filter_class (Type[EntityFilter]): The filter under test.
             text (str): One of its text fields.
             flag (str): One of its flag fields.
-            value (Any): The rejected fragment.
+            value (ModelInput): The rejected fragment.
         """
         with pytest.raises(MTInvalidEntityFilterException):
             filter_class(**{text: value})
@@ -146,7 +147,7 @@ class TestEveryFilterObeysTheSharedRules:
     @pytest.mark.parametrize(("filter_class", "text", "flag"), FILTERS)
     @pytest.mark.parametrize("value", ["false", "true", 0, 1])
     def test_a_non_boolean_flag_is_refused(
-        self, filter_class: Type[EntityFilter], text: str, flag: str, value: Any
+        self, filter_class: Type[EntityFilter], text: str, flag: str, value: ModelInput
     ) -> None:
         """**``"false"`` is truthy, and that is the whole problem.**
 
@@ -154,7 +155,7 @@ class TestEveryFilterObeysTheSharedRules:
             filter_class (Type[EntityFilter]): The filter under test.
             text (str): One of its text fields.
             flag (str): One of its flag fields.
-            value (Any): The rejected flag.
+            value (ModelInput): The rejected flag.
 
         Notes:
             A flag read the wrong way round answers the opposite question in
@@ -268,7 +269,7 @@ class TestEachFilterNamesItsOwnScreen:
         self,
         filter_class: Type[EntityFilter],
         field: str,
-        value: Any,
+        value: ModelInput,
         expected: Type[Exception],
     ) -> None:
         """**The status map is keyed on the class.**
@@ -276,7 +277,7 @@ class TestEachFilterNamesItsOwnScreen:
         Args:
             filter_class (Type[EntityFilter]): The filter under test.
             field (str): The field being given a bad value.
-            value (Any): That bad value.
+            value (ModelInput): That bad value.
             expected (Type[Exception]): The exception the screen must raise.
 
         Notes:
@@ -319,7 +320,7 @@ class TestTheEnumeratedFilters:
         filter_class: Type[EntityFilter],
         field: str,
         good: str,
-        expected: Any,
+        expected: ModelInput,
     ) -> None:
         """The wire carries a string; the repository wants the enum.
 
@@ -327,7 +328,7 @@ class TestTheEnumeratedFilters:
             filter_class (Type[EntityFilter]): The filter under test.
             field (str): Its enumerated field.
             good (str): A valid value as the query string spells it.
-            expected (Any): The enum member it must become.
+            expected (ModelInput): The enum member it must become.
         """
         assert getattr(filter_class(**{field: good}), field) is expected
 
@@ -408,7 +409,7 @@ class TestWhatTheFiltersRefuseToCarry:
             else's, and no amount of care in the endpoint would take that field
             away again.
         """
-        smuggled: Dict[str, Any] = {"recipient_id": "user-9", "search": "x"}
+        smuggled: Dict[str, ModelInput] = {"recipient_id": "user-9", "search": "x"}
 
         narrowed = NotificationFilter(**smuggled)
 

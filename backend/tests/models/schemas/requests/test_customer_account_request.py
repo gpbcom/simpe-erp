@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 from pydantic import ValidationError
@@ -15,6 +14,7 @@ from models.schemas.exceptions import (
 from models.schemas.requests.customers.customer_account_request import (
     CustomerAccountRequest,
 )
+from tests.annotations import ModelInput
 
 
 class TestCustomerAccountRequest:
@@ -108,11 +108,11 @@ class TestCustomerAccountRequest:
             pytest.param(["Marie"], id="Invalid - list"),
         ],
     )
-    def test_a_missing_name_is_refused(self, value: Any) -> None:
+    def test_a_missing_name_is_refused(self, value: ModelInput) -> None:
         """An account with no display name has nothing to greet anybody by.
 
         Args:
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
         """
         with pytest.raises(MTCustomerAccountRequestInvalidFullName):
             CustomerAccountRequest(email="marie@example.com", full_name=value)
@@ -129,11 +129,11 @@ class TestCustomerAccountRequest:
             pytest.param(None, id="Invalid - missing"),
         ],
     )
-    def test_a_malformed_address_is_refused(self, value: Any) -> None:
+    def test_a_malformed_address_is_refused(self, value: ModelInput) -> None:
         """The address is the credential; it has to be reachable.
 
         Args:
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
 
         Notes:
             Pydantic's own ``ValidationError`` rather than a model exception,

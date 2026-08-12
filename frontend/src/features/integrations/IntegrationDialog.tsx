@@ -10,10 +10,7 @@ import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import {
-  useDisableIntegration,
-  useEnableIntegration,
-} from '@/api/queries';
+import { useDisableIntegration, useEnableIntegration } from '@/api/queries';
 import type { IntegrationCard } from '@/api/types';
 
 /** The credential fields a platform may ask for, in the order they render. */
@@ -128,9 +125,7 @@ export function IntegrationDialog({
         {card.enabled ? (
           <Button
             color="warning"
-            onClick={() =>
-              disable.mutate(card.provider, { onSuccess: onClose })
-            }
+            onClick={() => disable.mutate(card.provider, { onSuccess: onClose })}
             disabled={disable.isPending}
             data-testid="integration-disable"
           >

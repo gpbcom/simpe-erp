@@ -9,7 +9,7 @@ from typing import Optional, Union
 from pydantic import BaseModel, Field, field_validator
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.geo.postal_address import PostalAddress
 from models.schemas.exceptions import (
     MTCompanyViewInvalidIbanMaskFlag,
@@ -43,9 +43,9 @@ class CompanyView(BaseModel):
 
     Notes:
         - **The shape is the permission**, as with
-          :class:`~models.companies.company_choice.CompanyChoice`. The agency
+          :class:`~models.organisation.companies.company_choice.CompanyChoice`. The agency
           routes a *manager* can reach return this rather than a whole
-          :class:`~models.companies.company.Company`, so however the service
+          :class:`~models.organisation.companies.company.Company`, so however the service
           changes they cannot hand back a bank account somebody could pay into.
           An administrator reads their own agency in full at
           ``GET /api/v1/me/company``.
@@ -54,7 +54,7 @@ class CompanyView(BaseModel):
           and the one thing it must never do is echo a masked value back into an
           update — which would overwrite the real account with its own censoring.
         - The masking itself belongs to
-          :meth:`~models.companies.company.Company.masked_iban`, not here. One
+          :meth:`~models.organisation.companies.company.Company.masked_iban`, not here. One
           rule in one place, testable without a request.
         - No validator re-checks the IBAN's shape: by the time it reaches this
           model it is either a value :class:`Company` already validated or a

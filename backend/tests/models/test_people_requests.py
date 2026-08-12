@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date
-from typing import Any, List, Optional, Union
+from typing import List, Optional, Union
 
 # Third-party imports
 from pydantic import ValidationError
@@ -25,6 +25,7 @@ from models.schemas.requests.hca.hca_profile_update_request import (
     HcaProfileUpdateRequest,
 )
 from models.schemas.requests.customers.status_update_request import StatusUpdateRequest
+from tests.annotations import ModelInput
 
 
 class TestEmploymentUpdateRequest:
@@ -136,7 +137,7 @@ class TestEmploymentUpdateRequest:
             pytest.param([], id="Invalid - list"),
         ],
     )
-    def test_an_invalid_rounds_flag_is_refused(self, invalid_flag: Any) -> None:
+    def test_an_invalid_rounds_flag_is_refused(self, invalid_flag: ModelInput) -> None:
         """The flag is a boolean, never a truthy string.
 
         Notes:
@@ -222,11 +223,11 @@ class TestEmploymentUpdateRequest:
             pytest.param(7, id="Invalid - a number"),
         ],
     )
-    def test_a_non_list_of_certifications_is_refused(self, value: object) -> None:
+    def test_a_non_list_of_certifications_is_refused(self, value: ModelInput) -> None:
         """A malformed list raises rather than being coerced.
 
         Args:
-            value (object): The rejected value.
+            value (ModelInput): The rejected value.
         """
         with pytest.raises(MTEmploymentUpdateRequestInvalidCertifications):
             EmploymentUpdateRequest(

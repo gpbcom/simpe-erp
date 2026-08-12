@@ -30,6 +30,10 @@ class UserResponse(BaseModel):
         full_name (str): The display name.
         role (UserRole): The role granted.
         is_active (bool): Whether sign-in is permitted.
+        customer_id (Optional[str]): The customer record a customer account
+            belongs to. The mirror of ``hca_id`` on the other axis, and
+            published for the same reason: the screens ask "is this account
+            bound to a person" as well as "what role is it".
         hca_id (Optional[str]): The assistant record an assistant account
             belongs to.
         company_id (Optional[str]): The agency the account belongs to.
@@ -79,6 +83,10 @@ class UserResponse(BaseModel):
     hca_id: Optional[str] = Field(
         default=None,
         description="The assistant record an assistant account belongs to.",
+    )
+    customer_id: Optional[str] = Field(
+        default=None,
+        description="The customer record a customer account belongs to.",
     )
     company_id: Optional[str] = Field(
         default=None,
@@ -213,12 +221,13 @@ class UserResponse(BaseModel):
             )
         return value
 
-    @field_validator("hca_id", "company_id", mode="before")
+    @field_validator("hca_id", "customer_id", "company_id", mode="before")
     def validate_hca_id(cls, value: Optional[str]) -> Optional[str]:
         """Validates that a linked identifier is ``None`` or non-empty.
 
         Args:
-            value (Optional[str]): Raw ``hca_id`` or ``company_id`` value.
+            value (Optional[str]): Raw ``hca_id``, ``customer_id`` or
+                ``company_id`` value.
 
         Returns:
             Optional[str]: The identifier, or ``None``.
@@ -325,6 +334,7 @@ class UserResponse(BaseModel):
             language=user.language.value,
             is_active=user.is_active,
             hca_id=user.hca_id,
+            customer_id=user.customer_id,
             company_id=user.company_id,
             photo_url=str(user.photo_url) if user.photo_url is not None else None,
             must_change_password=user.must_change_password,

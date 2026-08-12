@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -15,6 +14,7 @@ from models.schemas.exceptions import (
 from models.schemas.requests.customers.billing_periodicity_request import (
     BillingPeriodicityRequest,
 )
+from tests.annotations import ModelInput
 
 
 class TestBillingPeriodicityRequest:
@@ -45,7 +45,7 @@ class TestBillingPeriodicityRequest:
             pytest.param(BillingPeriodicity.WEEKLY, id="As the enum member"),
         ],
     )
-    def test_a_named_periodicity_is_kept(self, value: Any) -> None:
+    def test_a_named_periodicity_is_kept(self, value: ModelInput) -> None:
         """A granularity somebody chose survives whichever way it arrives."""
         payload = BillingPeriodicityRequest(periodicity=value)
 
@@ -64,7 +64,7 @@ class TestBillingPeriodicityRequest:
             pytest.param(30, id="Invalid - a number of days"),
         ],
     )
-    def test_an_unknown_periodicity_is_refused(self, value: Any) -> None:
+    def test_an_unknown_periodicity_is_refused(self, value: ModelInput) -> None:
         """Refused with the accepted values named, so a 422 is actionable."""
         with pytest.raises(MTBillingPeriodicityRequestInvalidPeriodicity) as raised:
             BillingPeriodicityRequest(periodicity=value)

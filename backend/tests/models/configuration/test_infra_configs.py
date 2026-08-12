@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -29,6 +28,7 @@ from models.configuration.exceptions import (
     MTServerConfigInvalidPort,
 )
 from models.configuration.server_config import ServerConfig
+from tests.annotations import ModelInput
 
 
 class TestDatabaseConfig:
@@ -110,7 +110,7 @@ class TestDatabaseConfig:
         ],
     )
     def test_invalid_fields_raise(
-        self, field: str, invalid_value: Any, expected_exception: type
+        self, field: str, invalid_value: ModelInput, expected_exception: type
     ) -> None:
         """Each field rejects its own invalid values with its own exception."""
         with pytest.raises(expected_exception):
@@ -236,7 +236,7 @@ class TestAuthConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_unsupported_algorithm_raises(self, invalid_algorithm: Any) -> None:
+    def test_unsupported_algorithm_raises(self, invalid_algorithm: ModelInput) -> None:
         """Only symmetric HMAC algorithms are accepted.
 
         Notes:
@@ -258,7 +258,7 @@ class TestAuthConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_invalid_jwt_secret_env_raises(self, invalid_env: Any) -> None:
+    def test_invalid_jwt_secret_env_raises(self, invalid_env: ModelInput) -> None:
         """The secret env-var name must be a non-empty string."""
         with pytest.raises(MTAuthConfigInvalidJwtSecretEnv):
             AuthConfig(jwt_secret_env=invalid_env)
@@ -273,7 +273,7 @@ class TestAuthConfig:
             pytest.param(720.0, id="Invalid - float"),
         ],
     )
-    def test_invalid_token_expiry_raises(self, invalid_expiry: Any) -> None:
+    def test_invalid_token_expiry_raises(self, invalid_expiry: ModelInput) -> None:
         """A token lifetime outside 1 minute to 1 year is rejected."""
         with pytest.raises(MTAuthConfigInvalidTokenExpiry):
             AuthConfig(access_token_expire_minutes=invalid_expiry)
@@ -358,7 +358,9 @@ class TestServerConfig:
             pytest.param(8000, id="Invalid - int"),
         ],
     )
-    def test_invalid_text_fields_raise(self, field: str, invalid_value: Any) -> None:
+    def test_invalid_text_fields_raise(
+        self, field: str, invalid_value: ModelInput
+    ) -> None:
         """Text fields must be non-empty strings."""
         with pytest.raises(MTServerConfigInvalidHost):
             ServerConfig(**{field: invalid_value})
@@ -372,7 +374,7 @@ class TestServerConfig:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_invalid_port_raises(self, invalid_port: Any) -> None:
+    def test_invalid_port_raises(self, invalid_port: ModelInput) -> None:
         """A port outside 1..65535 is rejected."""
         with pytest.raises(MTServerConfigInvalidPort):
             ServerConfig(port=invalid_port)
@@ -395,7 +397,7 @@ class TestServerConfig:
             pytest.param([8000], id="Invalid - int entry"),
         ],
     )
-    def test_invalid_cors_origins_raise(self, invalid_origins: Any) -> None:
+    def test_invalid_cors_origins_raise(self, invalid_origins: ModelInput) -> None:
         """The origins must be a list of non-empty strings."""
         with pytest.raises(MTServerConfigInvalidCorsOrigins):
             ServerConfig(cors_origins=invalid_origins)

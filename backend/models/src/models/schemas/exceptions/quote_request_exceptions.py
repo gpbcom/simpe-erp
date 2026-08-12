@@ -66,3 +66,11 @@ class MTQuoteRescheduleRequestInvalidWindow(MTInvalidQuoteRescheduleRequestExcep
         which is the thing that knows how long the service takes. This covers
         only what the payload can judge on its own: real minutes, in order.
     """
+
+
+class MTInvalidQuoteTeamRequestException(Exception):
+    """Exception raised when a payload moving a quote's team is invalid."""
+
+
+class MTQuoteTeamRequestInvalidTeamId(MTInvalidQuoteTeamRequestException):
+    """Exception raised when the destination team is not named."""

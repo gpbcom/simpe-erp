@@ -37,6 +37,9 @@ from api.v1.certifications.certifications import (
     router as certifications_router,
 )
 from api.v1.companies.companies import router as companies_router
+from api.v1.organisation.agencies import router as agencies_router
+from api.v1.organisation.documents import router as team_documents_router
+from api.v1.organisation.teams import router as teams_router
 from api.v1.customers.customers import router as customers_router
 from api.v1.hcas.applications import router as hca_applications_router
 from api.v1.hcas.availability import router as availability_router
@@ -189,6 +192,13 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(accounts_router)
 app.include_router(companies_router)
+# The teamspace router is mounted before the team router deliberately:
+# FastAPI matches in declaration order, and ``/api/v1/teams/document-
+# constraints`` would otherwise be read as a team identifier by
+# ``GET /api/v1/teams/{team_id}`` and answered 404 for ever.
+app.include_router(agencies_router)
+app.include_router(team_documents_router)
+app.include_router(teams_router)
 app.include_router(hca_applications_router)
 app.include_router(customers_router)
 app.include_router(hca_photos_router)

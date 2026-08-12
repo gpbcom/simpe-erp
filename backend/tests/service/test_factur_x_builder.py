@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
-from typing import Any, Dict, List
+from typing import Dict, List
 from xml.etree import ElementTree
 
 # Third-party imports
@@ -17,7 +17,7 @@ from pypdf import PdfReader
 from models.billing.bill import Bill
 from models.billing.bill_line import BillLine
 from models.billing.bill_recipient import BillRecipient
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.enums import (
     BillingPeriodicity,
     Language,
@@ -35,6 +35,7 @@ from service.integrations.utils.exceptions import (
 )
 from service.integrations.utils.factur_x import FacturXBuilder
 from service.utils.invoice_renderer import InvoiceRenderer
+from tests.annotations import ModelInput
 
 ADDRESS = PostalAddress(
     street="1 rue des Lilas",
@@ -85,7 +86,7 @@ def a_line(
     )
 
 
-def a_bill(lines: List[BillLine] | None = None, **overrides: Any) -> Bill:
+def a_bill(lines: List[BillLine] | None = None, **overrides: ModelInput) -> Bill:
     """Build an invoice over the given charges.
 
     Args:
@@ -96,7 +97,7 @@ def a_bill(lines: List[BillLine] | None = None, **overrides: Any) -> Bill:
         Bill: The invoice.
     """
     charges = lines if lines is not None else [a_line()]
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "customer_id": "customer-1",
         "number": "FA-2026-000001",
@@ -119,7 +120,7 @@ def a_bill(lines: List[BillLine] | None = None, **overrides: Any) -> Bill:
     return Bill(**payload)
 
 
-def an_agency(**overrides: Any) -> Company:
+def an_agency(**overrides: ModelInput) -> Company:
     """Build the agency issuing the invoice.
 
     Args:
@@ -128,7 +129,7 @@ def an_agency(**overrides: Any) -> Company:
     Returns:
         Company: The agency.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "id": "company-1",
         "name": "Aide et Présence Paris",
         "legal_form": "SARL",

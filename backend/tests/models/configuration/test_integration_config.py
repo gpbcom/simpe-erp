@@ -17,6 +17,7 @@ from models.configuration.exceptions import (
 )
 from models.configuration.integration_config import IntegrationConfig
 from models.enums import EInvoicingProvider, RecipientKind, TransmissionKind
+from tests.annotations import ModelInput
 
 CONF = pathlib.Path(__file__).resolve().parents[3] / "conf"
 SHIPPED = CONF / "app.yaml"
@@ -39,11 +40,11 @@ def _configured() -> IntegrationConfig:
     return AppConfig.load(SHIPPED).integrations
 
 
-def _entry(**overrides: object) -> dict:
+def _entry(**overrides: ModelInput) -> dict:
     """Return a catalogue entry as it appears in the configuration file.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         dict: The raw mapping.
@@ -97,25 +98,25 @@ class TestRefusingAnUnusableSection:
     """Tests for the values that would leave a deployment unable to transmit."""
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_an_unnamed_variable_is_refused(self, value: object) -> None:
+    def test_an_unnamed_variable_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected variable name.
+        value (ModelInput): The rejected variable name.
         """
         with pytest.raises(MTIntegrationConfigInvalidKeyEnv):
             IntegrationConfig(credential_key_env=value)
 
     @pytest.mark.parametrize("value", [None, "soon", [], True])
-    def test_a_timeout_that_is_not_a_number_is_refused(self, value: object) -> None:
+    def test_a_timeout_that_is_not_a_number_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected timeout.
+        value (ModelInput): The rejected timeout.
         """
         with pytest.raises(MTIntegrationConfigInvalidTimeout):
             IntegrationConfig(request_timeout_seconds=value)
 
     @pytest.mark.parametrize("value", [0, 0.5, 121, -1])
-    def test_a_timeout_outside_the_range_is_refused(self, value: object) -> None:
+    def test_a_timeout_outside_the_range_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected timeout.
+        value (ModelInput): The rejected timeout.
 
         Notes:
             The floor exists because a sub-second timeout fails against every
@@ -127,7 +128,10 @@ class TestRefusingAnUnusableSection:
 
     def test_a_numeric_string_is_accepted(self) -> None:
         """YAML and environment overrides both arrive as text."""
-        assert IntegrationConfig(request_timeout_seconds="12.5").request_timeout_seconds == 12.5  # noqa: E501
+        assert (
+            IntegrationConfig(request_timeout_seconds="12.5").request_timeout_seconds
+            == 12.5
+        )  # noqa: E501
 
 
 class TestResolvingTheKey:
@@ -146,13 +150,13 @@ class TestResolvingTheKey:
 
     @pytest.mark.parametrize("value", [None, ""])
     def test_an_unset_or_empty_variable_raises(
-        self, monkeypatch: pytest.MonkeyPatch, value: object
+        self, monkeypatch: pytest.MonkeyPatch, value: ModelInput
     ) -> None:
         """**There is deliberately no fallback key.**
 
         Args:
             monkeypatch (pytest.MonkeyPatch): The patcher.
-            value (object): Unset, or set to nothing.
+            value (ModelInput): Unset, or set to nothing.
 
         Notes:
             A default would encrypt every agency's platform credentials with a
@@ -283,9 +287,9 @@ class TestRefusingAnUnusableCatalogue:
             IntegrationConfig(providers=[_entry(), _entry(name="Invopop again")])
 
     @pytest.mark.parametrize("value", ["invopop", 42, {"provider": "invopop"}])
-    def test_something_that_is_not_a_list_is_refused(self, value: object) -> None:
+    def test_something_that_is_not_a_list_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected payload.
+        value (ModelInput): The rejected payload.
         """
         with pytest.raises(MTIntegrationConfigInvalidProviders):
             IntegrationConfig(providers=value)

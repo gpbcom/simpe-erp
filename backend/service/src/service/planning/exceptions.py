@@ -16,6 +16,21 @@ class MTPlanningForbidden(MTInvalidPlanningException):
     """
 
 
+class MTPlanningCustomerNotFound(MTInvalidPlanningException):
+    """Exception raised when a household's calendar is not the caller's to read.
+
+    Notes:
+        - **Deliberately the same answer for "does not exist" and "not yours".**
+          Distinguishing the two lets a caller walk the identifier space and
+          learn which households the agency serves, which is most of what a
+          customer list is worth. The rule is stated once in
+          ``docs/11-security.md`` and this is one of the places that keeps it.
+        - Its own exception rather than the customers service's, so the planning
+          service does not import another service's failures to describe its
+          own.
+    """
+
+
 class MTPlanningPeriodTooLong(MTInvalidPlanningException):
     """Exception raised when the requested planning window is unreasonable."""
 
@@ -65,4 +80,16 @@ class MTInterventionNotQuoted(MTInvalidPlanningException):
         nothing to reprice and nothing to bill, so the edit is refused rather
         than applied to the calendar alone — a calendar that disagrees with the
         paperwork is worse than an edit that did not happen.
+    """
+
+
+class MTPlanningTeamForbidden(MTInvalidPlanningException):
+    """Exception raised when a caller plans a team they do not run.
+
+    Notes:
+        Distinct from :class:`MTPlanningForbidden`, which is about *reading*
+        somebody else's planning. This one is about writing it: a run rewrites
+        the named team's week, so a manager able to name a colleague's team
+        could rebuild a calendar they have no part in — and the colleague would
+        find out from their assistants.
     """

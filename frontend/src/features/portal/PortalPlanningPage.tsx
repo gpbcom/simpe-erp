@@ -13,10 +13,10 @@ import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { addDays, startOfWeek } from 'date-fns';
 import { usePortalPlanning } from '@/api/queries';
 import { INTERVENTION_STATUS_COLOUR } from '@/theme/palette';
-import { formatTime, toIsoDate } from '@/utils/format';
+import { formatTime } from '@/utils/format';
+import { customerPlanningWindow } from '@/utils/planningWindow';
 import { PortalRescheduleDialog } from './PortalRescheduleDialog';
 import { PortalCancelDialog } from './PortalCancelDialog';
 import type { Intervention } from '@/api/types';
@@ -44,9 +44,12 @@ export function PortalPlanningPage() {
   // A generous window around today rather than the visible range: the household
   // pages back and forth a few weeks, and re-fetching on every arrow is a
   // request per click for data already held.
-  const [anchor] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
-  const from = toIsoDate(addDays(anchor, -60));
-  const to = toIsoDate(addDays(anchor, 120));
+  //
+  // Held in state so it does not move mid-session, and taken from the shared
+  // helper so the agency's own view of this household reads exactly the same
+  // span. A family looking at June while the manager on the telephone reads a
+  // six-week window is the failure that helper was extracted to end.
+  const [{ from, to }] = useState(customerPlanningWindow);
   const { data: planning, isLoading } = usePortalPlanning(from, to);
   const [selected, setSelected] = useState<Intervention | null>(null);
   const [cancelling, setCancelling] = useState<Intervention | null>(null);

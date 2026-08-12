@@ -97,9 +97,7 @@ export function EntityFilterBar({
 
   const tab = Math.max(
     0,
-    tabs && tabField
-      ? tabs.findIndex((entry) => entry.value === draft[tabField])
-      : 0,
+    tabs && tabField ? tabs.findIndex((entry) => entry.value === draft[tabField]) : 0,
   );
 
   /** Read a three-state value back out of a native select. */

@@ -57,9 +57,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("company_id", sa.String(length=36), nullable=False),
         sa.Column("provider", sa.String(length=32), nullable=False),
-        sa.Column(
-            "enabled", sa.Boolean(), nullable=False, server_default=sa.false()
-        ),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("credential_ciphertext", sa.Text(), nullable=False),
         sa.Column(
             "credential_hint", sa.String(length=16), nullable=False, server_default=""
@@ -71,9 +69,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("company_id", "provider", name=UNIQUE_PROVIDER),
     )
-    op.create_index(
-        f"ix_{TABLE}_company_id", TABLE, ["company_id"], unique=False
-    )
+    op.create_index(f"ix_{TABLE}_company_id", TABLE, ["company_id"], unique=False)
     # The one-active rule, enforced where the application cannot lose it. A
     # second write path to this table — a fixture, a support script, a future
     # endpoint — inherits the invariant rather than having to remember it.

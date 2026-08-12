@@ -117,6 +117,8 @@ def service(quotes: AsyncMock) -> QuoteService:
         quotes=quotes,
         types=MagicMock(),
         config=PricingConfig(),
+        teams=AsyncMock(),
+        customers=AsyncMock(),
     )
 
 

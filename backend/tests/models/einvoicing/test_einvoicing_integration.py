@@ -19,13 +19,14 @@ from models.integrations.exceptions import (
     MTEInvoicingIntegrationInvalidId,
     MTEInvoicingIntegrationInvalidProvider,
 )
+from tests.annotations import ModelInput
 
 
-def _integration(**overrides: object) -> EInvoicingIntegration:
+def _integration(**overrides: ModelInput) -> EInvoicingIntegration:
     """Build an integration with sensible defaults.
 
     Args:
-        **overrides (object): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
         EInvoicingIntegration: The record.
@@ -77,21 +78,21 @@ class TestRefusingAnUnusableIntegration:
     """Tests for the values that would make a record dangerous or meaningless."""
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_a_missing_identifier_is_refused(self, value: object) -> None:
+    def test_a_missing_identifier_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected identifier.
+        value (ModelInput): The rejected identifier.
         """
         with pytest.raises(MTEInvoicingIntegrationInvalidId):
             _integration(id=value)
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
     def test_an_integration_belonging_to_nobody_is_refused(
-        self, value: object
+        self, value: ModelInput
     ) -> None:
         """**The multi-tenancy guard.**
 
         Args:
-            value (object): The rejected agency identifier.
+            value (ModelInput): The rejected agency identifier.
 
         Notes:
             An integration with no agency would be readable by every tenant,
@@ -101,19 +102,19 @@ class TestRefusingAnUnusableIntegration:
             _integration(company_id=value)
 
     @pytest.mark.parametrize("value", [None, "", "chorus", 7])
-    def test_an_unknown_platform_is_refused(self, value: object) -> None:
+    def test_an_unknown_platform_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected platform.
+        value (ModelInput): The rejected platform.
         """
         with pytest.raises(MTEInvoicingIntegrationInvalidProvider):
             _integration(provider=value)
 
     @pytest.mark.parametrize("value", ["true", "false", 1, 0, []])
-    def test_a_non_boolean_enabled_is_refused(self, value: object) -> None:
+    def test_a_non_boolean_enabled_is_refused(self, value: ModelInput) -> None:
         """**A truthy string is the dangerous case.**
 
         Args:
-            value (object): The rejected flag.
+            value (ModelInput): The rejected flag.
 
         Notes:
             ``"false"`` is truthy. Coercing it would transmit an agency's
@@ -124,9 +125,9 @@ class TestRefusingAnUnusableIntegration:
             _integration(enabled=value)
 
     @pytest.mark.parametrize("value", ["", "   ", None, 42])
-    def test_missing_credentials_are_refused(self, value: object) -> None:
+    def test_missing_credentials_are_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected ciphertext.
+        value (ModelInput): The rejected ciphertext.
         """
         with pytest.raises(MTEInvoicingIntegrationInvalidCiphertext):
             _integration(credential_ciphertext=value)
@@ -154,17 +155,17 @@ class TestRefusingAnUnusableIntegration:
         assert integration.credential_hint == ""
 
     @pytest.mark.parametrize("value", ["", "   ", 42])
-    def test_an_unusable_editor_is_refused(self, value: object) -> None:
+    def test_an_unusable_editor_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected account identifier.
+        value (ModelInput): The rejected account identifier.
         """
         with pytest.raises(MTEInvoicingIntegrationInvalidError):
             _integration(updated_by=value)
 
     @pytest.mark.parametrize("value", ["not-a-date", 20260801, ["2026-08-01"]])
-    def test_a_timestamp_that_is_not_one_is_refused(self, value: object) -> None:
+    def test_a_timestamp_that_is_not_one_is_refused(self, value: ModelInput) -> None:
         """Args:
-        value (object): The rejected timestamp.
+        value (ModelInput): The rejected timestamp.
         """
         with pytest.raises(MTEInvoicingIntegrationInvalidDate):
             _integration(last_checked_at=value)

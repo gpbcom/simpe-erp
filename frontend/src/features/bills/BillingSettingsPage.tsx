@@ -148,110 +148,112 @@ export function BillingSettingsPage() {
       {tab === 'integrations' ? <IntegrationsGallery /> : null}
       {tab === 'integrations' ? null : (
         <Box>
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        {t('billingSettings.title')}
-      </Typography>
+          <Typography variant="h5" sx={{ mb: 2 }}>
+            {t('billingSettings.title')}
+          </Typography>
 
-      {/* On the rules tab too, because a manager editing payment terms is a
+          {/* On the rules tab too, because a manager editing payment terms is a
           manager who has not necessarily opened the other tab. */}
-      <EInvoicingWarning />
+          <EInvoicingWarning />
 
-      <Alert severity="info" sx={{ mb: 2 }} data-testid="billing-settings-notice">
-        {t('billingSettings.notice')}
-      </Alert>
+          <Alert severity="info" sx={{ mb: 2 }} data-testid="billing-settings-notice">
+            {t('billingSettings.notice')}
+          </Alert>
 
-      <Card>
-        <CardContent>
-          <Stack spacing={2} sx={{ maxWidth: 480 }}>
-            {/*
+          <Card>
+            <CardContent>
+              <Stack spacing={2} sx={{ maxWidth: 480 }}>
+                {/*
               A **native** select, like every other one in the application.
               MUI's default renders a listbox plus a hidden input, so a test
               driving it by value finds an `<input>` rather than a `<select>`
               and cannot choose an option at all.
             */}
-            <TextField
-              select
-              helperText={t('billingSettings.periodicityHelp')}
-              label={t('billingSettings.periodicity')}
-              {...field('periodicity')}
-              slotProps={{
-                select: { native: true },
-                inputLabel: { shrink: true },
-                htmlInput: { 'data-testid': 'billing-periodicity' },
-              }}
-            >
-              {PERIODICITIES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {t(option.label)}
-                </option>
-              ))}
-            </TextField>
-
-            <TextField
-              type="number"
-              label={t('billingSettings.paymentTerms')}
-              {...field('paymentTermsDays')}
-              slotProps={{ htmlInput: { 'data-testid': 'billing-payment-terms' } }}
-            />
-
-            <TextField
-              type="number"
-              label={t('billingSettings.penaltyMultiplier')}
-              {...field('penaltyMultiplier')}
-              slotProps={{ htmlInput: { 'data-testid': 'billing-penalty-multiplier' } }}
-            />
-
-            <TextField
-              label={t('billingSettings.indemnity')}
-              {...field('indemnity')}
-              slotProps={{ htmlInput: { 'data-testid': 'billing-indemnity' } }}
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.escompteOffered}
-                  onChange={(event) =>
-                    setForm({ ...form, escompteOffered: event.target.checked })
-                  }
+                <TextField
+                  select
+                  helperText={t('billingSettings.periodicityHelp')}
+                  label={t('billingSettings.periodicity')}
+                  {...field('periodicity')}
                   slotProps={{
-                    input: { 'data-testid': 'billing-escompte' } as Record<
-                      string,
-                      string
-                    >,
+                    select: { native: true },
+                    inputLabel: { shrink: true },
+                    htmlInput: { 'data-testid': 'billing-periodicity' },
+                  }}
+                >
+                  {PERIODICITIES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(option.label)}
+                    </option>
+                  ))}
+                </TextField>
+
+                <TextField
+                  type="number"
+                  label={t('billingSettings.paymentTerms')}
+                  {...field('paymentTermsDays')}
+                  slotProps={{ htmlInput: { 'data-testid': 'billing-payment-terms' } }}
+                />
+
+                <TextField
+                  type="number"
+                  label={t('billingSettings.penaltyMultiplier')}
+                  {...field('penaltyMultiplier')}
+                  slotProps={{
+                    htmlInput: { 'data-testid': 'billing-penalty-multiplier' },
                   }}
                 />
-              }
-              label={t('billingSettings.escompte')}
-            />
 
-            {problem ? (
-              <Alert severity="warning" data-testid="billing-settings-problem">
-                {t(problem)}
-              </Alert>
-            ) : null}
-            {save.isError ? (
-              <Alert severity="error" data-testid="billing-settings-error">
-                {t('billingSettings.saveFailed')}
-              </Alert>
-            ) : null}
-            {save.isSuccess ? (
-              <Alert severity="success" data-testid="billing-settings-saved">
-                {t('billingSettings.saved')}
-              </Alert>
-            ) : null}
+                <TextField
+                  label={t('billingSettings.indemnity')}
+                  {...field('indemnity')}
+                  slotProps={{ htmlInput: { 'data-testid': 'billing-indemnity' } }}
+                />
 
-            <Button
-              variant="contained"
-              onClick={submit}
-              disabled={problem !== null || save.isPending}
-              data-testid="billing-settings-save"
-            >
-              {t('billingSettings.save')}
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.escompteOffered}
+                      onChange={(event) =>
+                        setForm({ ...form, escompteOffered: event.target.checked })
+                      }
+                      slotProps={{
+                        input: { 'data-testid': 'billing-escompte' } as Record<
+                          string,
+                          string
+                        >,
+                      }}
+                    />
+                  }
+                  label={t('billingSettings.escompte')}
+                />
+
+                {problem ? (
+                  <Alert severity="warning" data-testid="billing-settings-problem">
+                    {t(problem)}
+                  </Alert>
+                ) : null}
+                {save.isError ? (
+                  <Alert severity="error" data-testid="billing-settings-error">
+                    {t('billingSettings.saveFailed')}
+                  </Alert>
+                ) : null}
+                {save.isSuccess ? (
+                  <Alert severity="success" data-testid="billing-settings-saved">
+                    {t('billingSettings.saved')}
+                  </Alert>
+                ) : null}
+
+                <Button
+                  variant="contained"
+                  onClick={submit}
+                  disabled={problem !== null || save.isPending}
+                  data-testid="billing-settings-save"
+                >
+                  {t('billingSettings.save')}
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
         </Box>
       )}
     </Box>

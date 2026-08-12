@@ -92,7 +92,13 @@ def service() -> QuoteService:
     quotes = AsyncMock()
     types = AsyncMock()
     types.get_many.return_value = {"type-1": _type()}
-    return QuoteService(quotes=quotes, types=types, config=PricingConfig())
+    return QuoteService(
+        quotes=quotes,
+        types=types,
+        config=PricingConfig(),
+        teams=AsyncMock(),
+        customers=AsyncMock(),
+    )
 
 
 class TestEffectiveLines:

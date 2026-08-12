@@ -104,6 +104,7 @@ class PlanningRunMapper(BaseMapper[PlanningRun, PlanningRunRow]):
             id=row.id,
             status=row.status,
             company_id=row.company_id,
+            team_id=row.team_id,
             requested_by=row.requested_by,
             period_start=row.period_start,
             period_end=row.period_end,
@@ -131,6 +132,7 @@ class PlanningRunMapper(BaseMapper[PlanningRun, PlanningRunRow]):
         )
         row.status = model.status.value
         row.company_id = model.company_id
+        row.team_id = model.team_id
         row.requested_by = model.requested_by
         row.period_start = model.period_start
         row.period_end = model.period_end

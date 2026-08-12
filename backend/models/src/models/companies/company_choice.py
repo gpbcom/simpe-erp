@@ -17,5 +17,5 @@ class CompanyChoice(BaseModel):
         model that could carry an address would eventually be given one.
     """
 
-    id: str = Field(description="The identifier to submit with an application.")
+    id: str = Field(description="The identifier to submit with an application.")  # noqa: E501
     name: str = Field(description="The trading name to show.")

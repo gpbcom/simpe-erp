@@ -2,11 +2,12 @@ from __future__ import annotations
 
 # Standard library imports
 from types import SimpleNamespace
-from typing import Any
+from typing import Callable
+
 from unittest.mock import AsyncMock, MagicMock
 
 # Third-party imports
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 import pytest
 
@@ -34,6 +35,7 @@ from service.auth.exceptions import (
     MTAuthInvalidCredentials,
     MTAuthUserInactive,
 )
+from tests.annotations import ModelInput
 
 
 def _user(role: UserRole = UserRole.MANAGER, user_id: str = "user-1") -> User:
@@ -330,6 +332,22 @@ class TestMeEndpoint:
         assert response.status_code == 401
 
 
+def _customer_account() -> User:
+    """Build a signed-in household's account.
+
+    Returns:
+        User: The account.
+    """
+    return User(
+        company_id="company-1",
+        id="user-customer",
+        email="marie@example.com",
+        full_name="Marie Durand",
+        role=UserRole.CUSTOMER,
+        customer_id="customer-1",
+    )
+
+
 class TestRoleGuards:
     """Tests for the role guards, exercised as plain functions."""
 
@@ -363,7 +381,7 @@ class TestRoleGuards:
             get_customer_user,
         ],
     )
-    def test_every_guard_rejects_an_anonymous_request(self, guard: Any) -> None:
+    def test_every_guard_rejects_an_anonymous_request(self, guard: ModelInput) -> None:
         """No guard lets an unauthenticated caller through."""
         with pytest.raises(HTTPException) as raised:
             guard(self._request(None))
@@ -414,6 +432,32 @@ class TestRoleGuards:
         """
         with pytest.raises(HTTPException) as raised:
             get_customer_user(self._request(_user(role)))
+
+        assert raised.value.status_code == 403
+
+    @pytest.mark.parametrize("guard", [get_manager_user, get_admin_user, get_hca_user])
+    def test_a_customer_is_refused_every_staff_guard_with_a_403(
+        self, guard: Callable[[Request], User]
+    ) -> None:
+        """**403, and never the enum's own 422.**
+
+        Args:
+            guard (Callable[[Request], User]): The staff guard under test.
+
+        Notes:
+            Found in a live run, not in a unit test. ``get_manager_user`` ranked
+            the role before checking it was rankable, so a household reaching
+            any manager route got ``MTRoleNotRankable`` — a **422 whose body
+            explained the staff ladder**. Wrong twice over: 422 tells the client
+            its request was malformed when it was fine, and the message leaks
+            the reasoning.
+
+            The three guards must agree. ``get_hca_user`` and
+            ``get_admin_user`` compare by identity and were always right; the
+            manager gate is the one that ranks.
+        """
+        with pytest.raises(HTTPException) as raised:
+            guard(self._request(_customer_account()))
 
         assert raised.value.status_code == 403
 
@@ -475,11 +519,11 @@ class TestRoleGuards:
 class TestProductionRegistration:
     """The real application must carry what the isolated test app fakes."""
 
-    def _production_app(self) -> Any:
+    def _production_app(self) -> ModelInput:
         """Import the real application.
 
         Returns:
-            Any: The configured FastAPI application.
+            ModelInput: The configured FastAPI application.
         """
         # First-party imports
         from api.main import app

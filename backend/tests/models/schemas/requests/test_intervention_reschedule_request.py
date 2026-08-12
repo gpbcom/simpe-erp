@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -16,6 +15,7 @@ from models.schemas.exceptions import (
 from models.schemas.requests.customers.intervention_reschedule_request import (
     InterventionRescheduleRequest,
 )
+from tests.annotations import ModelInput
 
 VALID = {"day": date(2026, 9, 14), "start_minute": 540, "end_minute": 720}
 
@@ -82,11 +82,11 @@ class TestInterventionRescheduleRequest:
             pytest.param("", id="Invalid - empty"),
         ],
     )
-    def test_a_missing_day_is_refused(self, value: Any) -> None:
+    def test_a_missing_day_is_refused(self, value: ModelInput) -> None:
         """A reschedule with no day is not a reschedule.
 
         Args:
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
         """
         with pytest.raises(MTInterventionRescheduleRequestInvalidDay):
             InterventionRescheduleRequest(**{**VALID, "day": value})
@@ -156,12 +156,14 @@ class TestInterventionRescheduleRequest:
             pytest.param("end_minute", None, id="end missing"),
         ],
     )
-    def test_a_non_integer_bound_is_refused(self, field: str, value: Any) -> None:
+    def test_a_non_integer_bound_is_refused(
+        self, field: str, value: ModelInput
+    ) -> None:
         """Minutes are integers, never coerced from something else.
 
         Args:
             field (str): The bound under test.
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
 
         Notes:
             ``True`` is refused explicitly. It is an ``int`` in Python and would

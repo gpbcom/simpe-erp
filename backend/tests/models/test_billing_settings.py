@@ -3,7 +3,6 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -20,6 +19,7 @@ from models.settings.exceptions import (
     MTBillingSettingsInvalidPeriodicity,
     MTBillingSettingsInvalidUpdatedBy,
 )
+from tests.annotations import ModelInput
 
 
 class TestBillingSettingsSingleton:
@@ -49,7 +49,7 @@ class TestBillingSettingsSingleton:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_a_second_row_cannot_be_invented(self, value: Any) -> None:
+    def test_a_second_row_cannot_be_invented(self, value: ModelInput) -> None:
         """There is nowhere for a second set of invoicing rules to live.
 
         Notes:
@@ -76,7 +76,7 @@ class TestBillingSettingsTerms:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_payment_terms_stay_inside_the_legal_range(self, value: Any) -> None:
+    def test_payment_terms_stay_inside_the_legal_range(self, value: ModelInput) -> None:
         """The ceiling is statutory, not a preference.
 
         Notes:
@@ -106,7 +106,7 @@ class TestBillingSettingsTerms:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_the_penalty_multiplier_stays_in_range(self, value: Any) -> None:
+    def test_the_penalty_multiplier_stays_in_range(self, value: ModelInput) -> None:
         """A penalty below the legal interest rate is not a penalty."""
         with pytest.raises(MTBillingSettingsInvalidPenaltyMultiplier):
             BillingSettings(late_penalty_multiplier=value)
@@ -121,7 +121,7 @@ class TestBillingSettingsTerms:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_an_unusable_indemnity_is_refused(self, value: Any) -> None:
+    def test_an_unusable_indemnity_is_refused(self, value: ModelInput) -> None:
         """The recovery indemnity is money, and money has a shape."""
         with pytest.raises(MTBillingSettingsInvalidIndemnity):
             BillingSettings(recovery_indemnity_eur=value)
@@ -176,7 +176,7 @@ class TestBillingSettingsAudit:
             pytest.param(20260401, id="Invalid - int"),
         ],
     )
-    def test_an_unusable_timestamp_is_refused(self, value: Any) -> None:
+    def test_an_unusable_timestamp_is_refused(self, value: ModelInput) -> None:
         """Only a datetime or an ISO string records when the rules moved."""
         with pytest.raises(MTBillingSettingsInvalidDate):
             BillingSettings(updated_at=value)

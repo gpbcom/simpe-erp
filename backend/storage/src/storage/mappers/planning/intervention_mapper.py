@@ -108,6 +108,7 @@ class InterventionMapper(BaseMapper[Intervention, InterventionRow]):
             id=row.id,
             planning_run_id=row.planning_run_id,
             company_id=row.company_id,
+            team_id=row.team_id,
             name=row.name,
             intervention_type_id=row.intervention_type_id,
             quote_line_id=row.quote_line_id,
@@ -150,6 +151,7 @@ class InterventionMapper(BaseMapper[Intervention, InterventionRow]):
         )
         row.planning_run_id = model.planning_run_id
         row.company_id = model.company_id
+        row.team_id = model.team_id
         row.name = model.name
         row.intervention_type_id = model.intervention_type_id
         row.quote_line_id = model.quote_line_id

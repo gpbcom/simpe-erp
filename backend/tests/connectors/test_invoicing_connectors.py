@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Dict, List, Tuple
 
 # Third-party imports
+from pydantic import JsonValue
 import httpx
 import pytest
 
@@ -28,6 +29,7 @@ from models.enums import (
     TransmissionKind,
 )
 from models.integrations.integration_credentials import IntegrationCredentials
+from tests.annotations import ModelInput
 
 DOCUMENT = b"<CrossIndustryInvoice/>"
 
@@ -41,7 +43,7 @@ def _bill(kind: RecipientKind = RecipientKind.BUSINESS) -> Bill:
     Returns:
         Bill: The invoice.
     """
-    recipient: Dict[str, object] = {
+    recipient: Dict[str, ModelInput] = {
         "kind": kind,
         "name": "Mutuelle Saint-Martin",
         "address": {
@@ -101,12 +103,12 @@ def _bill(kind: RecipientKind = RecipientKind.BUSINESS) -> Bill:
 
 
 def _client(
-    responses: Dict[str, Tuple[int, object]], seen: List[httpx.Request]
+    responses: Dict[str, Tuple[int, JsonValue]], seen: List[httpx.Request]
 ) -> httpx.AsyncClient:
     """Build a client answering from a recorded map of paths.
 
     Args:
-        responses (Dict[str, Tuple[int, object]]): Path fragment to status and
+        responses (Dict[str, Tuple[int, JsonValue]]): Path fragment to status and
             JSON body.
         seen (List[httpx.Request]): Collects every request made.
 
@@ -392,9 +394,7 @@ class TestReachingAPublicBody:
         )
 
         with pytest.raises(MTConnectorUnsupported):
-            await connector.submit_to_chorus_pro(
-                _bill(RecipientKind.PUBLIC), DOCUMENT
-            )
+            await connector.submit_to_chorus_pro(_bill(RecipientKind.PUBLIC), DOCUMENT)
 
     async def test_the_refusal_tells_an_operator_what_to_do(self) -> None:
         """A refusal with no way forward is a dead end."""
@@ -404,9 +404,7 @@ class TestReachingAPublicBody:
         )
 
         with pytest.raises(MTConnectorUnsupported) as raised:
-            await connector.submit_to_chorus_pro(
-                _bill(RecipientKind.PUBLIC), DOCUMENT
-            )
+            await connector.submit_to_chorus_pro(_bill(RecipientKind.PUBLIC), DOCUMENT)
 
         assert "Chorus Pro" in str(raised.value)
 

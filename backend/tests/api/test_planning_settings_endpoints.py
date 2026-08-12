@@ -16,6 +16,7 @@ from api.v1.planning.settings import router as settings_router
 from models.auth.user import User
 from models.enums import UserRole
 from models.settings.planning_settings import PlanningSettings
+from tests.annotations import ModelInput
 
 #: A complete payload. Individual tests override one field at a time, so what
 #: each of them is actually asserting stays visible at the call site.
@@ -202,14 +203,14 @@ class TestChangingThePlanningSettings:
         ],
     )
     def test_an_unworkable_day_answers_422(
-        self, client: TestClient, service: AsyncMock, overrides: Dict[str, object]
+        self, client: TestClient, service: AsyncMock, overrides: Dict[str, ModelInput]
     ) -> None:
         """The conflict is named as a 422 rather than left to the solver.
 
         Args:
             client (TestClient): The client under test.
             service (AsyncMock): The service double.
-            overrides (Dict[str, object]): The fields making it unworkable.
+            overrides (Dict[str, ModelInput]): The fields making it unworkable.
 
         Notes:
             Reaching the solver, the same payload produces a planning run that

@@ -42,3 +42,45 @@ export function planningWindow(days: number = PLANNING_WINDOW_DAYS): PlanningWin
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
   return { from: toIsoDate(monday), to: toIsoDate(addDays(monday, days - 1)) };
 }
+
+/**
+ * How far back a household's own calendar reaches.
+ *
+ * @remarks
+ * Two months, because a family looks *backwards* far more often than the agency
+ * does — "who came in June?" is the question behind most of the telephone calls
+ * this screen exists to answer.
+ */
+export const CUSTOMER_WINDOW_LOOKBACK_DAYS = 60;
+
+/** How far ahead a household's own calendar reaches. */
+export const CUSTOMER_WINDOW_LOOKAHEAD_DAYS = 120;
+
+/**
+ * The span of care a household and the agency both read.
+ *
+ * @returns The window, anchored to the Monday of the current week.
+ *
+ * @remarks
+ * **The same failure as {@link planningWindow}, one axis over.** That helper
+ * exists because the map and the team planning each worked out their own span
+ * and disagreed. This one exists because the household's portal and the
+ * agency's customers view would do exactly the same: a family ringing about a
+ * visit in June, looking at a screen that shows it, while the manager on the
+ * telephone reads a six-week window that does not.
+ *
+ * So it is deliberately **not** {@link planningWindow}. The two answer different
+ * questions and have no business sharing a number — what they must share is
+ * that each is defined once.
+ *
+ * Wider than the staff window in both directions, and asymmetric on purpose: a
+ * household's arrangement is measured in months, not in the fortnight a
+ * scheduler works to.
+ */
+export function customerPlanningWindow(): PlanningWindow {
+  const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
+  return {
+    from: toIsoDate(addDays(monday, -CUSTOMER_WINDOW_LOOKBACK_DAYS)),
+    to: toIsoDate(addDays(monday, CUSTOMER_WINDOW_LOOKAHEAD_DAYS)),
+  };
+}

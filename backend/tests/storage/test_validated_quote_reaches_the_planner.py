@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standard library imports
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -18,6 +18,7 @@ from models.quoting.quote_line import QuoteLine
 from storage.repositories.catalog.intervention_type import InterventionTypeRepository
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.quoting.quote import QuoteRepository
+from tests.annotations import ModelInput
 
 COMPANY = "company-1"
 SERVICE_DAY = date(2026, 8, 11)
@@ -71,14 +72,14 @@ async def _intervention_type(session: AsyncSession) -> str:
     return stored.id or ""
 
 
-def _priced_line(type_id: str) -> Dict[str, Any]:
+def _priced_line(type_id: str) -> Dict[str, ModelInput]:
     """Return a priced quote line inside the planning period.
 
     Args:
         type_id (str): The catalogue entry it bills against.
 
     Returns:
-        Dict[str, Any]: Constructor keywords for the line.
+        Dict[str, ModelInput]: Constructor keywords for the line.
     """
     return {
         "name": "Aide a la toilette",
@@ -157,7 +158,9 @@ class TestAValidatedQuoteReachesThePlanner:
         assert validated is not None
         assert validated.status is QuoteStatus.ACCEPTED
         assert validated.is_schedulable() is True
-        loaded = await repository.list_schedulable(COMPANY, PERIOD_START, PERIOD_END)
+        loaded = await repository.list_schedulable(
+            COMPANY, None, PERIOD_START, PERIOD_END
+        )
         assert [item.reference for item in loaded] == ["D-0001"]
 
     async def test_a_quote_already_stored_as_sent_can_still_be_accepted(
@@ -178,7 +181,9 @@ class TestAValidatedQuoteReachesThePlanner:
 
         assert accepted is not None
         assert accepted.is_schedulable() is True
-        loaded = await repository.list_schedulable(COMPANY, PERIOD_START, PERIOD_END)
+        loaded = await repository.list_schedulable(
+            COMPANY, None, PERIOD_START, PERIOD_END
+        )
         assert [item.reference for item in loaded] == ["D-0001"]
 
     async def test_validation_does_not_lose_the_agency(
@@ -238,7 +243,7 @@ class TestAValidatedQuoteReachesThePlanner:
 
         assert (
             await repository.list_schedulable(
-                "another-company", PERIOD_START, PERIOD_END
+                "another-company", None, PERIOD_START, PERIOD_END
             )
             == []
         )
@@ -274,7 +279,7 @@ class TestAValidatedQuoteReachesThePlanner:
         quote = await _submitted_quote(session)
         await repository.set_status(quote.id or "", QuoteStatus.ACCEPTED)
 
-        assert await repository.list_schedulable(COMPANY, start, end) == []
+        assert await repository.list_schedulable(COMPANY, None, start, end) == []
 
 
 class TestTheWorkloadIsHandedOverInAStableOrder:
@@ -316,7 +321,7 @@ class TestTheWorkloadIsHandedOverInAStableOrder:
             [
                 quote.id
                 for quote in await repository.list_schedulable(
-                    COMPANY, PERIOD_START, PERIOD_END
+                    COMPANY, None, PERIOD_START, PERIOD_END
                 )
             ]
             for _ in range(5)
@@ -349,7 +354,9 @@ class TestTheWorkloadIsHandedOverInAStableOrder:
                 )
             )
 
-        loaded = await repository.list_schedulable(COMPANY, PERIOD_START, PERIOD_END)
+        loaded = await repository.list_schedulable(
+            COMPANY, None, PERIOD_START, PERIOD_END
+        )
         identifiers = [quote.id for quote in loaded]
 
         assert identifiers == sorted(identifiers)

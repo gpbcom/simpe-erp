@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import UTC, datetime
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 from pydantic import ValidationError
@@ -24,14 +24,15 @@ from models.people.customer.exceptions import (
     MTCustomerInvalidRegistrationStatus,
     MTInvalidCustomerException,
 )
+from tests.annotations import ModelInput
 
 
 @pytest.fixture
-def valid_customer_kwargs() -> Dict[str, Any]:
+def valid_customer_kwargs() -> Dict[str, ModelInput]:
     """Return the keyword arguments for a valid customer.
 
     Returns:
-        Dict[str, Any]: Constructor keyword arguments.
+        Dict[str, ModelInput]: Constructor keyword arguments.
     """
     return {
         "first_name": "Marie",
@@ -54,7 +55,7 @@ class TestCustomer:
     # ------------------------------------------------------------------ #
 
     def test_minimal_valid_construction(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A customer is a name, contact details and an address."""
         customer = Customer(**valid_customer_kwargs)
@@ -63,7 +64,7 @@ class TestCustomer:
         assert customer.id is None
 
     def test_registration_status_defaults_to_prospect(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**A new customer is somebody the agency is talking to.**
 
@@ -76,7 +77,7 @@ class TestCustomer:
         assert customer.registration_status is RegistrationStatus.PROSPECT
 
     def test_the_address_is_built_from_a_mapping(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A mapping becomes a PostalAddress."""
         customer = Customer(**valid_customer_kwargs)
@@ -84,7 +85,7 @@ class TestCustomer:
         assert customer.address.city == "Paris"
 
     def test_an_already_built_address_is_accepted(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """The address may be handed in as a built model."""
         address = PostalAddress(street="1 rue A", postal_code="75001", city="Paris")
@@ -105,7 +106,7 @@ class TestCustomer:
         ],
     )
     def test_invalid_first_name_raises(
-        self, valid_customer_kwargs: Dict[str, Any], invalid_name: Any
+        self, valid_customer_kwargs: Dict[str, ModelInput], invalid_name: ModelInput
     ) -> None:
         """A first name that is not a non-empty string is rejected."""
         with pytest.raises(MTCustomerInvalidFirstName):
@@ -119,13 +120,15 @@ class TestCustomer:
         ],
     )
     def test_invalid_last_name_raises(
-        self, valid_customer_kwargs: Dict[str, Any], invalid_name: Any
+        self, valid_customer_kwargs: Dict[str, ModelInput], invalid_name: ModelInput
     ) -> None:
         """A last name that is not a non-empty string is rejected."""
         with pytest.raises(MTCustomerInvalidLastName):
             Customer(**{**valid_customer_kwargs, "last_name": invalid_name})
 
-    def test_names_are_stripped(self, valid_customer_kwargs: Dict[str, Any]) -> None:
+    def test_names_are_stripped(
+        self, valid_customer_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """Surrounding whitespace is removed from both names."""
         customer = Customer(
             **{
@@ -141,7 +144,7 @@ class TestCustomer:
     # ------------------------------------------------------------------ #
 
     def test_a_phone_number_is_normalised(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A valid number is stored in its canonical form."""
         customer = Customer(
@@ -160,7 +163,7 @@ class TestCustomer:
         ],
     )
     def test_a_missing_phone_number_raises_the_model_exception(
-        self, valid_customer_kwargs: Dict[str, Any], invalid_phone: Any
+        self, valid_customer_kwargs: Dict[str, ModelInput], invalid_phone: ModelInput
     ) -> None:
         """A missing number raises the model's own exception.
 
@@ -172,7 +175,7 @@ class TestCustomer:
             Customer(**{**valid_customer_kwargs, "phone_number": invalid_phone})
 
     def test_an_undialable_number_is_rejected(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Digits that do not form a real number are rejected."""
         with pytest.raises(ValidationError):
@@ -192,14 +195,14 @@ class TestCustomer:
         ],
     )
     def test_a_missing_email_raises_the_model_exception(
-        self, valid_customer_kwargs: Dict[str, Any], invalid_email: Any
+        self, valid_customer_kwargs: Dict[str, ModelInput], invalid_email: ModelInput
     ) -> None:
         """A missing address raises the model's own exception."""
         with pytest.raises(MTCustomerInvalidEmail):
             Customer(**{**valid_customer_kwargs, "email": invalid_email})
 
     def test_a_malformed_email_is_rejected(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An address without a domain is rejected."""
         with pytest.raises(ValidationError):
@@ -218,14 +221,14 @@ class TestCustomer:
         ],
     )
     def test_invalid_address_raises(
-        self, valid_customer_kwargs: Dict[str, Any], invalid_address: Any
+        self, valid_customer_kwargs: Dict[str, ModelInput], invalid_address: ModelInput
     ) -> None:
         """An address that is neither a model nor a mapping is rejected."""
         with pytest.raises(MTCustomerInvalidAddress):
             Customer(**{**valid_customer_kwargs, "address": invalid_address})
 
     def test_a_malformed_address_raises_the_address_exception(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A bad field inside the address names that field.
 
@@ -253,7 +256,7 @@ class TestCustomer:
     # ------------------------------------------------------------------ #
 
     def test_status_is_coerced_from_a_string(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A string status becomes a RegistrationStatus member."""
         customer = Customer(
@@ -262,7 +265,7 @@ class TestCustomer:
         assert customer.registration_status is RegistrationStatus.STOPPED
 
     def test_a_none_status_defaults_to_prospect(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An explicit None yields the default rather than an error.
 
@@ -283,7 +286,7 @@ class TestCustomer:
         ],
     )
     def test_invalid_status_raises(
-        self, valid_customer_kwargs: Dict[str, Any], invalid_status: Any
+        self, valid_customer_kwargs: Dict[str, ModelInput], invalid_status: ModelInput
     ) -> None:
         """A status outside the enum is rejected."""
         with pytest.raises(MTCustomerInvalidRegistrationStatus):
@@ -294,7 +297,7 @@ class TestCustomer:
     # ------------------------------------------------------------------ #
 
     def test_a_customer_follows_the_agency_by_default(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """**Unset is the ordinary case, and it is not monthly.**
 
@@ -320,7 +323,7 @@ class TestCustomer:
         ],
     )
     def test_an_override_is_kept_whichever_way_it_arrives(
-        self, valid_customer_kwargs: Dict[str, Any], value: object
+        self, valid_customer_kwargs: Dict[str, ModelInput], value: ModelInput
     ) -> None:
         """Their own rule wins over the agency's, however it was sent."""
         customer = Customer(**{**valid_customer_kwargs, "billing_periodicity": value})
@@ -340,7 +343,7 @@ class TestCustomer:
         ],
     )
     def test_an_unknown_periodicity_is_refused(
-        self, valid_customer_kwargs: Dict[str, Any], value: object
+        self, valid_customer_kwargs: Dict[str, ModelInput], value: ModelInput
     ) -> None:
         """A granularity nothing can bill on is refused, not coerced."""
         with pytest.raises(MTCustomerInvalidBillingPeriodicity):
@@ -352,7 +355,7 @@ class TestCustomer:
 
     @pytest.mark.parametrize("field", ["created_at", "updated_at"])
     def test_invalid_timestamp_raises(
-        self, valid_customer_kwargs: Dict[str, Any], field: str
+        self, valid_customer_kwargs: Dict[str, ModelInput], field: str
     ) -> None:
         """A non datetime-like timestamp is rejected."""
         with pytest.raises(MTCustomerInvalidDate):
@@ -362,12 +365,12 @@ class TestCustomer:
     #  Helpers
     # ------------------------------------------------------------------ #
 
-    def test_full_name(self, valid_customer_kwargs: Dict[str, Any]) -> None:
+    def test_full_name(self, valid_customer_kwargs: Dict[str, ModelInput]) -> None:
         """The display name joins the given and family names."""
         assert Customer(**valid_customer_kwargs).full_name() == "Marie Durand"
 
     def test_an_active_customer_may_be_served(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """An active customer takes new work."""
         active = Customer(
@@ -388,14 +391,14 @@ class TestCustomer:
     )
     def test_only_an_active_customer_can_be_scheduled(
         self,
-        valid_customer_kwargs: Dict[str, Any],
+        valid_customer_kwargs: Dict[str, ModelInput],
         status: RegistrationStatus,
         schedulable: bool,
     ) -> None:
         """**The predicate the planner asks, and the reason PROSPECT exists.**
 
         Args:
-            valid_customer_kwargs (Dict[str, Any]): A valid customer.
+            valid_customer_kwargs (Dict[str, ModelInput]): A valid customer.
             status (RegistrationStatus): The status under test.
             schedulable (bool): Whether the planner may place their work.
 
@@ -409,7 +412,7 @@ class TestCustomer:
         assert customer.can_be_scheduled() is schedulable
 
     def test_a_stopped_customer_may_not(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """A stopped customer keeps their history but takes no new work."""
         customer = Customer(
@@ -444,7 +447,7 @@ class TestCustomer:
     # ------------------------------------------------------------------ #
 
     def test_timestamps_serialize_to_iso_strings(
-        self, valid_customer_kwargs: Dict[str, Any]
+        self, valid_customer_kwargs: Dict[str, ModelInput]
     ) -> None:
         """Timestamps leave the model as ISO-8601 text."""
         customer = Customer(
@@ -455,7 +458,9 @@ class TestCustomer:
         )
         assert customer.model_dump()["created_at"] == "2026-08-05T12:00:00+00:00"
 
-    def test_model_dump_round_trip(self, valid_customer_kwargs: Dict[str, Any]) -> None:
+    def test_model_dump_round_trip(
+        self, valid_customer_kwargs: Dict[str, ModelInput]
+    ) -> None:
         """A customer survives a dump-and-rebuild unchanged."""
         customer = Customer(**valid_customer_kwargs)
         assert Customer(**customer.model_dump()) == customer

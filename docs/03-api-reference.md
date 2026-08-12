@@ -336,6 +336,15 @@ the approve/reject decisions are `manager`.
 | GET | `/settings` · PUT | manager | Radius, working day, lunch break and its window |
 | GET | `/hcas` | current | Every diary. An assistant gets a one-element list of their own |
 | GET | `/hcas/{id}` | current | One diary, with a row-level ownership check |
+| GET | `/customers` | current | Every household's care. A manager gets the agency; an assistant only their own portfolio |
+| GET | `/customers/{id}` | current | One household's care. Outside an assistant's portfolio it is a **404**, not a 403 |
+
+The two `/customers` routes read through the same repository method the
+household's own `/api/v1/portal/planning` reads through, with the same
+arguments and no filter of either side's own — so the agency and the family
+cannot be shown different weeks. A household reaching either is a **403**: the
+staff test comes before anything that ranks, because ranking a customer raises
+and would surface as a 422 about role ladders.
 
 If the broker is unreachable the run stays `pending` rather than vanishing — the
 identifier the caller polls is real either way.

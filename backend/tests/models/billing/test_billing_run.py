@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import date
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 import pytest
@@ -20,18 +20,19 @@ from models.billing.exceptions import (
     MTBillingRunInvalidStatus,
 )
 from models.enums import BillingPeriodicity, BillingRunStatus
+from tests.annotations import ModelInput
 
 
-def a_run(**overrides: Any) -> Dict[str, Any]:
+def a_run(**overrides: ModelInput) -> Dict[str, ModelInput]:
     """Build the payload of a request to bill March.
 
     Args:
         **overrides: Fields to replace on the default payload.
 
     Returns:
-        Dict[str, Any]: A payload ``BillingRun`` accepts.
+        Dict[str, ModelInput]: A payload ``BillingRun`` accepts.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, ModelInput] = {
         "company_id": "company-1",
         "requested_by": "user-1",
         "reference_date": date(2026, 4, 1),
@@ -106,7 +107,7 @@ class TestBillingRunPeriod:
             pytest.param(20260401, id="Invalid - int"),
         ],
     )
-    def test_a_date_field_must_be_a_date(self, value: Any) -> None:
+    def test_a_date_field_must_be_a_date(self, value: ModelInput) -> None:
         """Only a date names a day."""
         with pytest.raises(MTBillingRunInvalidDate):
             BillingRun(**a_run(reference_date=value))
@@ -118,7 +119,7 @@ class TestBillingRunPeriod:
             pytest.param(object(), id="Invalid - object"),
         ],
     )
-    def test_a_timestamp_must_be_a_moment(self, value: Any) -> None:
+    def test_a_timestamp_must_be_a_moment(self, value: ModelInput) -> None:
         """Only a datetime or an ISO string records when something happened."""
         with pytest.raises(MTBillingRunInvalidMoment):
             BillingRun(**a_run(started_at=value))
@@ -157,7 +158,7 @@ class TestBillingRunOutcome:
             pytest.param([7], id="Invalid - a number"),
         ],
     )
-    def test_an_unusable_outcome_list_is_refused(self, value: Any) -> None:
+    def test_an_unusable_outcome_list_is_refused(self, value: ModelInput) -> None:
         """The lists are what a partial run is read from."""
         with pytest.raises(MTBillingRunInvalidIdentifiers):
             BillingRun(**a_run(bill_ids=value))

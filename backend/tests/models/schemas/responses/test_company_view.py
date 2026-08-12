@@ -2,18 +2,18 @@ from __future__ import annotations
 
 # Standard library imports
 from decimal import Decimal
-from typing import Any
 
 # Third-party imports
 import pytest
 
 # First-party imports
-from models.companies.company import Company
+from models.organisation.companies.company import Company
 from models.schemas.exceptions import (
     MTCompanyViewInvalidIbanMaskFlag,
     MTCompanyViewInvalidName,
 )
 from models.schemas.responses.companies.company_view import CompanyView
+from tests.annotations import ModelInput
 
 IBAN = "FR7630006000011234567890189"
 
@@ -125,11 +125,11 @@ class TestCompanyViewValidation:
             pytest.param(0, id="Invalid - an integer"),
         ],
     )
-    def test_a_non_boolean_mask_flag_is_refused(self, value: Any) -> None:
+    def test_a_non_boolean_mask_flag_is_refused(self, value: ModelInput) -> None:
         """A view that claimed to be masked when it was not would leak.
 
         Args:
-            value (Any): The rejected flag.
+            value (ModelInput): The rejected flag.
         """
         with pytest.raises(MTCompanyViewInvalidIbanMaskFlag):
             CompanyView(name="Aide et Soins", iban_is_masked=value)

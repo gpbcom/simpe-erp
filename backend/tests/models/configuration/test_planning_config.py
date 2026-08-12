@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Standard library imports
 from datetime import time
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -20,6 +19,7 @@ from models.configuration.exceptions import (
     MTPlanningConfigInvalidSpeed,
 )
 from models.configuration.planning_config import PlanningConfig
+from tests.annotations import ModelInput
 
 
 class TestPlanningConfig:
@@ -83,7 +83,7 @@ class TestPlanningConfig:
         ],
     )
     def test_invalid_minute_of_day_raises(
-        self, field: str, invalid_minute: Any
+        self, field: str, invalid_minute: ModelInput
     ) -> None:
         """A minute-of-day outside 0..1440, or not an integer, is rejected."""
         with pytest.raises(MTPlanningConfigInvalidDayStart):
@@ -109,7 +109,7 @@ class TestPlanningConfig:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_invalid_lunch_break_raises(self, invalid_break: Any) -> None:
+    def test_invalid_lunch_break_raises(self, invalid_break: ModelInput) -> None:
         """A non-positive or absurd lunch break is rejected."""
         with pytest.raises(MTPlanningConfigInvalidLunchBreak):
             PlanningConfig(lunch_break_minutes=invalid_break)
@@ -131,7 +131,7 @@ class TestPlanningConfig:
             pytest.param(True, id="Invalid - bool"),
         ],
     )
-    def test_invalid_speed_raises(self, field: str, invalid_speed: Any) -> None:
+    def test_invalid_speed_raises(self, field: str, invalid_speed: ModelInput) -> None:
         """A non-positive speed is rejected before it divides by zero."""
         with pytest.raises(MTPlanningConfigInvalidSpeed):
             PlanningConfig(**{field: invalid_speed})
@@ -156,7 +156,7 @@ class TestPlanningConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_invalid_solver_time_limit_raises(self, invalid_limit: Any) -> None:
+    def test_invalid_solver_time_limit_raises(self, invalid_limit: ModelInput) -> None:
         """A non-positive solver budget is rejected."""
         with pytest.raises(MTPlanningConfigInvalidSolverTimeLimit):
             PlanningConfig(solver_time_limit_seconds=invalid_limit)
@@ -206,7 +206,7 @@ class TestPlanningConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_an_invalid_thread_count_raises(self, invalid_workers: Any) -> None:
+    def test_an_invalid_thread_count_raises(self, invalid_workers: ModelInput) -> None:
         """Zero is refused rather than read as "let the solver decide".
 
         Notes:
@@ -231,7 +231,9 @@ class TestPlanningConfig:
             pytest.param(None, id="Invalid - None"),
         ],
     )
-    def test_invalid_objective_term_raises(self, field: str, invalid_term: Any) -> None:
+    def test_invalid_objective_term_raises(
+        self, field: str, invalid_term: ModelInput
+    ) -> None:
         """An objective weight must be a non-negative integer."""
         with pytest.raises(MTPlanningConfigInvalidPenalty):
             PlanningConfig(**{field: invalid_term})

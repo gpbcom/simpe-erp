@@ -16,54 +16,72 @@ from models.auth.user import User
 from models.configuration.app_config import AppConfig
 from models.enums import EventRoutingKey, PlanningRunStatus, UserRole
 from service.auth.auth import AuthService
+from service.billing.billings import BillingService
+from service.billing.webhook import BillingWebhook
 from service.certifications.certifications import CertificationTypeService
-from service.skills.skills import SkillTypeService
 from service.companies.companies import CompanyService
 from service.companies.registration import CompanyRegistrationService
 from service.customers.customers import CustomerService
 from service.customers.portal import CustomerPortalService
 from service.emails.emails import EmailService
 from service.hcas.hcas import HcaService
+from service.integrations.invoicing import InvoicingService
+from service.integrations.utils.factur_x import FacturXBuilder
 from service.intervention_types.intervention_types import (
     InterventionTypeService,
 )
 from service.messaging.consumer import EventConsumer
 from service.messaging.publisher import EventPublisher
+from service.observability.metrics import ApplicationMetrics
+from service.organisation.agencies import AgencyService
+from service.organisation.team_documents import TeamDocumentService
+from service.organisation.teams import TeamService
 from service.planning.interventions import InterventionService
 from service.planning.plannings import PlanningService
 from service.planning.webhook import PlanningWebhook
 from service.quotes.documents import QuoteDocumentService
 from service.quotes.quotes import QuoteService
-from service.observability.metrics import ApplicationMetrics
-from storage.db.connection_manager import DatabaseConnectionManager
-from storage.repositories.catalog.certification_type import CertificationTypeRepository  # noqa: E501
-from storage.repositories.catalog.skill_type import SkillTypeRepository
-from service.billing.billings import BillingService
-from service.integrations.invoicing import InvoicingService
 from service.security.credential_cipher import CredentialCipher
-from service.billing.webhook import BillingWebhook
-from service.integrations.utils.factur_x import FacturXBuilder
+from service.skills.skills import SkillTypeService
 from service.utils.invoice_renderer import InvoiceRenderer
 from service.utils.quote_renderer import QuoteRenderer
+from storage.db.connection_manager import DatabaseConnectionManager
+from storage.repositories.auth.user import UserRepository
 from storage.repositories.billing.bill import BillRepository
 from storage.repositories.billing.billing_run import BillingRunRepository
-from storage.repositories.integrations.einvoicing_integration import (
-    EInvoicingIntegrationRepository,
-)
 from storage.repositories.billing.billing_settings import (
     BillingSettingsRepository,
 )
+from storage.repositories.catalog.certification_type import (
+    CertificationTypeRepository,  # noqa: E501
+)
+from storage.repositories.catalog.intervention_type import (
+    InterventionTypeRepository,  # noqa: E501
+)
+from storage.repositories.catalog.skill_type import SkillTypeRepository
 from storage.repositories.companies.company import CompanyRepository
+from storage.repositories.integrations.einvoicing_integration import (
+    EInvoicingIntegrationRepository,
+)
+from storage.repositories.notifications.notification import (
+    NotificationRepository,  # noqa: E501
+)
+from storage.repositories.organisation.agency import AgencyRepository
+from storage.repositories.organisation.team import TeamRepository
+from storage.repositories.organisation.team_document import (
+    TeamDocumentRepository,  # noqa: E501
+)
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
-from storage.repositories.people.hca_application import HcaApplicationRepository  # noqa: E501
+from storage.repositories.people.hca_application import (
+    HcaApplicationRepository,  # noqa: E501
+)
 from storage.repositories.planning.intervention import InterventionRepository
-from storage.repositories.catalog.intervention_type import InterventionTypeRepository  # noqa: E501
-from storage.repositories.notifications.notification import NotificationRepository  # noqa: E501
 from storage.repositories.planning.planning_run import PlanningRunRepository
-from storage.repositories.planning.planning_settings import PlanningSettingsRepository  # noqa: E501
+from storage.repositories.planning.planning_settings import (
+    PlanningSettingsRepository,  # noqa: E501
+)
 from storage.repositories.quoting.quote import QuoteRepository
-from storage.repositories.auth.user import UserRepository
 from storage.s3.s3_storage import S3Storage
 
 logger: Logger = getLogger(__name__)
@@ -357,9 +375,79 @@ async def get_quote_repository(
     return QuoteRepository(session=session)
 
 
+async def get_agency_repository(
+    session: AsyncSession = Depends(get_session),
+) -> AgencyRepository:
+    """Return the site repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        AgencyRepository: The repository.
+    """
+    return AgencyRepository(session=session)
+
+
+async def get_team_repository(
+    session: AsyncSession = Depends(get_session),
+) -> TeamRepository:
+    """Return the team repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        TeamRepository: The repository.
+    """
+    return TeamRepository(session=session)
+
+
+async def get_team_document_repository(
+    session: AsyncSession = Depends(get_session),
+) -> TeamDocumentRepository:
+    """Return the teamspace document repository.
+
+    Args:
+        session (AsyncSession): The request-scoped session.
+
+    Returns:
+        TeamDocumentRepository: The repository.
+    """
+    return TeamDocumentRepository(session=session)
+
+
+async def get_team_service(
+    teams: TeamRepository = Depends(get_team_repository),
+    agencies: AgencyRepository = Depends(get_agency_repository),
+    users: UserRepository = Depends(get_user_repository),
+    quotes: QuoteRepository = Depends(get_quote_repository),
+) -> TeamService:
+    """Return the team service.
+
+    Args:
+        teams (TeamRepository): Reads and writes the teams.
+        agencies (AgencyRepository): Proves a member works at the team's site.
+        users (UserRepository): Proves the named manager may run one.
+        quotes (QuoteRepository): The busyness tie-break, and the refusal to
+            disband a team that still holds work.
+
+    Returns:
+        TeamService: The service.
+
+    Notes:
+        Four repositories, and none of them optional: the attribution rule reads
+        sites for distance and quotes for load, and both are what make one team
+        rather than another the answer.
+    """
+    return TeamService(teams=teams, agencies=agencies, users=users, quotes=quotes)
+
+
 async def get_quote_service(
     quotes: QuoteRepository = Depends(get_quote_repository),
     types: InterventionTypeRepository = Depends(get_intervention_type_repository),
+    teams: TeamService = Depends(get_team_service),
+    customers: CustomerRepository = Depends(get_customer_repository),
     certifications: CertificationTypeService = Depends(get_certification_type_service),
     skills: SkillTypeService = Depends(get_skill_type_service),
 ) -> QuoteService:
@@ -368,6 +456,10 @@ async def get_quote_service(
     Args:
         quotes (QuoteRepository): The quote store.
         types (InterventionTypeRepository): The catalog store.
+        teams (TeamService): Decides which team a new quote belongs to, and
+            which teams the caller may move one between.
+        customers (CustomerRepository): Read for the household's coordinate,
+            which is what "the closest team" is measured from.
         certifications (CertificationTypeService): The certification
             catalogue, consulted before a line's requirement override is
             stored.
@@ -375,10 +467,18 @@ async def get_quote_service(
 
     Returns:
         QuoteService: The service.
+
+    Notes:
+        The team service is resolved through the same request-scoped session as
+        everything else here, so the attribution read and the quote write happen
+        inside one transaction. A team formed by a concurrent request is either
+        wholly visible to the attribution or wholly absent from it.
     """
     return QuoteService(
         quotes=quotes,
         types=types,
+        teams=teams,
+        customers=customers,
         config=get_app_config().pricing,
         certifications=certifications,
         skills=skills,
@@ -626,6 +726,7 @@ async def get_planning_service(
     hcas: HcaRepository = Depends(get_hca_repository),
     types: InterventionTypeRepository = Depends(get_intervention_type_repository),
     settings: PlanningSettingsRepository = Depends(get_planning_settings_repository),
+    teams: TeamService = Depends(get_team_service),
 ) -> PlanningService:
     """Return the planning service.
 
@@ -639,9 +740,17 @@ async def get_planning_service(
             qualifications each kind of work requires.
         settings (PlanningSettingsRepository): The store holding the
             manager-owned planning rules.
+        teams (TeamService): Whose members a run may schedule, and which teams
+            a caller may ask for a planning of.
 
     Returns:
         PlanningService: The service.
+
+    Notes:
+        The team service is what makes a run *a team's* run: it supplies both
+        the workforce the solver may use and the narrowing that decides whether
+        the caller may name that team at all. Injected rather than built here so
+        it shares the request's session with everything else.
     """
     return PlanningService(
         runs=runs,
@@ -651,6 +760,7 @@ async def get_planning_service(
         hcas=hcas,
         types=types,
         settings=settings,
+        teams=teams,
         config=get_app_config().planning,
         logger=logger,
     )
@@ -683,6 +793,13 @@ async def run_planning_job(run_id: str) -> None:
                 hcas=HcaRepository(session=session),
                 types=InterventionTypeRepository(session=session),
                 settings=PlanningSettingsRepository(session=session),
+                teams=TeamService(
+                    teams=TeamRepository(session=session),
+                    agencies=AgencyRepository(session=session),
+                    users=UserRepository(session=session),
+                    quotes=QuoteRepository(session=session),
+                    logger=logger,
+                ),
                 config=get_app_config().planning,
                 logger=logger,
             )
@@ -985,9 +1102,6 @@ def get_customer_user(request: Request) -> User:
             detail="This action is reserved for customers.",
         )
     if user.customer_id is None:
-        # Unreachable: the model refuses to build such an account. Closed
-        # rather than trusted, because the alternative is a portal that reads
-        # every household when the link is missing.
         logger.error(
             "Customer account %s carries no customer link; access refused.", user.id
         )
@@ -1010,10 +1124,19 @@ def get_manager_user(request: Request) -> User:
 
     Raises:
         HTTPException: 401 when unauthenticated, 403 when the account ranks
-            below manager.
+            below manager or is not staff at all.
+
+    Notes:
+        **The staff test comes first, and it is not defensive tidiness.**
+        ``has_at_least`` ranks, and :meth:`~models.enums.UserRole.rank` refuses
+        to rank a customer — so calling it on one raises ``MTRoleNotRankable``,
+        which the handler map turns into a **422 carrying the enum's internal
+        explanation**. A household reaching a staff route would be told their
+        request was malformed, in a message about ladders. It is a 403: they
+        are authenticated, the request is fine, and they may not do this.
     """
     user = get_current_user(request)
-    if not user.role.has_at_least(UserRole.MANAGER):
+    if not user.role.is_staff() or not user.role.has_at_least(UserRole.MANAGER):
         logger.warning(
             "Account %s (%s) is below manager; denied %s %s.",
             user.id,
@@ -1318,4 +1441,47 @@ async def get_invoicing_service(
         integrations=integrations,
         cipher=get_credential_cipher(),
         config=get_app_config().integrations,
+    )
+
+
+async def get_agency_service(
+    agencies: AgencyRepository = Depends(get_agency_repository),
+    companies: CompanyRepository = Depends(get_company_repository),
+    teams: TeamRepository = Depends(get_team_repository),
+) -> AgencyService:
+    """Return the site service.
+
+    Args:
+        agencies (AgencyRepository): Reads and writes the sites.
+        companies (CompanyRepository): Read for the legal identity a head office
+            inherits.
+        teams (TeamRepository): Consulted before a site is removed, and for the
+            team count each site carries on screen.
+
+    Returns:
+        AgencyService: The service.
+    """
+    return AgencyService(agencies=agencies, companies=companies, teams=teams)
+
+
+async def get_team_document_service(
+    documents: TeamDocumentRepository = Depends(get_team_document_repository),
+    teams: TeamService = Depends(get_team_service),
+) -> TeamDocumentService:
+    """Return the teamspace service.
+
+    Args:
+        documents (TeamDocumentRepository): Indexes the stored objects.
+        teams (TeamService): Resolves the team and the caller's membership.
+
+    Returns:
+        TeamDocumentService: The service.
+
+    Notes:
+        The object store is resolved here rather than injected, matching every
+        other document path. A deployment without one answers 503 on the
+        teamspace routes and serves the rest of the application unaffected.
+    """
+    return TeamDocumentService(
+        documents=documents, teams=teams, storage=get_object_storage()
     )

@@ -55,8 +55,11 @@ describe('WorkingDaysDialog', () => {
     // Sunday — the Monday-to-Friday *default* is what made them look barred.
     render(<WorkingDaysDialog hca={hca(['monday'])} onClose={vi.fn()} />);
 
-    expect(screen.getByTestId('rota-day-list').querySelectorAll('[data-testid^="rota-day-"]'))
-      .toHaveLength(7);
+    expect(
+      screen
+        .getByTestId('rota-day-list')
+        .querySelectorAll('[data-testid^="rota-day-"]'),
+    ).toHaveLength(7);
     expect(screen.getByTestId('rota-day-saturday')).toBeInTheDocument();
     expect(screen.getByTestId('rota-day-sunday')).toBeInTheDocument();
   });
@@ -64,9 +67,18 @@ describe('WorkingDaysDialog', () => {
   it('shows the stored week as selected and the rest as not', () => {
     render(<WorkingDaysDialog hca={hca(['monday', 'saturday'])} onClose={vi.fn()} />);
 
-    expect(screen.getByTestId('rota-day-monday')).toHaveAttribute('data-selected', 'true');
-    expect(screen.getByTestId('rota-day-saturday')).toHaveAttribute('data-selected', 'true');
-    expect(screen.getByTestId('rota-day-tuesday')).toHaveAttribute('data-selected', 'false');
+    expect(screen.getByTestId('rota-day-monday')).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+    expect(screen.getByTestId('rota-day-saturday')).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+    expect(screen.getByTestId('rota-day-tuesday')).toHaveAttribute(
+      'data-selected',
+      'false',
+    );
   });
 
   it('can add a weekend day to a Monday-to-Friday week', async () => {

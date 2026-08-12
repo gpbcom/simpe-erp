@@ -4,10 +4,76 @@ Three campaigns, answering three different questions.
 
 | Campaign | Question | Size |
 |---|---|---|
-| **pytest** — unit | Does each piece behave? | 1500 test functions, hermetic |
+| **pytest** — unit | Does each piece behave? | ~5000 test functions, hermetic |
 | **pytest** — integration | Do the real services actually work? | 3, needing the stack |
-| **Vitest** | Do the front-end's own units behave? | 30 |
-| **Robot Framework** | Does the product work, in a browser, end to end? | 288 across 31 suites |
+| **Vitest** | Do the front-end's own units behave? | 192 |
+| **Robot Framework** | Does the product work, in a browser, end to end? | 360 across 34 suites |
+
+## Signing in to a seeded stack
+
+`make seed` writes one agency and every account below. **All of them share one
+password**, and it is not a secret — it is printed on screen at the end of every
+seeding run, precisely so somebody returning a week later does not have to go
+looking in a log file.
+
+```
+simple-erp-demo-2026
+```
+
+| Role | Address | Sign-in side |
+|---|---|---|
+| **Administrator** | `admin@simple-erp.fr` | Employee |
+| **Manager** | `manager@simple-erp.fr` | Employee |
+| Manager (second) | `manager2@simple-erp.fr` | Employee |
+| **Assistant** | `luc.martin@simple-erp.fr` | Employee |
+| **Customer** — active | `portal.marie.durand@simple-erp.fr` | **Customer** |
+| **Customer** — prospect | `portal.lucien.guillot@simple-erp.fr` | **Customer** |
+
+Every seeded assistant signs in as `firstname.lastname@simple-erp.fr`. Two of
+them are also managers who still cover rounds — see
+`Dataset.ASSISTANT_MANAGERS` — which is the case that exists to prove a role and
+a job are different things.
+
+**The customer accounts must use the Customer side of the sign-in card.** The
+chooser is validated after authentication, not decorative: a staff account
+choosing Customer is refused, and a household choosing Employee is refused, each
+with a message naming which side they belong to. That is safe to state
+precisely because the credentials have already been accepted — it discloses
+nothing an attacker could not learn by signing in.
+
+**Why two customers and not forty.** One is `active` with accepted work, so the
+portal opens on a calendar with visits on it and quotes to download; the other
+is a `prospect`, so every empty state is reachable without editing seeded data —
+a household who has been quoted but whose work no planning run will touch until
+a manager promotes them. A stack where every household could sign in would say
+nothing about who is meant to.
+
+`must_change_password` is left **false** on every seeded account, including the
+customers. A real invitation sets it — `POST /customers/{id}/account` still
+does, and the first sign-in then lands on the password screen — but a
+demonstration stack that demands a password change before showing a single
+screen is one nobody finishes.
+
+### What else the seed contains
+
+| | |
+|---|---|
+| One agency | `Aide et Soins`, with its legal identity and banking details |
+| Assistants | With contracts, certifications, skills, working weeks and absences |
+| Customers | ~40 households, **two of them prospects** (`Dataset.PROSPECTS`) |
+| Catalogue | Intervention types, certification types, skill types, pricing rules |
+| Quotes | ~54, spread across every status including the validation queue |
+| Portal accounts | Two, named in `Dataset.PORTAL_CUSTOMERS` |
+
+Planning runs and invoices are **not** seeded: both are computed. Run one from
+`/plannings` as an administrator, or `POST /api/v1/planning/runs`, before
+expecting a calendar to have anything on it — including the customer portal's.
+
+**The seeder is idempotent by identifier**, not by count: every row's primary
+key is derived from its natural key, so `make seed` is safe to repeat and
+writes nothing the second time. That also means it will **not** restore
+something you deleted or edited through the UI — the identifier still exists,
+so the row is skipped. `make clean` is what rebuilds from nothing.
 
 ## Backend — unit
 

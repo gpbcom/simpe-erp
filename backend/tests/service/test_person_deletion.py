@@ -112,6 +112,7 @@ def _planning_service() -> PlanningService:
         hcas=AsyncMock(),
         types=AsyncMock(),
         settings=AsyncMock(),
+        teams=AsyncMock(),
         config=AsyncMock(),
     )
 

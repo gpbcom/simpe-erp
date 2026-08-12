@@ -30,7 +30,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         make casually is the one that returns every assistant's diary at once.
     """
 
-    def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:
+    def __init__(self, session: AsyncSession, logger: Optional[Logger] = None) -> None:  # noqa: E501
         """Initialize the repository.
 
         Args:
@@ -38,11 +38,9 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
-        resolved_logger = logger if logger else getLogger(__name__)
-        super().__init__(
-            session=session, row_class=InterventionRow, logger=resolved_logger
-        )
-        self.mapper = InterventionMapper(logger=resolved_logger)
+        self.logger = logger if logger else getLogger(__name__)
+        super().__init__(session=session, row_class=InterventionRow)
+        self.mapper = InterventionMapper()
 
     ############################
     # Internal Helpers Methods #
@@ -118,15 +116,14 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             matched.
 
         Notes:
-            One aggregate query rather than loading the visits and taking the
-            extremes in Python. Somebody being deleted may have hundreds of
-            them, and the two dates are all the caller wants.
-
-            A read, so a database error is logged and reported as "no future
-            work" rather than raised. The delete that follows must not be
-            blocked by a failure to work out how much of the calendar it
-            disturbs — the person still has to go, and a run can be asked for
-            by hand.
+            - One aggregate query rather than loading the visits and taking the
+              extremes in Python. Somebody being deleted may have hundreds of
+              them, and the two dates are all the caller wants.
+            - A read, so a database error is logged and reported as "no future
+              work" rather than raised. The delete that follows must not be
+              blocked by a failure to work out how much of the calendar it
+              disturbs — the person still has to go, and a run can be asked for
+              by hand.
         """
         statement = select(
             func.min(InterventionRow.day), func.max(InterventionRow.day)
@@ -166,14 +163,16 @@ class InterventionRepository(BaseRepository[InterventionRow]):
     async def replace_for_period(
         self,
         company_id: str,
+        team_id: str,
         period_start: date,
         period_end: date,
         interventions: List[Intervention],
     ) -> int:
-        """Swap one agency's plan for a period for a freshly computed one.
+        """Swap one team's plan for a period for a freshly computed one.
 
         Args:
             company_id (str): The agency whose calendar is being rewritten.
+            team_id (str): The team whose part of it is being rewritten.
             period_start (date): First day replaced, inclusive.
             period_end (date): Last day replaced, inclusive.
             interventions (List[Intervention]): The new plan.
@@ -188,21 +187,27 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             - Scoped to the period rather than the run: a re-plan of one week
               must not disturb the week after it, which a different run
               produced.
-            - **Scoped to the agency, first and above all.** This is the most
-              destructive statement in the application, and until the agency
-              was part of it, a run replanning one agency's week deleted every
-              *other* agency's visits in the same days and then wrote none of
-              them back. Two agencies solving overlapping periods is the normal
-              case rather than a rare race — the broker gives each its own
-              queue precisely so their runs proceed at the same time — so this
-              lost calendars routinely rather than occasionally.
-            - The agency is taken as a parameter rather than read off the
-              visits. A run that placed nothing still has a period to clear,
-              and an empty list would leave the delete with nothing to scope
-              itself by.
+            - **Scoped to the agency and to the team, first and above all.**
+              This is the most destructive statement in the application. Until
+              the agency was part of it, a run replanning one agency's week
+              deleted every *other* agency's visits in the same days and then
+              wrote none of them back; the team half is the identical bug one
+              level down, and now the likelier of the two — a manager
+              re-planning their own team is an everyday act, and every other
+              team of the same agency would lose the week.
+            - Both are taken as **parameters** rather than read off the visits.
+              A run that placed nothing still has a period to clear, and an
+              empty list would leave the delete with nothing to scope itself
+              by — which is precisely the case that would wipe everything.
+            - The lock stays keyed on the **agency**, not the team. Two teams'
+              runs touch disjoint rows, so serialising them costs a moment and
+              buys the existing guarantee unchanged; keying it per team would
+              need the delete's correctness to rest on the scoping alone, and
+              the scoping is what this note exists to say has been wrong before.
         """
         self.logger.info(
-            "Replacing the plan of agency %s for %s to %s with %d visit(s).",
+            "Replacing the plan of team %s at agency %s for %s to %s with %d visit(s).",
+            team_id,
             company_id,
             period_start,
             period_end,
@@ -212,6 +217,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         await self.session.execute(
             delete(InterventionRow).where(
                 InterventionRow.company_id == company_id,
+                InterventionRow.team_id == team_id,
                 InterventionRow.day >= period_start,
                 InterventionRow.day <= period_end,
             )
@@ -221,9 +227,9 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         await self.session.flush()
         if not interventions:
             self.logger.warning(
-                "The new plan of agency %s for %s to %s is empty; every "
-                "calendar in that period is now blank.",
-                company_id,
+                "The new plan of team %s for %s to %s is empty; that team's "
+                "calendars in that period are now blank.",
+                team_id,
                 period_start,
                 period_end,
             )
@@ -328,21 +334,30 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         return [self.mapper.to_model(row) for row in rows]
 
     async def list_hca_ids_for_period(
-        self, period_start: date, period_end: date
+        self,
+        period_start: date,
+        period_end: date,
+        team_ids: Optional[List[str]] = None,
     ) -> List[str]:
         """Return which assistants have work in a period.
 
         Args:
             period_start (date): First day of interest, inclusive.
             period_end (date): Last day of interest, inclusive.
+            team_ids (Optional[List[str]]): The teams the caller may read.
+                ``None`` means every team; an **empty list means none**.
 
         Returns:
             List[str]: The assistants' identifiers.
 
         Notes:
-            Used to build the manager's whole-workforce view without loading
-            every visit first: the diaries are then fetched one assistant at a
-            time, through the same scoped read an assistant would use.
+            - Used to build the workforce view without loading every visit
+              first: the diaries are then fetched one assistant at a time,
+              through the same scoped read an assistant would use.
+            - ``None`` and ``[]`` are not interchangeable. ``None`` is an
+              administrator and ``[]`` is somebody who runs no team; reading the
+              empty list as "no filter" — the natural falsy reading — would show
+              the second group the whole agency's calendar.
         """
         statement = (
             select(InterventionRow.hca_id)
@@ -352,6 +367,8 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             )
             .distinct()
         )
+        if team_ids is not None:
+            statement = statement.where(InterventionRow.team_id.in_(team_ids))
         try:
             result = await self.session.execute(statement)
             identifiers = [row[0] for row in result.all()]
@@ -365,6 +382,150 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             return []
         self.logger.debug(
             "%d assistant(s) have work between %s and %s.",
+            len(identifiers),
+            period_start,
+            period_end,
+        )
+        return identifiers
+
+    async def list_for_customers(
+        self, customer_ids: List[str], period_start: date, period_end: date
+    ) -> List[Intervention]:
+        """Return several households' visits in one read.
+
+        Args:
+            customer_ids (List[str]): The households wanted.
+            period_start (date): First day of the period, inclusive.
+            period_end (date): Last day of the period, inclusive.
+
+        Returns:
+            List[Intervention]: Their visits, grouped by household and in time
+            order within each.
+
+        Notes:
+            - **Exactly what :meth:`list_for_customer` returns, for several
+              households at once.** Same predicate on the day, same absence of a
+              status filter, same ``(day, start_time)`` order within a
+              household. That equivalence is a contract, not a coincidence: the
+              single-household read is what the customer portal serves a family
+              from, so a filter added here and not there would show the agency
+              something the household cannot see. A test asserts the two agree.
+            - This does **not** breach the "no unscoped read" rule this class is
+              built on. The scope is still an explicitly named set of parties —
+              the same rule with a wider ``IN`` — and the caller has already
+              decided which households it is entitled to.
+            - It exists because the alternative is one query per household. A
+              manager's screen covering four hundred households would otherwise
+              hold a connection for four hundred round trips, on a page opened
+              every morning.
+            - An empty input answers without a query: ``IN ()`` is a syntax
+              error on some engines, and an assistant with no portfolio is an
+              ordinary state rather than a failure.
+        """
+        if not customer_ids:
+            self.logger.debug("No household was named; reading no visit.")
+            return []
+        statement = (
+            select(InterventionRow)
+            .where(
+                InterventionRow.customer_id.in_(customer_ids),
+                InterventionRow.day >= period_start,
+                InterventionRow.day <= period_end,
+            )
+            .order_by(
+                InterventionRow.customer_id,
+                InterventionRow.day,
+                InterventionRow.start_time,
+            )
+        )
+        try:
+            result = await self.session.execute(statement)
+            rows = list(result.scalars().all())
+        except SQLAlchemyError as exc:
+            self.logger.error(
+                "Error loading the visits of %d household(s) between %s and %s: %s.",
+                len(customer_ids),
+                period_start,
+                period_end,
+                exc,
+            )
+            raise
+        if not rows:
+            self.logger.warning(
+                "None of the %d named household(s) has a visit between %s and %s.",
+                len(customer_ids),
+                period_start,
+                period_end,
+            )
+        self.logger.info(
+            "Loaded %d visit(s) for %d household(s).", len(rows), len(customer_ids)
+        )
+        return [self.mapper.to_model(row) for row in rows]
+
+    async def list_customer_ids_for_period(
+        self,
+        period_start: date,
+        period_end: date,
+        team_ids: Optional[List[str]] = None,
+    ) -> List[str]:
+        """Return which households have care planned in a period.
+
+        Args:
+            period_start (date): First day of interest, inclusive.
+            period_end (date): Last day of interest, inclusive.
+            team_ids (Optional[List[str]]): The teams the caller may read.
+                ``None`` means every team; an empty list means none.
+
+        Returns:
+            List[str]: The households' identifiers.
+
+        Notes:
+            - The mirror of :meth:`list_hca_ids_for_period`, on the other axis,
+              and used the same way: the manager's whole-agency view is built
+              from it without loading every visit first, then one household at a
+              time through :meth:`list_for_customer` — the same scoped read the
+              household's own portal uses.
+            - Read off the **visits**, not off the customer book. A household
+              with nothing planned in the period is not somebody the screen
+              passed over; it is somebody there is nothing to show for, and
+              listing them would fill a rail with empty weeks.
+            - A failure answers an empty period rather than raising, exactly as
+              the assistant-side method does: a screen that cannot say who has
+              work is a screen that shows nothing, not one that breaks.
+            - The team narrowing is what makes a manager's household rail
+              *theirs*. It says the same thing the quote-side narrowing does,
+              one table over: a household is the manager's business because one
+              of their teams delivers to it.
+        """
+        statement = (
+            select(InterventionRow.customer_id)
+            .where(
+                InterventionRow.day >= period_start,
+                InterventionRow.day <= period_end,
+            )
+            .distinct()
+        )
+        if team_ids is not None:
+            statement = statement.where(InterventionRow.team_id.in_(team_ids))
+        try:
+            result = await self.session.execute(statement)
+            identifiers = [row[0] for row in result.all()]
+        except Exception as exc:  # noqa: BLE001 - reported as an empty period
+            self.logger.error(
+                "Error listing the households planned between %s and %s: %s.",
+                period_start,
+                period_end,
+                exc,
+            )
+            return []
+        if not identifiers:
+            self.logger.warning(
+                "No household has care planned between %s and %s.",
+                period_start,
+                period_end,
+            )
+        self.logger.info(
+            "%d household(s) have care between %s and %s.",
             len(identifiers),
             period_start,
             period_end,
@@ -387,16 +548,15 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             work left.
 
         Notes:
-            **This is what a replan after a deletion is scoped to.** Deleting
-            somebody invalidates exactly the days they were due to work, so
-            replanning a fixed window instead would either rewrite calendars
-            nothing changed on or miss a visit at the edge of it. ``None`` is
-            the honest answer that no run is needed at all — queueing one that
-            would place the same visits in the same slots is thirty seconds of
-            a worker and a calendar that flickers for no reason.
-
-            Days in the past are excluded because they have already happened.
-            Rewriting them would move visits somebody has already made.
+            - **This is what a replan after a deletion is scoped to.** Deleting
+              somebody invalidates exactly the days they were due to work, so
+              replanning a fixed window instead would either rewrite calendars
+              nothing changed on or miss a visit at the edge of it. ``None`` is
+              the honest answer that no run is needed at all — queueing one that
+              would place the same visits in the same slots is thirty seconds of
+              a worker and a calendar that flickers for no reason.
+            - Days in the past are excluded because they have already happened.
+              Rewriting them would move visits somebody has already made.
         """
         return await self._span(
             InterventionRow.hca_id == hca_id, from_day, "assistant", hca_id
@@ -429,7 +589,55 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             customer_id,
         )
 
-    async def count_for_period(self, period_start: date, period_end: date) -> int:
+    async def future_teams_for_person(
+        self, column_value: str, is_customer: bool, from_day: date
+    ) -> List[str]:
+        """Return the teams still holding future visits for one person.
+
+        Args:
+            column_value (str): The customer or assistant identifier.
+            is_customer (bool): Whether the identifier names a household rather
+                than an assistant.
+            from_day (date): The first day that still counts as future,
+                inclusive.
+
+        Returns:
+            List[str]: The distinct teams, in identifier order.
+
+        Notes:
+            - **The companion to** :meth:`future_period_for_hca` **and**
+              :meth:`future_period_for_customer`. Those two say *when* a replan
+              is needed; this says *whose*. Since a run rewrites one team's week,
+              a deletion that touched two teams needs two runs — and asking the
+              database which teams is the only way to know, because a household
+              can hold quotes attributed at different times.
+            - Read **before** the deletion, like the period is: once the rows are
+              gone there is nothing left to ask.
+            - Ordered by identifier so two identical deletions queue their runs
+              in the same sequence. Nothing depends on it today; a test
+              comparing two runs would.
+        """
+        subject = InterventionRow.customer_id if is_customer else InterventionRow.hca_id
+        statement = (
+            select(InterventionRow.team_id)
+            .where(subject == column_value, InterventionRow.day >= from_day)
+            .distinct()
+            .order_by(InterventionRow.team_id)
+        )
+        result = await self.session.execute(statement)
+        team_ids = [team_id for team_id in result.scalars().all() if team_id]
+        if not team_ids:
+            self.logger.debug(
+                "No future visit names %s; no team needs replanning.",
+                column_value,
+            )
+        else:
+            self.logger.info(
+                "%d team(s) hold future visits for %s.", len(team_ids), column_value
+            )
+        return team_ids
+
+    async def count_for_period(self, period_start: date, period_end: date) -> int:  # noqa: E501
         """Return how many visits are planned in a period.
 
         Args:
@@ -468,7 +676,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             return None
         return self.mapper.to_model(row)
 
-    async def update(self, intervention: Intervention) -> Optional[Intervention]:
+    async def update(self, intervention: Intervention) -> Optional[Intervention]:  # noqa: E501
         """Replace a stored visit with a new version of it.
 
         Args:
@@ -482,7 +690,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             SQLAlchemyError: If the update fails.
         """
         if intervention.id is None:
-            self.logger.warning("Update requested for an intervention with no id.")
+            self.logger.warning("Update requested for an intervention with no id.")  # noqa: E501
             return None
         row = await self._get_row(intervention.id)
         if row is None:
@@ -515,6 +723,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         removed = await self._delete_row(intervention_id)
         if not removed:
             self.logger.warning(
-                "Nothing to delete: no intervention %s exists.", intervention_id
+                "Nothing to delete: no intervention %s exists.",
+                intervention_id,  # noqa: E501
             )
         return removed

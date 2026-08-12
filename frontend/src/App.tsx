@@ -87,11 +87,7 @@ function RoleRoute({ minimum, children }: GuardProps) {
  */
 function CustomerRoute({ children }: { children: React.ReactNode }) {
   const user = useSession((state) => state.user);
-  return user?.role === 'customer' ? (
-    <>{children}</>
-  ) : (
-    <Navigate to="/" replace />
-  );
+  return user?.role === 'customer' ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 /**
@@ -240,10 +236,15 @@ export function App() {
                 </RoleRoute>
               }
             />
+            {/* Open to assistants, not only to managers: the households lens
+                is theirs to read, scoped to their own portfolio. The switch
+                between the two lenses is rendered only for a manager, and the
+                assistants lens self-narrows server-side, so an assistant
+                landing here can reach nothing that is not already theirs. */}
             <Route
               path="/plannings"
               element={
-                <RoleRoute minimum="manager">
+                <RoleRoute minimum="hca">
                   <TeamPlanningPage />
                 </RoleRoute>
               }

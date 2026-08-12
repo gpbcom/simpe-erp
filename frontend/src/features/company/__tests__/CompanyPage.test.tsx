@@ -11,7 +11,11 @@ vi.mock('react-i18next', () => ({
 const uploadLogo = vi.fn();
 const removeLogo = vi.fn();
 const updateCompany = vi.fn();
-const query = { data: undefined as Company | undefined, isLoading: false, isError: false };
+const query = {
+  data: undefined as Company | undefined,
+  isLoading: false,
+  isError: false,
+};
 let role: string | undefined = 'admin';
 
 vi.mock('@/api/queries', () => ({

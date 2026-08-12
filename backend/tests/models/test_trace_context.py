@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -9,6 +8,7 @@ import pytest
 # First-party imports
 from models.messaging.event_envelope import EventEnvelope
 from models.messaging.exceptions import MTEventEnvelopeInvalidTraceparent
+from tests.annotations import ModelInput
 
 #: A well-formed W3C context, from the specification's own example.
 VALID = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
@@ -74,7 +74,7 @@ class TestEnvelopeCarriesTraceContext:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_a_malformed_context_is_refused(self, malformed: Any) -> None:
+    def test_a_malformed_context_is_refused(self, malformed: ModelInput) -> None:
         """**A malformed context is not inert.**
 
         Notes:

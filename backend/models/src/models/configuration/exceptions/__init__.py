@@ -115,6 +115,7 @@ from .s3_config_exceptions import (
     MTS3ConfigInvalidPhotoPrefix,
     MTS3ConfigInvalidPublicBaseUrl,
     MTS3ConfigInvalidRegion,
+    MTS3ConfigInvalidTeamDocumentPrefix,
     MTS3ConfigMissingCredentials,
 )
 from .server_config_exceptions import (
@@ -215,6 +216,7 @@ __all__ = [
     "MTS3ConfigInvalidPhotoPrefix",
     "MTS3ConfigInvalidPublicBaseUrl",
     "MTS3ConfigInvalidRegion",
+    "MTS3ConfigInvalidTeamDocumentPrefix",
     "MTS3ConfigMissingCredentials",
     "MTServerConfigInvalidCorsOrigins",
     "MTServerConfigInvalidHost",

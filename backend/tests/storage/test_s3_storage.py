@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 # Third-party imports
 from botocore.exceptions import ClientError
@@ -17,6 +17,7 @@ from storage.s3.exceptions import (
     MTS3UploadFailed,
 )
 from storage.s3.s3_storage import S3Storage
+from tests.annotations import ModelInput
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
@@ -55,19 +56,19 @@ class _FakeS3Client:
             failure (Optional[Exception]): Raised by every operation when set.
         """
         self.failure = failure
-        self.puts: List[Dict[str, Any]] = []
-        self.deletes: List[Dict[str, Any]] = []
-        self.gets: List[Dict[str, Any]] = []
+        self.puts: List[Dict[str, ModelInput]] = []
+        self.deletes: List[Dict[str, ModelInput]] = []
+        self.gets: List[Dict[str, ModelInput]] = []
         self.stored: bytes = PNG
 
-    def get_object(self, **kwargs: Any) -> Dict[str, Any]:
+    def get_object(self, **kwargs: ModelInput) -> Dict[str, ModelInput]:
         """Record a read and hand back the stored bytes.
 
         Args:
-            **kwargs (Any): The call's keyword arguments.
+            **kwargs (ModelInput): The call's keyword arguments.
 
         Returns:
-            Dict[str, Any]: A result shaped like boto3's, whose ``Body`` reads.
+            Dict[str, ModelInput]: A result shaped like boto3's, whose ``Body`` reads.
 
         Raises:
             Exception: The configured failure, when one is set.
@@ -77,14 +78,14 @@ class _FakeS3Client:
         self.gets.append(kwargs)
         return {"Body": _FakeBody(self.stored)}
 
-    def put_object(self, **kwargs: Any) -> Dict[str, Any]:
+    def put_object(self, **kwargs: ModelInput) -> Dict[str, ModelInput]:
         """Record an upload.
 
         Args:
-            **kwargs (Any): The call's keyword arguments.
+            **kwargs (ModelInput): The call's keyword arguments.
 
         Returns:
-            Dict[str, Any]: An empty result.
+            Dict[str, ModelInput]: An empty result.
 
         Raises:
             Exception: The configured failure, when one is set.
@@ -94,14 +95,14 @@ class _FakeS3Client:
         self.puts.append(kwargs)
         return {}
 
-    def delete_object(self, **kwargs: Any) -> Dict[str, Any]:
+    def delete_object(self, **kwargs: ModelInput) -> Dict[str, ModelInput]:
         """Record a deletion.
 
         Args:
-            **kwargs (Any): The call's keyword arguments.
+            **kwargs (ModelInput): The call's keyword arguments.
 
         Returns:
-            Dict[str, Any]: An empty result.
+            Dict[str, ModelInput]: An empty result.
 
         Raises:
             Exception: The configured failure, when one is set.

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any
 
 # Third-party imports
 import pytest
@@ -16,6 +15,7 @@ from models.schemas.exceptions import (
 from models.schemas.requests.catalog.certification_type_update_request import (
     CertificationTypeUpdateRequest,
 )
+from tests.annotations import ModelInput
 
 
 class TestCertificationTypeUpdateRequest:
@@ -87,7 +87,7 @@ class TestCertificationTypeUpdateRequest:
             pytest.param(7, id="Invalid - int"),
         ],
     )
-    def test_an_invalid_label_is_refused(self, invalid_label: Any) -> None:
+    def test_an_invalid_label_is_refused(self, invalid_label: ModelInput) -> None:
         """An entry with no label shows as a chip nobody can identify."""
         with pytest.raises(MTCertificationTypeUpdateRequestInvalidLabel):
             CertificationTypeUpdateRequest(label=invalid_label)
@@ -103,7 +103,9 @@ class TestCertificationTypeUpdateRequest:
             pytest.param(["text"], id="Invalid - list"),
         ],
     )
-    def test_an_invalid_description_is_refused(self, invalid_description: Any) -> None:
+    def test_an_invalid_description_is_refused(
+        self, invalid_description: ModelInput
+    ) -> None:
         """A description that is not text is rejected."""
         with pytest.raises(MTCertificationTypeUpdateRequestInvalidDescription):
             CertificationTypeUpdateRequest(description=invalid_description)
@@ -124,7 +126,9 @@ class TestCertificationTypeUpdateRequest:
             pytest.param([], id="Invalid - list"),
         ],
     )
-    def test_an_invalid_retirement_flag_is_refused(self, invalid_flag: Any) -> None:
+    def test_an_invalid_retirement_flag_is_refused(
+        self, invalid_flag: ModelInput
+    ) -> None:
         """``"false"`` is truthy, so a retirement read as "in use" is refused."""
         with pytest.raises(MTCertificationTypeUpdateRequestInvalidIsActive):
             CertificationTypeUpdateRequest(is_active=invalid_flag)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
-from typing import Any, Dict
+from typing import Dict
 
 # Third-party imports
 from pydantic import ValidationError
@@ -15,16 +15,17 @@ from models.schemas.exceptions import (
 from models.schemas.requests.customers.customer_profile_update_request import (
     CustomerProfileUpdateRequest,
 )
+from tests.annotations import ModelInput
 
 
-def _payload(**overrides: Any) -> Dict[str, Any]:
+def _payload(**overrides: ModelInput) -> Dict[str, ModelInput]:
     """Build a valid payload, with overrides applied.
 
     Args:
-        **overrides (Any): Fields to replace.
+        **overrides (ModelInput): Fields to replace.
 
     Returns:
-        Dict[str, Any]: The constructor keyword arguments.
+        Dict[str, ModelInput]: The constructor keyword arguments.
     """
     return {
         "first_name": "Marie",
@@ -137,12 +138,12 @@ class TestCustomerProfileUpdateRequest:
             pytest.param(42, id="Invalid - int"),
         ],
     )
-    def test_a_missing_name_is_refused(self, field: str, value: Any) -> None:
+    def test_a_missing_name_is_refused(self, field: str, value: ModelInput) -> None:
         """Both parts are required, unlike on an account.
 
         Args:
             field (str): The name part under test.
-            value (Any): The rejected value.
+            value (ModelInput): The rejected value.
 
         Notes:
             An account may be a mononym or a service account and leave the given

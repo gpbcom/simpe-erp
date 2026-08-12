@@ -9,6 +9,7 @@ import pytest
 # First-party imports
 from api.sse.streams import NotificationStreams
 from models.messaging.event_envelope import EventEnvelope
+from tests.annotations import ModelInput
 
 
 class StubRequest:
@@ -190,7 +191,7 @@ class TestRelay:
         ],
     )
     async def test_a_malformed_message_never_raises(
-        self, streams: NotificationStreams, payload: Dict[str, object]
+        self, streams: NotificationStreams, payload: Dict[str, ModelInput]
     ) -> None:
         """**A cosmetic fault must not look like a lost notification.**
 
