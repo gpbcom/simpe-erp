@@ -146,6 +146,7 @@ def _planning() -> HcaPlanning:
         interventions=[
             Intervention(
                 company_id="company-1",
+                team_id="team-1",
                 id="visit-1",
                 planning_run_id="run-1",
                 name="Aide a la toilette",

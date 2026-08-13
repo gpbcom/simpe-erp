@@ -17,6 +17,7 @@ vi.mock('@/api/queries', () => ({
 const VISIT: Intervention = {
   id: 'intervention-1',
   planning_run_id: 'run-1',
+  team_id: 'team-1',
   name: 'Toilette',
   intervention_type_id: 'type-1',
   quote_line_id: 'line-1',

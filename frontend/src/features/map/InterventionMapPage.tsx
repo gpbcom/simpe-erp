@@ -25,7 +25,6 @@ import { planningWindow } from '@/utils/planningWindow';
 import type { Intervention } from '@/api/types';
 import 'leaflet/dist/leaflet.css';
 
-/** Where the map opens: central Paris, the agency's own patch. */
 const PARIS: [number, number] = [48.8566, 2.3522];
 
 /**
@@ -63,9 +62,6 @@ function photoPin(
     ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%" />`
     : `<span style="font:600 12px Inter,sans-serif;color:#fff">${fallback}</span>`;
   return L.divIcon({
-    // Counted by the GUI campaign: 'how many pins are on the map' is the
-    // question the screen exists to answer, and there is no other handle on a
-    // Leaflet marker from outside the map.
     className: 'simple-erp-pin',
     html: `<div style="
         width:38px;height:38px;border-radius:50%;
@@ -85,10 +81,6 @@ function photoPin(
  */
 export function InterventionMapPage() {
   const { t } = useTranslation();
-  // Opens on the whole planning window. A map that draws a narrower span than
-  // the planning it is drawn from is a map that says "no visits" about work
-  // that exists, and there is nothing on screen to tell a manager which of the
-  // two they should believe.
   const [window, setWindow] = useState<Window>('planning');
 
   const { from, to } = useMemo(() => {
@@ -111,10 +103,6 @@ export function InterventionMapPage() {
   const customerFor = (customerId: string) =>
     (customers ?? []).find((entry) => entry.id === customerId);
 
-  // Only geocoded visits can be drawn. One without coordinates is not dropped
-  // silently — it is counted below the map, because "eleven of twelve visits
-  // are shown" is a fact a manager needs, and an invisible twelfth is how
-  // somebody gets missed.
   const interventions: Intervention[] = (plannings ?? []).flatMap(
     (planning) => planning.interventions,
   );

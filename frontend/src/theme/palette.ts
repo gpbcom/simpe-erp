@@ -1,15 +1,21 @@
+import type { AgencyType } from '@/api/types';
+
 /**
- * The application's colours.
+ * The MUI chip colours the maps below are drawn from.
  *
- * Deep teal reads as care and health without the clinical coldness of a pure
- * medical blue; warm amber marks everything that is *waiting for somebody* —
- * which in this product is almost always a quote awaiting validation, and is
- * the state the whole workflow exists to make visible.
- *
- * The status maps are exhaustive over their enums on purpose. A status added to
- * the backend without a colour here is a TypeScript error rather than a grey
- * chip nobody can interpret.
+ * @remarks
+ * Named rather than inferred so a map can be declared `Record<Enum, ChipColour>`
+ * and be checked for exhaustiveness. The maps that predate it use `as const`
+ * and are exhaustive by inspection.
  */
+export type ChipColour =
+  | 'default'
+  | 'primary'
+  | 'secondary'
+  | 'info'
+  | 'success'
+  | 'warning'
+  | 'error';
 
 /** The brand colours, shared by both themes. */
 export const BRAND = {
@@ -110,3 +116,22 @@ export const NOTIFICATION_KIND_COLOUR = {
   'quote-refused': '#C0392B',
   'planning-completed': BRAND.primary,
 } as const;
+
+/**
+ * Colour for what a site is used for.
+ *
+ * @remarks
+ * `hq` is the primary one because it is the site that carries the business:
+ * the SIRET, the VAT number and the account invoices are paid into are printed
+ * from it, and there is exactly one. A warehouse is informational — a place
+ * with stock and no rounds — and a branch office is the ordinary case, so it
+ * takes the default rather than shouting for attention on every row.
+ *
+ * Typed against {@link AgencyType} so a fourth kind added to the backend is a
+ * TypeScript error here rather than a grey chip nobody notices.
+ */
+export const AGENCY_TYPE_COLOUR: Record<AgencyType, ChipColour> = {
+  hq: 'primary',
+  warehouse: 'info',
+  office: 'default',
+};

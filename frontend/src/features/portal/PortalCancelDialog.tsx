@@ -13,11 +13,8 @@ import { formatTime } from '@/utils/format';
 import type { Intervention } from '@/api/types';
 
 interface PortalCancelDialogProps {
-  /** The visit to cancel, or `null` when the dialog is closed. */
   visit: Intervention | null;
-  /** Called when the dialog should close without cancelling. */
   onClose: () => void;
-  /** Called once the visit has been cancelled. */
   onDone: () => void;
 }
 

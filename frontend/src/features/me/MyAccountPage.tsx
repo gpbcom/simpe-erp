@@ -29,10 +29,7 @@ import { PasswordSection } from './PasswordSection';
 import { formatDateTime, initialsOf } from '@/utils/format';
 import { hasAtLeast, useSession } from '@/store/session';
 
-/** The licence categories a French assistant might hold. */
 const LICENCE_CATEGORIES = ['A', 'A1', 'A2', 'B', 'B1', 'BE', 'C', 'D'];
-
-/** Everything the form edits, flattened for the inputs. */
 interface ProfileForm {
   first_name: string;
   last_name: string;
@@ -96,22 +93,14 @@ export function MyAccountPage() {
   const { t, i18n } = useTranslation();
   const user = useSession((state) => state.user);
   const { data: account, isLoading, isError } = useMyAccount();
-  // Only fetched when there is one to fetch. A manager's account is bound to no
-  // assistant record, so this request answers 403 for them — and an
-  // unconditional one put this whole screen into its error state for every
-  // manager and administrator in the agency, which is the bug this fixes.
   const { data: profile } = useMyProfile(account?.hca_id);
   const update = useUpdateMyProfile();
   const uploadPhoto = useUploadMyAccountPhoto();
   const removePhoto = useRemoveMyAccountPhoto();
   const fileInput = useRef<HTMLInputElement>(null);
-
   const [form, setForm] = useState<ProfileForm>(EMPTY);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // A manager or an administrator may set contract type and qualifications —
-  // including on their own record, since they are the person who would.
   const managesEmployment = hasAtLeast(user?.role, 'manager');
 
   useEffect(() => {
@@ -160,9 +149,6 @@ export function MyAccountPage() {
           city: form.city,
           country: form.country,
         },
-        // Sent as null rather than as an empty object when there are no
-        // categories: a licence with no categories is not a licence, and the
-        // model would refuse it.
         driving_license: categories.length
           ? {
               categories,
@@ -188,8 +174,6 @@ export function MyAccountPage() {
   const fullName = profile
     ? `${profile.first_name} ${profile.last_name}`
     : account.full_name;
-  // Only meaningful for an assistant: it is their home address the planner
-  // routes from. An account with no assistant record has no address to resolve.
   const geocoded =
     !profile ||
     (profile.address.latitude !== null && profile.address.longitude !== null);
@@ -200,9 +184,6 @@ export function MyAccountPage() {
 
       {error ? <Alert severity="error">{error}</Alert> : null}
       {!geocoded ? (
-        // Worth an alert rather than a quiet field: an address that did not
-        // resolve means this person is not routed at all by the next planning
-        // run, and nothing else on the screen would say so.
         <Alert severity="warning" data-testid="geocoding-warning">
           {t('hca.addressNotResolved')}
         </Alert>
@@ -210,10 +191,7 @@ export function MyAccountPage() {
 
       {/* ── The account: every caller has one ────────────────────── */}
       <Grid container spacing={3}>
-        {/* The portrait sits here, above the assistant record and outside it,
-            because it belongs to the account. It used to live inside the
-            assistant block, which meant a manager or an administrator had no
-            photograph at all — not a locked one, simply nothing on the page. */}
+        {}
         <Grid size={{ xs: 12, md: 3 }}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -235,9 +213,6 @@ export function MyAccountPage() {
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) uploadPhoto.mutate(file);
-                  // Cleared so choosing the same file twice fires a second
-                  // change event; without it a failed upload could not be
-                  // retried with the same photograph.
                   event.target.value = '';
                 }}
               />

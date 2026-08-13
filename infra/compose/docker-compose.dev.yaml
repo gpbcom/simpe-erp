@@ -143,6 +143,19 @@ services:
         condition: service_completed_successfully
     volumes:
       - ../../backend/seed/src:/app/seed/src
+      # The rest of the workspace, exactly as `migrate` and the workers mount
+      # it. Mounting `seed/src` alone ran a *new* seeder against the image's
+      # *old* `models` — so the day the seeder first imported a package added
+      # since the image was built, it died on `ModuleNotFoundError` while every
+      # other service was fine, and the obvious reading of that ("my seeder is
+      # broken") is the wrong one.
+      # Not a `src` layout and not a distribution: a plain module the
+      # workspace root ships, so it mounts at the path the editable
+      # install points at rather than under a package directory.
+      - ../../backend/integrations:/app/integrations
+      - ../../backend/models/src:/app/models/src
+      - ../../backend/service/src:/app/service/src
+      - ../../backend/storage/src:/app/storage/src
       - ../../backend/conf:/app/conf
     command: ["seed"]
     restart: "no"

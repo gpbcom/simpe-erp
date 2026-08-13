@@ -71,6 +71,7 @@ def _quote(days: List[date], interrupted: Optional[date] = None) -> Quote:
     """
     return Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="DEV-2026-001",
         customer_id="customer-1",
@@ -158,6 +159,7 @@ class TestEffectiveLines:
         with pytest.raises(MTQuoteInvalidInterruption):
             Quote(
                 company_id="company-1",
+                team_id="team-1",
                 reference="DEV-1",
                 customer_id="customer-1",
                 issued_on=date(2026, 8, 20),

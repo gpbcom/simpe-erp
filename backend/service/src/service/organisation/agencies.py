@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 # Standard library imports
-from logging import Logger, getLogger
-from typing import List, Optional
+from logging import Logger
+from typing import ClassVar, List, Optional, Type
 
 # First-party imports
 from models.auth.user import User
@@ -10,10 +10,11 @@ from models.enums import AgencyType, MemberKind
 from models.organisation.agency.agency import Agency
 from models.organisation.agency.agency_member import AgencyMember
 from models.schemas.responses.organisation.agency_view import AgencyView
+from service.organisation.base import AbstractOrganisationService
 from service.organisation.exceptions import (
     MTAgencyForbidden,
     MTAgencyHeadquartersProtected,
-    MTAgencyMemberAlreadyPlaced,
+    MTAgencyMemberRunsATeam,
     MTAgencyNameTaken,
     MTAgencyNotEmpty,
     MTAgencyNotFound,
@@ -23,7 +24,7 @@ from storage.repositories.organisation.agency import AgencyRepository
 from storage.repositories.organisation.team import TeamRepository
 
 
-class AgencyService:
+class AgencyService(AbstractOrganisationService[Agency, AgencyView]):
     """The places a company operates from, and who works at each.
 
     Attributes:
@@ -46,6 +47,10 @@ class AgencyService:
           putting another company's identifier in the path.
     """
 
+    entity_label: ClassVar[str] = "agency"
+    unreachable_exc: ClassVar[Type[Exception]] = MTAgencyForbidden
+    name_taken_exc: ClassVar[Type[Exception]] = MTAgencyNameTaken
+
     def __init__(
         self,
         agencies: AgencyRepository,
@@ -63,75 +68,72 @@ class AgencyService:
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
+        super().__init__(logger)
         self.agencies = agencies
         self.companies = companies
         self.teams = teams
-        self.logger = logger if logger else getLogger(__name__)
-        self.logger.debug("AgencyService created.")
 
     ############################
     # Internal Helpers Methods #
     ############################
 
-    async def _owned(self, agency_id: str, caller: User) -> Agency:
-        """Return a site, having proved it is the caller's company's.
+    async def _get(self, entity_id: str) -> Optional[Agency]:
+        """Return a site by identifier, or ``None``."""
+        return await self.agencies.get(entity_id)
 
-        Args:
-            agency_id (str): The site to read.
-            caller (User): The authenticated caller.
+    async def _list_for_company(
+        self, company_id: str, *, page: int = 1, size: Optional[int] = None
+    ) -> List[Agency]:
+        """Return a company's sites, for the name-uniqueness scan."""
+        return await self.agencies.list(company_id, page=page, size=size)
 
-        Returns:
-            Agency: The site.
-
-        Raises:
-            MTAgencyNotFound: If no such site exists.
-            MTAgencyForbidden: If it belongs to another company.
-        """
-        agency = await self.agencies.get(agency_id)
-        if agency is None:
-            self.logger.warning("Agency %s does not exist.", agency_id)
-            raise MTAgencyNotFound(f"No agency {agency_id!r} exists.")
-        if agency.company_id != caller.company_id:
-            self.logger.warning(
-                "Account %s of company %s tried to reach agency %s of company %s.",
-                caller.id,
-                caller.company_id,
-                agency_id,
-                agency.company_id,
-            )
-            raise MTAgencyForbidden(f"No agency {agency_id!r} exists.")
-        return agency
-
-    async def _assert_name_free(
-        self, company_id: str, name: str, except_id: Optional[str] = None
-    ) -> None:
-        """Refuse a name another of the company's sites already uses.
-
-        Args:
-            company_id (str): The company being checked.
-            name (str): The proposed name.
-            except_id (Optional[str]): A site allowed to hold the name, when
-                one is being renamed to what it already is.
-
-        Raises:
-            MTAgencyNameTaken: If the name is in use.
+    async def _to_view(self, agency: Agency) -> AgencyView:
+        """Project one site onto its screen representation.
 
         Notes:
-            Checked here as well as by the unique index, because the index's
-            own error is an opaque database message and this one names the
-            site somebody has to go and look at.
+            The per-site counts are used here rather than the grouped ones: one
+            row needs two counts, and the grouped form would read the whole
+            company to answer about a single site.
         """
-        existing = await self.agencies.list(company_id, page=1, size=None)
-        for agency in existing:
-            if agency.name == name and agency.id != except_id:
-                self.logger.warning(
-                    "Company %s already has an agency named %s.",
-                    company_id,
-                    name,  # noqa: E501
-                )
-                raise MTAgencyNameTaken(
-                    f"Company already operates a site named {name!r}."
-                )
+        return AgencyView.from_agency(
+            agency,
+            member_count=await self.agencies.count_members(str(agency.id)),
+            team_count=await self.teams.count_for_agency(str(agency.id)),
+        )
+
+    async def _to_views(self, agencies: List[Agency], caller: User) -> List[AgencyView]:
+        """Project a page of sites onto their screen representation.
+
+        Notes:
+            - The two counts come from **one grouped statement each**, not one
+              per row. A page of twenty sites otherwise costs forty-one queries,
+              and the grid is the first screen an administrator opens.
+            - A site nothing is attached to is absent from both results, so the
+              default is supplied here rather than by the database. A grouped
+              count has no row to group when there is nothing to count.
+            - Projecting is what makes these routes safe to open to every signed
+              in account: a site *is* a
+              :class:`~models.organisation.companies.company.Company` and carries
+              the IBAN, which
+              :class:`~models.schemas.responses.organisation.agency_view.AgencyView`
+              does not declare.
+        """
+        members = dict(await self.agencies.count_members_by_agency(caller.company_id))  # noqa: E501
+        teams = dict(await self.teams.count_by_agency(caller.company_id))
+        self.logger.info(
+            "Serving %d site(s) of company %s to account %s.",
+            len(agencies),
+            caller.company_id,
+            caller.id,
+        )
+        return [
+            AgencyView.from_agency(
+                agency,
+                member_count=members.get(str(agency.id), 0),
+                team_count=teams.get(str(agency.id), 0),
+            )
+            for agency in agencies
+        ]
 
     async def _with_legal_identity(self, agency: Agency) -> Agency:
         """Copy the company's legal identity onto a head office.
@@ -188,6 +190,56 @@ class AgencyService:
             )
         return merged
 
+    async def _release_team(self, agency_id: str, member: AgencyMember) -> None:  # noqa: E501
+        """Take somebody off a team that is based somewhere they no longer work.
+
+        Args:
+            agency_id (str): The site they are moving to.
+            member (AgencyMember): The person moving.
+
+        Raises:
+            MTAgencyMemberRunsATeam: If they run the team they would leave.
+
+        Notes:
+            - Called before the site membership is rewritten, because once it
+              has been the person is on a team at the wrong place and nothing
+              distinguishes that from an ordinary state.
+            - A team based at the **same** site is kept. Moving between teams at
+              one site is a different act, done on the teams screen, and a site
+              transfer that also reshuffled teams would be doing two things at
+              once.
+            - The manager is the refusal, and it is the only one left. A team
+              whose manager is gone is a team nobody may re-plan: ``manager_id``
+              is required, so there is no state in which it briefly has none.
+        """
+        team = await self.teams.team_for_member(member.member_kind, member.member_id)
+        if team is None or team.agency_id == agency_id:
+            return
+        if member.member_kind is MemberKind.USER and team.is_managed_by(
+            member.member_id
+        ):
+            self.logger.warning(
+                "Account %s runs team %s at agency %s and cannot be moved away "
+                "from it.",
+                member.member_id,
+                team.id,
+                team.agency_id,
+            )
+            raise MTAgencyMemberRunsATeam(
+                f"This person runs {team.name!r}, which is based at another "
+                f"site. Name a new manager for that team first."
+            )
+        self.logger.warning(
+            "Moving %s %s to agency %s also takes them off team %s, which is "
+            "based at agency %s.",
+            member.member_kind.value,
+            member.member_id,
+            agency_id,
+            team.id,
+            team.agency_id,
+        )
+        await self.teams.remove_member(member.member_kind, member.member_id)
+
     ############################
     # Publicly Exposed Methods #
     ############################
@@ -236,110 +288,6 @@ class AgencyService:
             caller.id,
         )
         return await self.agencies.create(proposed)
-
-    async def get(self, agency_id: str, caller: User) -> Agency:
-        """Return one of the caller's company's sites.
-
-        Args:
-            agency_id (str): The site to read.
-            caller (User): The authenticated caller.
-
-        Returns:
-            Agency: The site.
-
-        Raises:
-            MTAgencyNotFound: If no such site exists.
-            MTAgencyForbidden: If it belongs to another company.
-        """
-        return await self._owned(agency_id, caller)
-
-    async def list(
-        self, caller: User, page: int = 1, size: Optional[int] = None
-    ) -> List[Agency]:
-        """Return the caller's company's sites.
-
-        Args:
-            caller (User): The authenticated caller.
-            page (int): One-based page number.
-            size (Optional[int]): Page size.
-
-        Returns:
-            List[Agency]: The sites, by name.
-        """
-        self.logger.debug("Listing the agencies visible to account %s.", caller.id)  # noqa: E501
-        return await self.agencies.list(caller.company_id, page=page, size=size)  # noqa: E501
-
-    async def views(
-        self, caller: User, page: int = 1, size: Optional[int] = None
-    ) -> List[AgencyView]:
-        """Return the caller's company's sites, ready for a grid.
-
-        Args:
-            caller (User): The authenticated caller.
-            page (int): One-based page number.
-            size (Optional[int]): Page size.
-
-        Returns:
-            List[AgencyView]: The sites, by name, each carrying how many people
-            and teams it holds.
-
-        Notes:
-            - The two counts come from **one grouped statement each**, not one
-              per row. A page of twenty sites otherwise costs forty-one queries,
-              and the grid is the first screen an administrator opens.
-            - A site nothing is attached to is absent from both results, so the
-              default is supplied here rather than by the database. A grouped
-              count has no row to group when there is nothing to count.
-            - Projecting is what makes these routes safe to open to every signed
-              in account: a site *is* a
-              :class:`~models.organisation.companies.company.Company` and carries
-              the IBAN, which
-              :class:`~models.schemas.responses.organisation.agency_view.AgencyView`
-              does not declare.
-        """
-        agencies = await self.agencies.list(caller.company_id, page=page, size=size)  # noqa: E501
-        members = dict(await self.agencies.count_members_by_agency(caller.company_id))  # noqa: E501
-        teams = dict(await self.teams.count_by_agency(caller.company_id))
-        self.logger.info(
-            "Serving %d site(s) of company %s to account %s.",
-            len(agencies),
-            caller.company_id,
-            caller.id,
-        )
-        return [
-            AgencyView.from_agency(
-                agency,
-                member_count=members.get(str(agency.id), 0),
-                team_count=teams.get(str(agency.id), 0),
-            )
-            for agency in agencies
-        ]
-
-    async def view(self, agency_id: str, caller: User) -> AgencyView:
-        """Return one site, ready for a screen.
-
-        Args:
-            agency_id (str): The site to read.
-            caller (User): The authenticated caller.
-
-        Returns:
-            AgencyView: The site and its two counts.
-
-        Raises:
-            MTAgencyNotFound: If no such site exists.
-            MTAgencyForbidden: If it belongs to another company.
-
-        Notes:
-            The per-site counts are used here rather than the grouped ones: one
-            row needs two counts, and the grouped form would read the whole
-            company to answer about a single site.
-        """
-        agency = await self._owned(agency_id, caller)
-        return AgencyView.from_agency(
-            agency,
-            member_count=await self.agencies.count_members(agency_id),
-            team_count=await self.teams.count_for_agency(agency_id),
-        )
 
     async def update(self, agency: Agency, caller: User) -> Agency:
         """Change a site's name, address or type.
@@ -467,7 +415,7 @@ class AgencyService:
     async def add_member(
         self, agency_id: str, member: AgencyMember, caller: User
     ) -> AgencyMember:
-        """Attach somebody to a site.
+        """Attach somebody to a site, moving them off whichever one they were on.
 
         Args:
             agency_id (str): The site they join.
@@ -480,36 +428,61 @@ class AgencyService:
         Raises:
             MTAgencyNotFound: If no such site exists.
             MTAgencyForbidden: If it belongs to another company.
-            MTAgencyMemberAlreadyPlaced: If they already belong to a site.
+            MTAgencyMemberRunsATeam: If they run a team based at the site they
+                are leaving.
 
         Notes:
-            Refused rather than moved. Somebody changing site is a deliberate
-            two-step, because an insert that quietly won would make "where does
-            this person work?" depend on which form was saved last — and their
-            team, which is tied to a site, would silently disagree with it.
+            - **A move, not a refusal.** Somebody transferring between sites does
+              it once, on one screen; making them detach first would be two
+              forms for one act, and the state in between — a person attached to
+              no site at all — is one nothing else in the system expects.
+              Everybody belongs to exactly one site, and the unique index says
+              so, so the old membership has to go either way; the only question
+              was whether the operator had to do it by hand.
+            - **Their team goes with the old site.** A team is people *at a
+              place*, and the planner measures every round from that place — so
+              somebody kept on a team based where they no longer work would be
+              routed from a depot they never travel to. They come off it, and
+              the move is logged at ``WARNING`` because it is a consequence
+              nobody asked for on screen.
+            - **Unless they run that team**, which is the one case still
+              refused. Taking the manager off would leave a team nobody may
+              re-plan, and choosing a replacement is not a decision a site
+              transfer should make silently. The message names the team, because
+              naming a new manager is the action.
         """
         await self._owned(agency_id, caller)
         existing = await self.agencies.agency_for_member(
             member.member_kind, member.member_id
         )
+        if existing is not None and existing.id == agency_id:
+            self.logger.debug(
+                "%s %s already works at agency %s; nothing to move.",
+                member.member_kind.value,
+                member.member_id,
+                agency_id,
+            )
+            return member
+
+        await self._release_team(agency_id, member)
         if existing is not None:
-            self.logger.warning(
-                "%s %s already belongs to agency %s.",
+            self.logger.info(
+                "Moving %s %s from agency %s to agency %s, requested by %s.",
                 member.member_kind.value,
                 member.member_id,
                 existing.id,
+                agency_id,
+                caller.id,
             )
-            raise MTAgencyMemberAlreadyPlaced(
-                f"This person already works at {existing.name!r}. Detach them "
-                f"from that site first."
+            await self.agencies.remove_member(member.member_kind, member.member_id)
+        else:
+            self.logger.info(
+                "Attaching %s %s to agency %s, requested by %s.",
+                member.member_kind.value,
+                member.member_id,
+                agency_id,
+                caller.id,
             )
-        self.logger.info(
-            "Attaching %s %s to agency %s, requested by %s.",
-            member.member_kind.value,
-            member.member_id,
-            agency_id,
-            caller.id,
-        )
         return await self.agencies.add_member(agency_id, member)
 
     async def remove_member(

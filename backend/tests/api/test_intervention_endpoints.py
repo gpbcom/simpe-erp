@@ -62,6 +62,7 @@ def _run() -> PlanningRun:
     """
     return PlanningRun(
         company_id="company-1",
+        team_id="team-1",
         id="run-1",
         status=PlanningRunStatus.PENDING,
         requested_by="user-manager",
@@ -78,6 +79,7 @@ def _quote() -> Quote:
     """
     return Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="D-2601",
         customer_id="customer-1",
@@ -138,7 +140,9 @@ def interventions() -> AsyncMock:
         AsyncMock: The service double.
     """
     stub = AsyncMock()
-    stub.delete.return_value = _quote()
+    # The team travels back with the quote: a cancellation ends in a replan
+    # of one team's week, and the row is gone by the time anybody could ask.
+    stub.delete.return_value = ("team-1", _quote())
     stub.change_type.return_value = _quote()
     return stub
 
@@ -152,6 +156,7 @@ def plannings() -> AsyncMock:
     """
     stub = AsyncMock()
     stub.request_run.return_value = _run()
+    stub.queue_replan.return_value = [_run()]
     return stub
 
 
@@ -178,10 +183,12 @@ class TestCancellingAVisit:
         """
         _client(interventions, plannings).delete(VISIT, params=PERIOD)
 
-        assert plannings.request_run.await_args.kwargs["period_start"] == date(
-            2026, 8, 3
+        assert plannings.queue_replan.await_args.kwargs["period"] == (
+            date(2026, 8, 3),
+            date(2026, 8, 9),
         )
-        assert plannings.request_run.await_args.kwargs["period_end"] == date(2026, 8, 9)
+        # Exactly the one team whose calendar held the cancelled visit.
+        assert plannings.queue_replan.await_args.kwargs["team_ids"] == ["team-1"]
 
     def test_a_backwards_period_is_refused_before_anything_is_deleted(
         self, interventions: AsyncMock, plannings: AsyncMock
@@ -218,7 +225,7 @@ class TestCancellingAVisit:
         self, interventions: AsyncMock, plannings: AsyncMock
     ) -> None:
         """The service reports "no quote left"; the replan is still queued."""
-        interventions.delete.return_value = None
+        interventions.delete.return_value = ("team-1", None)
 
         response = _client(interventions, plannings).delete(VISIT, params=PERIOD)
 
@@ -286,4 +293,4 @@ class TestSellingAVisitAsSomethingElse:
             f"{VISIT}/type", json={"intervention_type_id": "type-comfort"}
         )
 
-        plannings.request_run.assert_not_awaited()
+        plannings.queue_replan.assert_not_awaited()

@@ -331,13 +331,35 @@ the approve/reject decisions are `manager`.
 
 | Method | Path | Guard | |
 |---|---|---|---|
-| POST | `/runs` | admin | **202.** Records the run, publishes it, returns the identifier to poll |
-| GET | `/runs` · `/runs/{id}` | admin | Poll until `status.is_terminal()` |
+| POST | `/runs` | manager | **202, and a *list*.** One run per team, over one of three scopes: `?team_id=` plans that team, `?agency_id=` plans every team of that site the caller runs, naming neither plans the whole company and is **administrator-only**. Records each run before publishing it |
+| GET | `/runs` · `/runs/{id}` | manager | Poll until `status.is_terminal()`. Narrowed to the caller's teams — this is what the screen polls, so leaving it at administrator made a manager's button look like it did nothing |
 | GET | `/settings` · PUT | manager | Radius, working day, lunch break and its window |
 | GET | `/hcas` | current | Every diary. An assistant gets a one-element list of their own |
 | GET | `/hcas/{id}` | current | One diary, with a row-level ownership check |
 | GET | `/customers` | current | Every household's care. A manager gets the agency; an assistant only their own portfolio |
 | GET | `/customers/{id}` | current | One household's care. Outside an assistant's portfolio it is a **404**, not a 403 |
+
+`POST /runs` moved from administrator to manager because a run no longer
+rewrites every calendar in the agency — it rewrites one team's. Which team a
+caller may name is checked in the service against the credential, because a
+route guard can only prove a rank: nothing at the routing layer stops manager A
+naming manager B's team.
+
+**Three scopes, narrowest first: a team, a site, the company.** A team is what a
+manager owns and a site is the level above it, so both are theirs — but the site
+case *intersects* with the teams they run rather than taking the site's roster
+wholesale, or a branch office would be a way to rebuild a colleague's week
+without ever naming their team. Naming no scope at all means the whole company,
+and that is an administrator's act: it rewrites the calendar of every assistant
+employed, and no manager is answerable for all of them. A manager who names
+nothing is **refused with a 403** rather than quietly given their own teams —
+being told the company had been re-planned when one team was would be worse than
+the refusal.
+
+Both run reads are narrowed by `readable_team_ids` as well, and for a reason
+that is not only confidentiality: starting a run hands the caller its
+identifier, so every manager holds real ones and could otherwise poll a
+colleague's to learn how much of that team's week would not fit.
 
 The two `/customers` routes read through the same repository method the
 household's own `/api/v1/portal/planning` reads through, with the same
@@ -353,6 +375,41 @@ identifier the caller polls is real either way.
 the period from the caller's own screen; the two person deletions derive theirs
 from the days that person was due to work. All four record the run before
 publishing it, so a 202 always hands back an identifier that already exists.
+
+## The organisation — `/api/v1/agencies` and `/api/v1/teams`
+
+| Method | Path | Guard | |
+|---|---|---|---|
+| POST | `/agencies` | admin | **The type is overwritten.** The first site of a company is its head office; every later one is a branch, and a second head office is a **409** |
+| GET | `/agencies` · `/agencies/{id}` | current | Open to every signed-in account, and safe because the projection publishes no legal identity — see below |
+| PUT | `/agencies/{id}` | admin | Name, address and type. The head office cannot be demoted, nor a branch promoted |
+| DELETE | `/agencies/{id}` | admin | **409** while any team or person is still attached, naming both counts |
+| GET | `/agencies/{id}/members` | current | Pairs of *(kind, identifier)*, and nothing else |
+| POST | `/agencies/{id}/members` | admin | **A transfer.** Somebody already at another site is moved off it, and off a team based there; **409** only if they run that team |
+| DELETE | `/agencies/{id}/members/{kind}/{id}` | admin | The kind is a path segment because it is half of the identity |
+| POST | `/teams` | admin | Enrols the named manager as a member in the same call |
+| GET | `/teams` · `/teams/{id}` | current | Narrowed: the company for an administrator, their own for a manager, one for an assistant |
+| PUT | `/teams/{id}` | admin | Name, site and manager. Members do not follow a move |
+| DELETE | `/teams/{id}` | admin | **409** while quotes still name it — they would be planned by no run again |
+| GET · POST | `/teams/{id}/members` | current · admin | One person at a time, and a **move**: somebody on another team is taken off it. **409** only if they run that team; **422** if they are based at another site |
+| DELETE | `/teams/{id}/members/{kind}/{id}` | admin | The manager cannot be removed; name a new one instead |
+| GET · POST | `/teams/{id}/documents` | current | **Everybody on the team may add one.** A non-member gets a 404 |
+| GET | `/teams/{id}/documents/{doc}` | current | Streamed as an attachment, with the stored media type |
+| DELETE | `/teams/{id}/documents/{doc}` | current | The uploader, the team's manager or an administrator; anybody else gets a **403** |
+| GET | `/teams/document-constraints` | current | The size limit and the recognised media types |
+| GET | `/me/team` | current | The team the caller is *on*, from the credential |
+| PATCH | `/quotes/{id}/team` | manager | Move a quote. Both the team it leaves and the one it joins must be the caller's |
+
+**An `Agency` is a `Company`.** The stored record carries the SIRET, the VAT
+number and the account invoices are paid into, because the head office is where
+the business is registered and a quote is printed from the site it was written
+at. None of that is published by these routes: the response model declares the
+name, the address, the type and two counts. That is what makes the reads safe to
+open to an assistant, and a test asserts the field set is disjoint from the
+legal-identity fields — the risk being a field *added* later.
+
+`/teams/document-constraints` is declared **before** `/teams/{id}` in the mount
+order, or FastAPI would read `document-constraints` as a team identifier.
 
 ## Billing — `/api/v1/bills` and `/api/v1/billing`
 

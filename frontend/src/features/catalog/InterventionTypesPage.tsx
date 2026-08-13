@@ -19,21 +19,18 @@ import { InterventionTypeDialog } from './InterventionTypeDialog';
 import { formatMoney } from '@/utils/format';
 import type { InterventionType } from '@/api/types';
 
-/** Which of the catalog filter's fields are text, flags and closed lists. */
 const CATALOG_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'code', 'name'],
   flagFields: ['is_active'],
   enumFields: { service_category: ['necessity', 'comfort'] },
 };
 
-/** The two categories a service can belong to; the split an accountant reads. */
 const CATALOG_TABS: FilterTab[] = [
   { key: 'all', label: 'catalog.filter_all' },
   { key: 'necessity', value: 'necessity', label: 'catalog.filter_necessity' },
   { key: 'comfort', value: 'comfort', label: 'catalog.filter_comfort' },
 ];
 
-/** What is folded away behind "more filters". */
 const CATALOG_DETAILS: FilterDetail[] = [
   { field: 'code', label: 'catalog.filterCode', kind: 'text' },
   { field: 'name', label: 'catalog.filterName', kind: 'text' },

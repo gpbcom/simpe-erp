@@ -56,6 +56,7 @@ from service.organisation.teams import TeamService
 from service.planning.exceptions import (
     MTPlanningCustomerNotFound,
     MTPlanningForbidden,
+    MTPlanningScopeForbidden,
     MTPlanningTeamForbidden,
     MTPlanningInconsistentSolution,
     MTPlanningInfeasible,
@@ -2411,6 +2412,80 @@ class PlanningService:
                 "You may only view the plannings of the teams you manage."
             )
 
+    async def _team_ids(
+        self, company_id: str, agency_id: Optional[str] = None
+    ) -> List[str]:
+        """Return the identifiers of a company's teams, or of one site's.
+
+        Args:
+            company_id (str): The company being read.
+            agency_id (Optional[str]): Restrict to one site.
+
+        Returns:
+            List[str]: The identifiers, in the store's order.
+        """
+        teams = await self.teams.teams.list(
+            company_id, agency_id=agency_id, page=1, size=None
+        )
+        self.logger.debug(
+            "Company %s has %d team(s) at site %s.",
+            company_id,
+            len(teams),
+            agency_id or "any",
+        )
+        return [str(team.id) for team in teams]
+
+    async def _teams_at(
+        self, caller: User, agency_id: str, readable: Optional[List[str]]
+    ) -> List[str]:
+        """Return the teams of one site that this caller may rebuild.
+
+        Args:
+            caller (User): The account asking.
+            agency_id (str): The site whose teams are wanted.
+            readable (Optional[List[str]]): The caller's readable teams, or
+                ``None`` when they may read every one.
+
+        Returns:
+            List[str]: The teams to run, possibly empty.
+
+        Notes:
+            - **The intersection, not the site's roster.** An administrator gets
+              every team at the site; a manager gets the ones they run *there*.
+              Handing a manager the whole site would make a branch office a way
+              to rebuild a colleague's week without ever naming their team.
+            - A manager who runs nothing at the named site gets an empty list
+              rather than a refusal. It is an honest answer to "plan my teams
+              here", and it says nothing about which teams the site holds.
+        """
+        at_site = await self._team_ids(caller.company_id, agency_id)
+        if readable is None:
+            self.logger.info(
+                "Administrator %s plans all %d team(s) at site %s.",
+                caller.id,
+                len(at_site),
+                agency_id,
+            )
+            return at_site
+        allowed = [team_id for team_id in at_site if team_id in readable]
+        if not allowed:
+            self.logger.warning(
+                "Account %s runs none of the %d team(s) at site %s; there is "
+                "nothing to plan.",
+                caller.id,
+                len(at_site),
+                agency_id,
+            )
+        else:
+            self.logger.info(
+                "Account %s plans %d of the %d team(s) at site %s.",
+                caller.id,
+                len(allowed),
+                len(at_site),
+                agency_id,
+            )
+        return allowed
+
     async def _readable_customer_ids(
         self, caller: User, period_start: date, period_end: date
     ) -> List[str]:
@@ -2944,32 +3019,47 @@ class PlanningService:
         return runs
 
     async def teams_to_plan(
-        self, caller: User, team_id: Optional[str] = None
+        self,
+        caller: User,
+        team_id: Optional[str] = None,
+        agency_id: Optional[str] = None,
     ) -> List[str]:
         """Return the teams a caller may ask for a planning of.
 
         Args:
             caller (User): The account asking.
-            team_id (Optional[str]): One team, or ``None`` for all of theirs.
+            team_id (Optional[str]): One team to plan.
+            agency_id (Optional[str]): One site to plan, every team of it. Read
+                only when no team is named.
 
         Returns:
             List[str]: The teams to run, possibly empty.
 
         Raises:
             MTPlanningTeamForbidden: If the named team is not one they run.
+            MTPlanningScopeForbidden: If a non-administrator names no scope at
+                all, which is a request to rebuild the whole company.
 
         Notes:
             - **A route guard cannot do this.** It proves the caller is a
               manager; it cannot stop manager A naming manager B's team, and a
               run against that team would rewrite a colleague's week.
-            - Naming no team means *every team you run* — for a manager, theirs;
-              for an administrator, the whole company. That is what makes the
-              administrator's button a fan-out rather than a company-wide solve
-              that would have to be scoped somewhere else again.
-            - An administrator with no teams at all gets an empty list rather
-              than an error, and the caller reports it. It means a company that
-              has not formed a team yet, which is a state of the data rather
-              than a mistake by the person pressing the button.
+            - **Three scopes, narrowest first: a team, a site, the company.** A
+              team is what a manager owns and a site is the level above it, so
+              both are theirs to rebuild — but only for the teams they run, which
+              is why the site case *intersects* with what they may read rather
+              than taking the site's roster wholesale. A branch office is not a
+              way to reach a colleague's team.
+            - **No scope means the whole company, and that is an administrator's
+              act.** It rewrites the calendar of every assistant the company
+              employs, and no manager is answerable for all of them. It is
+              refused rather than quietly reinterpreted as "all of yours":
+              silently narrowing would tell somebody their company had been
+              re-planned when one team had.
+            - An administrator whose scope holds no team gets an empty list
+              rather than an error, and the caller reports it. It means a company
+              or a site that has not formed a team yet, which is a state of the
+              data rather than a mistake by the person pressing the button.
         """
         readable = await self.teams.readable_team_ids(caller)
         if team_id is not None:
@@ -2982,15 +3072,21 @@ class PlanningService:
                 raise MTPlanningTeamForbidden(
                     "A planning may only be run for a team you manage."
                 )
+            self.logger.info("Account %s plans team %s.", caller.id, team_id)
             return [team_id]
+        if agency_id is not None:
+            return await self._teams_at(caller, agency_id, readable)
         if readable is not None:
-            if not readable:
-                self.logger.warning(
-                    "Account %s runs no team; there is nothing to plan.", caller.id
-                )
-            return readable
-        every = await self.teams.teams.list(caller.company_id, page=1, size=None)
-        identifiers = [str(team.id) for team in every]
+            self.logger.warning(
+                "Account %s asked to plan the whole company without being an "
+                "administrator.",
+                caller.id,
+            )
+            raise MTPlanningScopeForbidden(
+                "Only an administrator may compute the planning of the whole "
+                "company. Choose one of your teams or one of your sites."
+            )
+        identifiers = await self._team_ids(caller.company_id)
         if not identifiers:
             self.logger.warning(
                 "Company %s has no team; there is nothing to plan.",
@@ -3161,19 +3257,70 @@ class PlanningService:
         """
         return await self._get_run(run_id)
 
-    async def list_runs(
-        self, page: int = 1, size: Optional[int] = None
-    ) -> List[PlanningRun]:
-        """Return a page of runs, most recent period first.
+    async def run_for(self, run_id: str, caller: User) -> PlanningRun:
+        """Return a run, if it belongs to a team the caller may read.
 
         Args:
+            run_id (str): The run to read.
+            caller (User): Who is asking.
+
+        Returns:
+            PlanningRun: The run.
+
+        Raises:
+            MTPlanningRunNotFound: If no such run exists.
+            MTPlanningForbidden: If it rebuilt a team they may not read.
+
+        Notes:
+            **The polling endpoint needs this, not just the listing.** A run
+            identifier is handed out by the request that started it, so a
+            manager holds real ones — and without a check here they could poll
+            a colleague's, learning how many visits that team has and how many
+            would not fit. Separate from :meth:`get_run`, which the webhook
+            calls with no caller to speak of.
+        """
+        run = await self._get_run(run_id)
+        readable = await self.teams.readable_team_ids(caller)
+        if readable is not None and run.team_id not in readable:
+            self.logger.warning(
+                "Account %s may not read run %s, which rebuilt team %s.",
+                caller.id,
+                run_id,
+                run.team_id,
+            )
+            raise MTPlanningForbidden(
+                "You may only view the planning runs of the teams you manage."
+            )
+        return run
+
+    async def list_runs(
+        self, caller: User, page: int = 1, size: Optional[int] = None
+    ) -> List[PlanningRun]:
+        """Return a page of the runs a caller may read, most recent first.
+
+        Args:
+            caller (User): Who is asking.
             page (int): One-based page number.
             size (Optional[int]): Page size.
 
         Returns:
             List[PlanningRun]: The runs.
+
+        Notes:
+            - **Narrowed in the statement, never after the fact.** A page of
+              fifty runs cut down to three has already read forty-seven records
+              the caller may not see.
+            - This listing used to take neither a company nor a caller, so it
+              read every run of every tenant. It is what the front-end polls
+              while a computation is in flight, which is why a manager has to
+              be able to call it at all.
         """
-        return await self.runs.list(page=page, size=size)
+        return await self.runs.list(
+            caller.company_id,
+            await self.teams.readable_team_ids(caller),
+            page=page,
+            size=size,
+        )
 
     async def planning_for(
         self, hca_id: str, caller: User, period_start: date, period_end: date

@@ -15,11 +15,9 @@ import { useAddAbsence, useRemoveAbsence } from '@/api/queries';
 import { formatDate } from '@/utils/format';
 import type { Hca } from '@/api/types';
 
-/** Why somebody is unavailable. Mirrors `AvailabilityKind` on the server. */
 const KINDS = ['holiday', 'day-off', 'sick-leave', 'training', 'unavailable'];
 
 interface AbsencesSectionProps {
-  /** The record whose absences these are. */
   profile: Hca;
 }
 

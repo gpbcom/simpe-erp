@@ -13,7 +13,6 @@ import Typography from '@mui/material/Typography';
 import { useDisableIntegration, useEnableIntegration } from '@/api/queries';
 import type { IntegrationCard } from '@/api/types';
 
-/** The credential fields a platform may ask for, in the order they render. */
 const FIELDS = ['api_key', 'account_id', 'legal_entity_id'] as const;
 
 /**

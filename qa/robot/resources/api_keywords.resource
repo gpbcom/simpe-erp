@@ -390,3 +390,90 @@ The Monday Of The Planned Week
     ${monday}=     Add Time To Date    ${today}    ${ahead} days
     ...    result_format=%Y-%m-%d
     RETURN    ${monday}
+
+Create An Agency Through The API
+    [Documentation]    Open a site and return the stored record.
+    ...
+    ...    Administrator-only, like the route: a site decides where teams are
+    ...    based and therefore which household's work each team is given.
+    [Arguments]    ${name}    ${agency_type}=office
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary    name=${name}    agency_type=${agency_type}
+    ${response}=    POST
+    ...    ${API_URL}/api/v1/agencies
+    ...    json=${body}
+    ...    headers=${headers}
+    ...    expected_status=201
+    RETURN    ${response.json()}
+
+Create A Team Through The API
+    [Documentation]    Form a team at a site and return the stored record.
+    [Arguments]    ${name}    ${agency_id}    ${manager_id}
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${body}=    Create Dictionary
+    ...    name=${name}
+    ...    agency_id=${agency_id}
+    ...    manager_user_id=${manager_id}
+    ${response}=    POST
+    ...    ${API_URL}/api/v1/teams
+    ...    json=${body}
+    ...    headers=${headers}
+    ...    expected_status=201
+    RETURN    ${response.json()}
+
+The Seeded Head Office
+    [Documentation]    Return the company's head office.
+    ...
+    ...    Read rather than assumed. The seeder derives its identifier from the
+    ...    site's name, so hard-coding one here would break the day the seeded
+    ...    name changes — and break it with a 404 that says nothing about why.
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/agencies
+    ...    headers=${headers}
+    ...    expected_status=200
+    FOR    ${agency}    IN    @{response.json()}
+        IF    ${agency}[is_headquarters]    RETURN    ${agency}
+    END
+    Fail    msg=The seeded company has no head office.
+
+Account Id By Email
+    [Documentation]    Return the identifier of a seeded account.
+    [Arguments]    ${email}
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    ${response}=    GET
+    ...    ${API_URL}/api/v1/users
+    ...    headers=${headers}
+    ...    expected_status=200
+    FOR    ${account}    IN    @{response.json()}
+        IF    '${account}[email]' == '${email}'    RETURN    ${account}[id]
+    END
+    Fail    msg=No account ${email} exists.
+
+Remove A Team Through The API
+    [Documentation]    Disband a team, tolerating one that is already gone.
+    ...
+    ...    ``expected_status=any`` because a teardown runs after a test that may
+    ...    itself have removed the fixture. A teardown that fails on the second
+    ...    removal reports a failure the campaign has already handled.
+    [Arguments]    ${team_id}
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    DELETE
+    ...    ${API_URL}/api/v1/teams/${team_id}
+    ...    headers=${headers}
+    ...    expected_status=any
+
+Remove An Agency Through The API
+    [Documentation]    Close a site, tolerating one that is already gone.
+    [Arguments]    ${agency_id}
+    ${token}=    Sign In Through The API    ${ADMIN_EMAIL}
+    ${headers}=    Authorisation Header    ${token}
+    DELETE
+    ...    ${API_URL}/api/v1/agencies/${agency_id}
+    ...    headers=${headers}
+    ...    expected_status=any

@@ -58,8 +58,6 @@ export function PlanningRunStatus({ run }: PlanningRunStatusProps) {
     );
     const planned = run.scheduled_count ?? 0;
     return (
-      // Warning, not error: the week was planned and saved. Something still
-      // needs a decision, which is not the same as nothing having happened.
       <Alert severity="warning" data-testid="planning-run-status">
         <AlertTitle>
           {t('planning.runPartialTitle', {

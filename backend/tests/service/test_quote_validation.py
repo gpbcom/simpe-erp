@@ -14,6 +14,9 @@ from models.catalog.intervention_type import InterventionType
 from models.configuration.pricing_config import PricingConfig
 from models.enums import QuoteStatus, ServiceCategory
 from models.quoting.quote import Quote
+from models.schemas.requests.quoting.quote_create_request import (
+    QuoteCreateRequest,
+)
 from models.quoting.quote_line import QuoteLine
 from service.quotes.exceptions import (
     MTQuoteForbidden,
@@ -78,6 +81,7 @@ def _quote(
     """
     return Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="D-0142",
         customer_id="customer-1",
@@ -103,6 +107,18 @@ def quotes() -> AsyncMock:
     return repository
 
 
+def _attributing_teams() -> AsyncMock:
+    """Return a team-service double that attributes every quote to one team.
+
+    Returns:
+        AsyncMock: The double.
+    """
+    stub = AsyncMock()
+    stub.attribute.return_value = "team-1"
+    stub.readable_team_ids.return_value = None
+    return stub
+
+
 @pytest.fixture
 def service(quotes: AsyncMock) -> QuoteService:
     """Return a quote service over a stand-in store.
@@ -117,7 +133,7 @@ def service(quotes: AsyncMock) -> QuoteService:
         quotes=quotes,
         types=MagicMock(),
         config=PricingConfig(),
-        teams=AsyncMock(),
+        teams=_attributing_teams(),
         customers=AsyncMock(),
     )
 
@@ -399,7 +415,15 @@ class TestQuoteAuthorship:
         )
         quotes.create.return_value = _quote()
 
-        await service.create(_quote(authored_by=OTHER_AUTHOR), author_id=AUTHOR)
+        await service.create(
+            QuoteCreateRequest(
+                reference="D-2648",
+                customer_id="customer-1",
+                lines=list(_quote().lines),
+            ),
+            "company-1",
+            author_id=AUTHOR,
+        )
 
         stored = quotes.create.await_args.args[0]
         assert stored.authored_by == AUTHOR

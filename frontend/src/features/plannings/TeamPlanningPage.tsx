@@ -24,6 +24,7 @@ import List from '@mui/material/List';
 import ListItemAvatar from '@mui/material/ListItemAvatar';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
@@ -31,6 +32,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { ApiError } from '@/api/client';
 import {
+  useAgencies,
   useAllPlannings,
   useChangeInterventionType,
   useCustomerPlannings,
@@ -39,6 +41,7 @@ import {
   useInterventionTypes,
   usePlanningRuns,
   useStartPlanningRun,
+  useTeams,
 } from '@/api/queries';
 import { INTERVENTION_STATUS_COLOUR, PLANNING_HCA_COLOURS } from '@/theme/palette';
 import { hasAtLeast, useSession } from '@/store/session';
@@ -56,6 +59,17 @@ import type { CustomerPlanning, HcaPlanning, Intervention } from '@/api/types';
  * makes the two disagree the first time somebody forgets to clear one.
  */
 const EVERYBODY = 'all';
+
+/**
+ * The scope value meaning "every team of the company".
+ *
+ * @remarks
+ * The empty string, because it is the one scope that sends neither `team_id`
+ * nor `agency_id` — the request *is* the absence of a scope. It is offered to
+ * administrators only: a company-wide computation rewrites the calendar of
+ * every assistant employed, and the server refuses it for anybody else.
+ */
+const COMPANY_SCOPE = '';
 
 /**
  * Which side of a visit the calendar is grouped by.
@@ -96,22 +110,10 @@ export function TeamPlanningPage() {
   const client = useQueryClient();
   const isAdmin = useSession((state) => state.user?.role === 'admin');
   const isManager = useSession((state) => hasAtLeast(state.user?.role, 'manager'));
-
-  // An assistant has no assistants lens to switch to, so they do not get a
-  // switch: a control whose other side answers 403 is a control that lies.
   const [audience, setAudience] = useState<Audience>(
     isManager ? 'assistants' : 'customers',
   );
   const readsCustomers = audience === 'customers';
-
-  // Both computed once and held: recomputing on every render would produce a
-  // new query key the moment the clock crossed midnight mid-session, and the
-  // whole screen would refetch under the manager.
-  //
-  // **Two windows, deliberately.** The households' span is the one their own
-  // portal reads, so the agency and the family are looking at the same weeks;
-  // the assistants' span is the scheduler's fortnight. Sharing one number would
-  // make one of the two answer a question nobody asked.
   const [{ from, to }] = useState(planningWindow);
   const [customerRange] = useState(customerPlanningWindow);
 
@@ -125,13 +127,49 @@ export function TeamPlanningPage() {
     customerRange.to,
     readsCustomers,
   );
-  // Only the assistants lens needs the book: the households lens carries each
-  // name on the planning itself, which is why that envelope exists at all.
   const { data: customers } = useCustomers(undefined, isManager && !readsCustomers);
   const startRun = useStartPlanningRun();
-  const latest = usePlanningRuns(isAdmin, isAdmin).data?.[0];
+  const { data: teams } = useTeams();
+  const { data: agencies } = useAgencies();
+  const [scope, setScope] = useState('');
+  const latest = usePlanningRuns(isManager, isManager).data?.[0];
   const running = latest?.status === 'pending' || latest?.status === 'running';
   const isLoading = readsCustomers ? loadingCustomers : loadingAssistants;
+
+  /**
+   * The sites the caller may compute a planning for, in the picker's order.
+   *
+   * @remarks
+   * Derived from the teams they can already see rather than from the full site
+   * list, so a manager is offered the branches they actually run a team at. An
+   * administrator sees every team, so this comes out as every site anyway.
+   */
+  const scopeSites = useMemo(() => {
+    const wanted = new Set((teams ?? []).map((team) => team.agency_id));
+    return (agencies ?? []).filter((agency) => agency.id && wanted.has(agency.id));
+  }, [teams, agencies]);
+
+  const hasNoScope = !isAdmin && scopeSites.length === 0 && (teams ?? []).length === 0;
+  /**
+   * The scope actually in force, once the picker's default is applied.
+   *
+   * @remarks
+   * A manager has no company-wide option, so the empty default would leave the
+   * select on a value it does not offer. Their first site is used instead —
+   * the widest thing they are allowed to ask for — and their first team when
+   * they run teams at no site the list carries.
+   */
+  const widestOwned = scopeSites.length
+    ? `agency:${scopeSites[0]?.id}`
+    : (teams ?? []).length
+      ? `team:${(teams ?? [])[0]?.id}`
+      : COMPANY_SCOPE;
+  const effectiveScope = scope || (isAdmin ? COMPANY_SCOPE : widestOwned);
+  const requestedScope = effectiveScope.startsWith('team:')
+    ? { teamId: effectiveScope.slice(5) }
+    : effectiveScope.startsWith('agency:')
+      ? { agencyId: effectiveScope.slice(7) }
+      : {};
 
   const [selectedHcaId, setSelectedHcaId] = useState<string>(EVERYBODY);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(EVERYBODY);
@@ -148,9 +186,6 @@ export function TeamPlanningPage() {
     setEditError(null);
     try {
       await retyping.mutateAsync({ id: openVisit.id, typeId });
-      // Closed rather than left showing the visit it has just re-labelled. The
-      // row it was rendered from is stale the moment the request lands, and a
-      // drawer that keeps insisting on the old service is worse than none.
       setOpenVisit(null);
     } catch (cause) {
       setEditError(cause instanceof ApiError ? cause.message : t('common.error'));
@@ -169,10 +204,6 @@ export function TeamPlanningPage() {
       setEditError(cause instanceof ApiError ? cause.message : t('common.error'));
     }
   };
-
-  // The visits are written by a worker, behind the screen's back, so nothing
-  // invalidates them when a run finishes. Without this the manager is told
-  // "75 visits planned" above an empty calendar and has to reload.
   const finished = latest?.status === 'succeeded' ? latest.finished_at : null;
   useEffect(() => {
     if (!finished) return;
@@ -195,19 +226,12 @@ export function TeamPlanningPage() {
     [households],
   );
 
-  // An assistant who was being read and has since left the roster — it is
-  // rebuilt by every planning run — would leave the grid pointing at nobody.
-  // Falling back to the overview says "here is the workforce" instead of
-  // showing an empty week that reads as a failed solve.
   useEffect(() => {
     if (selectedHcaId === EVERYBODY || roster.length === 0) return;
     if (roster.some((entry) => entry.hca_id === selectedHcaId)) return;
     setSelectedHcaId(EVERYBODY);
   }, [roster, selectedHcaId]);
 
-  // The same fallback on the other axis: a household whose arrangement ended
-  // drops out of the book, and a grid pointing at nobody reads as an empty week
-  // rather than as a household who is no longer served.
   useEffect(() => {
     if (selectedCustomerId === EVERYBODY || book.length === 0) return;
     if (book.some((entry) => entry.customer_id === selectedCustomerId)) return;
@@ -236,9 +260,6 @@ export function TeamPlanningPage() {
     0,
   );
 
-  // Position in the rail, not a hash of the identifier: a hash gives two
-  // adjacent assistants the same hue often enough to be noticed, and the rail
-  // is what the manager reads the legend off.
   const colourOf = (hcaId: string): string => {
     const index = roster.findIndex((entry) => entry.hca_id === hcaId);
     const colour =
@@ -265,17 +286,6 @@ export function TeamPlanningPage() {
           ? (entry as CustomerPlanning).customer_full_name
           : null;
         return entry.interventions.map((visit) => {
-          // Whoever is not already answered by the rail goes first in the
-          // title: on the shared grid that is the assistant, on one person's
-          // week it is the customer.
-          //
-          // **On the households lens, narrowed to one household, the colours
-          // are the status colours the family sees in their own space.** That
-          // is the whole point of this view; a per-household hue there would be
-          // the agency reading a different picture from the customer. On the
-          // whole-agency grid there is no portal counterpart — a household
-          // never sees forty households — so the hue answers "whose visit is
-          // that", exactly as it does for assistants.
           const colour = !showsEverybody
             ? INTERVENTION_STATUS_COLOUR[visit.status]
             : readsCustomers
@@ -317,9 +327,7 @@ export function TeamPlanningPage() {
         <Typography variant="h1" sx={{ flexGrow: 1 }}>
           {t('nav.plannings')}
         </Typography>
-        {/* Rendered only for somebody who may read both. An assistant sees the
-            households lens alone, and offering them a segment that answers 403
-            would be a control that lies about what it does. */}
+        {}
         {isManager ? (
           <ToggleButtonGroup
             size="small"
@@ -336,17 +344,67 @@ export function TeamPlanningPage() {
             </ToggleButton>
           </ToggleButtonGroup>
         ) : null}
-        {isAdmin ? (
-          <Button
-            variant="contained"
-            onClick={() => startRun.mutate({ from, to })}
-            disabled={running || startRun.isPending}
-            data-testid="compute-planning"
-          >
-            {running ? t('planning.computing') : t('planning.compute')}
-          </Button>
+        {isManager ? (
+          <>
+            {}
+            <TextField
+              select
+              size="small"
+              label={t('teams.picker')}
+              value={effectiveScope}
+              onChange={(event) => setScope(event.target.value)}
+              slotProps={{ htmlInput: { 'data-testid': 'team-picker' } }}
+              sx={{ minWidth: 200 }}
+            >
+              {isAdmin ? (
+                <MenuItem value={COMPANY_SCOPE} data-testid="team-picker-all">
+                  {t('teams.wholeCompany')}
+                </MenuItem>
+              ) : null}
+              {scopeSites.map((agency) => (
+                <MenuItem
+                  key={agency.id}
+                  value={`agency:${agency.id}`}
+                  data-testid={`team-picker-agency-${agency.id}`}
+                >
+                  {t('teams.wholeSite', { name: agency.name })}
+                </MenuItem>
+              ))}
+              {(teams ?? []).map((team) => (
+                <MenuItem
+                  key={team.id}
+                  value={`team:${team.id}`}
+                  data-testid={`team-picker-${team.id}`}
+                >
+                  {team.name}
+                </MenuItem>
+              ))}
+              {hasNoScope ? (
+                <MenuItem value={COMPANY_SCOPE} disabled>
+                  {t('teams.noScope')}
+                </MenuItem>
+              ) : null}
+            </TextField>
+            <Button
+              variant="contained"
+              onClick={() => startRun.mutate({ from, to, ...requestedScope })}
+              disabled={running || startRun.isPending || hasNoScope}
+              data-testid="compute-planning"
+            >
+              {running ? t('planning.computing') : t('planning.compute')}
+            </Button>
+          </>
         ) : null}
       </Stack>
+
+      {}
+      {startRun.isError ? (
+        <Alert severity="error" data-testid="compute-planning-error">
+          {startRun.error instanceof ApiError
+            ? startRun.error.message
+            : t('common.error')}
+        </Alert>
+      ) : null}
 
       <PlanningRunStatus run={latest ?? null} />
 
@@ -359,8 +417,6 @@ export function TeamPlanningPage() {
           {isLoading ? (
             <Typography sx={{ p: 2 }}>{t('common.loading')}</Typography>
           ) : entries.length === 0 ? (
-            // A sentence rather than a blank rail: an empty roster and a failed
-            // request look identical without one.
             <Box sx={{ p: 3, textAlign: 'center' }} data-testid="planning-roster-empty">
               <Typography variant="body2" color="text.secondary">
                 {readsCustomers
@@ -371,14 +427,9 @@ export function TeamPlanningPage() {
           ) : (
             <List
               dense
-              // Named "roster" and not "hca-list": a container whose test id
-              // begins with the same prefix as the entries it holds is counted
-              // as one of them by any `^=` selector.
               data-testid="planning-roster"
             >
-              {/* The whole workforce, first and always present: the overview is
-                  what the screen is for, and burying it under twelve names
-                  would make it the one entry a manager has to hunt for. */}
+              {}
               <ListItemButton
                 selected={showsEverybody}
                 onClick={() =>
@@ -440,9 +491,7 @@ export function TeamPlanningPage() {
                       data-testid={`planning-hca-${entry.hca_id}`}
                     >
                       <ListItemAvatar>
-                        {/* Also the legend for the shared grid, which is why
-                            the swatch is worn even when one assistant is being
-                            read. */}
+                        {}
                         <Avatar
                           sx={{
                             width: 32,
@@ -473,9 +522,6 @@ export function TeamPlanningPage() {
         >
           {entries.length > 0 ? (
             <FullCalendar
-              // Keyed on the lens *and* the selection so switching rebuilds the
-              // grid rather than animating one person's week into another's,
-              // which reads as visits moving.
               key={`${audience}-${selectedId}`}
               plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
               initialView="timeGridWeek"
@@ -488,10 +534,6 @@ export function TeamPlanningPage() {
               slotMinTime="07:00:00"
               slotMaxTime="21:00:00"
               firstDay={1}
-              // **Weekends are shown on the households lens**, because they are
-              // shown in the household's own space and care does not stop on a
-              // Sunday. The assistants lens hides them: a scheduler reads a
-              // working week, and five columns are wider than seven.
               weekends={readsCustomers}
               allDaySlot={false}
               height="auto"
@@ -532,9 +574,7 @@ export function TeamPlanningPage() {
             />
             <Divider />
             <Box>
-              {/* Named in full, and first. On the shared grid the block was
-                  read by its colour, and a colour is not something a manager
-                  can act on — "call Karim Haddad" needs the name. */}
+              {}
               <Typography variant="caption" color="text.secondary">
                 {t('planning.assistant')}
               </Typography>
@@ -581,19 +621,12 @@ export function TeamPlanningPage() {
               </Typography>
             </Box>
 
-            {/* **Read-only on the households lens.** Changing what a visit is,
-                or removing it, rewrites the household's quote and their bill —
-                a decision that belongs to the assistants view, where the
-                manager arrived to schedule rather than to answer a family's
-                question. Rendering the controls and ignoring them would look
-                entirely right until somebody pressed one. */}
+            {}
             {readsCustomers ? null : (
               <>
                 <Divider />
 
-                {/* A native select, like the quote dialogs use. MUI's default
-                renders a hidden input beside a div that neither a keyboard nor
-                a test can operate as a dropdown. */}
+                {}
                 <TextField
                   select
                   size="small"
@@ -633,9 +666,7 @@ export function TeamPlanningPage() {
         ) : null}
       </Drawer>
 
-      {/* Asked for, never assumed. Cancelling takes the visit off the quote as
-          well as off the calendar, and a customer's bill is not something to
-          change on a mis-click. */}
+      {}
       <Dialog open={confirmingDelete} onClose={() => setConfirmingDelete(false)}>
         <DialogTitle>{t('planning.deleteVisitTitle')}</DialogTitle>
         <DialogContent>

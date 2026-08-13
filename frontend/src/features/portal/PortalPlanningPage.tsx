@@ -41,14 +41,6 @@ import type { Intervention } from '@/api/types';
  */
 export function PortalPlanningPage() {
   const { t, i18n } = useTranslation();
-  // A generous window around today rather than the visible range: the household
-  // pages back and forth a few weeks, and re-fetching on every arrow is a
-  // request per click for data already held.
-  //
-  // Held in state so it does not move mid-session, and taken from the shared
-  // helper so the agency's own view of this household reads exactly the same
-  // span. A family looking at June while the manager on the telephone reads a
-  // six-week window is the failure that helper was extracted to end.
   const [{ from, to }] = useState(customerPlanningWindow);
   const { data: planning, isLoading } = usePortalPlanning(from, to);
   const [selected, setSelected] = useState<Intervention | null>(null);
@@ -74,9 +66,6 @@ export function PortalPlanningPage() {
       <Typography variant="h1">{t('portal.myPlanning')}</Typography>
 
       {!isLoading && (planning ?? []).length === 0 ? (
-        // An empty calendar has two very different meanings — nothing has been
-        // planned yet, or everything is waiting on the agency — and a household
-        // cannot tell them apart from an empty grid.
         <Alert severity="info" data-testid="portal-no-visit">
           {t('portal.noVisit')}
         </Alert>

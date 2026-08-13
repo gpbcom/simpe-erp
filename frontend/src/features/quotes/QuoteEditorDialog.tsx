@@ -33,7 +33,6 @@ import { LineSkills } from './LineSkills';
 import { formatMoney } from '@/utils/format';
 import type { NewQuoteLine, Quote, QuoteHeaderEdit } from '@/api/types';
 
-/** A line while it is being edited: every field a string, as inputs give them. */
 interface DraftLine {
   name: string;
   intervention_type_id: string;
@@ -42,9 +41,7 @@ interface DraftLine {
   earliest_start: string;
   latest_end: string;
   duration_minutes: string;
-  /** The line's own qualifications, or `null` to inherit the catalogue entry. */
   required_certification_codes: string[] | null;
-  /** The line's own skills, or `null` to inherit the catalogue entry. */
   required_skill_codes: string[] | null;
 }
 
@@ -65,17 +62,11 @@ type DraftTextField = Exclude<
 const NEW_LINE: DraftLine = {
   name: '',
   intervention_type_id: '',
-  // Necessity, because most home-care hours are delivered under a care plan.
-  // It is a starting point the operator must still look at, not an answer:
-  // the field is on screen beside the service, with the rate it implies.
   service_category: 'necessity',
   service_date: '',
   earliest_start: '09:00',
   latest_end: '12:00',
   duration_minutes: '60',
-  // Inherit, on both counts. A new line requires whatever its service does
-  // until somebody deliberately says otherwise; starting at `[]` would mean
-  // "needs nothing", which silently drops the catalogue's own requirement.
   required_certification_codes: null,
   required_skill_codes: null,
 };
@@ -129,10 +120,6 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
   const updateHeader = useUpdateQuoteHeader();
   const { data: customers } = useCustomers();
   const [lines, setLines] = useState<DraftLine[]>([]);
-  // The header is held separately from the lines because the two are saved by
-  // different routes: replacing lines reprices the quote, changing the header
-  // does not. One Save button covers both, so an operator does not have to
-  // know which of their edits went where.
   const [header, setHeader] = useState<QuoteHeaderEdit>({
     reference: '',
     customer_id: '',
@@ -190,13 +177,6 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
     setLines(lines.map((line, i) => (i === index ? { ...line, [key]: value } : line)));
   };
 
-  /**
-   * Name a line after the catalog entry it sells, unless it has been renamed.
-   *
-   * The name is what the customer reads on the printed quote, so it stays
-   * editable — but an operator picking "Aide à la toilette" should not then
-   * have to type it out.
-   */
   const chooseType = (index: number, typeId: string) => {
     const entry = (types ?? []).find((candidate) => candidate.id === typeId);
     setLines(
@@ -206,16 +186,7 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
               ...line,
               intervention_type_id: typeId,
               name: line.name.trim() ? line.name : (entry?.name ?? ''),
-              // The catalogue entry's own category is offered as a suggestion,
-              // never imposed: it is what this service usually is, and the
-              // operator is the one who knows whether this customer's hours are
-              // under a care plan. The field stays editable afterwards.
               service_category: entry?.service_category ?? line.service_category,
-              // Both requirement overrides drop back to "inherit". They were an
-              // override of the *previous* service's requirement, and carrying
-              // them across would silently demand a diploma the new service
-              // never asked for — or, worse, keep an empty override and drop the
-              // one it does.
               required_certification_codes: null,
               required_skill_codes: null,
             }
@@ -249,10 +220,6 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
     const fail = (cause: unknown) =>
       setError(cause instanceof Error ? cause.message : t('common.error'));
 
-    // Header first, then the lines. The lines route reprices, so if it runs
-    // second the amounts on screen match the header that was just saved; the
-    // other order would leave a repriced quote carrying the old customer for
-    // as long as the second request took.
     const quoteId = quote.id;
     updateHeader.mutate(
       { quoteId, header },
@@ -267,8 +234,6 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
     );
   };
 
-  // The stored totals, not a recomputation. They are what the server priced,
-  // and they go stale the moment a line is touched — which the hint says.
   const storedTotal = (quote?.lines ?? []).reduce(
     (running, line) => running + Number(line.total_ttc ?? 0),
     0,
@@ -291,10 +256,6 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
           line.service_category !== quote.lines[index]?.service_category ||
           line.service_date !== quote.lines[index]?.service_date ||
           Number(line.duration_minutes) !== quote.lines[index]?.duration_minutes ||
-          // Compared as JSON because the three states — inherit, override to
-          // these, override to nothing — are `null`, an array and an empty
-          // array. `!==` on two arrays is always true, which would leave the
-          // save button lit on a quote nobody had touched.
           JSON.stringify(line.required_certification_codes) !==
             JSON.stringify(quote.lines[index]?.required_certification_codes ?? null) ||
           JSON.stringify(line.required_skill_codes) !==
@@ -324,12 +285,7 @@ export function QuoteEditorDialog({ quote, scope, onClose }: QuoteEditorDialogPr
             </Alert>
           ) : null}
 
-          {/* The header. Everything the grid shows about a quote is editable
-              here, so an operator correcting a quote the planner sent back
-              does not have to find a different screen for the customer and
-              this one for the dates. The status is not a field: it has one
-              route per transition, and a dropdown would let somebody mark a
-              quote accepted that no customer accepted. */}
+          {}
           <Grid container spacing={1.5} data-testid="quote-header-fields">
             <Grid size={{ xs: 12, md: 3 }}>
               <TextField

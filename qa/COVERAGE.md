@@ -40,6 +40,9 @@ job; it is not something this document can assert on its own.
 | `/certifications` | 25, 28 | Grid, what-this-is caption, add, locked code, malformed code refused, label edited, retirement, both delete refusals, delete of an unreferenced entry |
 | `/skills` | 31 | Grid, what-this-is caption, add, locked code, malformed code refused, delete of an unreferenced entry |
 | `/me` — my skills | 31 | An assistant declares one from their own account, the picker stops offering it, the alert says it takes effect at once, and a manager withdraws it |
+| `/agencies` | 35 | Grid, what-this-is caption, the two counts, the roster dialog; a second head office refused; the legal identity absent from the projection; the empty-site delete and the head-office refusal |
+| `/teams` | 35, 36 | Grid, site and manager resolved client-side, roster and shared-space dialogs; duplicate name refused; the second-team refusal; disband allowed and refused |
+| `/me/team` | 36 | Read from the credential with no identifier to pass |
 | unknown route | 12 | Falls back to the role's home |
 | forbidden route | 12 | Assistant typing `/quotes`, `/hcas`, `/map` is redirected |
 
@@ -87,6 +90,13 @@ job; it is not something this document can assert on its own.
 | API client — SSE | 05, 07 | Badge rises after a broker round trip |
 | i18n — both bundles | 06 | Navigation and page body in English, then back |
 | `formatMoney` / `formatTime` / `initialsOf` | vitest | Unit-tested directly |
+| `AgencyDialog` | 35 | Name, type, address; the type overwritten by the server |
+| `AgencyMembersDialog` | 35 | Both member kinds; attach as a transfer, and detach |
+| `TeamDialog` | 35 | Name, site and manager; only managers offered |
+| `TeamMembersDialog` | 35 | One person at a time; the outside-the-site refusal |
+| `TeamDocumentsDialog` | 35 | Upload, download, delete; the published limits |
+| Scope picker on `/plannings` | 36 | One team, one site, or the whole company — the last offered to an administrator only |
+| `AGENCY_TYPE_COLOUR` | 35 | Every site type rendered as its own chip |
 
 ## States
 
@@ -118,6 +128,12 @@ job; it is not something this document can assert on its own.
 | Unread versus read | 07 |
 | Light and dark theme | 06 |
 | French and English | 06 |
+| A company with more than one site | 35 |
+| A manager who runs no team | 36 |
+| A team with no shared document | 35 |
+| A quote book narrowed to nothing by the team scope | 36 |
+| A manager refused a company-wide computation | 36 |
+| A manager refused another team's run, both writing it and polling it | 36 |
 
 ---
 
@@ -142,6 +158,12 @@ The rules that make it so:
   a line added to a seeded quote would still be there on the second run, and
   the run after that would find a different fixture than it was written
   against.
+- **Suites 35 and 36 make their own site and their own team**, and remove them
+  in that order — a site holding a team refuses to close, which is the same
+  refusal suite 35 asserts. The seeded organisation is never touched: the seed
+  deliberately keeps every seeded person and quote in **one** team so that every
+  count the rest of the campaign asserts is unchanged, and a suite that needs a
+  second team forms one rather than splitting the seeded workforce.
 
 ## Running it
 

@@ -85,6 +85,7 @@ def _quote(lines: List[QuoteLine]) -> Quote:
     """
     return Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="D-2601",
         customer_id="customer-1",
@@ -106,6 +107,7 @@ def _intervention(
     """
     return Intervention(
         company_id="company-1",
+        team_id="team-1",
         id="visit-1",
         planning_run_id="run-1",
         name=name,
@@ -227,7 +229,9 @@ class TestCancellingAVisit:
     ) -> None:
         """An empty quote can be neither priced, validated nor printed."""
         quotes.get_by_line.return_value = _quote([_line("line-1")])
-        assert await service.delete("visit-1") is None
+        # The team still comes back, because the replan that follows needs it
+        # and the quote it would otherwise have been read from is now gone.
+        assert await service.delete("visit-1") == ("team-1", None)
         quotes.delete.assert_awaited_once_with("quote-1")
         quotes.replace_lines.assert_not_awaited()
 

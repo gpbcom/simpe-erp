@@ -35,9 +35,7 @@ export class WrongSpaceError extends Error {
 }
 
 interface SessionState {
-  /** The signed-in account, once resolved. */
   user: User | null;
-  /** Whether the initial token check is still running. */
   loading: boolean;
   /**
    * Sign in to a chosen space.
@@ -49,11 +47,8 @@ interface SessionState {
    * control — the credential decides what the server will serve either way.
    */
   signIn: (email: string, password: string, space?: SignInSpace) => Promise<void>;
-  /** Forget the session. */
   signOut: () => void;
-  /** Resolve the stored token, if there is one. */
   restore: () => Promise<void>;
-  /** Re-read the account, after a password change for instance. */
   refresh: () => Promise<void>;
 }
 
@@ -95,9 +90,6 @@ export const useSession = create<SessionState>((set) => ({
     const user = adopt(await fetchMe());
     const belongs = space === 'customer' ? !isStaff(user.role) : isStaff(user.role);
     if (!belongs) {
-      // Signed out again rather than left holding a valid token for a space
-      // they did not ask for. The message names which side the account is on,
-      // because "invalid credentials" would be a lie — they typed them right.
       clearToken();
       throw new WrongSpaceError(isStaff(user.role) ? 'employee' : 'customer');
     }
@@ -117,8 +109,6 @@ export const useSession = create<SessionState>((set) => ({
     try {
       set({ user: adopt(await fetchMe()), loading: false });
     } catch {
-      // A token the server no longer accepts is worse than none: every screen
-      // would fail with a different symptom instead of one clear sign-in page.
       clearToken();
       set({ user: null, loading: false });
     }
@@ -130,15 +120,10 @@ export const useSession = create<SessionState>((set) => ({
   },
 }));
 
-// Registered once, at module load: a 401 anywhere drops the session, so the
-// router's guard sends the user to the sign-in page rather than leaving them on
-// a screen that silently shows nothing.
 setUnauthorizedHandler(() => useSession.setState({ user: null }));
 
-/** The roles that work for the agency, in increasing privilege. */
 const STAFF_RANK = { hca: 0, manager: 1, admin: 2 } as const;
 
-/** A role on the staff ladder — everything but `customer`. */
 export type StaffRole = keyof typeof STAFF_RANK;
 
 /**

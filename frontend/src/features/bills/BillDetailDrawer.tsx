@@ -16,10 +16,8 @@ import { AppIcon } from '@/components/icons/AppIcon';
 import { BillStatusChip } from './BillStatusChip';
 import type { Bill, BillStatus } from '@/api/types';
 
-/** The lifecycle, in the order it is walked. */
 const ORDER: BillStatus[] = ['to-be-validated', 'accepted', 'waiting-payment', 'paid'];
 
-/** The label the move *into* each status is offered under. */
 const FORWARD_LABELS: Partial<Record<BillStatus, string>> = {
   accepted: 'bills.validate',
   paid: 'bills.markPaid',
@@ -107,13 +105,7 @@ export function BillDetailDrawer({ selected, onClose }: BillDetailDrawerProps) {
             : t('bill.notSent')}
         </Typography>
 
-        {/*
-          Shown only when the payer is not the household, and that is the
-          point: on the vast majority of invoices the two are the same party
-          and a line repeating the name would be noise. Where they differ, it
-          is the single most important fact on the screen — somebody other than
-          the person cared for is being asked for the money.
-        */}
+        {}
         {bill.recipient.kind !== 'individual' ? (
           <Typography
             variant="body2"

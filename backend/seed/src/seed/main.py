@@ -112,8 +112,17 @@ async def run() -> None:
             await seeder.seed_accounts(company_id, assistants)
             await seeder.seed_customer_accounts(company_id, customers)
 
+            # The order below is load-bearing rather than cosmetic. Sites need
+            # the people to attach, the team needs its manager's account, and
+            # every quote needs a team to name — a quote written before the team
+            # exists is one no planning run would ever read.
+            head_office_id = await seeder.seed_agencies(company_id)
+            team_id = await seeder.seed_teams(company_id, head_office_id)
+
             author_ids = seeder.account_ids_for(assistants)
-            await seeder.seed_quotes(company_id, customers, catalog, author_ids)  # noqa: E501
+            await seeder.seed_quotes(
+                company_id, team_id, customers, catalog, author_ids
+            )
         await _announce(company_id, config)
     finally:
         await manager.disconnect()

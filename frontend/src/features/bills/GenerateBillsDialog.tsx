@@ -13,9 +13,7 @@ import { useBillingRun, useBillingSettings, useStartBillingRun } from '@/api/que
 import { windowFor } from './billingWindow';
 
 interface GenerateBillsDialogProps {
-  /** Whether the dialog is showing. */
   open: boolean;
-  /** Close it. */
   onClose: () => void;
 }
 

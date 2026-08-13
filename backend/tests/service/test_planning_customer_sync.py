@@ -48,6 +48,7 @@ def _visit(
     """
     return Intervention(
         company_id="company-1",
+        team_id="team-1",
         id=visit_id,
         planning_run_id="run-1",
         name="Toilette matin",

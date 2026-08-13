@@ -13,24 +13,16 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import type { EntityFilterState } from './entityFilter';
-
-/** One quick tab across the top, narrowing a single enumerated field. */
 export interface FilterTab {
-  /** Stable key, used for the test id and the translation. */
   key: string;
-  /** The value it selects, or `undefined` for the "all" tab. */
   value?: string;
-  /** The translation key for its label. */
   label: string;
 }
 
 /** One control folded away behind "more filters". */
 export interface FilterDetail {
-  /** The filter field it edits. */
   field: string;
-  /** The translation key for its label. */
   label: string;
-  /** What kind of control to draw. */
   kind: 'text' | 'flag' | 'choice';
   /**
    * For a `flag`, the two labels; for a `choice`, one entry per value.
@@ -44,17 +36,11 @@ export interface FilterDetail {
 }
 
 interface EntityFilterBarProps {
-  /** The filter state, from `useEntityFilter`. */
   state: EntityFilterState;
-  /** Prefix for every `data-testid` this bar renders. */
   testId: string;
-  /** Translation key for the search box's placeholder. */
   searchLabel: string;
-  /** The field the quick tabs narrow, when there are tabs. */
   tabField?: string;
-  /** The quick tabs, in the order somebody reads them. */
   tabs?: FilterTab[];
-  /** The controls behind "more filters". */
   details?: FilterDetail[];
 }
 
@@ -100,11 +86,9 @@ export function EntityFilterBar({
     tabs && tabField ? tabs.findIndex((entry) => entry.value === draft[tabField]) : 0,
   );
 
-  /** Read a three-state value back out of a native select. */
   const toFlag = (value: string): boolean | undefined =>
     value === '' ? undefined : value === 'true';
 
-  /** Write a three-state value into one. */
   const fromValue = (value: FilterValueOf): string =>
     value === undefined ? '' : String(value);
 
@@ -216,5 +200,4 @@ export function EntityFilterBar({
   );
 }
 
-/** What a draft field holds, narrowed for the select helpers. */
 type FilterValueOf = string | boolean | undefined;

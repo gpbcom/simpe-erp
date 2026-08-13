@@ -4,7 +4,7 @@ import { QUOTE_STATUS_COLOUR } from '@/theme/palette';
 import type { QuoteStatus } from '@/api/types';
 
 interface QuoteStatusChipProps {
-  /** The status to draw. */
+
   status: QuoteStatus;
 }
 

@@ -43,13 +43,19 @@ class MTAgencyNotEmpty(MTInvalidAgencyServiceException):
     """
 
 
-class MTAgencyMemberAlreadyPlaced(MTInvalidAgencyServiceException):
-    """Exception raised when somebody already belongs to a site.
+class MTAgencyMemberRunsATeam(MTInvalidAgencyServiceException):
+    """Exception raised when moving somebody would leave a team unmanaged.
 
     Notes:
-        Refused rather than moved. A person belongs to exactly one site, so an
-        insert that quietly won would make "where does this person work?"
-        depend on which form was saved last.
+        Attaching somebody to a site **moves** them off whichever one they were
+        on, and takes them off a team based at the old site — a team is people
+        at a place, and the planner measures every round from that place.
+
+        This is the one case that cannot be handled that way. A team's manager
+        is a required column, so there is no state in which a team briefly has
+        none, and choosing a replacement is not a decision a site transfer
+        should make silently. The message names the team, because naming a new
+        manager is the action.
     """
 
 
@@ -96,14 +102,19 @@ class MTTeamManagerRequired(MTInvalidTeamServiceException):
     """
 
 
-class MTTeamMemberAlreadyPlaced(MTInvalidTeamServiceException):
-    """Exception raised when somebody is already on a team.
+class MTTeamMemberManagesAnother(MTInvalidTeamServiceException):
+    """Exception raised when moving somebody would leave a team unmanaged.
 
     Notes:
-        **The refusal the planning decomposition rests on.** Two teams' runs
-        each delete and rewrite their own days, so a person on both would have
-        two complete calendars written over the same week by two runs, neither
-        of which clears the other's visits.
+        Putting somebody on a team **moves** them off whichever one they were
+        on: a person is on exactly one team either way, and requiring the
+        operator to remove them first would be two forms for one act.
+
+        This is the case that cannot be handled that way. A team's manager is a
+        required column, so there is no state in which a team briefly has none,
+        and picking a replacement is not a decision this call should make
+        silently. The message names the team, because naming a new manager is
+        the action.
     """
 
 

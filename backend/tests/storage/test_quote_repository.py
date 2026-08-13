@@ -140,6 +140,7 @@ def _quote(
     """
     return Quote(
         company_id=company_id,
+        team_id="team-1",
         reference=reference,
         customer_id=customer_id,
         status=status,

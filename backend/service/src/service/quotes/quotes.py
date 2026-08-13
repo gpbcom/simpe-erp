@@ -6,6 +6,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from logging import Logger, getLogger
 from typing import ClassVar, Dict, FrozenSet, List, Optional, Tuple
 
+from models.auth.user import User
+
 # First-party imports
 from models.catalog.intervention_type import InterventionType
 from models.configuration.pricing_config import PricingConfig
@@ -13,7 +15,6 @@ from models.enums import QuoteStatus
 from models.quoting.quote import Quote
 from models.quoting.quote_line import QuoteLine
 from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
-from models.auth.user import User
 from models.schemas.requests.quoting.quote_create_request import QuoteCreateRequest
 from models.schemas.requests.quoting.quote_filter import QuoteFilter
 from service.certifications.certifications import CertificationTypeService
@@ -572,7 +573,7 @@ class QuoteService:
             raise MTQuoteTeamForbidden(
                 "A quote may only be moved between teams you run."
             )
-        await self.teams.get_for(team_id, caller)
+        await self.teams.get(team_id, caller)
         self.logger.info(
             "Moving quote %s from team %s to team %s, requested by %s; both "
             "teams need re-planning.",

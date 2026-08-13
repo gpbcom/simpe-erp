@@ -43,7 +43,7 @@ from models.organisation.team.exceptions import (
 from service.organisation.exceptions import (
     MTAgencyForbidden,
     MTAgencyHeadquartersProtected,
-    MTAgencyMemberAlreadyPlaced,
+    MTAgencyMemberRunsATeam,
     MTAgencyMemberOutsideCompany,
     MTAgencyNameTaken,
     MTAgencyNotEmpty,
@@ -57,7 +57,7 @@ from service.organisation.exceptions import (
     MTTeamForbidden,
     MTTeamHasWork,
     MTTeamManagerRequired,
-    MTTeamMemberAlreadyPlaced,
+    MTTeamMemberManagesAnother,
     MTTeamMemberOutsideAgency,
     MTTeamNameTaken,
     MTTeamNotFound,
@@ -293,7 +293,9 @@ from service.planning.exceptions import (
     MTPlanningInfeasible,
     MTPlanningPeriodTooLong,
     MTPlanningRunNotFound,
+    MTPlanningScopeForbidden,
     MTPlanningSettingsUnavailable,
+    MTPlanningTeamForbidden,
 )
 from service.quotes.exceptions import (
     MTInvalidPricingException,
@@ -568,6 +570,12 @@ class ExceptionHandlers:
         MTInterventionNotFound: status.HTTP_404_NOT_FOUND,
         MTInterventionNotQuoted: status.HTTP_409_CONFLICT,
         MTPlanningForbidden: status.HTTP_403_FORBIDDEN,
+        # Both refusals are 403 and neither may fall through to the family
+        # base, which is a 400: "bad request" would tell a manager their
+        # button is broken when what happened is that the team, or the whole
+        # company, is not theirs to rebuild.
+        MTPlanningTeamForbidden: status.HTTP_403_FORBIDDEN,
+        MTPlanningScopeForbidden: status.HTTP_403_FORBIDDEN,
         MTPlanningPeriodTooLong: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTPlanningInfeasible: status.HTTP_409_CONFLICT,
         MTPlanningSettingsUnavailable: status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -663,7 +671,10 @@ class ExceptionHandlers:
         # teams still working from the site.
         MTAgencyHeadquartersProtected: status.HTTP_409_CONFLICT,
         MTAgencyNotEmpty: status.HTTP_409_CONFLICT,
-        MTAgencyMemberAlreadyPlaced: status.HTTP_409_CONFLICT,
+        # 409: the request is well formed and the caller may act, but the
+        # company is in a state that refuses it. Naming a new manager for the
+        # team is what unblocks it.
+        MTAgencyMemberRunsATeam: status.HTTP_409_CONFLICT,
         MTAgencyMemberOutsideCompany: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTTeamNotFound: status.HTTP_404_NOT_FOUND,
         MTTeamForbidden: status.HTTP_404_NOT_FOUND,
@@ -671,7 +682,7 @@ class ExceptionHandlers:
         # 422: the request names somebody who cannot run a team, which is a
         # payload the caller can correct.
         MTTeamManagerRequired: status.HTTP_422_UNPROCESSABLE_ENTITY,
-        MTTeamMemberAlreadyPlaced: status.HTTP_409_CONFLICT,
+        MTTeamMemberManagesAnother: status.HTTP_409_CONFLICT,
         MTTeamMemberOutsideAgency: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTTeamHasWork: status.HTTP_409_CONFLICT,
         MTTeamDocumentNotFound: status.HTTP_404_NOT_FOUND,

@@ -52,6 +52,12 @@ const PATHS = {
   /** An office block: the company. */
   company:
     'M5 21V4.5h9V21 M14 10h5v11 M8 8h3 M8 12h3 M8 16h3 M16.5 13.5h.01 M16.5 17h.01',
+  /** A map pin over a building: one site of the company. */
+  agency:
+    'M12 21s6-5.4 6-10a6 6 0 1 0-12 0c0 4.6 6 10 6 10Z M9.5 13V8.5h5V13 M11 8.5V7',
+  /** Three figures side by side: the team. */
+  team:
+    'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z M2.5 20v-1.5A4.5 4.5 0 0 1 7 14h4a4.5 4.5 0 0 1 4.5 4.5V20 M16.5 5.6a3 3 0 0 1 0 5.8 M18 14.2a4.5 4.5 0 0 1 3.5 4.3V20',
   /** A tagged service: the catalog entry. */
   interventionType: 'M3.5 12.5 12 4h7.5v7.5L11 20l-7.5-7.5Z M16 8h.01',
   /** A tray with an arrow: export. */
@@ -61,11 +67,9 @@ const PATHS = {
   dashboard: 'M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9.5Z M9.5 21v-6h5v6',
 } as const;
 
-/** The name of an icon in the application's own set. */
 export type AppIconName = keyof typeof PATHS;
 
 interface AppIconProps extends SvgIconProps {
-  /** Which glyph to draw. */
   name: AppIconName;
 }
 
@@ -79,9 +83,6 @@ export function AppIcon({ name, ...props }: AppIconProps) {
   return (
     <SvgIcon
       viewBox="0 0 24 24"
-      // Stroked rather than filled, matching MUI's outlined variants. A filled
-      // glyph beside an outlined one is the difference a user notices without
-      // being able to say why.
       sx={{ fill: 'none', stroke: 'currentColor', strokeWidth: 1.75 }}
       strokeLinecap="round"
       strokeLinejoin="round"

@@ -21,7 +21,6 @@ import {
 } from '@/api/queries';
 import type { InterventionType } from '@/api/types';
 
-/** Everything the form edits, flattened for the inputs. */
 interface TypeForm {
   code: string;
   name: string;
@@ -40,20 +39,14 @@ const EMPTY: TypeForm = {
   service_category: 'necessity',
   base_hourly_rate_ht: '',
   is_active: true,
-  // Empty, so a new service requires nothing until somebody says otherwise.
-  // A default that required something would gate work nobody is qualified for.
   required_certification_codes: [],
   required_skill_codes: [],
 };
 
 interface InterventionTypeDialogProps {
-  /** The entry to edit, or `null` when not editing one. */
   entry: InterventionType | null;
-  /** Whether the dialog is open to create a new entry instead. */
   creating: boolean;
-  /** The rate an entry falls back to, for the hint. */
   agencyRate: string | null;
-  /** Called when the dialog should close. */
   onClose: () => void;
 }
 
@@ -125,8 +118,6 @@ export function InterventionTypeDialog({
       name: form.name.trim(),
       description: form.description.trim() || null,
       service_category: form.service_category,
-      // Empty means "inherit the agency rate", which the server stores as null.
-      // Sending "0" instead would price every line of this service at nothing.
       base_hourly_rate_ht: rate === '' ? null : rate,
       is_active: form.is_active,
       required_certification_codes: form.required_certification_codes,
@@ -241,8 +232,6 @@ export function InterventionTypeDialog({
             onChange={(event) =>
               setForm({
                 ...form,
-                // A native multiple select hands the whole selection back on
-                // the element rather than on the event's value.
                 required_certification_codes: Array.from(
                   (event.target as unknown as HTMLSelectElement).selectedOptions,
                   (option) => option.value,
@@ -270,8 +259,6 @@ export function InterventionTypeDialog({
             onChange={(event) =>
               setForm({
                 ...form,
-                // A native multiple select hands the whole selection back on
-                // the element rather than on the event's value.
                 required_skill_codes: Array.from(
                   (event.target as unknown as HTMLSelectElement).selectedOptions,
                   (option) => option.value,

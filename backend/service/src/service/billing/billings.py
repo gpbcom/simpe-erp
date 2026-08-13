@@ -14,7 +14,6 @@ from models.billing.bill import Bill
 from models.billing.bill_line import BillLine
 from models.billing.bill_recipient import BillRecipient
 from models.billing.billing_run import BillingRun
-from models.organisation.companies.company import Company
 from models.configuration.billing_config import BillingConfig
 from models.enums import (
     BillingPeriodicity,
@@ -22,6 +21,7 @@ from models.enums import (
     BillStatus,
     Language,
 )
+from models.organisation.companies.company import Company
 from models.people.customer import Customer
 from models.planning.intervention import Intervention
 from models.quoting.quote import Quote
@@ -360,8 +360,6 @@ class BillingService:
             which is what makes a partial run's failure list comparable between
             attempts.
         """
-        # ``None`` for the team, deliberately: an invoice covers everything a
-        # household was served in the period, whichever team delivered it.
         quotes = await self.quotes.list_schedulable(
             company_id, None, period_start, period_end
         )

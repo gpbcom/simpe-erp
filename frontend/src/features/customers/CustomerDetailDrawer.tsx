@@ -19,19 +19,10 @@ import { QuoteArrangementCard } from './QuoteArrangementCard';
 import { formatDate, formatDateTime } from '@/utils/format';
 import type { Customer, Quote } from '@/api/types';
 
-/**
- * The statuses that mean the agency has committed to delivering the work.
- *
- * `sent` is included: a quote a manager has issued is an offer outstanding, and
- * a family ringing about "the quote you sent" expects to find it here rather
- * than in a history nobody looks at.
- */
 const LIVE: Quote['status'][] = ['accepted', 'sent', 'pending-validation'];
 
 interface CustomerDetailDrawerProps {
-  /** The row that was clicked, or `null` when the drawer is closed. */
   selected: Customer | null;
-  /** Called when the drawer should close. */
   onClose: () => void;
 }
 
@@ -63,8 +54,6 @@ export function CustomerDetailDrawer({ selected, onClose }: CustomerDetailDrawer
   const { t, i18n } = useTranslation();
   const { data: quotes, isLoading } = useCustomerQuotes(selected?.id ?? '');
   const { data: fresh } = useCustomer(selected?.id ?? '');
-  // The row until the re-read lands, so the drawer opens with content rather
-  // than with a blank panel that fills in a moment later.
   const customer = fresh ?? selected;
   const promote = usePromoteCustomer();
   const [promotionError, setPromotionError] = useState<string | null>(null);
@@ -80,14 +69,8 @@ export function CustomerDetailDrawer({ selected, onClose }: CustomerDetailDrawer
 
   const ongoing = (quotes ?? []).filter((quote) => LIVE.includes(quote.status));
   const past = (quotes ?? []).filter((quote) => !LIVE.includes(quote.status));
-  // Optional-chained rather than guarded on `customer` alone. This line is
-  // rendered on every visit to the list, before anything is selected, so a
-  // record that arrives without an address takes the whole page down with it
-  // — which is precisely what a query-key collision once did here.
   const geocoded =
     customer?.address?.latitude != null && customer.address.longitude != null;
-
-  /** One labelled fact. */
   const fact = (label: string, value: string, testId: string) => (
     <Box>
       <Typography variant="caption" color="text.secondary">
@@ -120,11 +103,6 @@ export function CustomerDetailDrawer({ selected, onClose }: CustomerDetailDrawer
           </Box>
 
           {customer.registration_status === 'prospect' ? (
-            // The whole point of the state, said where the decision is taken.
-            // A prospect's accepted quotes are sitting just below this alert,
-            // and none of them will reach a planning run until this button is
-            // pressed — which is not something the word "prospect" says on its
-            // own.
             <Alert
               severity="info"
               action={
@@ -151,9 +129,6 @@ export function CustomerDetailDrawer({ selected, onClose }: CustomerDetailDrawer
           ) : null}
 
           {!geocoded ? (
-            // Worth an alert rather than an empty coordinate field: an address
-            // that did not resolve means nobody can be routed to this home, and
-            // every quote for them silently drops out of the planning run.
             <Alert severity="warning" data-testid="customer-not-geocoded">
               {t('customer.addressNotResolved')}
             </Alert>
@@ -192,12 +167,7 @@ export function CustomerDetailDrawer({ selected, onClose }: CustomerDetailDrawer
 
           <Divider />
 
-          {/*
-            Between the facts and the work, because that is what it is: how
-            often this household is invoiced is part of the arrangement with
-            them, not a setting filed away on another screen. The agency-wide
-            rule lives on the billing-rules page; this is the exception to it.
-          */}
+          {}
           <CustomerBillingCard customer={customer} />
 
           <Divider />

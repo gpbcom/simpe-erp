@@ -53,9 +53,6 @@ export function SkillsSection({ profile }: SkillsSectionProps) {
   const withdraw = useWithdrawMySkill();
   const [chosen, setChosen] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  // Only what the assistant has not already declared. Offering a skill twice
-  // invites a duplicate row that satisfies exactly the same requirement.
   const available = (catalogue ?? []).filter(
     (entry) => !profile.skills.some((declared) => declared.code === entry.code),
   );

@@ -108,9 +108,45 @@ portfolio — the union is spelled once, in
 and the planning rail all build on it. Three answers to "is this household
 theirs?" that could disagree would be worse than any one of them.
 
+### A manager is scoped to the teams they run
+
+The same rule now governs the manager's screens. A manager used to see the whole
+agency — every quote, every assistant, every household, every calendar. They see
+the teams they run, and an administrator still sees everything.
+
+There is **one definition**, on `TeamService`, in three projections:
+`readable_team_ids`, `readable_hca_ids` and `readable_customer_ids`. All three
+keep one contract, and it is the contract that matters:
+
+> **`None` means every row. `[]` means no row.**
+
+Reading the empty list as "no filter" — the natural falsy reading in Python —
+would hand the whole company to exactly the group that must see nothing: a
+manager who runs no team, and an assistant on none. Every repository that takes
+one of these values says so at the point the mistake could be reintroduced.
+
+The household projection is read off the **quotes**, not the calendar. A
+prospect who has been quoted and never planned is exactly the household a
+manager most needs to chase, and a scope built from the visits would hide them.
+
 The scoping is applied **in the SQL statement**, not by filtering rows
 afterwards. A page of fifty narrowed to three has already read forty-seven
 records the caller may not see.
+
+Planning runs are narrowed by the same projection, on both the listing and the
+polling route. The polling one matters more than it looks: starting a run hands
+the caller its identifier, so every manager holds real ones, and without a check
+they could poll a colleague's run to learn how much of that team's week would
+not fit. The listing had a second problem — it took **no company at all**, which
+made it the one listing in the application that read across tenants. It now
+takes the company as a required positional argument, so forgetting it is a
+`TypeError` rather than another company's data.
+
+Computing a planning is scoped the same way and refuses one thing outright: a
+**company-wide** computation is an administrator's act, because it rewrites the
+calendar of every assistant employed. A manager naming a site gets the teams
+they run there, never the site's whole roster — otherwise a branch office would
+be a way to rebuild a colleague's week without ever naming their team.
 
 A customer outside the portfolio answers **404, not 403** — and a notification
 that is not yours answers 404 too. Distinguishing "does not exist" from "not
@@ -237,6 +273,26 @@ It also gives the broker something to route on — see
 agency's backlog, poison message or dead-letter queue is its own. That is
 isolation of *delivery*, not yet of *visibility*: the scoping gap below is
 still open.
+
+## A team's shared space
+
+Everybody on a team may add a document to it, and everybody on it may read one.
+That is unusual on this surface — almost every other write is a manager's — and
+it is deliberate: a shared space only one person can fill is a shared space
+nobody uses.
+
+Removing is narrower: the uploader, the team's manager, or an administrator.
+Anybody may *add* one, so anybody being able to remove one would make the space
+a place where work disappears without a name attached.
+
+A **non-member is answered 404**, so a private space is indistinguishable from
+one that does not exist. Deleting a colleague's file is the single **403**,
+because every member can see the file on their screen — telling them it does not
+exist would read as a bug rather than as a rule.
+
+Membership is tested against **both** the account and the assistant record: a
+manager is on a team as an account, and an assistant may be on it only as a
+record. Testing one would shut out whichever group holds the other.
 
 ## Credentials
 

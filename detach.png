@@ -1,0 +1,245 @@
+# Access Routes at Scale — SCRAPE and VENDOR Sources
+
+Companion to `JOB_BOARD_INVENTORY.md` and `JOB_SCRAPERS_PLAN.md`.
+
+## The reframe
+
+Your scale problem feels hard because the inventory implicitly treats "SCRAPE" as meaning "point a browser at it." For hostile sources, direct browser scraping is the **worst** route on every axis simultaneously: highest cost per posting, lowest reliability, weakest legal footing, and worst reproducibility — a corpus you cannot re-collect is a corpus a reviewer cannot verify.
+
+There are four routes, and direct scraping is the last one. Work down this list per source and stop at the first that yields:
+
+| # | Route | Scale ceiling | Cost | Load on target |
+|---|---|---|---|---|
+| **A** | Archived crawls (Common Crawl / Web Data Commons) | Billions | ~Free | **Zero** |
+| **B** | Published front door (sitemap + JSON-LD, RSS, backing JSON API) | Millions | Low | Low, and expected |
+| **C** | Managed vendor collection | Millions | $$ | Vendor's problem |
+| **D** | Direct scraping | Thousands–millions | High | High |
+
+Routes A and B are not compromises. For most of your sources they return **more** data, **more** cheaply, in a **more** structured form than direct scraping, while touching the target's servers less or not at all.
+
+---
+
+## Route A — Archived crawls
+
+### A.1 Web Data Commons JobPosting subset
+
+This is the highest-leverage single resource in your entire project and it requires no scraping at all.
+
+<cite index="127-1">The Web Data Commons project has extracted schema.org data from the Common Crawl every year since 2013 and offers it for public download as the schema.org data set series; the latest release consists of 106 billion RDF quads describing 3.1 billion entities from 12.8 million different websites.</cite> <cite index="128-1">Job postings are one of the popular annotated entity types, and class-specific subsets are created out of the merged Microdata and JSON-LD corpora for a selection of schema.org classes.</cite>
+
+Concretely:
+- **`JobPosting` is one of the published class-specific subsets.** <cite index="136-1">Class-specific subsets exist for 44 schema.org classes, with download formats in CSV and TSV alongside N-Quads, released against annual Common Crawl snapshots.</cite>
+- <cite index="128-1">Data is in N-Quads, where the fourth element of each quad carries the URL of the page the data came from</cite> — so you get provenance per record for free, which is exactly what you need for country attribution and for the source-stratification your methodology depends on.
+- Maintained by the Data and Web Science group at the University of Mannheim, citable, with a stable publication. A reviewer can reproduce your corpus.
+- Annual releases going back to 2013 give you a **longitudinal** dimension you cannot buy at any price.
+
+**What it gives you per posting:** `title`, `description` (the full text), `datePosted`, `validThrough`, `jobLocation`, `hiringOrganization`, and often `skills`, `qualifications`, `experienceRequirements`, `employmentType`, `baseSalary`.
+
+**Do this first.** Download one release, filter the JobPosting subset to your target domains and countries, and measure what fraction of your desired corpus is already sitting there. My expectation is that it covers a large share of your US, European, Indian and South African needs outright.
+
+**Limits, stated honestly:** Common Crawl is a sample, not a census — per-domain coverage is partial and varies. It respects robots.txt, so any board that blocks it is absent. Login-walled content is absent. Chinese domains are systematically under-crawled. And snapshots are annual, so you cannot study a specific month.
+
+### A.2 Common Crawl directly, for gap-filling
+
+When WDC's coverage of a specific domain is thin, go to Common Crawl itself rather than to the live site:
+
+1. Query the **CC index API** (`index.commoncrawl.org`) by URL prefix — e.g. all archived URLs under `naukri.com/job-listings-*` for a given crawl.
+2. The index returns WARC filename, offset and length per URL.
+3. Fetch **only those byte ranges** from the CC S3 bucket via HTTP range requests.
+4. You now have the original archived HTML of those pages, having sent zero requests to the target.
+
+This works at genuine scale, costs almost nothing, and is the single most under-used technique in job-ad research. It also sidesteps the entire anti-bot question, because you are reading an archive, not visiting a site.
+
+**Caveat:** you are bound by the crawl date. For a trend study this is a feature; for "what is being asked for right now" it is not.
+
+---
+
+## Route B — The published front door
+
+Job boards *want* machine-readable access, because Google for Jobs demands it. They just do not advertise it as an API.
+
+### B.1 Sitemap + JSON-LD
+
+<cite index="122-1">Two things get listings onto Google for Jobs: JobPosting structured data (JSON-LD) on every job page, and XML sitemaps for discovery and updates.</cite> <cite index="126-1">Google ingests the entire sitemap and recrawls pages whose lastmod times are more recent than the last crawl.</cite> <cite index="123-1">Required properties are title, description, datePosted, validThrough, jobLocation with address, and hiringOrganization.</cite>
+
+The `description` property carries the **complete job description as HTML**. That is precisely your deliverable, pre-extracted, with no DOM parsing and no risk of a CSS-selector change silently breaking your pipeline.
+
+**Pipeline, per board:**
+
+```
+GET /robots.txt              → read Sitemap: directives, and the crawl rules
+GET <sitemap index>          → child sitemaps
+GET <child sitemaps>         → job URLs + <lastmod>
+  filter: lastmod > last_run  ← free incremental crawling
+GET <job URL>                → parse <script type="application/ld+json">
+                               → JobPosting object, done
+```
+
+This is one plain HTTP request per posting. No browser, no JS execution, no rendering. It is roughly two orders of magnitude cheaper than Playwright and it is what the site is built to serve.
+
+`<lastmod>` gives you change detection for free: you re-fetch only what moved. Combined with `If-Modified-Since` / `ETag` conditional requests, steady-state cost collapses to near zero after the initial backfill.
+
+**Reliability note:** <cite index="105-1">Web Data Commons found that title and datePosted appear in 99% of JSON-LD job postings, while baseSalary and employmentType appear in roughly 80%.</cite> So core fields are dependable; treat the optional ones as missing-at-random and report their coverage rate per source.
+
+**Add `extend/schema.org` field capture.** The vocabulary includes `skills`, `qualifications`, `experienceRequirements` and `educationRequirements`. Where a board populates these, you get a structured skills signal without any NLP at all — a second ground truth alongside hh.ru's `key_skills` and the Swedish enrichment.
+
+### B.2 The backing JSON API
+
+Most job boards built in the last several years are single-page apps whose public frontend calls an internal REST or GraphQL endpoint. That endpoint serves the same unauthenticated public data, already as JSON.
+
+Open the network tab on a search results page, find the XHR, and use it directly. This is not circumvention — it is the same public data by a cleaner path, and it removes your dependency on brittle DOM selectors.
+
+**Highly likely to apply:** NoFluffJobs, justjoin.it, Welcome to the Jungle, Wellfound, Cutshort, Instahyre, OfferZen, Findy, LAPRAS.
+
+Two rules: never send an `Authorization` header you obtained by creating an account, and honour whatever rate limit the endpoint signals.
+
+### B.3 RSS and legacy feeds
+
+Older boards frequently still expose `/rss`, `/feed`, or `?format=rss` per search query. Low volume, but a free change-notification channel that keeps your incremental crawl honest. Worth a five-minute check per board. Likely on APEC, Careers24, Job Mail, doda.
+
+---
+
+## Route C — Managed vendors
+
+Use where A and B fail. The point is not just capability — it is that the vendor **assumes the collection liability**, which is what makes a hostile source tractable for an academic project that cannot itself run an adversarial crawling operation.
+
+| Vendor | Best for | Note |
+|---|---|---|
+| **Bright Data** | Naukri, Indeed, LinkedIn, PNet | Datasets + Web Scraper API. Prefer their pre-collected datasets over driving proxies yourself — see the ethics point in the earlier discussion |
+| **Apify** | Long tail of specific boards | Store has per-board actors; check coverage board by board. Per-result pricing suits a bounded research pull |
+| **TheirStack** | ATS-sourced, deduplicated | Cross-source dedup is its differentiator, and dedup is load-bearing for your percentages |
+| **Coresignal** | LinkedIn-adjacent at volume | Deduplicated records |
+| **Oxylabs** | Alternative to Bright Data | Comparable products, worth a quote |
+
+**Procurement tip:** buy a **field subset**, not full records. Cheaper, and excluding recruiter-contact fields at purchase time discharges your GDPR minimisation obligation at the boundary rather than after ingestion.
+
+---
+
+## Route D — Official request
+
+Genuinely under-used, and it costs one email. Boards routinely grant academic access and almost nobody asks.
+
+**Ask these, in this order of likely success:**
+
+- **OfferZen** — already publishes a methodologically documented developer survey. They are small, research-friendly, and their commercial interest aligns with being cited in a study of developer skill demand. High probability of a yes.
+- **Habr Career**, **Findy**, **Forkwell**, **paiza** — all already publish their own skills/salary analyses. They have the data assembled and a reason to want academic validation.
+- **NoFluffJobs / justjoin.it** — their structured must-have/nice-to-have data is their product differentiator; framed as a citation opportunity this is a reasonable ask.
+- **JCSE (Wits)** — an academic peer; ask for the ICT Skills Survey microdata, not just the report.
+
+Send from an institutional address, state the research question, offer co-authorship or acknowledgement, and commit to publishing aggregates only. A single yes here beats months of scraping engineering.
+
+---
+
+## Per-source routing
+
+Primary route first; fall back only if it fails.
+
+### Europe
+
+| Source | Primary | Fallback | Notes |
+|---|---|---|---|
+| NoFluffJobs | **B.2** backing API | A.1 WDC | Structured must-have/nice-to-have is worth the effort here above all others |
+| justjoin.it | **B.2** backing API | A.1 | SPA, JSON-backed |
+| Welcome to the Jungle | **B.1** sitemap+JSON-LD | B.2 | Good SEO hygiene implies good JSON-LD |
+| APEC | **B.1** | B.3 RSS | Server-rendered |
+| StepStone | **A.1 / A.2** | C Bright Data | Hostile to direct collection; do not fight it |
+| InfoJobs ES | **D** partner API | A.1 | Historically had a partner programme — ask |
+
+### United States
+
+| Source | Primary | Fallback | Notes |
+|---|---|---|---|
+| Indeed | **C** Bright Data | A.1 | Already in your codebase; migrate off direct scraping |
+| LinkedIn | **C** Coresignal/Bright Data | A.1 | See "the wall" below — do not scale this yourself |
+| Dice | **B.1** | A.2 | Sitemap + JSON-LD very likely |
+| Built In | **B.1** | A.1 | SEO-driven business model, so JSON-LD is near-certain |
+| Wellfound | **B.2** | A.1 | |
+| YC Work at a Startup | **B.1** | — | Small, static, trivially polite |
+| Workday tenants | **B.2** | C | Public JSON-over-POST per tenant; needs a tenant registry like Greenhouse |
+
+### India
+
+| Source | Primary | Fallback | Notes |
+|---|---|---|---|
+| **Naukri** | **A.2** Common Crawl | C Bright Data | CC coverage of Naukri should be substantial — check before paying |
+| Hirist | **B.1** | A.2 | Smaller, SEO-dependent |
+| iimjobs | **B.1** | A.2 | Same family as Hirist; dedupe the pair |
+| foundit | **C** | A.1 | |
+| Cutshort / Instahyre | **B.2** | D | Low volume; matching platforms, few browsable postings |
+
+### South Africa
+
+| Source | Primary | Fallback | Notes |
+|---|---|---|---|
+| **OfferZen** | **D** ask them | B.2 | Highest-probability yes in the whole list |
+| PNet | **B.1** | C | |
+| CareerJunction | **B.1** | A.1 | |
+| Careers24 | **B.1** | B.3 RSS | English-language, SEO-driven |
+| CompuJobs / ITWeb / Tech Jobs Africa | **B.1** | D | Small enough to just ask |
+
+POPIA governs the SA subcorpus regardless of route. Your French TDM exception does not travel.
+
+### Japan
+
+| Source | Primary | Fallback | Notes |
+|---|---|---|---|
+| Green | **B.1** | A.2 | Public browse, server-rendered, detailed stack fields |
+| Forkwell Jobs | **B.1** | D ask | Heavily tech-tagged; the tag taxonomy is itself a usable JA skills lexicon |
+| paiza転職 | **D** ask | B.1 | Already publishes language/salary analyses |
+| Levtech | **B.1** public browse | Published rankings | Facet taxonomy (~60 job types, ~90 skills) is extractable from the search UI alone |
+| doda | **B.1 / B.3** | C | Recruit-owned, large |
+| Findy / LAPRAS / 転職ドラフト / Offers | **D** ask | — | Scout-type; largely gated. See "the wall" |
+| Indeed Japan | **C** | A.1 | Best JP coverage of any aggregator |
+
+### Russia
+
+| Source | Primary | Fallback |
+|---|---|---|
+| Habr Career | **D** ask, then **B.1** | A.1 |
+| Getmatch / SuperJob / Zarplata | **B.1** | A.1 |
+
+hh.ru stays on its official API. Do not scrape it.
+
+### China
+
+| Source | Primary | Fallback | Notes |
+|---|---|---|---|
+| BOSS Zhipin | **C** vendor, with legal sign-off | REPORT only | Chat-gated postings; see "the wall" |
+| 51job / Liepin / Zhaopin | **C** | REPORT only | |
+| Nowcoder | **B.1** | — | Most open of the Chinese set; try first |
+
+Common Crawl under-covers `.cn`, so Route A will not rescue you here. Plan for the report-based answer and document the asymmetry rather than manufacturing false comparability.
+
+---
+
+## The wall
+
+Two things "at scale" cannot mean, and what to do instead.
+
+**Content behind a login.** The Japanese スカウト型 services, LinkedIn's authenticated surface, and BOSS Zhipin's chat-gated postings are not public data with an inconvenient wrapper — they are access-controlled. Reaching them at scale requires account farming and credential rotation, which is a ToS breach everywhere and a materially different legal question from the Meta and X rulings, since those turned specifically on *logged-off* public data. I will help you engineer collection of public postings all day; I am not going to help build the account-rotation layer. Route C (a vendor who assumes that liability under their own compliance programme) or Route D (ask) are the real answers, and where neither works, the honest move is to report that source as out of scope.
+
+**Anti-bot as an opt-out signal.** When a board serves you a CAPTCHA or a fingerprint challenge, that is the operator reserving rights in machine-readable form. This matters concretely for you: if your project does **not** qualify as an *organisme de recherche* under CPI art. L122-5-3 II, you fall under III, where the rights-holder's expressed opposition is legally binding — and robots.txt and technical protection measures are exactly how that opposition gets expressed. Answer question 2 in the plan's open-questions section before you build anything that pushes against a block, because it determines whether pushing is lawful for you at all.
+
+Your `BaseScraper` already carries CapSolver integration. Keep it for the sources where it was justified; do not let its presence make evasion the default answer for new sources.
+
+---
+
+## Scale engineering that applies to every route
+
+- **Incremental by default.** `<lastmod>` from sitemaps, `If-Modified-Since`/`ETag` on refetch. Backfill once, then only fetch deltas. This is what makes a 500k-posting corpus sustainable on a single machine.
+- **Cache aggressively at the HTTP layer.** You will re-run parsing dozens of times. Never re-fetch to re-parse — this is the same `scrape` / `normalize` / `extract-skills` separation from the plan, enforced at the network layer.
+- **Per-host token bucket, not a global one.** One misconfigured concurrency setting is how a research crawler becomes an incident.
+- **Honour `Retry-After`, back off exponentially with jitter, and stop on sustained 4xx.** A crawler that keeps hammering through 429s is both rude and useless.
+- **Identify yourself.** `TechSkillsResearch/0.1 (+mailto:you@lab.example)`. Operators block anonymous traffic and frequently whitelist identified academic crawlers who ask.
+- **Checkpoint everything.** Resumable runs keyed on the last processed sitemap entry. A 40-hour backfill that cannot resume will be restarted from zero at least twice.
+- **Monitor yield per source.** A silent drop in postings-per-run usually means a template change or a soft block, not a quiet labour market.
+
+---
+
+## Suggested order
+
+1. Download one **WDC JobPosting** release. Measure coverage against your target domains before writing any scraper. This may eliminate half your backlog in an afternoon.
+2. Run the **Common Crawl index** against Naukri, StepStone and the other hostile domains. Measure again.
+3. Build the **sitemap + JSON-LD** collector once, generically. It will serve fifteen-plus boards with per-board config rather than per-board code.
+4. Send the **Route D emails** now — they take a week to come back and cost nothing to have in flight while you build.
+5. Buy **vendor access** only for what survives steps 1–4. That list will be much shorter than the inventory suggests, and your budget goes to Naukri, Indeed and LinkedIn rather than being spread across twenty boards.

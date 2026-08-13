@@ -527,6 +527,18 @@ export interface Quote {
    * neither of which carries one.
    */
   company_id: string;
+  /**
+   * The team that will deliver the work.
+   *
+   * @remarks
+   * Read-only from the client's side, like `company_id` and for a sharper
+   * reason: it decides whose week the planner rewrites. It is derived from
+   * where the household lives and how much each team already carries, so
+   * {@link NewQuote} carries no team — a payload that could name one would file
+   * work onto another manager's queue. Moving a quote afterwards is its own
+   * deliberate call.
+   */
+  team_id: string;
   reference: string;
   customer_id: string;
   status: QuoteStatus;
@@ -595,6 +607,8 @@ export interface InterventionType {
 export interface Intervention {
   id: string | null;
   planning_run_id: string | null;
+  /** The team whose calendar this visit sits on. */
+  team_id: string;
   name: string;
   intervention_type_id: string;
   quote_line_id: string;
@@ -745,6 +759,15 @@ export interface QuoteReschedule {
 export interface PlanningRun {
   id: string | null;
   status: 'pending' | 'running' | 'succeeded' | 'partial' | 'failed';
+  /**
+   * The team whose week this run rebuilds.
+   *
+   * @remarks
+   * One run, one team. Asking for a planning without naming a team fans out
+   * into one run per team the caller manages, which is why the request returns
+   * a list.
+   */
+  team_id: string;
   requested_by: string;
   period_start: string;
   period_end: string;
@@ -1198,4 +1221,110 @@ export interface IntegrationCredentialsBody {
   account_id?: string | null;
   legal_entity_id?: string | null;
   base_url?: string | null;
+}
+
+/** What a site is used for. */
+export type AgencyType = 'hq' | 'warehouse' | 'office';
+
+/** Whether a membership names a sign-in account or an assistant record. */
+export type MemberKind = 'user' | 'hca';
+
+/**
+ * One of the places a company operates from.
+ *
+ * @remarks
+ * Deliberately **not** the whole stored record. A site carries its company's
+ * legal identity — the SIRET, the VAT number, the account invoices are paid
+ * into — because the head office is where the business is registered. None of
+ * that is published here: these routes are readable by every signed-in member
+ * of the company, and an assistant looking up which sites exist has no business
+ * seeing the bank details. An administrator reads the legal identity on the
+ * company screen instead.
+ *
+ * `is_headquarters` travels rather than being derived from `agency_type`, so a
+ * fourth kind of site never silently breaks a comparison against `'hq'`.
+ */
+export interface Agency {
+  id: string | null;
+  company_id: string;
+  name: string;
+  agency_type: AgencyType;
+  address: PostalAddress | null;
+  is_headquarters: boolean;
+  member_count: number;
+  team_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** What the site dialog sends. */
+export interface AgencyBody {
+  name: string;
+  address?: PostalAddress | null;
+  agency_type: AgencyType;
+}
+
+/**
+ * A group of people at one site, under one manager, with one planning.
+ *
+ * @remarks
+ * The team is the unit the planner works in: a run is requested for a team, its
+ * workforce is that team's field employees, and its output replaces that team's
+ * visits and nobody else's.
+ *
+ * The site's name and the manager's name are not resolved here. Both are lists
+ * this screen already holds — it needs them for its own pickers — and joining
+ * them server-side would put two more tables in a statement read on every
+ * navigation.
+ */
+export interface Team {
+  id: string | null;
+  company_id: string;
+  agency_id: string;
+  name: string;
+  manager_user_id: string;
+  member_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** What the team dialog sends. */
+export interface TeamBody {
+  name: string;
+  agency_id: string;
+  manager_user_id: string;
+}
+
+/**
+ * One person on a site or on a team.
+ *
+ * @remarks
+ * A pair, and nothing else: *which kind of record* and *which record*. The two
+ * halves are both needed because an account and an assistant record can share
+ * an identifier — a route taking only the second would remove whichever the
+ * store found first.
+ */
+export interface OrganisationMember {
+  member_kind: MemberKind;
+  member_id: string;
+}
+
+/** A file a team shares. */
+export interface TeamDocument {
+  id: string | null;
+  team_id: string;
+  company_id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  document_key: string;
+  uploaded_by: string;
+  uploaded_by_name: string;
+  created_at: string | null;
+}
+
+/** What a team's shared space accepts, so a client can refuse a file early. */
+export interface TeamDocumentConstraints {
+  max_upload_bytes: number;
+  accepted_content_types: string[];
 }

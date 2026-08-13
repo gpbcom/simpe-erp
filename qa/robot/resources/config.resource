@@ -19,6 +19,11 @@ ${SEED_PASSWORD}        simple-erp-demo-2026
 ${SEEDED_COMPANY_NAME}  Aide et Presence Paris
 ${ADMIN_EMAIL}          admin@simple-erp.fr
 ${MANAGER_EMAIL}        manager@simple-erp.fr
+# The second seeded manager, who runs *no* team. That is what makes them the
+# right account to prove the team narrowing with: the whole seeded book belongs
+# to somebody else, so anything they can see is something the narrowing let
+# through.
+${SECOND_MANAGER_EMAIL}  manager2@simple-erp.fr
 ${ASSISTANT_EMAIL}      luc.martin@simple-erp.fr
 ${OTHER_ASSISTANT}      amina.benali@simple-erp.fr
 # A manager who still covers rounds: the only seeded account holding both a

@@ -5,6 +5,13 @@ import type { EntityFilterRecord } from '@/components/filters/entityFilter';
 import { saveBlob } from '@/utils/download';
 import { useSession } from '@/store/session';
 import type {
+  Agency,
+  AgencyBody,
+  OrganisationMember,
+  Team,
+  TeamBody,
+  TeamDocument,
+  TeamDocumentConstraints,
   Bill,
   BillingPeriodicity,
   BillingRun,
@@ -121,13 +128,6 @@ export const keys = {
     ['hcas', 'list', search ?? '', filterQuery(filter)] as const,
   hca: (id: string) => ['hcas', 'detail', id] as const,
   customers: (filter?: CustomerFilter) =>
-    // The whole filter is the key, not the search term alone: keyed on search
-    // as it once was, a town filter would silently show the results of the
-    // previous one. `customerFilterQuery` sorts, so two filters that narrow the
-    // same way share a cache entry whatever order the boxes were filled in.
-    //
-    // `list` keeps the filter string in its own namespace, so no filter can
-    // ever spell the same key as a customer identifier — see `customer` above.
     ['customers', 'list', customerFilterQuery(filter)] as const,
   interventionTypes: ['intervention-types'] as const,
   certificationTypes: ['certification-types'] as const,
@@ -136,10 +136,6 @@ export const keys = {
   notifications: (filter?: EntityFilterRecord) =>
     ['notifications', 'list', filterQuery(filter)] as const,
   unreadCount: ['notifications', 'unread'] as const,
-  // `list` and `detail` for the reason the customer keys carry them: without
-  // the segment, `bill('')` — what a closed drawer asks for — spells the same
-  // key as the unfiltered list, and a disabled query still reads whatever sits
-  // at its key.
   bills: (filter?: EntityFilterRecord) =>
     ['bills', 'list', filterQuery(filter)] as const,
   bill: (id: string) => ['bills', 'detail', id] as const,
@@ -147,14 +143,20 @@ export const keys = {
   billingRun: (id: string) => ['billing', 'runs', 'detail', id] as const,
   billingSettings: ['billing', 'settings'] as const,
   integrations: ['billing', 'integrations'] as const,
-  // The household's own space. Its own namespace rather than reusing the staff
-  // keys, so signing out of one and into the other can never serve a cached
-  // page belonging to the wrong reader.
   portalProfile: ['portal', 'profile'] as const,
   portalPlanning: (from: string, to: string) =>
     ['portal', 'planning', from, to] as const,
   portalQuotes: ['portal', 'quotes'] as const,
   portalBills: ['portal', 'bills'] as const,
+  agencies: ['agencies', 'list'] as const,
+  agency: (id: string) => ['agencies', 'detail', id] as const,
+  agencyMembers: (id: string) => ['agencies', 'detail', id, 'members'] as const,
+  teams: ['teams', 'list'] as const,
+  team: (id: string) => ['teams', 'detail', id] as const,
+  teamMembers: (id: string) => ['teams', 'detail', id, 'members'] as const,
+  teamDocuments: (id: string) => ['teams', 'detail', id, 'documents'] as const,
+  teamDocumentConstraints: ['teams', 'document-constraints'] as const,
+  myTeam: ['me', 'team'] as const,
 };
 
 /**
@@ -268,9 +270,6 @@ export function useUpdateInterventionType() {
         json: body,
       }),
     onSuccess: () => {
-      // Both keys: the catalog screen lists them, and the quote editor's
-      // service dropdown is fed by the same query. A rate changed on one and
-      // stale on the other is how a quote gets priced at yesterday's figure.
       void client.invalidateQueries({ queryKey: keys.interventionTypes });
     },
   });
@@ -353,9 +352,6 @@ export function useUpdateCertificationType() {
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.certificationTypes });
-      // The workforce screen prints a qualification's label beside the person
-      // holding it, so a rename that stopped here would leave the old wording
-      // on every chip until the page was reloaded.
       void client.invalidateQueries({ queryKey: ['hcas'] });
     },
   });
@@ -452,9 +448,6 @@ export function useUpdateSkillType() {
       }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.skillTypes });
-      // The workforce screen prints a skill's label beside the person who
-      // declared it, so a rename that stopped here would leave the old wording
-      // on every chip until the page was reloaded.
       void client.invalidateQueries({ queryKey: ['hcas'] });
       void client.invalidateQueries({ queryKey: keys.myProfile });
     },
@@ -756,9 +749,6 @@ export function useUpdateMyAccount() {
     mutationFn: (body: { full_name: string; email: string; language: Language }) =>
       request<User>('/api/v1/me/account', { method: 'PATCH', json: body }),
     onSuccess: () => {
-      // Both: the account screen reads the query, and the top bar and the role
-      // guards read the session. Refreshing one would leave the other showing
-      // the old name until the next reload.
       void client.invalidateQueries({ queryKey: keys.myAccount });
       void useSession.getState().refresh();
     },
@@ -796,9 +786,6 @@ export function useUploadMyAccountPhoto() {
       void client.invalidateQueries({ queryKey: keys.myAccount });
       void client.invalidateQueries({ queryKey: keys.myProfile });
       void client.invalidateQueries({ queryKey: ['hcas'] });
-      // The session holds its own copy of the account, so leaving it alone
-      // would make `useSession().user` disagree with the screen about whether
-      // there is a portrait.
       void useSession.getState().refresh();
     },
   });
@@ -1072,13 +1059,7 @@ export function usePlanningRuns(polling = false, enabled = true) {
   return useQuery({
     queryKey: keys.planningRuns,
     queryFn: () => request<PlanningRun[]>('/api/v1/planning/runs?size=20'),
-    // Administrator-only, like starting one. A manager asking gets a 403, and
-    // a failed query renders as "no runs" — which reads as a fact about the
-    // agency rather than about the reader.
     enabled,
-    // A solve takes up to thirty seconds on a worker, so the screen has to ask
-    // again rather than leave the operator wondering. Only while one is running:
-    // polling a finished run for ever is a request every two seconds, all day.
     refetchInterval: polling ? 2000 : false,
   });
 }
@@ -1089,19 +1070,41 @@ export function usePlanningRuns(polling = false, enabled = true) {
  * @returns The mutation.
  *
  * @remarks
- * Answers 202, not 200: the run is queued on the broker and solved by a worker.
- * What comes back is a `pending` run to watch, not a planning.
+ * Answers 202, not 200: each run is queued on the broker and solved by a
+ * worker. What comes back is a list of `pending` runs to watch, not a planning.
+ *
+ * **A list, because a run rebuilds one team's week.** Naming a team plans that
+ * team; naming none plans every team the caller runs — a fan-out for an
+ * administrator, and the caller's own teams for a manager. Returning one run
+ * would have meant silently planning only the first.
+ *
+ * Requesting one is a **manager's** act now, not an administrator's: it rewrites
+ * the calendars of one team, which is exactly the thing a manager is
+ * responsible for. Which teams they may name is checked on the server, because
+ * nothing here can stop one manager typing another's team.
  */
 export function useStartPlanningRun() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ from, to }: { from: string; to: string }) =>
-      request<PlanningRun>(
-        `/api/v1/planning/runs?period_start=${from}&period_end=${to}`,
+    mutationFn: ({
+      from,
+      to,
+      teamId,
+      agencyId,
+    }: {
+      from: string;
+      to: string;
+      teamId?: string;
+      agencyId?: string;
+    }) =>
+      request<PlanningRun[]>(
+        `/api/v1/planning/runs?period_start=${from}&period_end=${to}` +
+          (teamId ? `&team_id=${encodeURIComponent(teamId)}` : '') +
+          (agencyId ? `&agency_id=${encodeURIComponent(agencyId)}` : ''),
         { method: 'POST' },
       ),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: keys.planningRuns });
+      void client.invalidateQueries({ queryKey: ['planning'] });
     },
   });
 }
@@ -1189,9 +1192,6 @@ export function useCustomers(filter?: CustomerFilter, enabled = true) {
   const query = customerFilterQuery(filter);
   return useQuery({
     queryKey: keys.customers(filter),
-    // Disabled rather than left to 403 for a caller who may not read the book.
-    // A failed query renders as an empty list, which states a fact about the
-    // agency when it is really one about the reader's permissions.
     enabled,
     queryFn: () =>
       request<Customer[]>(`/api/v1/customers?size=200${query ? `&${query}` : ''}`),
@@ -1205,10 +1205,6 @@ export function useInterventionTypes(
 ) {
   const query = filterQuery(filter);
   return useQuery({
-    // Retired entries are part of the key. Without them the catalogue screen
-    // and the quote editor would share one cache entry holding whichever list
-    // was fetched first — and a quote could then be built from a service the
-    // agency has stopped selling.
     queryKey: [...keys.interventionTypes, includeInactive, query] as const,
     queryFn: () =>
       request<InterventionType[]>(
@@ -1476,9 +1472,6 @@ export function useUpdateEmployment(hcaId: string | null) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myProfile });
       void client.invalidateQueries({ queryKey: ['hcas'] });
-      // Taking somebody off the rounds changes who the next run may schedule,
-      // so the calendars stop agreeing with the workforce screen until they
-      // are refetched.
       void client.invalidateQueries({ queryKey: ['planning'] });
     },
   });
@@ -1565,8 +1558,6 @@ export function useSetWorkingDays(hcaId: string | null) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myProfile });
       void client.invalidateQueries({ queryKey: ['hcas'] });
-      // Dropping a day changes who the next run may schedule, so the calendars
-      // stop agreeing with the workforce screen until they are refetched.
       void client.invalidateQueries({ queryKey: ['planning'] });
     },
   });
@@ -2064,5 +2055,336 @@ export function useCheckIntegration() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.integrations });
     },
+  });
+}
+
+/**
+ * The sites the caller's company operates from.
+ *
+ * @returns The query.
+ *
+ * @remarks
+ * Readable by any signed-in account, not just an administrator: an assistant's
+ * own team screen names the site it works from, and the team dialog picks from
+ * this list. What that costs is bounded by the response — see {@link Agency},
+ * which publishes no part of the company's legal identity.
+ */
+export function useAgencies() {
+  return useQuery({
+    queryKey: keys.agencies,
+    queryFn: () => request<Agency[]>('/api/v1/agencies?size=500'),
+  });
+}
+
+/**
+ * Open a new site.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The type in the body is a request, not a decision: the server makes the first
+ * site of a company its head office whatever was asked for, and refuses a
+ * second. That rule is a question about other rows, which no form can answer.
+ */
+export function useCreateAgency() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AgencyBody) =>
+      request<Agency>('/api/v1/agencies', { method: 'POST', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.agencies });
+    },
+  });
+}
+
+/**
+ * Change a site's name, address or type.
+ *
+ * @returns The mutation.
+ */
+export function useUpdateAgency() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: AgencyBody }) =>
+      request<Agency>(`/api/v1/agencies/${id}`, { method: 'PUT', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.agencies });
+    },
+  });
+}
+
+/**
+ * Close a site nobody works at.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Also invalidates the teams, because a site that has just gone cannot be the
+ * one a team is listed under — and the refusal that stops this happening is
+ * itself computed from the team count.
+ */
+export function useDeleteAgency() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/api/v1/agencies/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.agencies });
+      void client.invalidateQueries({ queryKey: keys.teams });
+    },
+  });
+}
+
+/**
+ * Everybody attached to one site.
+ *
+ * @param agencyId - The site to read, or `''` while a dialog is closed.
+ * @returns The query.
+ */
+export function useAgencyMembers(agencyId: string) {
+  return useQuery({
+    queryKey: keys.agencyMembers(agencyId),
+    queryFn: () =>
+      request<OrganisationMember[]>(`/api/v1/agencies/${agencyId}/members`),
+    enabled: Boolean(agencyId),
+  });
+}
+
+/**
+ * Attach somebody to a site.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Invalidates the sites as well as the roster, because the grid shows a member
+ * count on every row.
+ */
+export function useAddAgencyMember() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agencyId, body }: { agencyId: string; body: OrganisationMember }) =>
+      request<OrganisationMember>(`/api/v1/agencies/${agencyId}/members`, {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: (_result, { agencyId }) => {
+      void client.invalidateQueries({ queryKey: keys.agencyMembers(agencyId) });
+      void client.invalidateQueries({ queryKey: keys.agencies });
+    },
+  });
+}
+
+/**
+ * Detach somebody from a site.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * The kind is a path segment rather than a query parameter because it is half
+ * of the identity: an account and an assistant record can share an identifier.
+ */
+export function useRemoveAgencyMember() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      agencyId,
+      member,
+    }: {
+      agencyId: string;
+      member: OrganisationMember;
+    }) =>
+      request<void>(
+        `/api/v1/agencies/${agencyId}/members/${member.member_kind}/${member.member_id}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: (_result, { agencyId }) => {
+      void client.invalidateQueries({ queryKey: keys.agencyMembers(agencyId) });
+      void client.invalidateQueries({ queryKey: keys.agencies });
+    },
+  });
+}
+
+/**
+ * The teams the caller may read.
+ *
+ * @returns The query.
+ *
+ * @remarks
+ * An administrator gets the whole company, a manager gets the teams they run,
+ * and an assistant gets the one they are on. The narrowing is the server's and
+ * happens in the statement; nothing here filters.
+ */
+export function useTeams() {
+  return useQuery({
+    queryKey: keys.teams,
+    queryFn: () => request<Team[]>('/api/v1/teams?size=500'),
+  });
+}
+
+/**
+ * The team the caller is themselves on.
+ *
+ * @returns The query.
+ *
+ * @remarks
+ * Membership, not management: a manager who runs two teams is a *member* of
+ * one, and it is that one whose roster and shared space are theirs.
+ */
+export function useMyTeam() {
+  return useQuery({
+    queryKey: keys.myTeam,
+    queryFn: () => request<Team>('/api/v1/me/team'),
+    retry: false,
+  });
+}
+
+/**
+ * Form a team at one of the company's sites.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * Invalidates the plannings too: which team exists changes what a run may be
+ * asked for, and the run screen offers one picker per team.
+ */
+export function useCreateTeam() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TeamBody) =>
+      request<Team>('/api/v1/teams', { method: 'POST', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.teams });
+      void client.invalidateQueries({ queryKey: keys.agencies });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Change a team's name, site or manager.
+ *
+ * @returns The mutation.
+ */
+export function useUpdateTeam() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: TeamBody }) =>
+      request<Team>(`/api/v1/teams/${id}`, { method: 'PUT', json: body }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.teams });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Disband a team that holds no work.
+ *
+ * @returns The mutation.
+ */
+export function useDeleteTeam() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/api/v1/teams/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.teams });
+      void client.invalidateQueries({ queryKey: keys.agencies });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Everybody on one team.
+ *
+ * @param teamId - The team to read, or `''` while a dialog is closed.
+ * @returns The query.
+ */
+export function useTeamMembers(teamId: string) {
+  return useQuery({
+    queryKey: keys.teamMembers(teamId),
+    queryFn: () => request<OrganisationMember[]>(`/api/v1/teams/${teamId}/members`),
+    enabled: Boolean(teamId),
+  });
+}
+
+/**
+ * Put somebody on a team.
+ *
+ * @returns The mutation.
+ *
+ * @remarks
+ * One person at a time, which is the one place this surface departs from the
+ * "submit the whole list" rule the working-days editor follows. A person is on
+ * exactly one team, so a whole-list submission would silently take people off
+ * other teams — and each of those removals changes whose week the next planning
+ * run rewrites.
+ */
+export function useAddTeamMember() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ teamId, body }: { teamId: string; body: OrganisationMember }) =>
+      request<OrganisationMember>(`/api/v1/teams/${teamId}/members`, {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: (_result, { teamId }) => {
+      void client.invalidateQueries({ queryKey: keys.teamMembers(teamId) });
+      void client.invalidateQueries({ queryKey: keys.teams });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * Take somebody off a team.
+ *
+ * @returns The mutation.
+ */
+export function useRemoveTeamMember() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ teamId, member }: { teamId: string; member: OrganisationMember }) =>
+      request<void>(
+        `/api/v1/teams/${teamId}/members/${member.member_kind}/${member.member_id}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: (_result, { teamId }) => {
+      void client.invalidateQueries({ queryKey: keys.teamMembers(teamId) });
+      void client.invalidateQueries({ queryKey: keys.teams });
+      void client.invalidateQueries({ queryKey: ['planning'] });
+    },
+  });
+}
+
+/**
+ * The files a team shares.
+ *
+ * @param teamId - The team whose space is being read.
+ * @returns The query.
+ */
+export function useTeamDocuments(teamId: string) {
+  return useQuery({
+    queryKey: keys.teamDocuments(teamId),
+    queryFn: () => request<TeamDocument[]>(`/api/v1/teams/${teamId}/documents`),
+    enabled: Boolean(teamId),
+  });
+}
+
+/**
+ * What a team's shared space accepts.
+ *
+ * @returns The query.
+ *
+ * @remarks
+ * Read so the picker can refuse an oversized or unshareable file before
+ * uploading it rather than after. A rejection that arrives once the whole file
+ * has crossed the network is a rejection somebody waited for.
+ */
+export function useTeamDocumentConstraints() {
+  return useQuery({
+    queryKey: keys.teamDocumentConstraints,
+    queryFn: () =>
+      request<TeamDocumentConstraints>('/api/v1/teams/document-constraints'),
   });
 }

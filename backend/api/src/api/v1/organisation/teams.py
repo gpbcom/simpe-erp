@@ -45,7 +45,8 @@ async def create_team(
     Raises:
         MTTeamNameTaken: If the company already has a team of that name; 409.
         MTTeamManagerRequired: If the named account cannot run it; 422.
-        MTTeamMemberAlreadyPlaced: If the manager is already on a team; 409.
+        MTTeamMemberManagesAnother: If the named manager already runs another
+            team; answered as a 409.
 
     Notes:
         Administrator-only, as the requirement states — a manager cannot form
@@ -216,15 +217,21 @@ async def add_team_member(
 
     Raises:
         MTTeamNotFound: If no such team exists; answered as a 404.
-        MTTeamMemberAlreadyPlaced: If they are already on a team; 409.
+        MTTeamMemberManagesAnother: If they run the team they would leave;
+            answered as a 409.
         MTTeamMemberOutsideAgency: If they do not work at the team's site; 422.
 
     Notes:
-        Adding somebody is a **single act**, not a submitted roster, which is the
-        one place this surface departs from the "send the whole list" rule used
-        for working days. A person is on exactly one team, so a whole-list
-        submission would silently take people off other teams — and each of those
-        removals changes whose week the next planning run rewrites.
+        - Adding somebody is a **single act**, not a submitted roster, which is
+          the one place this surface departs from the "send the whole list" rule
+          used for working days. A person is on exactly one team, so a
+          whole-list submission would silently take people off *other* teams,
+          and each of those removals changes whose week the next run rewrites.
+        - Somebody already on another team is **moved**, not refused: one act,
+          one form. Both teams need re-planning afterwards, and the service says
+          so in its log line. The refusal that remains is the manager of the
+          team being left, because a team's manager is required and choosing a
+          replacement is not this call's decision.
     """
     logger.info(
         "Putting %s %s on team %s at the request of %s.",

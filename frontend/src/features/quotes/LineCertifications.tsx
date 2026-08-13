@@ -9,15 +9,10 @@ import Typography from '@mui/material/Typography';
 import type { CertificationType } from '@/api/types';
 
 interface LineCertificationsProps {
-  /** Which line this belongs to, so the test ids stay distinct. */
   index: number;
-  /** The line's own codes, or `null` when it inherits the catalogue entry. */
   value: string[] | null;
-  /** What the chosen service requires, shown when the line inherits. */
   inherited: string[];
-  /** Every qualification the agency recognises. */
   catalogue: CertificationType[];
-  /** Called with the new value: `null` to inherit, an array to override. */
   onChange: (value: string[] | null) => void;
 }
 
@@ -103,8 +98,6 @@ export function LineCertifications({
           value={value}
           onChange={(event) =>
             onChange(
-              // A native multiple select hands back the whole selection on the
-              // element, not on the event's value.
               Array.from(
                 (event.target as unknown as HTMLSelectElement).selectedOptions,
                 (option) => option.value,

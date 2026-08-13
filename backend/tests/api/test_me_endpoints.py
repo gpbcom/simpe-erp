@@ -130,6 +130,7 @@ def _quote(status: QuoteStatus = QuoteStatus.DRAFT) -> Quote:
     """
     return Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="D-0142",
         customer_id="customer-1",

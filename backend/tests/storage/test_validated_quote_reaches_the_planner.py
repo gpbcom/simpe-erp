@@ -108,6 +108,7 @@ async def _submitted_quote(session: AsyncSession) -> Quote:
     return await QuoteRepository(session).create(
         Quote(
             company_id=COMPANY,
+            team_id="team-1",
             reference="D-0001",
             customer_id=await _customer(session),
             status=QuoteStatus.PENDING_VALIDATION,
@@ -309,6 +310,7 @@ class TestTheWorkloadIsHandedOverInAStableOrder:
             await repository.create(
                 Quote(
                     company_id=COMPANY,
+                    team_id="team-1",
                     reference=f"D-{index:04d}",
                     customer_id=customer,
                     status=QuoteStatus.ACCEPTED,
@@ -346,6 +348,7 @@ class TestTheWorkloadIsHandedOverInAStableOrder:
             await repository.create(
                 Quote(
                     company_id=COMPANY,
+                    team_id="team-1",
                     reference=f"D-{index:04d}",
                     customer_id=customer,
                     status=QuoteStatus.ACCEPTED,

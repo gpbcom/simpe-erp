@@ -490,6 +490,7 @@ class TestCustomerRepository:
         await quotes.create(
             Quote(
                 company_id="company-1",
+                team_id="team-1",
                 reference="Q-ONGOING",
                 customer_id=served.id,
                 status=QuoteStatus.ACCEPTED,
@@ -526,6 +527,7 @@ class TestCustomerRepository:
         await quotes.create(
             Quote(
                 company_id="company-1",
+                team_id="team-1",
                 reference="Q-ENDED",
                 customer_id=stopped.id,
                 status=QuoteStatus.ACCEPTED,
@@ -687,6 +689,7 @@ class TestCustomerRepository:
             await quotes.create(
                 Quote(
                     company_id="company-1",
+                    team_id="team-1",
                     reference=f"P-{index:04d}",
                     customer_id=customer.id,
                     status=QuoteStatus.DRAFT,

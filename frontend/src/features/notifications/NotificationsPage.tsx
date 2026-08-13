@@ -16,7 +16,6 @@ import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import { NOTIFICATION_KIND_COLOUR } from '@/theme/palette';
 import { formatDateTime } from '@/utils/format';
 
-/** Which of the notification filter's fields are text, flags and closed lists. */
 const NOTIFICATION_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search'],
   flagFields: ['is_read'],
@@ -31,7 +30,6 @@ const NOTIFICATION_FILTER_SPEC: EntityFilterSpec = {
   },
 };
 
-/** The kinds, as tabs, in the order the work they describe happens. */
 const NOTIFICATION_TABS: FilterTab[] = [
   { key: 'all', label: 'notification.filter_all' },
   {
@@ -61,7 +59,6 @@ const NOTIFICATION_TABS: FilterTab[] = [
   },
 ];
 
-/** What is folded away behind "more filters". */
 const NOTIFICATION_DETAILS: FilterDetail[] = [
   {
     field: 'is_read',

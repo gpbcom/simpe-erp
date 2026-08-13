@@ -18,7 +18,6 @@ import type { BillingPeriodicity } from '@/api/types';
 import { EInvoicingWarning } from '@/features/integrations/EInvoicingWarning';
 import { IntegrationsGallery } from '@/features/integrations/IntegrationsGallery';
 
-/** The form's fields, as the inputs hold them. */
 interface FormState {
   periodicity: BillingPeriodicity;
   paymentTermsDays: string;
@@ -27,11 +26,9 @@ interface FormState {
   escompteOffered: boolean;
 }
 
-/** The statutory bounds the server enforces on the payment terms. */
 const MIN_TERMS_DAYS = 1;
 const MAX_TERMS_DAYS = 60;
 
-/** The periodicities, with the label each is written under. */
 const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
   { value: 'weekly', label: 'billingSettings.weekly' },
   { value: 'monthly', label: 'billingSettings.monthly' },
@@ -72,10 +69,6 @@ const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
  */
 export function BillingSettingsPage() {
   const { t } = useTranslation();
-  // A sub-menu rather than a second route: these are two halves of one
-  // subject — what an invoice says, and where it goes — and splitting them
-  // across the navigation would put "why is nothing being transmitted?" a
-  // level away from the rules that decide what is transmitted.
   const [tab, setTab] = useState<'rules' | 'integrations'>('rules');
   const { data: settings, isLoading } = useBillingSettings();
   const save = useUpdateBillingSettings();
@@ -152,8 +145,7 @@ export function BillingSettingsPage() {
             {t('billingSettings.title')}
           </Typography>
 
-          {/* On the rules tab too, because a manager editing payment terms is a
-          manager who has not necessarily opened the other tab. */}
+          {}
           <EInvoicingWarning />
 
           <Alert severity="info" sx={{ mb: 2 }} data-testid="billing-settings-notice">
@@ -163,12 +155,7 @@ export function BillingSettingsPage() {
           <Card>
             <CardContent>
               <Stack spacing={2} sx={{ maxWidth: 480 }}>
-                {/*
-              A **native** select, like every other one in the application.
-              MUI's default renders a listbox plus a hidden input, so a test
-              driving it by value finds an `<input>` rather than a `<select>`
-              and cannot choose an option at all.
-            */}
+                {}
                 <TextField
                   select
                   helperText={t('billingSettings.periodicityHelp')}

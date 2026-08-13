@@ -56,6 +56,7 @@ vi.mock('@fullcalendar/core/locales/fr', () => ({ default: {} }));
 const VISIT = {
   id: 'visit-1',
   planning_run_id: 'run-1',
+  team_id: 'team-1',
   name: 'Toilette matin',
   intervention_type_id: 'type-1',
   quote_line_id: 'line-1',
@@ -99,7 +100,10 @@ const HOUSEHOLDS: CustomerPlanning[] = [
 
 const allPlannings = vi.fn();
 const customerPlannings = vi.fn();
+const startRun = vi.fn();
 let role: UserRole = 'manager';
+let teams: { id: string; name: string; agency_id: string }[] = [];
+let agencies: { id: string; name: string }[] = [];
 
 vi.mock('@/store/session', () => ({
   useSession: (selector: (state: { user: { role: UserRole } }) => unknown) =>
@@ -125,7 +129,11 @@ vi.mock('@/api/queries', () => ({
   useCustomers: () => ({ data: [] }),
   useInterventionTypes: () => ({ data: [] }),
   usePlanningRuns: () => ({ data: [] }),
-  useStartPlanningRun: () => ({ mutate: vi.fn(), isPending: false }),
+  useStartPlanningRun: () => ({ mutate: startRun, isPending: false, isError: false }),
+  // The re-compute control now picks a scope — a team, a site, or the whole
+  // company — so the page reads both lists to build it.
+  useTeams: () => ({ data: teams }),
+  useAgencies: () => ({ data: agencies }),
   useDeleteIntervention: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useChangeInterventionType: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -264,5 +272,95 @@ describe('TeamPlanningPage — the households lens is read-only', () => {
     expect(screen.getByTestId('team-intervention-detail')).toBeInTheDocument();
     expect(screen.queryByTestId('intervention-type-select')).not.toBeInTheDocument();
     expect(screen.queryByTestId('delete-intervention')).not.toBeInTheDocument();
+  });
+});
+
+describe('TeamPlanningPage — choosing what to recompute', () => {
+  beforeEach(() => {
+    role = 'manager';
+    startRun.mockClear();
+    teams = [{ id: 'team-1', name: 'Équipe Paris', agency_id: 'agency-1' }];
+    agencies = [
+      { id: 'agency-1', name: 'Siege Paris' },
+      { id: 'agency-2', name: 'Antenne Lyon' },
+    ];
+  });
+
+  it('offers the whole company to an administrator only', async () => {
+    // Company-wide rewrites the calendar of every assistant employed, and the
+    // server refuses it for anybody else. Offering it to a manager would make
+    // the button's own default a 403.
+    role = 'admin';
+    render(<TeamPlanningPage />);
+
+    await userEvent.click(screen.getByRole('combobox'));
+
+    expect(screen.getByTestId('team-picker-all')).toBeInTheDocument();
+  });
+
+  it('withholds the whole company from a manager', async () => {
+    render(<TeamPlanningPage />);
+
+    await userEvent.click(screen.getByRole('combobox'));
+
+    expect(screen.queryByTestId('team-picker-all')).not.toBeInTheDocument();
+  });
+
+  it('offers only the sites the caller runs a team at', async () => {
+    // Derived from the teams they can see, so a manager is offered the branches
+    // they actually work from rather than every address the company holds.
+    render(<TeamPlanningPage />);
+
+    await userEvent.click(screen.getByRole('combobox'));
+
+    expect(screen.getByTestId('team-picker-agency-agency-1')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('team-picker-agency-agency-2'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('defaults a manager to their site, which is the widest they may ask for', async () => {
+    render(<TeamPlanningPage />);
+
+    await userEvent.click(screen.getByTestId('compute-planning'));
+
+    expect(startRun).toHaveBeenCalledWith(
+      expect.objectContaining({ agencyId: 'agency-1' }),
+    );
+  });
+
+  it('sends the team alone once one is picked', async () => {
+    render(<TeamPlanningPage />);
+    await userEvent.click(screen.getByRole('combobox'));
+    await userEvent.click(screen.getByTestId('team-picker-team-1'));
+
+    await userEvent.click(screen.getByTestId('compute-planning'));
+
+    expect(startRun).toHaveBeenCalledWith(
+      expect.objectContaining({ teamId: 'team-1' }),
+    );
+  });
+
+  it('sends neither field for an administrator, which means the company', async () => {
+    role = 'admin';
+    render(<TeamPlanningPage />);
+
+    await userEvent.click(screen.getByTestId('compute-planning'));
+
+    expect(startRun).toHaveBeenCalledWith(
+      expect.not.objectContaining({ teamId: expect.anything() }),
+    );
+    expect(startRun).toHaveBeenCalledWith(
+      expect.not.objectContaining({ agencyId: expect.anything() }),
+    );
+  });
+
+  it('disables the button for a manager who runs no team anywhere', () => {
+    // There is nothing they may ask for, and a button that answers 403 is
+    // worse than one that is plainly unavailable.
+    teams = [];
+    render(<TeamPlanningPage />);
+
+    expect(screen.getByTestId('compute-planning')).toBeDisabled();
   });
 });

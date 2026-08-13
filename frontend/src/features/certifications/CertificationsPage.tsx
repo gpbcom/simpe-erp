@@ -16,14 +16,12 @@ import { useCertificationTypes } from '@/api/queries';
 import { CertificationTypeDialog } from './CertificationTypeDialog';
 import type { CertificationType } from '@/api/types';
 
-/** Which of the certification filter's fields are text, flags and closed lists. */
 const CERTIFICATION_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'code', 'label'],
   flagFields: ['is_active'],
   enumFields: {},
 };
 
-/** What is folded away behind "more filters". */
 const CERTIFICATION_DETAILS: FilterDetail[] = [
   { field: 'code', label: 'certification.filterCode', kind: 'text' },
   { field: 'label', label: 'certification.filterLabel', kind: 'text' },

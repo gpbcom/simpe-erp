@@ -71,9 +71,6 @@ export function MyPlanningPage() {
           }}
           slotMinTime="07:00:00"
           slotMaxTime="21:00:00"
-          // Monday, and no weekend columns: the seeded and solved work is
-          // weekday work, and two permanently empty columns are two columns of
-          // wasted width on a laptop.
           firstDay={1}
           weekends={false}
           allDaySlot={false}

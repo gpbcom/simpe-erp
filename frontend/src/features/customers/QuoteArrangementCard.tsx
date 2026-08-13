@@ -18,7 +18,6 @@ import { formatDate, formatMoney } from '@/utils/format';
 import type { Quote } from '@/api/types';
 
 interface QuoteArrangementCardProps {
-  /** The arrangement to show. */
   quote: Quote;
 }
 
@@ -56,8 +55,6 @@ export function QuoteArrangementCard({ quote }: QuoteArrangementCardProps) {
     (running, aggregate) => running + Number(aggregate.total_ttc ?? 0),
     0,
   );
-  // Only an accepted arrangement is actually being delivered, so it is the only
-  // one there is anything to interrupt.
   const canInterrupt = quote.status === 'accepted';
 
   const end = () => {

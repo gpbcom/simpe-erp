@@ -176,26 +176,54 @@ class PlanningRunRepository(BaseRepository[PlanningRunRow]):
 
     async def list(
         self,
+        company_id: str,
+        team_ids: Optional[List[str]] = None,
         page: int = 1,
         size: Optional[int] = None,
         status: Optional[PlanningRunStatus] = None,
     ) -> List[PlanningRun]:
-        """Return a page of runs, most recent period first.
+        """Return a page of a company's runs, most recent period first.
 
         Args:
+            company_id (str): The company whose runs are being read.
+            team_ids (Optional[List[str]]): ``None`` for every team of the
+                company; a list to restrict to those teams.
             page (int): One-based page number.
             size (Optional[int]): Page size.
             status (Optional[PlanningRunStatus]): Restrict to one status.
 
         Returns:
             List[PlanningRun]: The matching runs.
+
+        Notes:
+            - ``company_id`` is **required and positional**, so a caller that
+              forgets it gets a ``TypeError`` rather than another company's
+              runs. It used to be absent altogether, which made this the one
+              listing in the application that read across tenants.
+            - ``None`` and ``[]`` mean opposite things in ``team_ids``, the
+              same contract
+              :meth:`~service.organisation.teams.TeamService.readable_team_ids`
+              publishes: ``None`` is every team, ``[]`` is none at all. Reading
+              the empty list as "no filter" would show a manager who runs no
+              team every run in the company.
         """
         self.logger.debug(
-            "Listing planning runs: page=%d status=%s.",
+            "Listing planning runs of company %s: teams=%s page=%d status=%s.",
+            company_id,
+            "all" if team_ids is None else len(team_ids),
             page,
             status.value if status else None,
         )
-        statement = select(PlanningRunRow)
+        if team_ids is not None and not team_ids:
+            self.logger.warning(
+                "Company %s was listed for no team; no run can match.", company_id
+            )
+            return []
+        statement = select(PlanningRunRow).where(
+            PlanningRunRow.company_id == company_id
+        )
+        if team_ids is not None:
+            statement = statement.where(PlanningRunRow.team_id.in_(team_ids))
         if status is not None:
             statement = statement.where(PlanningRunRow.status == status.value)
         statement = statement.order_by(PlanningRunRow.period_start.desc())

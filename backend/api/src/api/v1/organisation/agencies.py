@@ -211,7 +211,7 @@ async def add_agency_member(
     service: AgencyService = Depends(get_agency_service),
     caller: User = Depends(get_admin_user),
 ) -> AgencyMember:
-    """Attach somebody to a site.
+    """Attach somebody to a site, moving them off whichever one they were on.
 
     Args:
         agency_id (str): The site they join.
@@ -225,14 +225,24 @@ async def add_agency_member(
     Raises:
         MTAgencyNotFound: If no such site exists; answered as a 404.
         MTAgencyForbidden: If it belongs to another company; answered as a 403.
-        MTAgencyMemberAlreadyPlaced: If they already belong to a site; 409.
+        MTAgencyMemberRunsATeam: If they run a team based at the site they are
+            leaving; answered as a 409.
 
     Notes:
-        The body is the model itself rather than a request schema, and that is
-        safe here for the reason it is not on the site: an
-        :class:`~models.organisation.agency.agency_member.AgencyMember` carries
-        a kind and an identifier and nothing else, so there is no field a
-        payload could forge. The site comes from the path.
+        - **A transfer, in one call.** Somebody moving site does it once, on one
+          screen; requiring a detach first would be two forms for one act, and
+          the state in between — a person attached to no site — is one nothing
+          else expects. Everybody belongs to exactly one site either way; the
+          only question was whether the operator had to do the removal by hand.
+        - Their **team goes with the old site**, because a team is people at a
+          place and the planner measures every round from it. The one refusal
+          left is somebody who *runs* a team there: a team's manager is
+          required, so there is no state in which it briefly has none.
+        - The body is the model itself rather than a request schema, and that is
+          safe here for the reason it is not on the site: an
+          :class:`~models.organisation.agency.agency_member.AgencyMember` carries
+          a kind and an identifier and nothing else, so there is no field a
+          payload could forge. The site comes from the path.
     """
     logger.info(
         "Attaching %s %s to site %s at the request of %s.",

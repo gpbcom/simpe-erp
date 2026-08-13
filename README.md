@@ -227,11 +227,19 @@ Sign in with any of the seeded accounts, all sharing the password
 | Role | Address | Lands on |
 |---|---|---|
 | Administrator | `admin@simple-erp.fr` | The quote screen |
-| Manager | `manager@simple-erp.fr` | The quote screen |
+| Manager, runs the seeded team | `manager@simple-erp.fr` | The quote screen |
+| Manager, runs no team | `manager2@simple-erp.fr` | The quote screen |
 | Manager, on the rounds | `marc.dubois@simple-erp.fr` | The quote screen |
 | Assistant | `luc.martin@simple-erp.fr` | Their own planning |
 
 Every seeded assistant signs in as `firstname.lastname@simple-erp.fr`.
+
+The seeded company operates from two sites — **Siège Paris**, its head office,
+and **Antenne Lyon**, a branch that holds nobody — and every seeded person and
+quote belongs to one team, *Equipe principale*, run by `manager@simple-erp.fr`.
+Sign in as `manager2@simple-erp.fr` to see the other side of that: they run no
+team, so their quote book, workforce and household list are all empty while the
+administrator's are full. That is the team narrowing, not a broken screen.
 
 Marc Dubois is a manager who still covers rounds — they hold both a manager's
 role and an assistant record. Sign in as them to see the employment section of

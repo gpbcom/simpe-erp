@@ -11,7 +11,6 @@ import type { SuggestedSlot, UnplacedQuote, UnplacedVisit } from '@/api/types';
 import { minutesToTime } from '@/utils/format';
 
 interface QuotePlanningFeedbackProps {
-  /** The note the last planning left on this quote, if any. */
   feedback: UnplacedQuote | null;
   /**
    * The quote the note belongs to.
@@ -91,11 +90,7 @@ export function QuotePlanningFeedback({
     );
   };
 
-  /** Render one visit's offers, clickable when there is a line to move. */
   const offers = (visit: UnplacedVisit) => {
-    // Older notes carry the quote's slots but none of their own, and none has
-    // a line to move. Shown, never offered: a chip that does nothing when
-    // clicked is worse than one that plainly is not a button.
     const slots = visit.alternatives;
     const actionable = Boolean(quoteId && visit.quote_line_id);
     if (slots.length === 0) {

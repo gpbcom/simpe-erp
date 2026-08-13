@@ -407,6 +407,7 @@ def _quote(line_codes: Optional[List[str]]) -> Quote:
     return Quote(
         id="quote-1",
         company_id="company-1",
+        team_id="team-1",
         reference="Q-1",
         customer_id="customer-1",
         status="accepted",

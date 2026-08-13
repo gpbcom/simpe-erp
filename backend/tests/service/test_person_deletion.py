@@ -243,6 +243,7 @@ class TestReplanScoping:
         service = _planning_service()
         pending = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="user-9",
@@ -256,12 +257,14 @@ class TestReplanScoping:
         queued = await service.queue_replan(
             requested_by="user-9",
             company_id="company-1",
+            team_ids=["team-1"],
             period=(MONDAY, FRIDAY),
             publisher=publisher,
             reason="a test",
         )
 
-        assert queued.id == "run-1"
+        # A list, because a departure can invalidate more than one team's week.
+        assert [run.id for run in queued] == ["run-1"]
 
     async def test_the_run_is_recorded_before_it_is_queued(self) -> None:
         """A 202 must hand back an identifier that is already real.
@@ -274,6 +277,7 @@ class TestReplanScoping:
         service = _planning_service()
         pending = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="user-9",
@@ -289,6 +293,7 @@ class TestReplanScoping:
         await service.queue_replan(
             requested_by="user-9",
             company_id="company-1",
+            team_ids=["team-1"],
             period=(MONDAY, FRIDAY),
             publisher=publisher,
             reason="a test",

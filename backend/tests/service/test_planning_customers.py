@@ -95,6 +95,7 @@ def _visit(
     """
     return Intervention(
         company_id="company-1",
+        team_id="team-1",
         id=visit_id,
         planning_run_id="run-1",
         name="Toilette matin",
@@ -140,6 +141,19 @@ def customers() -> AsyncMock:
     return repository
 
 
+def _unscoped_teams() -> AsyncMock:
+    """Return a team-service double that narrows nothing.
+
+    Returns:
+        AsyncMock: The double, answering ``None`` to every scope question.
+    """
+    stub = AsyncMock()
+    stub.readable_team_ids.return_value = None
+    stub.readable_hca_ids.return_value = None
+    stub.readable_customer_ids.return_value = None
+    return stub
+
+
 @pytest.fixture
 def service(interventions: AsyncMock, customers: AsyncMock) -> PlanningService:
     """Return a planning service over stand-in repositories.
@@ -159,7 +173,9 @@ def service(interventions: AsyncMock, customers: AsyncMock) -> PlanningService:
         hcas=AsyncMock(),
         types=AsyncMock(),
         settings=AsyncMock(),
-        teams=AsyncMock(),
+        # Unscoped: `None` means every team, which is an administrator's answer
+        # and what these whole-agency assertions were written against.
+        teams=_unscoped_teams(),
         config=PlanningConfig(),
     )
 
@@ -306,8 +322,11 @@ class TestTheWholeAgencysCare:
         )
 
         assert [planning.customer_id for planning in plannings] == ["customer-1"]
+        # The third argument is the caller's team scope, applied in the
+        # statement rather than to the page. `None` is an administrator's answer
+        # and what the unscoped double here returns.
         interventions.list_customer_ids_for_period.assert_awaited_once_with(
-            MONDAY, SUNDAY
+            MONDAY, SUNDAY, None
         )
 
     async def test_an_assistant_sees_only_their_portfolio(

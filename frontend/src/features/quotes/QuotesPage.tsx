@@ -33,7 +33,6 @@ import { useEntityFilter } from '@/components/filters/entityFilter';
 import type { EntityFilterSpec } from '@/components/filters/entityFilter';
 import type { Quote, QuoteStatus } from '@/api/types';
 
-/** The tabs across the top, in the order work flows through them. */
 const TABS: { key: string; status?: QuoteStatus }[] = [
   { key: 'all' },
   { key: 'pending', status: 'pending-validation' },
@@ -58,7 +57,6 @@ const QUOTE_FILTER_SPEC: EntityFilterSpec = {
   enumFields: {},
 };
 
-/** What is folded away behind "more filters". */
 const QUOTE_DETAILS: FilterDetail[] = [
   { field: 'reference', label: 'quote.filterReference', kind: 'text' },
   { field: 'customer_id', label: 'quote.filterCustomer', kind: 'text' },
@@ -103,11 +101,6 @@ export function QuotesPage() {
   const quoteFilter = useEntityFilter(QUOTE_FILTER_SPEC);
   const { data, isLoading } = useQuotes(status, quoteFilter.filter);
   const { data: customers } = useCustomers();
-  // What validating actually did, said once, where the manager is looking.
-  // Validation now accepts the quote outright, so the confirmation says the
-  // work is committed rather than leaving the manager to wonder. It used to
-  // stop at `sent` and need a second acceptance nothing asked for, which is
-  // how a validated fortnight of work reached no planning run at all.
   const [validated, setValidated] = useState(false);
   const validate = useValidateQuote();
   const refuse = useRefuseQuote();
@@ -143,8 +136,6 @@ export function QuotesPage() {
       headerName: t('quote.planning'),
       width: 170,
       sortable: false,
-      // Only the quotes with a problem carry anything. A column of empty
-      // cells with one chip in it is exactly what makes the one chip visible.
       renderCell: (params) =>
         params.row.planning_feedback ? (
           <Chip
@@ -179,21 +170,9 @@ export function QuotesPage() {
       headerName: t('common.actions'),
       width: 380,
       sortable: false,
-      // Rendered only for a quote awaiting validation. A manager looking at an
-      // accepted quote has no decision to make about it, and a row of greyed
-      // buttons on every other line would bury the ones that matter.
       renderCell: (params) => (
         <Stack direction="row" spacing={1}>
-          {/* **Editable at every status**, matching what the service allows.
-              This was drafts only, on the reasoning that what a customer was
-              sent must stay what they were sent — but the planner now sends
-              quotes back to be validated when their work will not fit, and
-              those are past draft by definition. A quote returned for a new
-              date that nobody can change is a dead end.
-
-              The trade is real and worth naming: nothing records what the
-              figures were before an edit, and an edit reprices against the
-              catalogue as it stands now. */}
+          {}
           <Button
             size="small"
             variant="outlined"
@@ -205,11 +184,7 @@ export function QuotesPage() {
           </Button>
           {params.row.status === 'draft' ? (
             <>
-              {/* Sending accepts the quote: a manager writes one for an
-                  arrangement they have already settled with the family, and
-                  the hours have to reach the planner. Nothing else in the
-                  agency moves a hand-written quote past `sent`, so without
-                  this the visits were promised and never scheduled. */}
+              {}
               <Button
                 size="small"
                 variant="contained"
@@ -250,10 +225,7 @@ export function QuotesPage() {
               </Button>
             </>
           ) : null}
-          {/* Kept for quotes already stored as `sent`. Nothing produces that
-              status any more — validating accepts outright — but rows written
-              before that change still exist, and without these two buttons
-              they would sit in a tab with no way forward. */}
+          {}
           {params.row.status === 'sent' ? (
             <>
               <Button
@@ -332,10 +304,7 @@ export function QuotesPage() {
           />
         </Box>
 
-        {/* The explanation sits above the list rather than behind a click.
-            A quote back in the validation queue with no visible reason reads
-            as the system having lost it, and the offered slots are what turn
-            the follow-up call into a decision. */}
+        {}
         {(data ?? [])
           .filter((quote) => quote.planning_feedback)
           .map((quote) => (

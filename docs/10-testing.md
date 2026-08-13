@@ -11,7 +11,8 @@ Three campaigns, answering three different questions.
 
 ## Signing in to a seeded stack
 
-`make seed` writes one agency and every account below. **All of them share one
+`make seed` writes one company — with **two sites** and **one team** — and every
+account below. **All of them share one
 password**, and it is not a secret — it is printed on screen at the end of every
 seeding run, precisely so somebody returning a week later does not have to go
 looking in a log file.
@@ -28,6 +29,19 @@ simple-erp-demo-2026
 | **Assistant** | `luc.martin@simple-erp.fr` | Employee |
 | **Customer** — active | `portal.marie.durand@simple-erp.fr` | **Customer** |
 | **Customer** — prospect | `portal.lucien.guillot@simple-erp.fr` | **Customer** |
+
+The seeded company operates from **Siège Paris** (its head office, carrying the
+SIRET and the bank details) and **Antenne Lyon** (a branch holding nobody). Every
+seeded person and every seeded quote belongs to one team, *Equipe principale*,
+run by `manager@simple-erp.fr` and based at the head office.
+
+That single team is deliberate. Splitting the seeded workforce would change
+every count the GUI campaign asserts, so a suite that needs to watch the team
+narrowing bite forms its own second team through the API and removes it
+afterwards — see `36_team_scoping`. It is also why `manager2@simple-erp.fr` runs
+**no** team: that is exactly what makes them the right account to prove a
+narrowing with, since anything they can see is something the narrowing let
+through.
 
 Every seeded assistant signs in as `firstname.lastname@simple-erp.fr`. Two of
 them are also managers who still cover rounds — see
@@ -288,7 +302,13 @@ documentation:
   demotes whoever was promoted rather than trusting the test to have got that
   far — a run that fails mid-promotion still leaves an assistant holding a
   manager's rights, and the next run would find the button gone.
-- **17** writes nothing at all, so it is idempotent for free.
+- **17** writes nothing at all, so it is idempotent for free — and keeps its
+  `team-planning-*` locators even though the screen now has a team picker. The
+  picker's own controls carry fresh `team-picker-*` testids precisely so that
+  suite counts nothing it did not count before.
+- **35** and **36** make a site and a team of their own and remove them in that
+  order, because a site holding a team refuses to close — the same refusal 35
+  asserts. Neither touches the seeded organisation.
 - **21** is the only suite that changes a *password*, which is the one edit
   that could stop the campaign running ever again — a seeded credential altered
   by a test that then failed before restoring it locks every later run out, and

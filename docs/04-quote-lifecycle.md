@@ -47,6 +47,49 @@ it before that change still exist and need a way forward — see
 `SCHEDULABLE_STATUSES` is `{ACCEPTED}` — only an accepted quote reaches the
 planner.
 
+## Which team gets it
+
+A quote is attributed to a **team** the moment it is written, and the rule lives
+in one place — `TeamService.attribute`, called from `QuoteService.create`, which
+both writing paths funnel through. Two copies would drift, and the assistant's
+path at `POST /api/v1/me/quotes` is the one that would be forgotten.
+
+The rule, in order, each step there because the one before it can tie:
+
+1. every team of the company is a candidate;
+2. keep those whose **site is nearest** the household, within a half-kilometre;
+3. among those, the one carrying the **fewest assigned minutes** — measured over
+   *live quotes* rather than planned visits, so a company that has never run the
+   planner still spreads its work;
+4. among those, **the first by identifier**. Without a total order, two equally
+   close and equally busy teams come back in either order and the same household
+   is filed differently on two identical runs.
+
+A site with no coordinate is **not** treated as a distance of zero: an
+unresolved address read that way sits off the coast of Africa and would be
+nearest to everybody. When nothing can be measured the busyness tie-break
+decides alone, and the run says so at `WARNING` rather than claiming a proximity
+nothing supports.
+
+A quote that can be attributed to **no** team is **refused, 422**, naming which
+of the two causes applied — an unknown household, or a company with no team.
+Stored unattributed it would be priced, sent, accepted, and then read by no
+planning run: it would go *quiet* rather than wrong, which is the failure mode
+worth refusing for. A household whose address simply has not geocoded is not
+refused; that would let a Nominatim outage stop the business taking work.
+
+Renewals **inherit** the parent's team rather than re-running the rule. The
+household has not moved and the arrangement has not changed; re-attributing
+would hand a continuing customer to whichever team was least busy that morning,
+and the assistants they know would stop coming.
+
+`PATCH /api/v1/quotes/{id}/team` exists for the two cases the rule cannot see: a
+proximity decision that was wrong, and a household that has moved. It is
+deliberately manual — moving work automatically would move visits somebody has
+already been told about — and it checks **both ends**, because taking work out of
+a team empties a colleague's plan and putting it in commits assistants the
+caller does not manage.
+
 ## Three decisions that are easy to get wrong
 
 **Validating moves the quote to `SENT`, not to `ACCEPTED`.** A manager approving

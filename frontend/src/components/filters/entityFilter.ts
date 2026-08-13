@@ -16,10 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-/** What a single filter field can hold on the wire. */
 export type FilterValue = string | boolean | undefined;
-
-/** Any screen's filter, as a plain record. */
 export type EntityFilterRecord = Record<string, FilterValue>;
 
 /**
@@ -105,19 +102,12 @@ export function parseFilter(
 
 /** What a list screen gets back from {@link useEntityFilter}. */
 export interface EntityFilterState {
-  /** What the list is actually narrowed by — the URL, settled. */
   filter: EntityFilterRecord;
-  /** What the inputs show, which runs ahead of `filter` while typing. */
   draft: EntityFilterRecord;
-  /** Set a text filter. Applied after a pause. */
   setText: (field: string, value: string) => void;
-  /** Set an enumerated filter, or clear it with `undefined`. Applied at once. */
   setChoice: (field: string, value: string | undefined) => void;
-  /** Set a three-state flag. Applied at once. */
   setFlag: (field: string, value: boolean | undefined) => void;
-  /** Clear everything. */
   reset: () => void;
-  /** Whether anything is currently narrowing the list. */
   isFiltered: boolean;
 }
 
@@ -145,16 +135,11 @@ export function useEntityFilter(spec: EntityFilterSpec): EntityFilterState {
   const [params, setParams] = useSearchParams();
   const filter = useMemo(() => parseFilter(params, spec), [params, spec]);
   const [draft, setDraft] = useState<EntityFilterRecord>(filter);
-  // What we last wrote. Distinguishes the URL moving because of us from the URL
-  // moving on its own — a back button, or a link somebody pasted.
   const written = useRef<string>(filterQuery(filter));
 
   const commit = useCallback(
     (next: EntityFilterRecord) => {
       written.current = filterQuery(next);
-      // Only this screen's own fields are rewritten; anything else already in
-      // the URL is left alone, so a filter cannot silently drop a parameter
-      // belonging to something other than the filter bar.
       const rest = new URLSearchParams(params);
       const owned = [
         ...spec.textFields,
@@ -172,7 +157,6 @@ export function useEntityFilter(spec: EntityFilterSpec): EntityFilterState {
   useEffect(() => {
     const arrived = filterQuery(filter);
     if (arrived === written.current) return;
-    // The URL moved without us: adopt it, and drop whatever was half-typed.
     written.current = arrived;
     setDraft(filter);
   }, [filter]);
@@ -185,14 +169,9 @@ export function useEntityFilter(spec: EntityFilterSpec): EntityFilterState {
   }, [draft, commit]);
 
   const setText = useCallback((field: string, value: string) => {
-    // Emptied rather than kept as `''`: an input box somebody cleared is not a
-    // filter on the empty string.
     setDraft((current) => ({ ...current, [field]: value || undefined }));
   }, []);
 
-  // Built from `draft` rather than inside a `setDraft` updater: an updater is
-  // expected to be pure and React runs it twice in development, which would
-  // send the URL two rewrites for one click.
   const setChoice = useCallback(
     (field: string, value: string | undefined) => {
       const next = { ...draft, [field]: value };

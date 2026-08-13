@@ -29,6 +29,7 @@ vi.mock('@/api/queries', () => ({
 const QUOTE: Quote = {
   id: 'quote-1',
   company_id: 'company-1',
+  team_id: 'team-1',
   reference: 'D-2648',
   customer_id: 'customer-1',
   status: 'pending-validation',

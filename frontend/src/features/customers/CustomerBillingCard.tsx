@@ -6,10 +6,7 @@ import Typography from '@mui/material/Typography';
 import { useBillingSettings, useSetCustomerBillingPeriodicity } from '@/api/queries';
 import type { BillingPeriodicity, Customer } from '@/api/types';
 
-/** The value the select holds when the customer follows the agency. */
 const AGENCY = '';
-
-/** The granularities a customer may be put on, with the label each carries. */
 const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
   { value: 'weekly', label: 'billingSettings.weekly' },
   { value: 'monthly', label: 'billingSettings.monthly' },
@@ -17,7 +14,6 @@ const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
 ];
 
 interface CustomerBillingCardProps {
-  /** The customer whose invoicing granularity is being read or changed. */
   customer: Customer;
 }
 

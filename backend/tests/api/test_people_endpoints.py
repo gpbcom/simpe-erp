@@ -215,6 +215,7 @@ def customers() -> AsyncMock:
     stub.quotes_for.return_value = [
         Quote(
             company_id="company-1",
+            team_id="team-1",
             id="quote-1",
             reference="Q-2026-0001",
             customer_id="customer-1",
@@ -424,25 +425,32 @@ class TestCustomerEndpoints:
             date(2026, 8, 10),
             date(2026, 8, 14),
         )
-        plannings.queue_replan.return_value = PlanningRun(
-            company_id="company-1",
-            id="run-1",
-            status=PlanningRunStatus.PENDING,
-            requested_by="user-1",
-            period_start=date(2026, 8, 10),
-            period_end=date(2026, 8, 14),
-        )
+        plannings.future_teams_for_customer.return_value = ["team-1"]
+        # A list: a household's quotes are attributed one at a time, so more
+        # than one team can hold future work for them.
+        plannings.queue_replan.return_value = [
+            PlanningRun(
+                company_id="company-1",
+                team_id="team-1",
+                id="run-1",
+                status=PlanningRunStatus.PENDING,
+                requested_by="user-1",
+                period_start=date(2026, 8, 10),
+                period_end=date(2026, 8, 14),
+            )
+        ]
 
         response = _client(customers, hcas, plannings=plannings).delete(
             "/api/v1/customers/customer-1"
         )
 
         assert response.status_code == 202
-        assert response.json()["id"] == "run-1"
+        assert [run["id"] for run in response.json()] == ["run-1"]
         assert plannings.queue_replan.await_args.kwargs["period"] == (
             date(2026, 8, 10),
             date(2026, 8, 14),
         )
+        assert plannings.queue_replan.await_args.kwargs["team_ids"] == ["team-1"]
 
 
 class TestCustomerFiltering:

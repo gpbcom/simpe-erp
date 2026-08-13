@@ -111,6 +111,7 @@ def _quote(lines: Optional[List[QuoteLine]] = None) -> Quote:
     return Quote(
         id=QUOTE_ID,
         company_id="company-1",
+        team_id="team-1",
         reference="D-2648",
         customer_id="cust-1",
         status=QuoteStatus.PENDING_VALIDATION,

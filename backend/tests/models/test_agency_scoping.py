@@ -40,6 +40,7 @@ def _quote(**overrides: ModelInput) -> Quote:
     """
     fields: Dict[str, ModelInput] = {
         "company_id": "company-1",
+        "team_id": "team-1",
         "reference": "D-2601",
         "customer_id": "customer-1",
     }
@@ -58,6 +59,7 @@ def _run(**overrides: ModelInput) -> PlanningRun:
     """
     fields: Dict[str, ModelInput] = {
         "company_id": "company-1",
+        "team_id": "team-1",
         "requested_by": "admin-1",
         "period_start": MONDAY,
         "period_end": SUNDAY,
@@ -77,6 +79,7 @@ def _visit(**overrides: ModelInput) -> Intervention:
     """
     fields: Dict[str, ModelInput] = {
         "company_id": "company-1",
+        "team_id": "team-1",
         "name": "Toilette matin",
         "intervention_type_id": "type-1",
         "quote_line_id": "line-1",

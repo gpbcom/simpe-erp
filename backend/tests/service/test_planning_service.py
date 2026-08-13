@@ -17,6 +17,7 @@ from models.enums import (
     PlanningRunStatus,
     UserRole,
 )
+from models.organisation.team.team import Team
 from models.people.hca import Hca
 from models.planning.intervention import Intervention
 from models.planning.planning_run import PlanningRun
@@ -89,6 +90,7 @@ def _visit(hca_id: str = "hca-1") -> Intervention:
     """
     return Intervention(
         company_id="company-1",
+        team_id="team-1",
         id="visit-1",
         planning_run_id="run-1",
         name="Toilette matin",
@@ -125,6 +127,7 @@ def runs() -> AsyncMock:
     # is a case these tests set up explicitly when they want it.
     repository.claim.side_effect = lambda run_id, started_at: PlanningRun(
         company_id="company-1",
+        team_id="team-1",
         id=run_id,
         status=PlanningRunStatus.RUNNING,
         requested_by="admin-1",
@@ -211,6 +214,12 @@ def service(
     Returns:
         PlanningService: The service under test.
     """
+    # An unscoped team double: `None` from `readable_team_ids` means "every
+    # team", which is what these tests were written against and what an
+    # administrator gets. The narrowing itself is covered in
+    # `test_team_narrowing.py` and, for diaries, below.
+    teams = AsyncMock()
+    teams.readable_team_ids.return_value = None
     return PlanningService(
         runs=runs,
         interventions=interventions,
@@ -219,7 +228,7 @@ def service(
         hcas=hcas,
         types=types,
         settings=planning_settings,
-        teams=AsyncMock(),
+        teams=teams,
         config=PlanningConfig(),
     )
 
@@ -306,18 +315,61 @@ class TestPlanningConfidentiality:
             pytest.param(UserRole.ADMIN, id="Allowed - admin"),
         ],
     )
-    async def test_a_manager_may_read_any_planning(
+    async def test_a_supervisor_may_read_a_diary_in_their_scope(
         self, service: PlanningService, role: UserRole
     ) -> None:
-        """Supervision requires seeing everybody's diary.
+        """Supervision requires seeing the diaries one is responsible for.
 
         Args:
             service (PlanningService): The service under test.
             role (UserRole): The supervising role to check.
+
+        Notes:
+            The double here is unscoped, which is an administrator's answer. A
+            manager's scope is narrower, and the two tests below are what say
+            so.
         """
         planning = await service.planning_for("hca-1", _user(role), MONDAY, SUNDAY)
 
         assert planning.hca_id == "hca-1"
+
+    async def test_a_manager_may_not_read_a_diary_outside_their_teams(
+        self, service: PlanningService
+    ) -> None:
+        """A route guard proves a rank; only this proves the row.
+
+        Notes:
+            Nothing at the routing layer stops manager A putting an assistant of
+            manager B's team in the path, and a diary is where a household's
+            address and a colleague's whole week are written down.
+        """
+        service.teams.readable_team_ids.return_value = ["team-1"]
+        service.teams.teams.team_for_member.return_value = Team(
+            id="team-2",
+            company_id="company-1",
+            agency_id="agency-1",
+            name="Équipe Ouest",
+            manager_user_id="user-2",
+        )
+
+        with pytest.raises(MTPlanningForbidden):
+            await service.planning_for("hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY)
+
+    async def test_an_assistant_on_no_team_is_read_by_nobody(
+        self, service: PlanningService
+    ) -> None:
+        """A record nobody is responsible for is not one every manager may read.
+
+        Notes:
+            The permissive reading — "on no team, so no team owns them, so
+            anybody may" — is the wrong one. They are somebody who has to be
+            placed on a team first.
+        """
+        service.teams.readable_team_ids.return_value = ["team-1"]
+        service.teams.teams.team_for_member.return_value = None
+
+        with pytest.raises(MTPlanningForbidden):
+            await service.planning_for("hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY)
 
     # ------------------------------------------------------------------ #
     #  Listing every planning
@@ -387,6 +439,7 @@ class TestPlanningRunIsScopedToOneAgency:
         """
         runs.get.return_value = PlanningRun(
             company_id="company-2",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -414,6 +467,7 @@ class TestPlanningRunIsScopedToOneAgency:
         """
         runs.get.return_value = PlanningRun(
             company_id="company-2",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -441,7 +495,9 @@ class TestPlanningRunIsScopedToOneAgency:
         """
         runs.create.side_effect = lambda run: run.model_copy(update={"id": "run-1"})
 
-        run = await service.request_run("admin-1", "company-2", MONDAY, SUNDAY)
+        run = await service.request_run(
+            "admin-1", "company-2", "team-1", MONDAY, SUNDAY
+        )
 
         assert run.company_id == "company-2"
 
@@ -466,6 +522,7 @@ class TestPlanningRunLifecycle:
         """
         pending = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -494,6 +551,7 @@ class TestPlanningRunLifecycle:
         """
         runs.get.return_value = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.RUNNING,
             requested_by="admin-1",
@@ -523,7 +581,9 @@ class TestPlanningRunLifecycle:
         """
         runs.create.side_effect = lambda run: run.model_copy(update={"id": "run-1"})
 
-        run = await service.request_run("admin-1", "company-1", MONDAY, SUNDAY)
+        run = await service.request_run(
+            "admin-1", "company-1", "team-1", MONDAY, SUNDAY
+        )
 
         assert run.status is PlanningRunStatus.PENDING
         assert run.requested_by == "admin-1"
@@ -562,6 +622,7 @@ class TestPlanningRunLifecycle:
         """
         pending = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -589,6 +650,7 @@ class TestPlanningRunLifecycle:
         """
         pending = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",
@@ -618,6 +680,7 @@ class TestPlanningRunLifecycle:
         """
         runs.get.return_value = PlanningRun(
             company_id="company-1",
+            team_id="team-1",
             id="run-1",
             status=PlanningRunStatus.PENDING,
             requested_by="admin-1",

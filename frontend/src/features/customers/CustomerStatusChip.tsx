@@ -4,9 +4,7 @@ import { REGISTRATION_STATUS_COLOUR } from '@/theme/palette';
 import type { RegistrationStatus } from '@/api/types';
 
 interface CustomerStatusChipProps {
-  /** The status to draw. */
   status: RegistrationStatus;
-  /** The hook the campaign finds this chip by. */
   testId: string;
 }
 

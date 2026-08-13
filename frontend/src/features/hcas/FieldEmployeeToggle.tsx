@@ -6,7 +6,6 @@ import { useUpdateEmployment } from '@/api/queries';
 import type { Hca } from '@/api/types';
 
 interface FieldEmployeeToggleProps {
-  /** The row this cell belongs to. */
   hca: Hca;
 }
 

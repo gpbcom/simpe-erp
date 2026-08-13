@@ -7,7 +7,7 @@ from typing import ClassVar, List, Tuple
 from uuid import NAMESPACE_URL, uuid5
 
 # First-party imports
-from models.enums import ContractType, QuoteStatus, ServiceCategory
+from models.enums import AgencyType, ContractType, QuoteStatus, ServiceCategory
 
 
 class Dataset:
@@ -29,6 +29,9 @@ class Dataset:
         ASSISTANTS (ClassVar[Tuple]): The workforce.
         CUSTOMERS (ClassVar[Tuple]): The people served.
         QUOTE_PLAN (ClassVar[Tuple]): How many quotes to write in each status.
+        AGENCIES (ClassVar[Tuple]): The sites the company operates from.
+        TEAM_NAME (ClassVar[str]): The one team everybody seeded belongs to.
+        TEAM_MANAGER_EMAIL (ClassVar[str]): The account that runs it.
 
     Notes:
         - **Every identifier is derived, never generated.** ``identifier()``
@@ -45,6 +48,14 @@ class Dataset:
         - The data is deliberately French and deliberately plausible: an ERP
           demonstrated with "Test User 1" at "123 Main St" tells a reviewer
           nothing about whether the screens work.
+        - **Two sites, but one team.** The Lyon branch exists so the sites
+          screen has a second row and so a reviewer can see that a company is
+          not its head office — but it holds nobody and no team, and every
+          seeded person and quote stays with the Paris team. That is deliberate:
+          splitting the seeded workforce would change every count the test
+          campaign asserts, and a suite that wants to watch the manager
+          narrowing bite forms its own second team through the API and removes
+          it afterwards.
     """
 
     NAMESPACE: ClassVar[str] = "https://simple-erp.fr/seed"
@@ -92,6 +103,38 @@ class Dataset:
         ("Sophie Bernard", "DEAVS"),
         ("Nadia Bouzid", "ADVF"),
     )
+    #: The sites the seeded company operates from: ``(name, type, street,
+    #: postal code, city, latitude, longitude)``. The head office carries the
+    #: company's registered address, so a quote printed from it shows the same
+    #: address the company screen does.
+    AGENCIES: ClassVar[
+        Tuple[Tuple[str, AgencyType, str, str, str, float, float], ...]
+    ] = (  # noqa: E501
+        (
+            "Siege Paris",
+            AgencyType.HQ,
+            "10 rue de la Roquette",
+            "75011",
+            "Paris",
+            48.8551,
+            2.3720,
+        ),
+        (
+            "Antenne Lyon",
+            AgencyType.OFFICE,
+            "12 rue de la Republique",
+            "69002",
+            "Lyon",
+            45.7640,
+            4.8357,
+        ),
+    )
+    #: The one team every seeded person and every seeded quote belongs to.
+    TEAM_NAME: ClassVar[str] = "Equipe principale"
+    #: The account that runs it. A manager rather than the administrator,
+    #: because the manager-facing screens are the ones a reviewer opens.
+    TEAM_MANAGER_EMAIL: ClassVar[str] = "manager@simple-erp.fr"
+
     ASSISTANT_MANAGERS: ClassVar[Tuple[str, ...]] = ("Marc Dubois",)
     ASSISTANTS: ClassVar[Tuple[Tuple, ...]] = (
         (

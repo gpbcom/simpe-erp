@@ -56,8 +56,6 @@ export function CustomersPage() {
   const [removing, setRemoving] = useState<Customer | null>(null);
   const [removalError, setRemovalError] = useState<string | null>(null);
   const remove = useDeleteCustomer();
-  // Counted before anything is destroyed, so the confirmation can say what it
-  // costs. A dialog that does not is a dialog nobody reads.
   const { data: doomedQuotes } = useCustomerQuotes(removing?.id ?? '');
 
   const confirmRemoval = () => {
@@ -114,9 +112,6 @@ export function CustomersPage() {
           size="small"
           color="error"
           onClick={(event) => {
-            // The row itself opens the detail drawer, so the click must not
-            // reach it — a confirm dialog behind a drawer is a confirm dialog
-            // nobody can read.
             event.stopPropagation();
             setRemovalError(null);
             setRemoving(params.row);
@@ -164,8 +159,6 @@ export function CustomersPage() {
           columns={columns}
           loading={isLoading}
           getRowId={(row) => row.id ?? row.email}
-          // The whole row opens the file. A manager clicking a name expects the
-          // person, not a cell.
           onRowClick={(params) => setSelected(params.row)}
           disableRowSelectionOnClick
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
@@ -221,9 +214,6 @@ export function CustomersPage() {
       <CustomerDialog
         open={creating}
         onClose={() => setCreating(false)}
-        // Straight into the file that was just created: the next thing a manager
-        // does after registering a family is write their first quote, and that
-        // lives on the drawer.
         onCreated={(customer) => setSelected(customer)}
       />
 

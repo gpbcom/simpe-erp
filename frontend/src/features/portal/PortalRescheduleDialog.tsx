@@ -15,11 +15,8 @@ import { minutesToTime, timeToMinutes } from '@/utils/format';
 import type { Intervention } from '@/api/types';
 
 interface PortalRescheduleDialogProps {
-  /** The visit to move, or `null` when the dialog is closed. */
   visit: Intervention | null;
-  /** Called when the dialog should close without moving anything. */
   onClose: () => void;
-  /** Called once the visit has been moved. */
   onDone: () => void;
 }
 
@@ -59,9 +56,6 @@ export function PortalRescheduleDialog({
     const from = timeToMinutes(visit.start_time) ?? 9 * 60;
     const until = timeToMinutes(visit.end_time) ?? 10 * 60;
     setDay(visit.day);
-    // An hour of slack on each side, clamped inside the day. A window exactly
-    // as long as the work leaves the solver nowhere to put it, so it would come
-    // back unplaced — which reads as the change having been ignored.
     setStart(minutesToTime(Math.max(0, from - 60)));
     setEnd(minutesToTime(Math.min(24 * 60, until + 60)));
     setError(null);
@@ -72,8 +66,6 @@ export function PortalRescheduleDialog({
     const startMinute = timeToMinutes(start);
     const endMinute = timeToMinutes(end);
     if (startMinute === null || endMinute === null || endMinute <= startMinute) {
-      // Caught here as well as on the server. The server's refusal is the one
-      // that counts; this one saves a round trip and can point at the field.
       setError(t('portal.windowInvalid'));
       return;
     }

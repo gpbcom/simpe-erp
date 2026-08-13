@@ -29,9 +29,11 @@ React 19 + TypeScript (strict) + MUI v6, built by Vite. `frontend/`.
   /me/planning   calendar            /hcas           workforce
   /me/customers  portfolio           /map            intervention map
   /me/quotes     own quotes          /certifications qualification catalogue
-                                     /skills         skill catalogue
+  /me/team       their own team       /skills         skill catalogue
                                      /planning-settings planning rules
                                      /notifications
+                                     /agencies       the company's sites  (admin)
+                                     /teams          the teams            (admin)
 
   customer  (the portal — a different axis, not a lower rung)
   ──────────────────────────────────────────────────────────
@@ -111,6 +113,27 @@ ringed in the intervention's status colour, falling back to their initials —
 tooltip names the customer, their address and telephone number, the service and
 the time. A side list mirrors the pins, and a counter reports drawn against
 total, because a silently dropped pin is a visit nobody is looking at.
+
+## Three words for three things
+
+The word *agence* was already spent: the whole product called the `Company`
+"l'agence", because there was only ever one place. There are now three levels
+and each needs its own word.
+
+| Concept | Code | French | English |
+|---|---|---|---|
+| The legal entity | `Company` | **Société** | Company |
+| One of its places | `Agency` | **Agence** | Agency |
+| People at a place | `Team` | **Équipe** | Team |
+
+`nav.company` therefore changed from *"Mon agence"* to *"Société"*. Nothing else
+was renamed.
+
+**`TeamPlanningPage` keeps its name**, and so does every one of its
+`team-planning-*` testids, although the component predates teams and means "the
+whole company's planning". Renaming it would break a green suite for a cosmetic
+reason. It gains a team picker whose controls carry fresh `team-picker-*`
+testids, so suite 17 counts nothing it did not count before.
 
 ## The customer portal
 

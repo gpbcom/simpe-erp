@@ -93,3 +93,19 @@ class MTPlanningTeamForbidden(MTInvalidPlanningException):
         could rebuild a calendar they have no part in — and the colleague would
         find out from their assistants.
     """
+
+
+class MTPlanningScopeForbidden(MTInvalidPlanningException):
+    """Exception raised when a caller asks for a company-wide computation.
+
+    Notes:
+        - A planning is computed for a **team or a site**; the whole company at
+          once is an administrator's act, because it rewrites the calendar of
+          every assistant the company employs and no manager is answerable for
+          all of them.
+        - Distinct from :class:`MTPlanningTeamForbidden`, which refuses one
+          named team. This one refuses the *absence* of a scope, and the
+          message has to say so: a manager who presses a button and is told
+          "not your team" when they named no team has been given a reason that
+          does not match what they did.
+    """

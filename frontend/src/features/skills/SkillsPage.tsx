@@ -16,14 +16,12 @@ import { useSkillTypes } from '@/api/queries';
 import { SkillTypeDialog } from './SkillTypeDialog';
 import type { SkillType } from '@/api/types';
 
-/** Which of the skill filter's fields are text, flags and closed lists. */
 const SKILL_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'code', 'label'],
   flagFields: ['is_active'],
   enumFields: {},
 };
 
-/** What is folded away behind "more filters". */
 const SKILL_DETAILS: FilterDetail[] = [
   { field: 'code', label: 'skill.filterCode', kind: 'text' },
   { field: 'label', label: 'skill.filterLabel', kind: 'text' },

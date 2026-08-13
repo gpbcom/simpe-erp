@@ -21,6 +21,7 @@ vi.mock('react-i18next', () => ({
 const RUN: PlanningRun = {
   id: 'run-1',
   status: 'succeeded',
+  team_id: 'team-1',
   requested_by: 'admin@simple-erp.fr',
   period_start: '2026-08-10',
   period_end: '2026-08-16',

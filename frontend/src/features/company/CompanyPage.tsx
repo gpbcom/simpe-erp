@@ -23,7 +23,6 @@ import {
 import { formatDateTime } from '@/utils/format';
 import { useSession } from '@/store/session';
 
-/** Everything the form edits, flattened for the inputs. */
 interface CompanyForm {
   name: string;
   registration_number: string;
@@ -60,7 +59,6 @@ const EMPTY: CompanyForm = {
   is_accepting_applications: true,
 };
 
-/** The image types the object store accepts, as the file picker's filter. */
 const ACCEPTED_LOGO_TYPES = 'image/jpeg,image/png,image/webp';
 
 /**
@@ -106,9 +104,6 @@ export function CompanyPage() {
       vat_number: company.vat_number ?? '',
       phone_number: company.phone_number ?? '',
       contact_email: company.contact_email ?? '',
-      // Safe to prefill: this route is administrator-gated and returns the
-      // account whole. The masked form only ever comes back from the agency
-      // routes a manager can reach, which this screen never calls.
       iban: company.iban ?? '',
       bic: company.bic ?? '',
       street: company.address?.street ?? '',
@@ -132,9 +127,6 @@ export function CompanyPage() {
   const save = () => {
     setError(null);
     setSaved(false);
-    // An address is all-or-nothing. A street with no city cannot be geocoded,
-    // and a half-filled one stored is a row the planner would try to route
-    // from and silently fail on.
     const hasAddress = Boolean(
       form.street.trim() && form.postal_code.trim() && form.city.trim(),
     );
@@ -156,9 +148,6 @@ export function CompanyPage() {
               postal_code: form.postal_code.trim(),
               city: form.city.trim(),
               country: form.country.trim() || 'France',
-              // Left unresolved on purpose: the server geocodes an address it
-              // is given without one, and a coordinate typed here would be a
-              // second answer to a question only the geocoder can settle.
               latitude: null,
               longitude: null,
               geocoding_error: null,
@@ -226,12 +215,7 @@ export function CompanyPage() {
 
             <Divider />
 
-            {/*
-              What a quote must say about whoever is making the offer. Kept
-              in its own section rather than mixed into the identity block:
-              these are the fields an accountant fills in once, and burying
-              them among the trading name is how they stay empty.
-            */}
+            {}
             <Box>
               <Typography variant="h3">{t('company.legalIdentity')}</Typography>
               <Typography variant="body2" color="text.secondary">
@@ -258,12 +242,7 @@ export function CompanyPage() {
             </Grid>
 
             <Divider />
-
-            {/*
-              Where the money goes. Its own section rather than mixed into the
-              legal block: an accountant fills these two in once, from a bank
-              statement rather than from the articles of association.
-            */}
+            {}
             <Box>
               <Typography variant="h3">{t('company.bankDetails')}</Typography>
               <Typography variant="body2" color="text.secondary">
@@ -285,12 +264,7 @@ export function CompanyPage() {
 
             <Divider />
 
-            {/*
-              The logo saves on its own, not with the form. It is uploaded to
-              the object store rather than typed, so pretending it were another
-              field would mean a Save button that sometimes wrote a file and
-              sometimes did not.
-            */}
+            {}
             <Box>
               <Typography variant="h3">{t('company.visualIdentity')}</Typography>
               <Typography variant="body2" color="text.secondary">
@@ -315,9 +289,6 @@ export function CompanyPage() {
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) uploadLogo.mutate(file);
-                  // Cleared so choosing the same file twice fires a second
-                  // change event; without it a failed upload could not be
-                  // retried with the same image.
                   event.target.value = '';
                 }}
               />

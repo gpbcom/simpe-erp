@@ -12,7 +12,6 @@ import { usePortalProfile, useUpdatePortalProfile } from '@/api/queries';
 import { CustomerStatusChip } from '@/features/customers/CustomerStatusChip';
 import type { CustomerProfileUpdate } from '@/api/types';
 
-/** What the form holds while it is being edited. */
 const EMPTY: CustomerProfileUpdate = {
   first_name: '',
   last_name: '',
@@ -91,8 +90,6 @@ export function PortalProfilePage() {
       </Stack>
 
       {customer && !customer.address.latitude ? (
-        // Worth saying plainly: an address the map cannot place means nothing
-        // can be scheduled, and the household is the only person who can fix it.
         <Alert severity="warning" data-testid="portal-address-unresolved">
           {t('portal.addressNotResolved')}
         </Alert>

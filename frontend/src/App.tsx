@@ -15,7 +15,10 @@ import { WelcomePage } from '@/features/welcome/WelcomePage';
 import { RegisterCompanyPage } from '@/features/auth/RegisterCompanyPage';
 import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage';
 import { MyAccountPage } from '@/features/me/MyAccountPage';
+import { AgenciesPage } from '@/features/agencies/AgenciesPage';
 import { CompanyPage } from '@/features/company/CompanyPage';
+import { MyTeamPage } from '@/features/teams/MyTeamPage';
+import { TeamsPage } from '@/features/teams/TeamsPage';
 import { CustomersPage } from '@/features/customers/CustomersPage';
 import { CertificationsPage } from '@/features/certifications/CertificationsPage';
 import { SkillsPage } from '@/features/skills/SkillsPage';
@@ -130,16 +133,6 @@ export function App() {
           <CircularProgress />
         </Box>
       ) : !user ? (
-        // **Routed, where this used to be two pieces of state.** The landing
-        // page has to be linkable and has to survive a sign-out, and a
-        // boolean cannot express "somewhere to come back to".
-        //
-        // The landing page is named, and the sign-in form is the fallback —
-        // deliberately that way round. Somebody arriving at the root, or
-        // returning here after signing out, is being asked what this is;
-        // somebody whose session expired on `/quotes` is not, and putting the
-        // product tour in front of them would cost them the click that gets
-        // them back to work.
         <Routes>
           <Route path="/" element={<WelcomePage />} />
           <Route path="/welcome" element={<WelcomePage />} />
@@ -159,15 +152,10 @@ export function App() {
           />
         </Routes>
       ) : user.must_change_password ? (
-        // Nothing else is reachable while the flag is set: the server answers
-        // 403 on every other route, so routing anywhere else would show a
-        // screen full of errors.
         <ChangePasswordPage />
       ) : (
         <Routes>
-          {/* Outside the shell on purpose: the navigation rail and the
-              account menu mean nothing on a page that describes the product,
-              and the hero needs the full width. */}
+          {}
           <Route path="/welcome" element={<WelcomePage />} />
           <Route element={<AppShell />}>
             <Route path="/" element={<Navigate to={home} replace />} />
@@ -175,11 +163,10 @@ export function App() {
             <Route path="/me/planning" element={<MyPlanningPage />} />
             <Route path="/me/customers" element={<MyCustomersPage />} />
             <Route path="/me/quotes" element={<MyQuotesPage />} />
+            {}
+            <Route path="/me/team" element={<MyTeamPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
-            {/* The household's own space. Behind `CustomerRoute`, which
-                compares by identity — a customer is a different axis rather
-                than a lower rung, so `RoleRoute minimum="customer"` does not
-                even type-check. */}
+            {}
             <Route
               path="/portal/planning"
               element={
@@ -236,11 +223,7 @@ export function App() {
                 </RoleRoute>
               }
             />
-            {/* Open to assistants, not only to managers: the households lens
-                is theirs to read, scoped to their own portfolio. The switch
-                between the two lenses is rendered only for a manager, and the
-                assistants lens self-narrows server-side, so an assistant
-                landing here can reach nothing that is not already theirs. */}
+            {}
             <Route
               path="/plannings"
               element={
@@ -310,6 +293,23 @@ export function App() {
               element={
                 <RoleRoute minimum="admin">
                   <CompanyPage />
+                </RoleRoute>
+              }
+            />
+            {}
+            <Route
+              path="/agencies"
+              element={
+                <RoleRoute minimum="admin">
+                  <AgenciesPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/teams"
+              element={
+                <RoleRoute minimum="admin">
+                  <TeamsPage />
                 </RoleRoute>
               }
             />

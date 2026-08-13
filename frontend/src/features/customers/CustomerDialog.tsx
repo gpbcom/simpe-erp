@@ -39,11 +39,8 @@ const EMPTY: CustomerForm = {
 };
 
 interface CustomerDialogProps {
-  /** Whether the dialog is open. */
   open: boolean;
-  /** Called when it should close. */
   onClose: () => void;
-  /** Called with the stored customer once the server has taken it. */
   onCreated?: (customer: Customer) => void;
 }
 
@@ -116,9 +113,6 @@ export function CustomerDialog({ open, onClose, onCreated }: CustomerDialogProps
           city: form.city.trim(),
           country: form.country.trim(),
         },
-        // A newly registered household is a prospect, not a customer. They
-        // may be quoted straight away — that is what the next screen is for —
-        // but nothing is scheduled for them until a manager promotes them.
         registration_status: 'prospect',
       },
       {

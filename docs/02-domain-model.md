@@ -8,7 +8,11 @@ the boundary rather than propagating.
 ## The shape of the business
 
 ```
-Company ──┬── Hca ──────── AvailabilitySlot
+Company ──┬── Agency ──┬── AgencyMember  (user | hca)
+          │            └── Team ──┬── TeamMember  (user | hca)
+          │                       ├── TeamDocument
+          │                       └── PlanningRun ──── Intervention
+          ├── Hca ──────── AvailabilitySlot
           │     └───────── Certification, Skill, DrivingLicense
           └── User (account)
 
@@ -20,7 +24,6 @@ Skill         ┈┈code┈┈▶ SkillType         ◀┈┈code┈┈ Interven
 Customer ──── Quote ──── QuoteLine ──── InterventionType
                  └────── QuoteTypeWeekAggregate
 
-PlanningRun ──── Intervention  (one per placed QuoteLine)
 
 BillingRun ───── Bill ──── BillLine ┈┈quote_line_id┈┈▶ QuoteLine
                    │                ┈┈intervention_id┈▶ Intervention
@@ -509,6 +512,8 @@ From `backend/models/src/models/enums.py`.
 | `InterventionStatus` | `planned`, `confirmed`, `completed`, `cancelled` |
 | `AvailabilityKind` | `holiday`, `day-off`, `sick-leave`, `training`, `unavailable` |
 | `PlanningRunStatus` | `pending`, `running`, `succeeded`, `failed` |
+| `AgencyType` | `hq`, `warehouse`, `office`, with `is_headquarters()` |
+| `MemberKind` | `user`, `hca` — which kind of record a membership names |
 | `UnplacedReason` | `out-of-radius`, `not-a-working-day`, `no-assistant-available`, `outside-working-day`, `missing-certification`, `missing-skill`, `customer-conflict`, `no-feasible-slot` |
 | `HcaApplicationStatus` | `pending`, `approved`, `rejected` |
 | `BillingPeriodicity` | `weekly`, `monthly`, `yearly` |
@@ -553,11 +558,22 @@ you build a screen around it.
 | 0023 | Billing: `bills`, `bill_lines`, `billing_runs`, `billing_settings` |
 | 0024 | Per-customer billing periodicity, overriding the agency's |
 | 0025 | `users.customer_id`, so a household can sign in to their own space |
+| 0028 | `agencies`, `agency_members`, `teams`, `team_members`, `team_documents`; `team_id` on `quotes`, `planning_runs` and `interventions` |
 
 The link in 0025 runs **both ways**: a customer account must carry one and no
 other role may. A staff account holding a `customer_id` would satisfy the staff
 guards *and* resolve to one household — an account on both sides of the boundary
 at once — so `User.check_customer_link` refuses to build it.
+
+0028 is the one with the largest backfill, and it is **not optional**. Quote
+creation now refuses when no team can be determined, so a deployment that
+upgraded without it could not write a quote at all. The migration therefore
+gives every existing company a head office copied from the company record, one
+team named *"Equipe principale"* run by its earliest manager, and puts every
+account, assistant, quote, run and visit into that team — *before* the three
+`team_id` columns are made `NOT NULL`.
+`tests/storage/test_migration_0028_backfill.py` asserts each step, including
+that the database itself refuses a second head office.
 
 The widening in 0006 is the one to remember. `status` was `String(16)`, sized
 when `accepted` was the longest value; `pending-validation` is eighteen

@@ -332,6 +332,6 @@ class TestMovingAQuoteBetweenTeams:
         self, service: QuoteService, teams: AsyncMock
     ) -> None:
         """Moving work onto a team that is gone would lose it silently."""
-        teams.get_for.side_effect = MTQuoteNotFound("no such team")
+        teams.get.side_effect = MTQuoteNotFound("no such team")
         with pytest.raises(MTQuoteNotFound):
             await service.reassign_team("quote-1", "team-2", _caller())

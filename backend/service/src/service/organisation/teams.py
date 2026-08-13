@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 # Standard library imports
-from logging import Logger, getLogger
-from typing import ClassVar, List, Optional, Tuple
+from logging import Logger
+from typing import ClassVar, List, Optional, Tuple, Type
 
 # First-party imports
 from models.auth.user import User
@@ -12,11 +12,12 @@ from models.organisation.team.team import Team
 from models.organisation.team.team_member import TeamMember
 from models.people.customer.customer import Customer
 from models.schemas.responses.organisation.team_view import TeamView
+from service.organisation.base import AbstractOrganisationService
 from service.organisation.exceptions import (
     MTTeamForbidden,
     MTTeamHasWork,
     MTTeamManagerRequired,
-    MTTeamMemberAlreadyPlaced,
+    MTTeamMemberManagesAnother,
     MTTeamMemberOutsideAgency,
     MTTeamNameTaken,
     MTTeamNotFound,
@@ -27,7 +28,7 @@ from storage.repositories.organisation.team import TeamRepository
 from storage.repositories.quoting.quote import QuoteRepository
 
 
-class TeamService:
+class TeamService(AbstractOrganisationService[Team, TeamView]):
     """The teams a company delivers with, and which one gets a quote.
 
     Attributes:
@@ -51,6 +52,9 @@ class TeamService:
     """
 
     DISTANCE_TIE_KM: ClassVar[float] = 0.5
+    entity_label: ClassVar[str] = "team"
+    unreachable_exc: ClassVar[Type[Exception]] = MTTeamNotFound
+    name_taken_exc: ClassVar[Type[Exception]] = MTTeamNameTaken
 
     def __init__(
         self,
@@ -70,38 +74,25 @@ class TeamService:
             logger (Optional[Logger]): Logger to use. Defaults to a logger
                 named after this module.
         """
+        super().__init__(logger)
         self.teams = teams
         self.agencies = agencies
         self.users = users
         self.quotes = quotes
-        self.logger = logger if logger else getLogger(__name__)
-        self.logger.debug("TeamService created.")
 
     ############################
     # Internal Helpers Methods #
     ############################
 
-    async def _assert_name_free(
-        self, company_id: str, name: str, except_id: Optional[str] = None
-    ) -> None:
-        """Refuse a name another of the company's teams already uses.
+    async def _get(self, entity_id: str) -> Optional[Team]:
+        """Return a team by identifier, or ``None``."""
+        return await self.teams.get(entity_id)
 
-        Args:
-            company_id (str): The company being checked.
-            name (str): The proposed name.
-            except_id (Optional[str]): A team allowed to hold the name.
-
-        Raises:
-            MTTeamNameTaken: If the name is in use.
-        """
-        for team in await self.teams.list(company_id, page=1, size=None):
-            if team.name == name and team.id != except_id:
-                self.logger.warning(
-                    "Company %s already has a team named %s.", company_id, name
-                )
-                raise MTTeamNameTaken(
-                    f"This company already has a team named {name!r}."
-                )
+    async def _list_for_company(
+        self, company_id: str, *, page: int = 1, size: Optional[int] = None
+    ) -> List[Team]:
+        """Return a company's teams, for the name-uniqueness scan."""
+        return await self.teams.list(company_id, page=page, size=size)
 
     async def _assert_manager(self, team: Team) -> None:
         """Refuse a manager who cannot run this team.
@@ -187,7 +178,7 @@ class TeamService:
                 len(located),
             )
             return [team for team, _ in candidates]
-        distances = [(team, home.distance_km(point)) for team, point in located]
+        distances = [(team, home.distance_km(point)) for team, point in located]  # noqa: E501
         nearest = min(distance for _, distance in distances)
         return [
             team
@@ -210,21 +201,20 @@ class TeamService:
             the identifiers they may see — possibly empty.
 
         Notes:
-            **``None`` and ``[]`` are not interchangeable, and getting them
-            round the wrong way opens the whole company.** ``None`` means
-            *unscoped*: an administrator sees every team. ``[]`` means *nothing*:
-            a manager who runs no team sees no team, and an assistant on no team
-            sees no team. A caller reading a falsy value as "no filter" would
-            hand the second group everything.
-
-            **A household is answered before anything ranks**, and that ordering
-            matters for the same reason it does in
-            :meth:`~service.planning.plannings.PlanningService._require_staff`:
-            :meth:`~models.enums.UserRole.rank` refuses to rank a customer —
-            there is no rung that is correct for an axis — so asking
-            ``is_manager()`` first would raise where the honest answer is simply
-            "no team". Nothing routes a household here today; this is what keeps
-            that true if something ever does.
+            - **``None`` and ``[]`` are not interchangeable, and getting them
+              round the wrong way opens the whole company.** ``None`` means
+              *unscoped*: an administrator sees every team. ``[]`` means *nothing*:
+              a manager who runs no team sees no team, and an assistant on no team
+              sees no team. A caller reading a falsy value as "no filter" would
+              hand the second group everything.
+            - **A household is answered before anything ranks**, and that ordering
+              matters for the same reason it does in
+              :meth:`~service.planning.plannings.PlanningService._require_staff`:
+              :meth:`~models.enums.UserRole.rank` refuses to rank a customer —
+              there is no rung that is correct for an axis — so asking
+              ``is_manager()`` first would raise where the honest answer is simply
+              "no team". Nothing routes a household here today; this is what keeps
+              that true if something ever does.
         """
         if not caller.role.is_staff():
             self.logger.warning(
@@ -244,15 +234,17 @@ class TeamService:
             )
             return identifiers
         if caller.hca_id:
-            team = await self.teams.team_for_member(MemberKind.HCA, caller.hca_id)
+            team = await self.teams.team_for_member(MemberKind.HCA, caller.hca_id)  # noqa: E501
             if team is None:
                 self.logger.warning(
-                    "Assistant %s is on no team and sees no planning.", caller.hca_id
+                    "Assistant %s is on no team and sees no planning.",
+                    caller.hca_id,  # noqa: E501
                 )
                 return []
             return [str(team.id)]
         self.logger.warning(
-            "Account %s is bound to no assistant record and sees no team.", caller.id
+            "Account %s is bound to no assistant record and sees no team.",
+            caller.id,  # noqa: E501
         )
         return []
 
@@ -291,12 +283,14 @@ class TeamService:
             )
         if not identifiers:
             self.logger.warning(
-                "Account %s runs no team with anybody on it and sees no assistant.",
+                "Account %s runs no team with anybody on it and sees no assistant.",  # noqa: E501
                 caller.id,
             )
         else:
             self.logger.debug(
-                "Account %s may read %d assistant(s).", caller.id, len(identifiers)
+                "Account %s may read %d assistant(s).",
+                caller.id,
+                len(identifiers),  # noqa: E501
             )
         return sorted(identifiers)
 
@@ -331,7 +325,7 @@ class TeamService:
             )
         return identifiers
 
-    async def get_for(self, team_id: str, caller: User) -> Team:
+    async def get(self, team_id: str, caller: User) -> Team:
         """Return a team the caller is allowed to read.
 
         Args:
@@ -344,18 +338,21 @@ class TeamService:
         Raises:
             MTTeamNotFound: If no such team exists.
             MTTeamForbidden: If it is not one the caller may read.
+
+        Notes:
+            Ownership, plus the narrowing every other narrowed screen shares:
+            :meth:`~service.organisation.base.AbstractOrganisationService.get`
+            only proves the team is the caller's company's, and a manager or an
+            assistant sees less than that.
         """
-        team = await self.teams.get(team_id)
-        if team is None or team.company_id != caller.company_id:
-            self.logger.warning("Account %s cannot reach team %s.", caller.id, team_id)  # noqa: E501
-            raise MTTeamNotFound(f"No team {team_id!r} exists.")
+        team = await super().get(team_id, caller)
         readable = await self.readable_team_ids(caller)
         if readable is not None and team_id not in readable:
             self.logger.warning("Account %s may not read team %s.", caller.id, team_id)  # noqa: E501
             raise MTTeamForbidden(f"No team {team_id!r} exists.")
         return team
 
-    async def list_for(
+    async def list(
         self, caller: User, page: int = 1, size: Optional[int] = None
     ) -> List[Team]:
         """Return the teams the caller may read.
@@ -390,18 +387,14 @@ class TeamService:
         team = await self.teams.get(readable[0])
         return [team] if team else []
 
-    async def views(
-        self, caller: User, page: int = 1, size: Optional[int] = None
-    ) -> List[TeamView]:
-        """Return the teams the caller may read, ready for a grid.
+    async def _to_view(self, team: Team) -> TeamView:
+        """Project one team onto its screen representation."""
+        return TeamView.from_team(
+            team, member_count=await self.teams.count_members(str(team.id))
+        )
 
-        Args:
-            caller (User): The authenticated caller.
-            page (int): One-based page number.
-            size (Optional[int]): Page size.
-
-        Returns:
-            List[TeamView]: The teams, each carrying how many people are on it.
+    async def _to_views(self, teams: List[Team], caller: User) -> List[TeamView]:
+        """Project a page of teams onto their screen representation.
 
         Notes:
             The counts come from **one grouped statement** over the company, not
@@ -410,9 +403,8 @@ class TeamService:
             and a count keyed on the narrowed list would be a second statement
             built from the first.
         """
-        teams = await self.list_for(caller, page=page, size=size)
         counts = dict(await self.teams.count_members_by_team(caller.company_id))  # noqa: E501
-        self.logger.info("Serving %d team(s) to account %s.", len(teams), caller.id)
+        self.logger.info("Serving %d team(s) to account %s.", len(teams), caller.id)  # noqa: E501
         return [
             TeamView.from_team(team, member_count=counts.get(str(team.id), 0))
             for team in teams
@@ -431,14 +423,13 @@ class TeamService:
             MTTeamNotFound: If they are on no team.
 
         Notes:
-            **Membership, not management**, and the difference matters for a
-            manager who runs two teams: they are a *member* of exactly one, and
-            that is the one whose shared space and roster is theirs. The teams
-            they run are a different list, served by :meth:`views`.
-
-            The account is tried before the assistant record because a manager
-            has no assistant record, and an assistant who signs in has both — the
-            same order the teamspace membership check uses.
+            - **Membership, not management**, and the difference matters for a
+              manager who runs two teams: they are a *member* of exactly one, and
+              that is the one whose shared space and roster is theirs. The teams
+              they run are a different list, served by :meth:`views`.
+            - The account is tried before the assistant record because a manager
+              has no assistant record, and an assistant who signs in has both — the
+              same order the teamspace membership check uses.
         """
         team = await self.teams.team_for_member(MemberKind.USER, str(caller.id))
         if team is None and caller.hca_id:
@@ -447,28 +438,7 @@ class TeamService:
             self.logger.warning("Account %s is on no team.", caller.id)
             raise MTTeamNotFound("This account is not on a team.")
         self.logger.info("Account %s is on team %s.", caller.id, team.id)
-        return TeamView.from_team(
-            team, member_count=await self.teams.count_members(str(team.id))
-        )
-
-    async def view(self, team_id: str, caller: User) -> TeamView:
-        """Return one team the caller may read, ready for a screen.
-
-        Args:
-            team_id (str): The team to read.
-            caller (User): The authenticated caller.
-
-        Returns:
-            TeamView: The team and its member count.
-
-        Raises:
-            MTTeamNotFound: If no such team exists.
-            MTTeamForbidden: If it is not one the caller may read.
-        """
-        team = await self.get_for(team_id, caller)
-        return TeamView.from_team(
-            team, member_count=await self.teams.count_members(team_id)
-        )
+        return await self._to_view(team)
 
     async def create(self, team: Team, caller: User) -> Team:
         """Form a team at one of the company's sites.
@@ -523,10 +493,7 @@ class TeamService:
             MTTeamNameTaken: If another team already uses the name.
             MTTeamManagerRequired: If the named manager cannot run it.
         """
-        stored = await self.teams.get(str(team.id))
-        if stored is None or stored.company_id != caller.company_id:
-            self.logger.warning("Team %s does not exist.", team.id)
-            raise MTTeamNotFound(f"No team {team.id!r} exists.")
+        stored = await self._owned(str(team.id), caller)
         await self._assert_name_free(stored.company_id, team.name, stored.id)
         merged = team.model_copy(
             update={"id": stored.id, "company_id": stored.company_id}
@@ -556,10 +523,7 @@ class TeamService:
             is one no planning run will ever read again. The refusal names the
             count, because the answer is to move that work to another team.
         """
-        team = await self.teams.get(team_id)
-        if team is None or team.company_id != caller.company_id:
-            self.logger.warning("Team %s does not exist.", team_id)
-            raise MTTeamNotFound(f"No team {team_id!r} exists.")
+        await self._owned(team_id, caller)
         held = await self.quotes.count_for_team(team_id)
         if held:
             self.logger.warning(
@@ -588,7 +552,7 @@ class TeamService:
             MTTeamNotFound: If no such team exists.
             MTTeamForbidden: If it is not one the caller may read.
         """
-        await self.get_for(team_id, caller)
+        await self.get(team_id, caller)
         return await self.teams.list_members(team_id)
 
     async def add_member(
@@ -606,33 +570,52 @@ class TeamService:
 
         Raises:
             MTTeamNotFound: If no such team exists.
-            MTTeamMemberAlreadyPlaced: If they are already on a team.
+            MTTeamMemberManagesAnother: If they run the team they would leave.
             MTTeamMemberOutsideAgency: If they do not work at the team's site.
 
         Notes:
-            The site check is not a formality. A team is people *at a place*,
-            and the planner measures every round from that place — so somebody
-            based elsewhere would be routed from a depot they never travel to.
+            - **A move, not a refusal**, matching how a site transfer behaves:
+              one act, one form. A person is on exactly one team either way, so
+              the old membership has to go — the only question was whether the
+              operator had to do it by hand, and the state in between, somebody
+              on no team at all, is one the planner has no use for.
+            - **Unless they run the team they would leave.** A team's manager is
+              a required column, so there is no state in which a team briefly
+              has none, and picking a replacement is not a decision this call
+              should make silently.
+            - The site check is not a formality, and it stays a refusal. A team
+              is people *at a place*, and the planner measures every round from
+              that place — so somebody based elsewhere would be routed from a
+              depot they never travel to. It is also not a two-step dressed up
+              as one: the answer is to move them to this site, which is a
+              different screen and a different decision.
         """
-        team = await self.teams.get(team_id)
-        if team is None or team.company_id != caller.company_id:
-            self.logger.warning("Team %s does not exist.", team_id)
-            raise MTTeamNotFound(f"No team {team_id!r} exists.")
+        team = await self._owned(team_id, caller)
 
         existing = await self.teams.team_for_member(
             member.member_kind, member.member_id
         )
-        if existing is not None:
-            self.logger.warning(
-                "%s %s is already on team %s.",
+        if existing is not None and existing.id == team_id:
+            self.logger.debug(
+                "%s %s is already on team %s; nothing to move.",
                 member.member_kind.value,
                 member.member_id,
-                existing.id,
+                team_id,
             )
-            raise MTTeamMemberAlreadyPlaced(
-                f"This person is already on {existing.name!r}. Take them off "
-                f"that team first."
-            )
+            return member
+        if existing is not None:
+            if member.member_kind is MemberKind.USER and existing.is_managed_by(
+                member.member_id
+            ):
+                self.logger.warning(
+                    "Account %s runs team %s and cannot be moved off it.",
+                    member.member_id,
+                    existing.id,
+                )
+                raise MTTeamMemberManagesAnother(
+                    f"This person runs {existing.name!r}. Name a new manager "
+                    f"for that team first."
+                )
 
         site = await self.agencies.agency_for_member(
             member.member_kind, member.member_id
@@ -649,6 +632,18 @@ class TeamService:
                 "This person does not work at the site this team is based at. "
                 "Attach them to that site first."
             )
+
+        if existing is not None:
+            self.logger.info(
+                "Moving %s %s from team %s to team %s, requested by %s; both "
+                "teams need re-planning.",
+                member.member_kind.value,
+                member.member_id,
+                existing.id,
+                team_id,
+                caller.id,
+            )
+            await self.teams.remove_member(member.member_kind, member.member_id)  # noqa: E501
 
         self.logger.info(
             "Putting %s %s on team %s, requested by %s.",
@@ -686,10 +681,7 @@ class TeamService:
             simply fail later, with a message about a database constraint rather
             than about who runs what.
         """
-        team = await self.teams.get(team_id)
-        if team is None or team.company_id != caller.company_id:
-            self.logger.warning("Team %s does not exist.", team_id)
-            raise MTTeamNotFound(f"No team {team_id!r} exists.")
+        team = await self._owned(team_id, caller)
         if member_kind is MemberKind.USER and team.is_managed_by(member_id):
             self.logger.warning(
                 "Refusing to take manager %s off the team they run.", member_id
@@ -700,7 +692,10 @@ class TeamService:
         removed = await self.teams.remove_member(member_kind, member_id)
         if not removed:
             self.logger.warning(
-                "%s %s is not on team %s.", member_kind.value, member_id, team_id
+                "%s %s is not on team %s.",
+                member_kind.value,
+                member_id,
+                team_id,  # noqa: E501
             )
             raise MTTeamNotFound(
                 f"No {member_kind.value} {member_id!r} is on this team."
@@ -775,7 +770,8 @@ class TeamService:
         candidates = await self.teams.list_with_coordinates(company_id)
         if not candidates:
             self.logger.warning(
-                "Company %s has no team; a quote cannot be attributed.", company_id
+                "Company %s has no team; a quote cannot be attributed.",
+                company_id,  # noqa: E501
             )
             return None
 
@@ -790,9 +786,9 @@ class TeamService:
             return str(nearest[0].id)
 
         identifiers = [str(team.id) for team in nearest]
-        minutes = await self.quotes.assigned_minutes_by_team(company_id, identifiers)
+        minutes = await self.quotes.assigned_minutes_by_team(company_id, identifiers)  # noqa: E501
         least = min(minutes[team_id] for team_id in identifiers)
-        chosen = next(team for team in nearest if minutes[str(team.id)] == least)
+        chosen = next(team for team in nearest if minutes[str(team.id)] == least)  # noqa: E501
         self.logger.info(
             "Quote for customer %s goes to team %s: %d team(s) equally close, "
             "and it carries %d minute(s).",

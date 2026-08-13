@@ -66,6 +66,7 @@ def _quote() -> Quote:
     """
     return Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="Q-2026-0001",
         customer_id="customer-1",

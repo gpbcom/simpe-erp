@@ -14,9 +14,7 @@ import { useSetWorkingDays } from '@/api/queries';
 import { WEEKDAYS, type Hca, type Weekday } from '@/api/types';
 
 interface WorkingDaysDialogProps {
-  /** The assistant whose week is being set, or `null` when closed. */
   hca: Hca | null;
-  /** Called when the dialog should close. */
   onClose: () => void;
 }
 
@@ -50,10 +48,6 @@ export function WorkingDaysDialog({ hca, onClose }: WorkingDaysDialogProps) {
   const save = useSetWorkingDays(hca?.id ?? null);
   const [selected, setSelected] = useState<Weekday[]>([]);
 
-  // Reseeded from the stored week every time the dialog opens on somebody. The
-  // server sorts and deduplicates what it stores, so the stored value is the
-  // only honest starting point — and without this the chips would still show
-  // the previous assistant's rota.
   useEffect(() => {
     setSelected(hca?.working_weekdays ?? []);
   }, [hca]);

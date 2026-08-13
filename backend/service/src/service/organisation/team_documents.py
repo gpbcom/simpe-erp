@@ -16,7 +16,9 @@ from service.organisation.exceptions import (
     MTTeamNotFound,
 )
 from service.organisation.teams import TeamService
-from storage.repositories.organisation.team_document import TeamDocumentRepository
+from storage.repositories.organisation.team_document import (
+    TeamDocumentRepository,  # noqa: E501
+)
 from storage.s3.s3_storage import S3Storage
 
 
@@ -290,7 +292,7 @@ class TeamDocumentService:
         )
         return payload, document.content_type, document.file_name
 
-    async def delete(self, team_id: str, document_id: str, caller: User) -> None:
+    async def delete(self, team_id: str, document_id: str, caller: User) -> None:  # noqa: E501
         """Remove one of a team's shared files.
 
         Args:

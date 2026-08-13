@@ -110,6 +110,7 @@ def _planning(interventions: int = 2) -> HcaPlanning:
                 name=f"Toilette {index}",
                 intervention_type_id="type-1",
                 company_id="company-1",
+                team_id="team-1",
                 service_category="necessity",
                 quote_line_id=f"line-{index}",
                 hca_id="hca-1",
@@ -155,6 +156,7 @@ def _quote() -> Quote:
         reference="Q-2026-0001",
         customer_id="customer-1",
         company_id="company-1",
+        team_id="team-1",
         status=QuoteStatus.ACCEPTED,
         lines=[
             QuoteLine(

@@ -12,7 +12,6 @@ import Typography from '@mui/material/Typography';
 import { usePlanningSettings, useUpdatePlanningSettings } from '@/api/queries';
 import { minutesToTime, timeToMinutes } from '@/utils/format';
 
-/** The form's fields, as the inputs hold them. */
 interface FormState {
   radiusKm: string;
   dayStart: string;

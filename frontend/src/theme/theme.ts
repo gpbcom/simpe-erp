@@ -47,8 +47,6 @@ export function buildTheme(mode: 'light' | 'dark', locale: string): Theme {
       },
       typography: {
         fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif',
-        // 14px rather than 16: the whole point of this interface is fitting a
-        // working day's data on one screen.
         fontSize: 14,
         h1: { fontSize: '1.75rem', fontWeight: 600, letterSpacing: '-0.02em' },
         h2: { fontSize: '1.375rem', fontWeight: 600, letterSpacing: '-0.01em' },
@@ -64,8 +62,6 @@ export function buildTheme(mode: 'light' | 'dark', locale: string): Theme {
           defaultProps: { size: 'small', fullWidth: true },
         },
         MuiAppBar: {
-          // Flat and bordered rather than shadowed: a shadow under a bar that
-          // never scrolls away is decoration paid for on every repaint.
           defaultProps: { elevation: 0, color: 'inherit' },
           styleOverrides: {
             root: ({ theme }) => ({

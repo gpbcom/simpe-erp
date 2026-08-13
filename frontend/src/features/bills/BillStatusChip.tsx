@@ -12,7 +12,6 @@ const LABELS: Record<BillStatus, string> = {
 };
 
 interface BillStatusChipProps {
-  /** The status to draw. */
   status: BillStatus;
 }
 

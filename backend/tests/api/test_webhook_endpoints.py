@@ -80,6 +80,7 @@ def client(emails: MagicMock) -> TestClient:
             id="run-1",
             requested_by="admin@example.com",
             company_id="company-1",
+            team_id="team-1",
             period_start=date(2026, 8, 3),
             period_end=date(2026, 8, 9),
             status=PlanningRunStatus.SUCCEEDED,

@@ -19,18 +19,10 @@ import { useCertificationTypes, useUpdateEmployment } from '@/api/queries';
 import { AppIcon } from '@/components/icons/AppIcon';
 import type { Certification, ContractType, Hca } from '@/api/types';
 
-/** The contract types the agency employs on. */
 const CONTRACTS: ContractType[] = ['cdi', 'cdd', 'interim', 'internship'];
 
 interface EmploymentSectionProps {
-  /** The record being shown. */
   profile: Hca;
-  /**
-   * Whether the caller may change these two fields.
-   *
-   * True only for a manager or an administrator. An assistant sees the same
-   * values, locked.
-   */
   editable: boolean;
 }
 

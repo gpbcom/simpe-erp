@@ -70,6 +70,7 @@ def quotes() -> AsyncMock:
     service = AsyncMock()
     service.get.return_value = Quote(
         company_id="company-1",
+        team_id="team-1",
         id="quote-1",
         reference="Q-2026-0001",
         customer_id="customer-1",

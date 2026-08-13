@@ -46,10 +46,6 @@ export function WorkingDaysSection({ profile }: WorkingDaysSectionProps) {
   const { t } = useTranslation();
   const save = useSetWorkingDays(profile.id);
   const [selected, setSelected] = useState<Weekday[]>(profile.working_weekdays);
-
-  // The server sorts and deduplicates the week it stores, so what comes back is
-  // not always what was sent. Resyncing on the stored value keeps the chips
-  // showing what is actually saved rather than what was last clicked.
   useEffect(() => {
     setSelected(profile.working_weekdays);
   }, [profile.working_weekdays]);

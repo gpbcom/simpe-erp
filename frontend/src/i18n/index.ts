@@ -3,13 +3,11 @@ import { initReactI18next } from 'react-i18next';
 import fr from './locales/fr.json';
 import en from './locales/en.json';
 
-/** The languages the interface is available in. */
 export const LANGUAGES = [
   { code: 'fr', label: 'Français' },
   { code: 'en', label: 'English' },
 ] as const;
 
-/** Where the chosen language is remembered between visits. */
 const STORAGE_KEY = 'simple-erp.language';
 
 /**

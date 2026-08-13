@@ -20,11 +20,8 @@ import logo from '@/assets/brand/logo-full.svg';
 
 /** One capability, as a card in the grid. */
 interface Feature {
-  /** Glyph from the application's own set. */
   icon: AppIconName;
-  /** Translation key of the heading. */
   title: string;
-  /** Translation key of the paragraph. */
   body: string;
 }
 
@@ -52,8 +49,6 @@ const FEATURES: Feature[] = [
   },
   { icon: 'customer', title: 'welcome.customers', body: 'welcome.customersBody' },
   { icon: 'mapPin', title: 'welcome.map', body: 'welcome.mapBody' },
-  // The price-tag glyph, not the download tray: `export` reads as "get a
-  // file", and this card is about money owed.
   {
     icon: 'interventionType',
     title: 'welcome.billing',
@@ -113,11 +108,6 @@ export function WelcomePage() {
       void navigate('/login');
       return;
     }
-    // Sign out, then stay here — and navigate explicitly rather than relying
-    // on the re-render. Signed out, `/welcome` is one of only two paths that
-    // still resolve to this page; every other one falls to the sign-in form,
-    // so ending the session without moving would show the form to somebody
-    // who was reading about the product.
     signOut();
     void navigate('/welcome');
   };
@@ -127,9 +117,6 @@ export function WelcomePage() {
       {/* ── Hero ─────────────────────────────────────────────────────── */}
       <Box
         sx={{
-          // A quiet gradient rather than a flat block: the mark's own teal
-          // into its darker shade, so the header reads as the product's
-          // colour and not as a coloured rectangle placed on top of it.
           background: `linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.primaryDark} 100%)`,
           color: '#fff',
           px: 2,
@@ -150,8 +137,6 @@ export function WelcomePage() {
               alt="SimpleERP"
               sx={{
                 height: 36,
-                // The mark is drawn for a light ground; on the teal it is
-                // inverted rather than given a second file to keep in step.
                 filter: 'brightness(0) invert(1)',
               }}
             />

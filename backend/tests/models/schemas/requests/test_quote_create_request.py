@@ -191,7 +191,7 @@ class TestQuoteCreateRequest:
         """The one place a payload becomes a quote is the one that sets it."""
         payload = QuoteCreateRequest(reference="D-2601", customer_id="customer-1")
 
-        assert payload.to_quote("company-7").company_id == "company-7"
+        assert payload.to_quote("company-7", "team-1").company_id == "company-7"
 
     def test_the_quote_is_built_as_a_draft(self) -> None:
         """Status is left to the quote's own default.
@@ -202,7 +202,7 @@ class TestQuoteCreateRequest:
         """
         payload = QuoteCreateRequest(reference="D-2601", customer_id="customer-1")
 
-        assert payload.to_quote("company-1").status.value == "draft"
+        assert payload.to_quote("company-1", "team-1").status.value == "draft"
 
     def test_the_payloads_fields_are_carried_across(self) -> None:
         """What was asked for is what is built."""
@@ -210,7 +210,7 @@ class TestQuoteCreateRequest:
             reference="D-2601", customer_id="customer-1", lines=[_line()]
         )
 
-        quote = payload.to_quote("company-1")
+        quote = payload.to_quote("company-1", "team-1")
 
         assert quote.reference == "D-2601"
         assert quote.customer_id == "customer-1"
@@ -220,7 +220,7 @@ class TestQuoteCreateRequest:
         """Authorship is stamped by the service, from the credential."""
         payload = QuoteCreateRequest(reference="D-2601", customer_id="customer-1")
 
-        assert payload.to_quote("company-1").authored_by is None
+        assert payload.to_quote("company-1", "team-1").authored_by is None
 
     def test_the_lines_are_copied_rather_than_shared(self) -> None:
         """Editing the payload afterwards must not reach the quote.
@@ -234,7 +234,7 @@ class TestQuoteCreateRequest:
             reference="D-2601", customer_id="customer-1", lines=[_line()]
         )
 
-        quote = payload.to_quote("company-1")
+        quote = payload.to_quote("company-1", "team-1")
         payload.lines.clear()
 
         assert len(quote.lines) == 1

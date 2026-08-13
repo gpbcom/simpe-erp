@@ -56,6 +56,7 @@ from storage.s3.s3_storage import S3Storage
 from tests.annotations import ModelInput
 
 COMPANY = "company-1"
+TEAM = "team-1"
 CUSTOMER = "customer-1"
 ADDRESS = PostalAddress(
     street="1 rue des Lilas",
@@ -124,6 +125,7 @@ def a_quote(lines: List[QuoteLine], **overrides: ModelInput) -> Quote:
     """
     payload: Dict[str, ModelInput] = {
         "company_id": COMPANY,
+        "team_id": TEAM,
         "reference": "D-2648",
         "customer_id": CUSTOMER,
         "status": QuoteStatus.ACCEPTED,
@@ -146,6 +148,7 @@ def a_visit(line_id: str = "line-1", day: date = date(2026, 3, 9)) -> Interventi
     return Intervention(
         id=f"visit-{line_id}",
         company_id=COMPANY,
+        team_id="team-1",
         planning_run_id="run-1",
         name="Aide à la toilette",
         intervention_type_id="type-1",

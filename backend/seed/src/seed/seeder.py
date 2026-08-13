@@ -14,9 +14,14 @@ from models.auth.user import User
 from models.catalog.certification_type import CertificationType
 from models.catalog.intervention_type import InterventionType
 from models.catalog.skill_type import SkillType
+from models.organisation.agency.agency import Agency
+from models.organisation.agency.agency_member import AgencyMember
 from models.organisation.companies.company import Company
+from models.organisation.team.team import Team
+from models.organisation.team.team_member import TeamMember
 from models.enums import (
     AccountOrigin,
+    MemberKind,
     QuoteStatus,
     RegistrationStatus,
     UserRole,
@@ -38,6 +43,8 @@ from storage.orm.catalog.certification_type_row import CertificationTypeRow
 from storage.orm.catalog.intervention_type_row import InterventionTypeRow
 from storage.orm.catalog.skill_type_row import SkillTypeRow
 from storage.orm.companies.company_row import CompanyRow
+from storage.orm.organisation.agency_row import AgencyRow
+from storage.orm.organisation.team_row import TeamRow
 from storage.orm.quoting.quote_row import QuoteRow
 from storage.repositories.auth.user import UserRepository
 from storage.repositories.catalog.certification_type import (
@@ -279,6 +286,7 @@ class Seeder:
         self,
         quote_id: str,
         company_id: str,
+        team_id: str,
         reference: str,
         customer: Customer,
         status: QuoteStatus,
@@ -290,6 +298,7 @@ class Seeder:
         Args:
             quote_id (str): The derived identifier.
             company_id (str): The agency offering the work.
+            team_id (str): The team that will deliver it.
             reference (str): The human-facing quote number.
             customer (Customer): Who it is addressed to.
             status (QuoteStatus): Where it sits in its lifecycle.
@@ -308,6 +317,7 @@ class Seeder:
         )
         return Quote(
             id=quote_id,
+            team_id=team_id,
             company_id=company_id,
             reference=reference,
             customer_id=customer.id,
@@ -836,9 +846,169 @@ class Seeder:
         self.logger.info("Seeded %d customer account(s).", len(created))
         return created
 
+    async def seed_agencies(self, company_id: str) -> str:
+        """Create the sites the company operates from, and staff the head one.
+
+        Args:
+            company_id (str): The company the sites belong to.
+
+        Returns:
+            str: The head office's identifier.
+
+        Notes:
+            - **The head office inherits the company's legal identity**, because
+              an :class:`~models.organisation.agency.agency.Agency` *is* a
+              :class:`~models.organisation.companies.company.Company`: the SIRET,
+              the VAT number and the account money is paid into are printed from
+              the site a quote was written at. The branch carries none of it, and
+              the model refuses a branch that does.
+            - **Everybody is attached to the head office**, including the Lyon
+              branch's absence of anybody. The branch exists so the sites screen
+              has a second row and so a reviewer can see that a company is not
+              its head office; giving it people would split the seeded workforce
+              and change every count the test campaign asserts.
+            - Membership is written for the **account and the assistant record
+              separately**, because the join is polymorphic. A manager who covers
+              rounds has both and legitimately appears twice — once as the person
+              who signs in, once as the person the planner schedules.
+            - **Households are skipped**, for the reason given at the check
+              itself: a portal account is not somebody who works at a site.
+        """
+        head_office_id = ""
+        for (
+            name,
+            agency_type,
+            street,
+            postal_code,
+            city,
+            lat,
+            lon,
+        ) in self.data.AGENCIES:  # noqa: E501
+            agency_id = self.data.identifier("agency", name)
+            if agency_type.is_headquarters():
+                head_office_id = agency_id
+            if await self._exists(AgencyRow, agency_id):
+                self.logger.debug("Agency %s is already seeded.", name)
+                continue
+            company = await self.companies.get(company_id)
+            inherited = (
+                {
+                    field: getattr(company, field)
+                    for field in Agency.LEGAL_IDENTITY_FIELDS
+                }
+                if company and agency_type.is_headquarters()
+                else {}
+            )
+            await self.agencies.create(
+                Agency(
+                    id=agency_id,
+                    company_id=company_id,
+                    name=name,
+                    agency_type=agency_type,
+                    address=self._address(street, postal_code, city, lat, lon),
+                    **inherited,
+                )
+            )
+            self.logger.info("Seeded %s agency %s.", agency_type.value, name)
+
+        if not head_office_id:
+            self.logger.error(
+                "No head office is declared in the dataset; nothing can be "
+                "attached and no team can be formed."
+            )
+            return head_office_id
+
+        attached = 0
+        for user in await self.users.list(page=1, size=None):
+            if user.company_id != company_id:
+                continue
+            if not user.role.is_staff():
+                # A household's portal account carries the company it is served
+                # by, so it comes back from this list looking exactly like
+                # staff. Attaching one would put a customer on the team roster
+                # and hand them the team's shared documents.
+                self.logger.debug(
+                    "Account %s is a household and belongs to no site.", user.email
+                )
+                continue
+            if await self.agencies.agency_for_member(MemberKind.USER, str(user.id)):
+                continue
+            await self.agencies.add_member(
+                head_office_id,
+                AgencyMember(member_kind=MemberKind.USER, member_id=str(user.id)),
+            )
+            attached += 1
+        for assistant in await self.hcas.list_all():
+            if await self.agencies.agency_for_member(MemberKind.HCA, str(assistant.id)):
+                continue
+            await self.agencies.add_member(
+                head_office_id,
+                AgencyMember(member_kind=MemberKind.HCA, member_id=str(assistant.id)),
+            )
+            attached += 1
+        self.logger.info("Attached %d new member(s) to the head office.", attached)
+        return head_office_id
+
+    async def seed_teams(self, company_id: str, agency_id: str) -> str:
+        """Form the one team every seeded person and quote belongs to.
+
+        Args:
+            company_id (str): The company the team belongs to.
+            agency_id (str): The site it works from.
+
+        Returns:
+            str: The team's identifier.
+
+        Notes:
+            - **One team, holding everybody.** A second seeded team would be
+              more realistic and would break every count the test campaign
+              asserts; a suite that wants to watch the manager narrowing bite
+              forms its own and removes it afterwards.
+            - The team is written **through the repository rather than through
+              the service**, like every other seeded record: the service's
+              create refuses a manager already on a team, which is exactly what
+              a second run would look like.
+            - It is formed **after the accounts and before the quotes**, and
+              that order is load-bearing rather than cosmetic. It needs the
+              manager's account to exist, and every quote needs a team to name.
+        """
+        team_id = self.data.identifier("team", self.data.TEAM_NAME)
+        manager = await self.users.get_by_email(self.data.TEAM_MANAGER_EMAIL)
+        if manager is None:
+            self.logger.error(
+                "No account %s exists to run the seeded team; it cannot be "
+                "formed and no quote can be attributed.",
+                self.data.TEAM_MANAGER_EMAIL,
+            )
+            return team_id
+        if not await self._exists(TeamRow, team_id):
+            await self.teams.create(
+                Team(
+                    id=team_id,
+                    company_id=company_id,
+                    agency_id=agency_id,
+                    name=self.data.TEAM_NAME,
+                    manager_user_id=str(manager.id),
+                )
+            )
+            self.logger.info("Seeded team %s.", self.data.TEAM_NAME)
+
+        placed = 0
+        for member in await self.agencies.list_members(agency_id):
+            if await self.teams.team_for_member(member.member_kind, member.member_id):
+                continue
+            await self.teams.add_member(
+                team_id,
+                TeamMember(member_kind=member.member_kind, member_id=member.member_id),
+            )
+            placed += 1
+        self.logger.info("Put %d new member(s) on the seeded team.", placed)
+        return team_id
+
     async def seed_quotes(
         self,
         company_id: str,
+        team_id: str,
         customers: List[Customer],
         catalog: List[InterventionType],
         author_ids: List[str],
@@ -847,6 +1017,7 @@ class Seeder:
 
         Args:
             company_id (str): The agency offering the work.
+            team_id (str): The team that will deliver every seeded quote.
             customers (List[Customer]): The people to quote for.
             catalog (List[InterventionType]): The services to offer.
             author_ids (List[str]): The accounts to attribute quotes to.
@@ -855,10 +1026,17 @@ class Seeder:
             int: How many quotes were written this run.
 
         Notes:
-            The spread matters more than the volume. Every status has to be
-            represented or the manager's quote screen cannot be seen doing its
-            job — and ``pending-validation`` above all, because that queue is
-            the whole point of the validation workflow.
+            - The spread matters more than the volume. Every status has to be
+              represented or the manager's quote screen cannot be seen doing its
+              job — and ``pending-validation`` above all, because that queue is
+              the whole point of the validation workflow.
+            - **The team is passed in rather than attributed.** Quotes written
+              through the API go through
+              :meth:`~service.organisation.teams.TeamService.attribute`, which
+              weighs distance against how busy each team already is — a rule
+              whose answer depends on the order the seeder happens to write in.
+              Naming the team makes the seeded book identical on every run,
+              which is what the test campaign's counts rest on.
         """
         monday = self._monday_of_next_week()
         written = 0
@@ -875,6 +1053,7 @@ class Seeder:
                     self._quote(
                         quote_id=quote_id,
                         company_id=company_id,
+                        team_id=team_id,
                         reference=reference,
                         customer=customer,
                         status=status,

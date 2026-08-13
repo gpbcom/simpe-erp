@@ -96,10 +96,65 @@ outcome** — the first pass's assignment satisfies that model by definition. It
 is logged at ERROR and the unoptimised plan is kept, because a bug there must
 not cost the agency its week.
 
+## A run belongs to one team
+
+A run rebuilds **one team's** week. Its workforce is that team's field
+employees, its input is that team's accepted quotes, and its output replaces
+that team's visits and nobody else's.
+
+That split is **exact, not an approximation**, and for the same reason the
+per-day split is: teams share no assistant and no quote, so solving them apart
+returns the same plan as solving them together. The invariant it rests on is a
+unique index — a person is on at most one team — and it is load-bearing rather
+than tidy. Somebody on two teams would have two complete calendars written for
+the same week by two runs, neither of which clears the other's visits, and
+nothing anywhere would report the double booking.
+
+## Three scopes: a team, a site, the company
+
+A computation is asked for over one of three scopes, and every one but the
+narrowest **fans out** into one run per team it covers. That is why
+`POST /api/v1/planning/runs` answers with a *list*.
+
+| Asked for | Covers | Who may ask |
+|---|---|---|
+| `?team_id=` | that team | its manager, or an administrator |
+| `?agency_id=` | the teams of that site **the caller runs** | any manager, for their own |
+| neither | every team of the company | **administrator only** |
+
+A team is what a manager owns and a site is the level above it, so both are
+theirs to rebuild. The site case is an **intersection** rather than the site's
+roster: handing a manager every team at a branch office would make the branch a
+way to rebuild a colleague's week without ever naming their team. A manager who
+runs nothing at the named site gets an empty list rather than a refusal — an
+honest answer to "plan my teams here" that says nothing about which teams the
+site holds.
+
+Naming no scope at all means the whole company, and that is an administrator's
+act: it rewrites the calendar of every assistant employed, and no manager is
+answerable for all of them. A manager who names nothing is **refused with a
+403**, not quietly given their own teams — being told the company had been
+re-planned when one team was would be worse than the refusal, and the message
+names the two scopes they may use instead.
+
+The route moved from administrator to manager because a run no longer rewrites
+every calendar in the agency but exactly the ones a manager is responsible for.
+Which team they may name is checked in the service, because a route guard can
+only prove a rank.
+
+**Both run *reads* are narrowed too**, and not only for confidentiality.
+`GET /runs` is what the screen polls while a computation is in flight — it is
+where "computing…" comes from and where the result is read — so leaving it at
+administrator made a manager's button look like it did nothing at all: the run
+was queued, solved and stored, and the page that asked for it never saw any of
+it. `GET /runs/{id}` is narrowed because starting a run hands the caller its
+identifier, so every manager holds real ones and could otherwise poll a
+colleague's to learn how much of that team's week would not fit.
+
 ## Who the solver is even allowed to consider
 
-`_field_employees` is the single point where that is decided, and it runs
-before anything else. Before it existed the planner took **every** assistant
+`_workforce` narrows to the team first, and `_field_employees` is the single
+point where the rest is decided. Before it existed the planner took **every** assistant
 record there was, so an office-based coordinator with a record — or a manager
 who holds one because they also cover rounds — was equally schedulable and
 equally not.
@@ -471,12 +526,24 @@ the period rather than the run — so re-planning one week does not disturb the
 week after it, which a different run produced. A caller refreshing mid-replan
 sees the old plan or the new one, never a blank week.
 
-### Scoped to the agency, first and above all
+### Scoped to the agency and the team, first and above all
 
-The delete is `WHERE company_id = … AND day BETWEEN …`, and the agency half of
-that is newer than the rest. Until it was there, a run replanning one agency's
+The delete is `WHERE company_id = … AND team_id = … AND day BETWEEN …`, and both
+scoping halves are newer than the rest. Until it was there, a run replanning one agency's
 week deleted **every other agency's** visits in the same days and wrote none of
 them back.
+
+The team half is the identical bug one level down, and now the **likelier** of
+the two: two agencies replanning the same days is a coincidence, while two teams
+of one agency doing it is an ordinary Monday — each team's manager re-plans
+their own week. Without the team in the delete, the second manager to press the
+button blanks the first one's calendars and writes none of them back.
+
+The lock stays keyed on the **agency**, not the team. Two teams' runs touch
+disjoint rows, so serialising them costs a moment and keeps the existing
+guarantee unchanged; keying it per team would leave the delete's correctness
+resting on the scoping alone, and the scoping is what this section exists to say
+has been wrong before.
 
 That was not a rare race. The broker gives each agency its own queue precisely
 so their runs proceed at the same time, so two agencies planning overlapping
@@ -598,21 +665,30 @@ one.
 
 ## Asking for one
 
-`POST /api/v1/planning/runs?period_start=&period_end=` — **administrator-only**,
-like listing and reading runs. It answers **202** with a `pending` run to poll:
-the solve is CPU-bound, runs on a worker with a 30-second budget, and reaches
-the worker over the broker.
+`POST /api/v1/planning/runs?period_start=&period_end=` — **manager-and-above**,
+like listing and reading runs. It answers **202** with one `pending` run per
+team in scope: the solve is CPU-bound, runs on a worker with a 30-second budget,
+and reaches the worker over the broker.
 
 Nothing in the application ever called it. The endpoints existed, the worker
 consumed them, and there was no control anywhere — so a freshly seeded stack had
 no planning, no way to ask for one, and nothing on any screen to say why. The
-team-planning screen now has the button, gated on the administrator role so a
-manager is not offered something that would only answer 403.
+team-planning screen now carries the button and, beside it, a **scope picker**
+listing the caller's teams, the sites they run a team at, and — for an
+administrator alone — the whole company. A manager opens on their site, which is
+the widest thing they may ask for; a manager who runs no team anywhere gets a
+disabled button, because a control that can only answer 403 is worse than one
+that is plainly unavailable.
 
-The screen polls while a run is in flight and stops when it finishes. When a run
-succeeds it invalidates the *visits* as well as the run: they are written by the
+The screen polls while a run is in flight and stops when it finishes. Asking for
+one invalidates the *visits* as well as the runs: they are written by the
 worker, behind the screen's back, so nothing else would refresh them — and being
 told "75 visits planned" above an empty list is worse than being told nothing.
+Both halves of that had to be true of the *manager's* session too, and for a
+while neither was: the polling query was gated on the administrator role and the
+invalidation named only the runs. A manager could press the button, have the
+work queued, solved and stored, and watch a page that never changed — which is
+indistinguishable from a planning that was never computed.
 
 ## A run fails as a whole
 

@@ -144,7 +144,7 @@ class InterventionService:
     # Publicly Exposed Methods #
     ############################
 
-    async def delete(self, intervention_id: str) -> Tuple[str, Optional[Quote]]:
+    async def delete(self, intervention_id: str) -> Tuple[str, Optional[Quote]]:  # noqa: E501
         """Cancel a visit, and take it off the quote it was sold on.
 
         Args:

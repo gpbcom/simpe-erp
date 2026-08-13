@@ -15,7 +15,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import type { CustomerFilterState, CustomerTextField } from './useCustomerFilter';
 import type { RegistrationStatus } from '@/api/types';
 
-/** The status tabs, in the order a customer passes through them. */
 const TABS: { key: string; status?: RegistrationStatus }[] = [
   { key: 'all' },
   { key: 'prospect', status: 'prospect' },
@@ -23,7 +22,6 @@ const TABS: { key: string; status?: RegistrationStatus }[] = [
   { key: 'stopped', status: 'stopped' },
 ];
 
-/** The text filters shown behind "more filters", and their labels. */
 const DETAILS: { field: CustomerTextField; label: string }[] = [
   { field: 'city', label: 'customer.city' },
   { field: 'postal_code', label: 'customer.postalCode' },
@@ -32,7 +30,6 @@ const DETAILS: { field: CustomerTextField; label: string }[] = [
 ];
 
 interface CustomerFilterBarProps {
-  /** The filter state, from `useCustomerFilter`. */
   filter: CustomerFilterState;
 }
 
@@ -73,11 +70,9 @@ export function CustomerFilterBar({ filter }: CustomerFilterBarProps) {
     TABS.findIndex((entry) => entry.status === draft.status),
   );
 
-  /** Read a three-state flag back out of a native select. */
   const toFlag = (value: string): boolean | undefined =>
     value === '' ? undefined : value === 'true';
 
-  /** Write a three-state flag into one. */
   const fromFlag = (value: boolean | undefined): string =>
     value === undefined ? '' : String(value);
 

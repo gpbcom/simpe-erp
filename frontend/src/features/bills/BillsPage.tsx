@@ -18,7 +18,6 @@ import { BillStatusChip } from './BillStatusChip';
 import { GenerateBillsDialog } from './GenerateBillsDialog';
 import type { Bill } from '@/api/types';
 
-/** What the filter bar may narrow by. */
 const BILL_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'number', 'customer_id'],
   flagFields: ['is_sent'],
@@ -27,7 +26,6 @@ const BILL_FILTER_SPEC: EntityFilterSpec = {
   },
 };
 
-/** What is folded away behind "more filters". */
 const BILL_DETAILS: FilterDetail[] = [
   {
     field: 'status',

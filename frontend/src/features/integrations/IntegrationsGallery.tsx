@@ -24,10 +24,7 @@ import { BRAND } from '@/theme/palette';
 import { EInvoicingWarning } from './EInvoicingWarning';
 import { IntegrationDialog } from './IntegrationDialog';
 
-/** How many cards a page holds, matching the four-column grid. */
 const PER_PAGE = 8;
-
-/** The tabs, and the coverage each filters on. */
 const CATEGORIES: { key: string; coverage: TransmissionKind | null }[] = [
   { key: 'all', coverage: null },
   { key: 'invoice', coverage: 'invoice' },
@@ -35,10 +32,7 @@ const CATEGORIES: { key: string; coverage: TransmissionKind | null }[] = [
   { key: 'public', coverage: 'chorus-pro' },
 ];
 
-/** The sort orders offered. */
 const SORTS = ['alpha', 'status'] as const;
-
-/** A tile colour per platform, so a card is recognisable at a glance. */
 const TILE_COLOURS: Record<string, string> = {
   b2brouter: '#1F6FEB',
   storecove: '#0F6E6E',
@@ -93,8 +87,6 @@ export function IntegrationsGallery() {
         (!wanted || card.coverage.includes(wanted)) &&
         (!needle || card.name.toLowerCase().includes(needle)),
     );
-    // Enabled first under "status", because the one an agency transmits
-    // through is the one it came here to check on.
     return [...matching].sort((left, right) =>
       sort === 'alpha'
         ? left.name.localeCompare(right.name)
@@ -284,8 +276,7 @@ export function IntegrationsGallery() {
         </Alert>
       ) : null}
 
-      {/* Only when it does something. The reference design paginates 169
-          entries; four would render a control whose every state is identical. */}
+      {}
       {pages > 1 ? (
         <Stack
           direction="row"

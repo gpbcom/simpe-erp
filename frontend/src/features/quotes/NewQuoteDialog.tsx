@@ -49,16 +49,11 @@ function emptyLine(): NewQuoteLine {
   return {
     name: '',
     intervention_type_id: '',
-    // Necessity: most home-care hours are delivered under a care plan. A
-    // starting point the operator must still look at, not an answer — the
-    // field sits beside the service with the VAT rate it implies.
     service_category: 'necessity',
     service_date: day.toISOString().slice(0, 10),
     earliest_start: '09:00:00',
     latest_end: '12:00:00',
     duration_minutes: 60,
-    // Null, not an empty array: the line inherits whatever the service
-    // requires until somebody decides otherwise for this customer.
     required_certification_codes: null,
     required_skill_codes: null,
   };
@@ -86,15 +81,6 @@ export function NewQuoteDialog({ open, onClose }: NewQuoteDialogProps) {
   const { data: catalogue } = useCertificationTypes();
   const { data: skillCatalogue } = useSkillTypes();
   const { data: rules } = usePricingRules();
-
-  /**
-   * Label the VAT a category implies, using the server's own rate.
-   *
-   * The percentage is read from the published pricing rules rather than
-   * written into a translation string. A rate spelled out in `fr.json` is a
-   * second copy of a figure the tax code sets, and the copy on screen would be
-   * the one an operator trusted while the invoice used the other.
-   */
   const vatHint = (category: 'necessity' | 'comfort'): string => {
     const rate = rules?.vat_rates[category];
     if (rate === undefined) return '';
@@ -124,19 +110,9 @@ export function NewQuoteDialog({ open, onClose }: NewQuoteDialogProps) {
     const chosen = (types ?? []).find((entry) => entry.id === typeId);
     setLine(index, {
       intervention_type_id: typeId,
-      // Only when the operator has not written their own: retyping over
-      // somebody's wording every time they fix the service is worse than a
-      // blank field.
       name: lines[index]?.name ? lines[index].name : (chosen?.name ?? ''),
-      // The catalogue entry's category is a suggestion, not a rule. It is what
-      // this service usually is; whether *this customer's* hours fall under a
-      // care plan is something only the person writing the quote knows, and
-      // they can still change it.
       service_category:
         chosen?.service_category ?? lines[index]?.service_category ?? 'necessity',
-      // Changing the service changes what it requires, so an override written
-      // against the old one is dropped rather than silently carried over onto
-      // work it was never about.
       required_certification_codes: null,
       required_skill_codes: null,
     });
@@ -300,8 +276,6 @@ export function NewQuoteDialog({ open, onClose }: NewQuoteDialogProps) {
                       current.filter((_, position) => position !== index),
                     )
                   }
-                  // The last line is not removable: a quote with no lines is not
-                  // a quote, and the server refuses it.
                   disabled={lines.length === 1}
                   data-testid={`new-quote-remove-${index}`}
                 >

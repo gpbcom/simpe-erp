@@ -12,6 +12,7 @@ import pytest
 
 from api.dependencies import (
     get_admin_user,
+    get_manager_user,
     get_current_user,
     get_planning_service,
 )
@@ -69,6 +70,7 @@ def _run(status: PlanningRunStatus = PlanningRunStatus.PENDING) -> PlanningRun:
     """
     return PlanningRun(
         company_id="company-1",
+        team_id="team-1",
         id="run-1",
         status=status,
         requested_by="user-admin",
@@ -94,6 +96,7 @@ def _planning(hca_id: str = "hca-1") -> HcaPlanning:
         interventions=[
             Intervention(
                 company_id="company-1",
+                team_id="team-1",
                 id="visit-1",
                 planning_run_id="run-1",
                 name="Toilette matin",
@@ -162,6 +165,9 @@ def _client(service: AsyncMock, caller: User) -> TestClient:
     app.dependency_overrides[get_planning_service] = lambda: service
     app.dependency_overrides[get_current_user] = lambda: caller
     app.dependency_overrides[get_admin_user] = lambda: caller
+    # Requesting a planning is a manager's act now that a run rewrites one
+    # team's week rather than the whole agency's.
+    app.dependency_overrides[get_manager_user] = lambda: caller
     return TestClient(app)
 
 
@@ -174,7 +180,11 @@ def service() -> AsyncMock:
     """
     stub = AsyncMock()
     stub.request_run.return_value = _run()
-    stub.get_run.return_value = _run(PlanningRunStatus.SUCCEEDED)
+    # One run per team: naming no team means "every team I run", so the route
+    # answers with a list even when the caller runs exactly one.
+    stub.teams_to_plan.return_value = ["team-1"]
+    stub.queue_replan.return_value = [_run()]
+    stub.run_for.return_value = _run(PlanningRunStatus.SUCCEEDED)
     stub.list_runs.return_value = [_run(PlanningRunStatus.SUCCEEDED)]
     stub.planning_for.return_value = _planning()
     stub.all_plannings.return_value = [_planning()]
@@ -203,7 +213,7 @@ class TestPlanningRunEndpoints:
         )
 
         assert response.status_code == 202
-        assert response.json()["id"] == "run-1"
+        assert [run["id"] for run in response.json()] == ["run-1"]
 
     def test_the_response_carries_something_to_poll(self, service: AsyncMock) -> None:
         """A 202 with no identifier would be useless."""
@@ -211,7 +221,7 @@ class TestPlanningRunEndpoints:
             "/api/v1/planning/runs", params=PERIOD
         )
 
-        assert response.json()["status"] == PlanningRunStatus.PENDING.value
+        assert response.json()[0]["status"] == PlanningRunStatus.PENDING.value
 
     def test_the_requesting_admin_is_recorded(self, service: AsyncMock) -> None:
         """The run remembers who asked for it.
@@ -222,8 +232,8 @@ class TestPlanningRunEndpoints:
         """
         _client(service, _user()).post("/api/v1/planning/runs", params=PERIOD)
 
-        service.request_run.assert_awaited_once()
-        assert service.request_run.await_args.kwargs["requested_by"] == "user-admin"
+        service.queue_replan.assert_awaited_once()
+        assert service.queue_replan.await_args.kwargs["requested_by"] == "user-admin"
 
     def test_a_backwards_period_is_refused(self, service: AsyncMock) -> None:
         """An end before its start is rejected, not solved.
@@ -239,7 +249,7 @@ class TestPlanningRunEndpoints:
         )
 
         assert response.status_code == 422
-        service.request_run.assert_not_awaited()
+        service.queue_replan.assert_not_awaited()
 
     def test_a_missing_period_is_refused(self, service: AsyncMock) -> None:
         """Both bounds are required."""
@@ -260,7 +270,7 @@ class TestPlanningRunEndpoints:
 
     def test_polling_an_absent_run_is_404(self, service: AsyncMock) -> None:
         """An identifier that names nothing is not found."""
-        service.get_run.side_effect = MTPlanningRunNotFound("no such run")
+        service.run_for.side_effect = MTPlanningRunNotFound("no such run")
 
         response = _client(service, _user()).get("/api/v1/planning/runs/nope")
 

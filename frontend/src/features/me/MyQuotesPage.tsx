@@ -70,9 +70,6 @@ export function MyQuotesPage() {
       headerName: t('common.actions'),
       width: 340,
       sortable: false,
-      // Both actions appear only on a draft, and for the same reason: it is
-      // the one state an assistant still owns. Once submitted, the quote is a
-      // manager's to rule on; once sent, it is what the customer was shown.
       renderCell: (params) =>
         params.row.status === 'draft' ? (
           <Stack direction="row" spacing={1}>

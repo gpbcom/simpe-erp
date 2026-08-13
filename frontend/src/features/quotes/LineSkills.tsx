@@ -101,8 +101,6 @@ export function LineSkills({
           value={value}
           onChange={(event) =>
             onChange(
-              // A native multiple select hands back the whole selection on the
-              // element, not on the event's value.
               Array.from(
                 (event.target as unknown as HTMLSelectElement).selectedOptions,
                 (option) => option.value,

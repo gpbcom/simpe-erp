@@ -39,14 +39,12 @@ import { WEEKDAYS } from '@/api/types';
 import { WorkingDaysDialog } from './WorkingDaysDialog';
 import type { Certification, Hca, User } from '@/api/types';
 
-/** Which of the assistant filter's fields are text, flags and closed lists. */
 const HCA_FILTER_SPEC: EntityFilterSpec = {
   textFields: ['search', 'city', 'postal_code', 'email', 'phone'],
   flagFields: ['field_employee', 'is_geocoded', 'has_photo'],
   enumFields: { contract_type: ['cdi', 'cdd', 'interim'] },
 };
 
-/** The contract tabs, in the order a payroll office thinks of them. */
 const HCA_TABS: FilterTab[] = [
   { key: 'all', label: 'hca.filter_all' },
   { key: 'cdi', value: 'cdi', label: 'hca.filter_cdi' },
@@ -54,7 +52,6 @@ const HCA_TABS: FilterTab[] = [
   { key: 'interim', value: 'interim', label: 'hca.filter_interim' },
 ];
 
-/** What is folded away behind "more filters". */
 const HCA_DETAILS: FilterDetail[] = [
   { field: 'city', label: 'hca.filterCity', kind: 'text' },
   { field: 'postal_code', label: 'hca.filterPostalCode', kind: 'text' },
@@ -107,17 +104,12 @@ const HCA_DETAILS: FilterDetail[] = [
  */
 export function HcasPage() {
   const { t } = useTranslation();
-  // Promotion and the accounts list are both administrator-only. A manager
-  // sees the workforce without the role column rather than a column that
-  // says 'no account' about every one of them.
   const isAdmin = useSession((state) => state.user?.role === 'admin');
   const { data: accounts } = useUsers(isAdmin);
   const promote = usePromoteUser();
   const [promoting, setPromoting] = useState<Hca | null>(null);
 
   const accountOf = (hcaId: string | null): User | undefined =>
-    // A record that has never been stored has no identifier and therefore
-    // no account; matching on null would match every account without one.
     hcaId ? (accounts ?? []).find((entry) => entry.hca_id === hcaId) : undefined;
 
   const confirmPromotion = async () => {
@@ -136,9 +128,6 @@ export function HcasPage() {
   const [removalError, setRemovalError] = useState<string | null>(null);
   const { data: catalogue } = useCertificationTypes();
   const remove = useDeleteHca();
-
-  // Only what is not already held, so the picker cannot add a duplicate the
-  // server would store twice and the planner would read once.
   const available = (catalogue ?? []).filter(
     (entry) => !draft.some((held) => held.code === entry.code),
   );
@@ -151,12 +140,6 @@ export function HcasPage() {
     setAdded('');
     setOnRounds(hca.field_employee);
   };
-
-  // Through the shared mutation rather than a hand-rolled request. It knows
-  // to invalidate `['planning']` as well as the workforce, which this screen
-  // did not: taking somebody off the rounds changes who the next run may
-  // schedule, so the calendars stop agreeing with the grid until they are
-  // refetched — and nothing on either screen would have said so.
   const updateEmployment = useUpdateEmployment(editing?.id ?? null);
 
   const save = () => {
@@ -212,12 +195,6 @@ export function HcasPage() {
       headerName: t('hcas.fieldEmployee'),
       width: 150,
       sortable: false,
-      // Changed in the cell rather than only inside the qualifications
-      // dialog. Taking somebody off the rounds has nothing to do with their
-      // diplomas, and burying it behind a button labelled "edit the
-      // qualifications" made the one field a manager changes weekly the
-      // hardest one on the screen to find. Everybody who reaches this page
-      // already holds the role the route asks for.
       renderCell: (params) => <FieldEmployeeToggle hca={params.row} />,
     },
     {
@@ -225,13 +202,6 @@ export function HcasPage() {
       headerName: t('hca.workingDays'),
       width: 190,
       sortable: false,
-      // The initials of the days worked, in ISO order, so a manager can read a
-      // rota down the column. Spelling them out would need a column nobody has
-      // room for; a count would say "4 days" without saying which four, which
-      // is the only part that decides who can take a Wednesday visit.
-      // The cell is the control. A separate button would be a fourth one on a
-      // row that already carries three, and the chips are what a manager is
-      // looking at when they decide the rota is wrong.
       renderCell: (params) => (
         <Tooltip title={t('hcas.editWorkingDays')}>
           <Stack
@@ -302,8 +272,6 @@ export function HcasPage() {
                   data-testid={`role-${params.row.id}`}
                 />
               ) : (
-                // An assistant with no account cannot sign in yet, and cannot be
-                // promoted either — there is nothing to promote.
                 <Typography variant="body2" color="text.secondary">
                   {t('hca.noAccount')}
                 </Typography>
@@ -317,10 +285,6 @@ export function HcasPage() {
       headerName: t('common.actions'),
       width: 400,
       sortable: false,
-      // Outlined, not MUI's default text variant. Two text buttons side by side
-      // in a dense grid read as a run-on sentence — "Modifier les
-      // qualificationsPromouvoir manager" — and neither looks like something
-      // that can be pressed. A border is what makes a button a button.
       renderCell: (params) => (
         <Stack direction="row" spacing={1} alignItems="center" sx={{ height: '100%' }}>
           <Button
@@ -427,8 +391,7 @@ export function HcasPage() {
         </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            {/* What it costs, before it is asked for. A confirmation that does
-                not say what it destroys is a confirmation nobody reads. */}
+            {}
             <Alert severity="warning">{t('hcas.deleteWarning')}</Alert>
             {removalError ? (
               <Alert severity="error" data-testid="delete-hca-error">

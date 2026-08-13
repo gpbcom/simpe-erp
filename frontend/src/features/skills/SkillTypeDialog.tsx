@@ -20,7 +20,6 @@ import {
 } from '@/api/queries';
 import type { SkillType } from '@/api/types';
 
-/** Everything the form edits, flattened for the inputs. */
 interface SkillForm {
   code: string;
   label: string;
@@ -36,11 +35,8 @@ const EMPTY: SkillForm = {
 };
 
 interface SkillTypeDialogProps {
-  /** The entry to edit, or `null` when not editing one. */
   entry: SkillType | null;
-  /** Whether the dialog is open to create a new entry instead. */
   creating: boolean;
-  /** Called when the dialog should close. */
   onClose: () => void;
 }
 
@@ -92,9 +88,6 @@ export function SkillTypeDialog({ entry, creating, onClose }: SkillTypeDialogPro
     );
   }, [entry, creating, open]);
 
-  // Unaccented, because the code travels into exports and URLs where an accent
-  // is escaped differently by every consumer. The server refuses one anyway;
-  // saying so here means the operator is not told after they press save.
   const codeIsWellFormed = /^[A-Za-z0-9_-]{1,32}$/.test(form.code.trim());
   const valid = Boolean(form.label.trim()) && codeIsWellFormed;
 
