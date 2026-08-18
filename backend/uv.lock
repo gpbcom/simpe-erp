@@ -1537,7 +1537,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43.0" },
     { name = "greenlet", specifier = ">=3.5.0" },
     { name = "models", editable = "models" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.51" },
 ]
 
 [[package]]
