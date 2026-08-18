@@ -87,7 +87,7 @@ class TestTransactionMiddleware:
             request (Request): The incoming request.
 
         Returns:
-            dict: Never; the refusal is raised.
+            dict: Never. The refusal is raised.
 
         Raises:
             HTTPException: Always, with the status under test.
@@ -194,7 +194,7 @@ class TestTransactionMiddleware:
     # ------------------------------------------------------------------ #
 
     async def test_the_response_is_returned_unchanged(self) -> None:
-        """The middleware commits; it does not rewrite the answer."""
+        """The middleware commits. It does not rewrite the answer."""
         self.session = AsyncMock()
         self.seen = []
         self.answer = SimpleNamespace(status_code=201)

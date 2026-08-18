@@ -98,7 +98,7 @@ class Bill(BaseModel):
           name on an intervention. A customer who moves must not retroactively
           change where last quarter's invoice was addressed.
         - **Two parties, and they are not the same question.** The customer is
-          who the care was *delivered to*; the recipient is who the invoice is
+          who the care was *delivered to*. The recipient is who the invoice is
           *billed to*. They carry identical values for a household paying its
           own bills, which is most of them — and they diverge exactly where it
           matters, when a conseil départemental or a mutuelle funds the work.
@@ -956,7 +956,7 @@ class Bill(BaseModel):
         Notes:
             The regime is decided by **who owes the money**, not by who was
             cared for. A household's invoice for care funded by a département is
-            transmitted, because the département is the buyer; the household's
+            transmitted, because the département is the buyer. The household's
             own share of the same care is reported. Asking the recipient rather
             than the customer is the whole reason the two are separate fields.
         """

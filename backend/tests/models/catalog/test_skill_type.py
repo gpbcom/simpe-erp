@@ -222,7 +222,7 @@ class TestSkillType:
 
         Notes:
             ``CODE_MAX_LENGTH`` is a :data:`~typing.ClassVar` rather than a bare
-            annotation precisely so it stays out of the dump; a bare one would
+            annotation precisely so it stays out of the dump. A bare one would
             put it in every stored payload and break this.
         """
         entry = SkillType(**valid_kwargs)

@@ -35,7 +35,7 @@ class BillingSettings(BaseModel):
         MAX_PENALTY_MULTIPLIER (ClassVar[int]): Highest multiplier accepted.
         MAX_INDEMNITY (ClassVar[Decimal]): Highest recovery indemnity accepted.
         TERMS (ClassVar[...]): The sentence describing the terms, per language.
-        id (str): Identifier; always :attr:`SINGLETON_ID`.
+        id (str): Identifier. Always :attr:`SINGLETON_ID`.
         periodicity (BillingPeriodicity): How often customers are invoiced.
         payment_terms_days (int): How long a customer has to pay.
         late_penalty_multiplier (int): How many times the legal interest rate a
@@ -55,7 +55,7 @@ class BillingSettings(BaseModel):
           are agency-wide, and a table able to hold two of them invites the
           question of which one an invoice was issued under — a question a
           printed document cannot answer afterwards.
-        - The configuration file still carries the defaults; they seed the row
+        - The configuration file still carries the defaults. They seed the row
           the first time it is read.
         - Changing any of these affects the **next** generation run. An invoice
           already issued keeps the terms it was printed with, because the terms
@@ -86,7 +86,7 @@ class BillingSettings(BaseModel):
 
     id: str = Field(
         default=SINGLETON_ID,
-        description="Identifier; always the singleton row.",
+        description="Identifier. Always the singleton row.",
     )
     periodicity: BillingPeriodicity = Field(
         default=BillingPeriodicity.MONTHLY,
@@ -359,7 +359,7 @@ class BillingSettings(BaseModel):
     # Publicly Exposed Methods #
     ############################
 
-    def due_date_for(self, issued_on: date) -> date:
+    def due_date(self, issued_on: date) -> date:
         """Return the day payment falls due for an invoice issued on a date.
 
         Args:
@@ -377,7 +377,7 @@ class BillingSettings(BaseModel):
         """
         return issued_on + timedelta(days=self.payment_terms_days)
 
-    def window_for(self, day: date) -> Tuple[date, date]:
+    def window(self, day: date) -> Tuple[date, date]:
         """Return the billing window containing a day, under these rules.
 
         Args:
@@ -392,7 +392,7 @@ class BillingSettings(BaseModel):
             and cannot accidentally resolve a window under a different rule from
             the one the agency configured.
         """
-        return self.periodicity.window_for(day)
+        return self.periodicity.window(day)
 
     def previous_window(self, day: date) -> Tuple[date, date]:
         """Return the window before the one containing a day.

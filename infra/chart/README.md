@@ -35,7 +35,7 @@ runtime — the pods start, report Ready, and do the wrong thing:
   default is 30 and a real solve is minutes, so a scale-down SIGKILLs mid-solve.
   No work is lost — the message goes unacknowledged and another replica takes
   it — but the whole solve is repeated.
-- `workerNotifications` scaling to zero. A badge should be instant; a cold start
+- `workerNotifications` scaling to zero. A badge should be instant. A cold start
   is not.
 - An empty `integrations.providers`. The cluster would come up serving every
   screen except the one that makes the agency compliant: a gallery with nothing
@@ -51,7 +51,7 @@ TLS handshake and a rate limiter inside the application.
 
 **The chart had no `billing_webhook` block at all**, so a cluster ran the
 model's defaults: disabled, at `localhost:8000`. Nothing failed and nothing was
-logged as wrong; an approved invoice was simply never emailed, and — once
+logged as wrong. An approved invoice was simply never emailed, and — once
 automatic transmission on payment existed — a collected one was never sent to
 the platform. It is rendered now, still off by default, and turning it on is one
 value.
@@ -78,7 +78,7 @@ agency must re-enter its platform API key.** The store holding it needs the same
 backup discipline as the database.
 
 Only the API pod ever resolves it. A worker publishes `bill.paid` and calls the
-loopback webhook; the transmission — and so the one decryption — happens in the
+loopback webhook. The transmission — and so the one decryption — happens in the
 API. The Secret is mounted the same way everywhere because there is one
 `envFrom`, but nothing else reads that key.
 
@@ -101,7 +101,7 @@ have to watch the database to know.
 
 - **Postgres, RabbitMQ, the metrics stack, the ingress controller.** They are
   installed by [`../bootstrap`](../bootstrap/README.md) and outlive any one
-  release; a chart that owned them would uninstall them on a failed rollback.
+  release. A chart that owned them would uninstall them on a failed rollback.
 - **`/metrics` from the Ingress.** It is served for a scraper inside the
   cluster. Routing it publishes it.
 - **A tag in the values files.** CI passes `--set global.image.tag=<git sha>`,

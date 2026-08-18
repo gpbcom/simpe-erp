@@ -26,7 +26,7 @@ class TeamMember(OrganisationMember):
     Notes:
         - **There is no `is_manager` flag here**, and its absence is the design.
           "Exactly one manager" is a cardinality, and a boolean on a list can
-          express zero or five; the manager is a required column on
+          express zero or five. The manager is a required column on
           :class:`~models.organisation.team.team.Team` instead, which *is* the
           constraint. The manager still gets a membership row, so "a team is a
           list of persons" holds literally.

@@ -54,14 +54,14 @@ class AbstractOrganisationService(ABC, Generic[TEntity, TView]):
           :class:`~service.organisation.agencies.AgencyService` fetch an entity,
           refuse one that does not exist or belongs to another company, and
           refuse a name a sibling entity already holds. Written twice, those two
-          checks could drift; this is the one place they are spelled.
+          checks could drift. This is the one place they are spelled.
         - **``unreachable_exc`` alone stands in for two historically distinct
           exception classes.** ``TeamService.get`` used to raise
           ``MTTeamNotFound`` for both "missing" and "wrong company", while
           ``AgencyService._owned`` raised ``MTAgencyForbidden`` for the same
           pair — both are answered as a 404, so the difference was only ever in
           the name. Each subclass keeps its own historical class here.
-        - :meth:`get` and :meth:`list` default to ownership alone; a service
+        - :meth:`get` and :meth:`list` default to ownership alone. A service
           whose callers see less than their whole company — a team narrowed to
           a manager's own, or to the one an assistant sits on — overrides them.
           :meth:`view` and :meth:`views` are the same read, projected: neither

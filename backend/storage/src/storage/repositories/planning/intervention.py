@@ -148,7 +148,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             )
             return None
         self.logger.info(
-            "%s %s is planned from %s to %s; that is the period to replan.",
+            "%s %s is planned from %s to %s. That is the period to replan.",
             subject.capitalize(),
             subject_id,
             first,
@@ -191,7 +191,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
               This is the most destructive statement in the application. Until
               the agency was part of it, a run replanning one agency's week
               deleted every *other* agency's visits in the same days and then
-              wrote none of them back; the team half is the identical bug one
+              wrote none of them back. The team half is the identical bug one
               level down, and now the likelier of the two — a manager
               re-planning their own team is an everyday act, and every other
               team of the same agency would lose the week.
@@ -201,7 +201,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
               by — which is precisely the case that would wipe everything.
             - The lock stays keyed on the **agency**, not the team. Two teams'
               runs touch disjoint rows, so serialising them costs a moment and
-              buys the existing guarantee unchanged; keying it per team would
+              buys the existing guarantee unchanged. Keying it per team would
               need the delete's correctness to rest on the scoping alone, and
               the scoping is what this note exists to say has been wrong before.
         """
@@ -227,7 +227,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         await self.session.flush()
         if not interventions:
             self.logger.warning(
-                "The new plan of team %s for %s to %s is empty; that team's "
+                "The new plan of team %s for %s to %s is empty. That team's "
                 "calendars in that period are now blank.",
                 team_id,
                 period_start,
@@ -324,7 +324,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         rows = await self._fetch_all(statement)
         if not rows:
             self.logger.warning(
-                "Customer %s has no visit between %s and %s; anything billed "
+                "Customer %s has no visit between %s and %s. Anything billed "
                 "for them was never placed by a planning run.",
                 customer_id,
                 period_start,
@@ -345,7 +345,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             period_start (date): First day of interest, inclusive.
             period_end (date): Last day of interest, inclusive.
             team_ids (Optional[List[str]]): The teams the caller may read.
-                ``None`` means every team; an **empty list means none**.
+                ``None`` means every team. An **empty list means none**.
 
         Returns:
             List[str]: The assistants' identifiers.
@@ -474,7 +474,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
             period_start (date): First day of interest, inclusive.
             period_end (date): Last day of interest, inclusive.
             team_ids (Optional[List[str]]): The teams the caller may read.
-                ``None`` means every team; an empty list means none.
+                ``None`` means every team. An empty list means none.
 
         Returns:
             List[str]: The households' identifiers.
@@ -487,7 +487,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
               household's own portal uses.
             - Read off the **visits**, not off the customer book. A household
               with nothing planned in the period is not somebody the screen
-              passed over; it is somebody there is nothing to show for, and
+              passed over. It is somebody there is nothing to show for, and
               listing them would fill a rail with empty weeks.
             - A failure answers an empty period rather than raising, exactly as
               the assistant-side method does: a screen that cannot say who has
@@ -607,14 +607,14 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         Notes:
             - **The companion to** :meth:`future_period_for_hca` **and**
               :meth:`future_period_for_customer`. Those two say *when* a replan
-              is needed; this says *whose*. Since a run rewrites one team's week,
+              is needed. This says *whose*. Since a run rewrites one team's week,
               a deletion that touched two teams needs two runs — and asking the
               database which teams is the only way to know, because a household
               can hold quotes attributed at different times.
             - Read **before** the deletion, like the period is: once the rows are
               gone there is nothing left to ask.
             - Ordered by identifier so two identical deletions queue their runs
-              in the same sequence. Nothing depends on it today; a test
+              in the same sequence. Nothing depends on it today. A test
               comparing two runs would.
         """
         subject = InterventionRow.customer_id if is_customer else InterventionRow.hca_id
@@ -628,7 +628,7 @@ class InterventionRepository(BaseRepository[InterventionRow]):
         team_ids = [team_id for team_id in result.scalars().all() if team_id]
         if not team_ids:
             self.logger.debug(
-                "No future visit names %s; no team needs replanning.",
+                "No future visit names %s. No team needs replanning.",
                 column_value,
             )
         else:

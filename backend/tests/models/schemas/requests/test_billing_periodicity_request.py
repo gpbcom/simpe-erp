@@ -75,7 +75,7 @@ class TestBillingPeriodicityRequest:
         """So the API answers 422 rather than 500.
 
         Notes:
-            The family is what ``STATUS_BY_EXCEPTION`` holds a row for; the
+            The family is what ``STATUS_BY_EXCEPTION`` holds a row for. The
             per-field exception is reached through the MRO. A member outside it
             would be a payload error answered as a server fault.
         """

@@ -24,11 +24,11 @@ from models.billing.exceptions import (
     MTBillInvalidMoment,
     MTBillInvalidNumber,
     MTBillInvalidOperationNature,
-    MTBillInvalidRecipient,
-    MTBillInvalidShare,
     MTBillInvalidPeriod,
     MTBillInvalidPeriodicity,
+    MTBillInvalidRecipient,
     MTBillInvalidSequence,
+    MTBillInvalidShare,
     MTBillInvalidStatus,
     MTBillInvalidTotals,
 )
@@ -301,7 +301,7 @@ class TestBillTotals:
 
         Notes:
             They are stored rather than computed so an issued invoice reprints
-            identically for ever; this is what stops a line being added without
+            identically for ever. This is what stops a line being added without
             them, or a rounding path drifting, and a customer finding it by
             adding up the column themselves.
         """
@@ -368,7 +368,7 @@ class TestBillTotals:
         with pytest.raises(MTBillInvalidLines):
             Bill(**payload)
 
-    def test_total_minutes_sums_the_care_charged_for(self) -> None:
+    def test_total_minutes_sums_the_care_charged(self) -> None:
         """The hours are what a customer checks the amount against."""
         lines = [a_charge(), a_charge(duration_minutes=60)]
         assert Bill(**a_bill(lines=lines)).total_minutes() == 180
@@ -462,7 +462,7 @@ class TestBillLifecycle:
 
         Notes:
             Stored as a string rather than a foreign key for exactly that
-            reason; a blank one would be the audit trail silently absent.
+            reason. A blank one would be the audit trail silently absent.
         """
         assert Bill(**a_bill(validated_by=None)).validated_by is None
         with pytest.raises(MTBillInvalidId):

@@ -102,7 +102,7 @@ class IopoleConnector(InvoicingConnector):
                 if found is not None:
                     return str(found)
         self.logger.warning(
-            "Iopole returned no guid; an asynchronous submission with no "
+            "Iopole returned no guid. An asynchronous submission with no "
             "identifier cannot be followed up at all."
         )
         return ""

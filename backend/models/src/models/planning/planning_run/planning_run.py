@@ -171,7 +171,7 @@ class PlanningRun(BaseModel):
         Notes:
             **Required, for exactly the reason ``company_id`` is, one level
             down.** A run reads its team's accepted quotes and deletes its
-            team's visits; a run that could not name its team would read every
+            team's visits. A run that could not name its team would read every
             team's work and clear every team's calendar. Recorded on the run
             rather than resolved from ``requested_by`` when a worker picks it
             up, because that column carries no foreign key and the account is

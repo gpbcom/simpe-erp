@@ -34,9 +34,9 @@ class TestMigration0028Backfill:
         just as happily if not one row had been written into them.
 
         Every one of those omissions is silent and severe. A company with no
-        head office cannot have a team; a team with nobody on it gives the
+        head office cannot have a team. A team with nobody on it gives the
         planner an empty workforce, so the first run after deployment leaves
-        every visit unplaced; and a quote with no ``team_id`` is one no run ever
+        every visit unplaced. And a quote with no ``team_id`` is one no run ever
         reads, so a family simply stops being visited with nothing on any screen
         saying why.
 

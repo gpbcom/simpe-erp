@@ -590,7 +590,7 @@ class Company(BaseModel):
 
         Notes:
             Deliberately looser than the assistant's ``PhoneNumber``. That one
-            is dialled by the application; this one is printed on a quote, and
+            is dialled by the application. This one is printed on a quote, and
             an agency whose papers carry a switchboard number written
             "01 23 45 67 89 (poste 12)" should not be refused for it.
         """

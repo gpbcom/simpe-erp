@@ -308,7 +308,7 @@ class S3Config(BaseModel):
 
         Notes:
             The ceiling exists because the upload is buffered in memory to be
-            size-checked and content-sniffed before it reaches the bucket; a
+            size-checked and content-sniffed before it reaches the bucket. A
             mistyped limit would otherwise let one request exhaust the
             process's memory.
         """

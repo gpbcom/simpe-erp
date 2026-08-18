@@ -19,7 +19,7 @@ blocks in its compose file, all commented out, and its dashboards show it.
 It costs five containers and roughly a gigabyte, which is the trade. Two
 things follow from it, and both are visible in `app.dev.yaml`:
 `tracing_enabled` is **true**, because a collector is now guaranteed to be
-there to receive the spans; and the three application services run
+there to receive the spans. And the three application services run
 `conf/logger.k8s.yaml`, because Alloy parses their stdout with a
 `stage.json` and a coloured console line is one Loki cannot label. Set
 `SIMPLE_ERP_LOGGER=conf/logger.yaml` to get the colour back and give up the
@@ -127,7 +127,7 @@ tracing off does anyway. Installing it is what makes tracing live, with no call
 site changing.
 
 **Sampling belongs to the collector**, not to the application. The collector
-sees every service's traffic and can decide consistently; a rate set per process
+sees every service's traffic and can decide consistently. A rate set per process
 produces traces complete for one hop and missing the next, which looks like the
 missing service never ran. The policies keep everything that errored, everything
 slow, and 10% of the rest — a thirty-second planning run sampled away is the
@@ -152,7 +152,7 @@ about work not happening.
 | `MessagesAreBeingDeadLettered` | The rate is nearly always zero, which is what makes "more than none" the right threshold |
 | `PlanningRunsExceedTheirBudget` | Points straight at `solver_workers` against the CPU limit |
 | `PlanningQueueIsNotDraining` | Either the workers are not scaling or they are not ready — check `/ready` before adding replicas |
-| `NoServerSentEventReadersAtAll` | Expected overnight; during the day it means the ingress is closing the stream path |
+| `NoServerSentEventReadersAtAll` | Expected overnight. During the day it means the ingress is closing the stream path |
 
 ## Where LangChain will fit
 

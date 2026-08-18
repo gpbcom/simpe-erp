@@ -322,7 +322,7 @@ class TestTheEnumeratedFilters:
         good: str,
         expected: ModelInput,
     ) -> None:
-        """The wire carries a string; the repository wants the enum.
+        """The wire carries a string. The repository wants the enum.
 
         Args:
             filter_class (Type[EntityFilter]): The filter under test.

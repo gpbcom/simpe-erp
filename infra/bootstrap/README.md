@@ -12,12 +12,12 @@ Install order matters only where it is noted.
 |---|---|
 | **cert-manager** | Issues the ingress certificate. Must exist before the chart, or the Ingress references a ClusterIssuer that is not there |
 | **ingress-nginx** | The ingress class the chart names. Its `proxy-buffering: off` annotation is what keeps the notification stream a stream |
-| **External Secrets Operator** | Writes the one Secret every workload reads. The chart declares an `ExternalSecret`; this is what acts on it |
+| **External Secrets Operator** | Writes the one Secret every workload reads. The chart declares an `ExternalSecret`. This is what acts on it |
 | **KEDA** | The workers' autoscaler. Without it the `ScaledObject`s are inert and both workers sit at their replica floor |
 | **cluster-autoscaler** | Adds nodes. Chosen over Karpenter deliberately: Karpenter is AWS and Azure, and this has to run on Kapsule, a hyperscaler or on-prem alike |
 | **kube-prometheus-stack** | Reads the `ServiceMonitor`, `PodMonitor` and `PrometheusRule` the chart ships |
 | **Loki + Grafana Alloy** | The logs. Alloy reads the kubelet's stream, which is why the application writes JSON to stdout and nothing to disk |
-| **Tempo + OpenTelemetry Collector** | The traces. The collector is the only tracing address the application knows; the fan-out happens inside it |
+| **Tempo + OpenTelemetry Collector** | The traces. The collector is the only tracing address the application knows. The fan-out happens inside it |
 | **CloudNativePG** | PostgreSQL, with backups and failover |
 | **PgBouncer** | In front of it. Every replica opens up to `pool_size + max_overflow` connections, and at the chart's replica counts that is more backends than PostgreSQL's default `max_connections` |
 | **RabbitMQ Cluster Operator** | The broker. **Cluster it before the first deploy** — the queues are declared `quorum`, and changing an existing classic queue's type is a `PRECONDITION_FAILED` rather than an upgrade |

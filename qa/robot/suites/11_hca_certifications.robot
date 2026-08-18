@@ -158,7 +158,7 @@ Choose A Qualification The Target Does Not Hold
     ${available}=    Evaluate
     ...    [e for e in $catalogue if e["code"] not in $held_codes]
     Should Not Be Empty    ${available}
-    ...    msg=Every seeded qualification is already held; the suite has nothing to add.
+    ...    msg=Every seeded qualification is already held. The suite has nothing to add.
     Set Suite Variable    ${QA_CERTIFICATION_CODE}    ${available}[0][code]
     Set Suite Variable    ${QA_CERTIFICATION_LABEL}    ${available}[0][label]
 
@@ -189,7 +189,7 @@ Restore The Assistant And Close
     [Documentation]    Strip the QA qualification however the suite ended.
     ...
     ...    A belt-and-braces teardown. The removal test does this in the normal
-    ...    path; this catches the case where an earlier test failed and left the
+    ...    path. This catches the case where an earlier test failed and left the
     ...    qualification behind, which would otherwise poison the next run.
     ...
     ...    Reported rather than ignored. Poisoning the next run is exactly what

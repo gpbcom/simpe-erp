@@ -17,7 +17,7 @@ vi.mock('react-i18next', () => ({
  * It is the one component in this codebase that fights jsdom — it measures the
  * viewport on mount — and none of the questions here are about it. What is
  * under test is which dataset the page asks for, which rail it draws and which
- * controls it offers; the grid is somebody else's problem.
+ * controls it offers. The grid is somebody else's problem.
  */
 vi.mock('@fullcalendar/react', () => ({
   default: ({
@@ -102,8 +102,8 @@ const allPlannings = vi.fn();
 const customerPlannings = vi.fn();
 const startRun = vi.fn();
 let role: UserRole = 'manager';
-let teams: { id: string; name: string; agency_id: string }[] = [];
-let agencies: { id: string; name: string }[] = [];
+let teams: { id: string. Name: string. Agency_id: string }[] = [];
+let agencies: { id: string. Name: string }[] = [];
 
 vi.mock('@/store/session', () => ({
   useSession: (selector: (state: { user: { role: UserRole } }) => unknown) =>

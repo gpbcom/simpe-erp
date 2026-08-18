@@ -193,7 +193,7 @@ class TestUser:
         assert user.role is UserRole.HCA
 
     def test_the_password_hash_is_not_stripped(self) -> None:
-        """A hash is opaque; trimming it would corrupt the credential."""
+        """A hash is opaque. Trimming it would corrupt the credential."""
         user = User(
             company_id="company-1",
             email="a@b.com",
@@ -371,7 +371,7 @@ class TestUser:
 
     @pytest.mark.parametrize("role", [UserRole.HCA, UserRole.MANAGER, UserRole.ADMIN])
     def test_staff_are_not_narrowed_to_one_household(self, role: UserRole) -> None:
-        """Staff are answered ``True``; their own route guards gate them.
+        """Staff are answered ``True``. Their own route guards gate them.
 
         Args:
             role (UserRole): The staff role under test.
@@ -791,7 +791,7 @@ class TestAccountLanguage:
     def test_a_known_language_is_coerced_from_a_string(
         self, valid_manager_kwargs: Dict[str, ModelInput]
     ) -> None:
-        """The API sends ``"en"``; the model holds a member."""
+        """The API sends ``"en"``. The model holds a member."""
         assert (
             User(**{**valid_manager_kwargs, "language": "en"}).language is Language.EN
         )

@@ -27,7 +27,7 @@ class BillingWebhookConfig(WebhookConfig):
           *planning* secret — a misconfiguration that authenticates
           successfully and does the wrong thing, which is the worst kind.
         - It inherits every validator and therefore needs no exception family of
-          its own; a bad URL or timeout is refused exactly as the planning
+          its own. A bad URL or timeout is refused exactly as the planning
           webhook's would be.
         - Disabled by default, like its parent. An agency that has not
           configured outbound mail should approve invoices without anything

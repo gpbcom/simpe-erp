@@ -57,7 +57,7 @@ class PlanningRunRepository(BaseRepository[PlanningRunRow]):
         Notes:
             - **Commits, where every other create only flushes.** The endpoint
               answers 202 with this run's identifier and schedules a background
-              job against it; that job opens its own session, so a row that is
+              job against it. That job opens its own session, so a row that is
               only flushed is invisible to it and the job fails immediately with
               "no such run" while the caller polls a record that never moves.
             - Committing here is the narrow exception to one-transaction-per-
@@ -187,7 +187,7 @@ class PlanningRunRepository(BaseRepository[PlanningRunRow]):
         Args:
             company_id (str): The company whose runs are being read.
             team_ids (Optional[List[str]]): ``None`` for every team of the
-                company; a list to restrict to those teams.
+                company. A list to restrict to those teams.
             page (int): One-based page number.
             size (Optional[int]): Page size.
             status (Optional[PlanningRunStatus]): Restrict to one status.
@@ -216,7 +216,7 @@ class PlanningRunRepository(BaseRepository[PlanningRunRow]):
         )
         if team_ids is not None and not team_ids:
             self.logger.warning(
-                "Company %s was listed for no team; no run can match.", company_id
+                "Company %s was listed for no team. No run can match.", company_id
             )
             return []
         statement = select(PlanningRunRow).where(

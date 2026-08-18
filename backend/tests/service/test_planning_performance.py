@@ -20,7 +20,7 @@ BUDGET_SECONDS = 60.0
 ASSISTANTS = 12
 
 #: A week at roughly forty percent of the workforce's capacity. Loose enough
-#: that it was never the problem; it is here as a guard against a regression
+#: that it was never the problem. It is here as a guard against a regression
 #: that only shows up on easy input.
 EASY_VISITS = 95
 

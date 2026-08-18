@@ -130,7 +130,7 @@ class TestCustomerAccountRequest:
         ],
     )
     def test_a_malformed_address_is_refused(self, value: ModelInput) -> None:
-        """The address is the credential; it has to be reachable.
+        """The address is the credential. It has to be reachable.
 
         Args:
             value (ModelInput): The rejected value.

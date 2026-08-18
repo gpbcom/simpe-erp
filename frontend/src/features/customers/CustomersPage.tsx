@@ -34,7 +34,7 @@ import type { Customer } from '@/api/types';
  * the two or three things this application is opened for.
  *
  * A grid rather than the card layout the assistant's own portfolio uses. A
- * manager scans forty households looking for one; an assistant reads the eight
+ * manager scans forty households looking for one. An assistant reads the eight
  * they visit. Cards are better for reading and worse for finding.
  *
  * **Registering somebody starts here**, beside the search that proves they are

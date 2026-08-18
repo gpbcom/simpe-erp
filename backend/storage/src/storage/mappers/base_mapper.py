@@ -44,7 +44,7 @@ class BaseMapper(ABC, Generic[ModelType, RowType]):
           used to be a second, independent copy of the same column list, which
           is exactly the kind of duplication that lets an added field be
           written on create and silently forgotten on update.
-        - ``created_at`` is only ever set when the row is built; the update path
+        - ``created_at`` is only ever set when the row is built. The update path
           never touches it. The row's own creation time is the truth, not
           whatever the caller happened to send back.
         - Every model mapped here exposes ``id``. That is the contract a

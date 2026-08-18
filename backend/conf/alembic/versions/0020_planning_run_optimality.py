@@ -20,7 +20,7 @@ Notes:
     **Nullable, and null is not false.** Every run that predates this
     revision was solved by a single pass that never asked the question, so
     there is no honest value to backfill. False would assert that those plans
-    were found wanting, which nothing established; the screen renders null the
+    were found wanting, which nothing established. The screen renders null the
     way it always did.
 """
 

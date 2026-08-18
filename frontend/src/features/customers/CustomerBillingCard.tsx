@@ -7,7 +7,7 @@ import { useBillingSettings, useSetCustomerBillingPeriodicity } from '@/api/quer
 import type { BillingPeriodicity, Customer } from '@/api/types';
 
 const AGENCY = '';
-const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
+const PERIODICITIES: { value: BillingPeriodicity. Label: string }[] = [
   { value: 'weekly', label: 'billingSettings.weekly' },
   { value: 'monthly', label: 'billingSettings.monthly' },
   { value: 'yearly', label: 'billingSettings.yearly' },
@@ -35,7 +35,7 @@ interface CustomerBillingCardProps {
  * to know whether those are the same thing today.
  *
  * **Saving re-issues nothing**, and the card says so. The change decides what
- * the next generation run bills them over; an invoice already written keeps the
+ * the next generation run bills them over. An invoice already written keeps the
  * period it was written for, and a manager who assumed otherwise would be
  * waiting for documents that are never coming.
  */

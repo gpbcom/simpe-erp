@@ -126,7 +126,7 @@ class TestAnnouncingASucceededRun:
     async def test_it_carries_the_shared_secret(
         self, transport: _Transport, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The endpoint has no signed-in user; the header is what authenticates."""
+        """The endpoint has no signed-in user. The header is what authenticates."""
         monkeypatch.setenv("TEST_WEBHOOK_TOKEN", "s3cret")
 
         await PlanningWebhook(config=_config()).announce("run-1")
@@ -176,7 +176,7 @@ class TestAnnouncingASucceededRun:
     async def test_an_unreachable_dispatcher_is_swallowed(
         self, transport: _Transport, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The planning is already stored; the documents can be resent by hand."""
+        """The planning is already stored. The documents can be resent by hand."""
         monkeypatch.setenv("TEST_WEBHOOK_TOKEN", "s3cret")
         transport.failure = httpx.ConnectError("no route to host")
 

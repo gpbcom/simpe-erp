@@ -120,7 +120,7 @@ class TestBillRecipient:
         """**The check digit is the point, not the length.**
 
         Notes:
-            Nine digits is a shape; the Luhn checksum is what catches the
+            Nine digits is a shape. The Luhn checksum is what catches the
             transposed pair. Caught here it is a 422 naming the field; missed,
             it is a platform refusing an invoice whose number cannot be reused.
         """
@@ -159,7 +159,7 @@ class TestBillRecipient:
     # ------------------------------------------------------------------ #
 
     def test_a_vat_number_is_normalised(self) -> None:
-        """Spacing and case vary; the number does not."""
+        """Spacing and case vary. The number does not."""
         recipient = BillRecipient(
             kind=RecipientKind.BUSINESS,
             name="Mutuelle du Centre",

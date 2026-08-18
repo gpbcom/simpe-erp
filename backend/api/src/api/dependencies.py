@@ -120,7 +120,7 @@ def get_app_config() -> AppConfig:
         - Cached because the configuration is immutable for the process's
           lifetime and re-reading the file on every request would be pure waste.
         - Which file is loaded is :class:`AppConfig`'s decision, driven by
-          ``$SIMPLE_ERP_CONFIG``; the Alembic environment loads the same way, so the
+          ``$SIMPLE_ERP_CONFIG``. The Alembic environment loads the same way, so the
           schema and the running application can never come from different
           configurations.
     """
@@ -508,7 +508,7 @@ def get_event_publisher() -> EventPublisher:
 
     Notes:
         A module-level instance rather than a per-request one. Opening an AMQP
-        connection costs a round trip and a channel; doing it per request would
+        connection costs a round trip and a channel. Doing it per request would
         make publishing an event more expensive than the work that caused it.
     """
     global _event_publisher
@@ -924,7 +924,7 @@ async def get_auth_service(
     Notes:
         The object store is passed here and not to
         :func:`get_auth_service_standalone`. This factory serves the routes,
-        including the two that replace and remove a portrait; the standalone one
+        including the two that replace and remove a portrait. The standalone one
         serves the authentication middleware, which only resolves tokens and has
         no business holding a bucket client.
     """
@@ -1010,7 +1010,7 @@ def get_current_user(request: Request) -> User:
 
     Notes:
         The account is attached to the request by the authentication
-        middleware; this only reads it. Written as a plain synchronous function
+        middleware. This only reads it. Written as a plain synchronous function
         taking the request — rather than a chain of ``Depends`` — so it can be
         unit-tested against a stub request with no application at all.
     """
@@ -1050,7 +1050,7 @@ def get_hca_user(request: Request) -> User:
     user = get_current_user(request)
     if user.role is not UserRole.HCA:
         logger.warning(
-            "Account %s (%s) is not an assistant; denied %s %s.",
+            "Account %s (%s) is not an assistant. Denied %s %s.",
             user.id,
             user.role.value,
             request.method,
@@ -1091,7 +1091,7 @@ def get_customer_user(request: Request) -> User:
     logger.debug("Checking customer access for account %s.", user.id)
     if user.role is not UserRole.CUSTOMER:
         logger.warning(
-            "Account %s (%s) is not a customer; denied %s %s.",
+            "Account %s (%s) is not a customer. Denied %s %s.",
             user.id,
             user.role.value,
             request.method,
@@ -1103,7 +1103,7 @@ def get_customer_user(request: Request) -> User:
         )
     if user.customer_id is None:
         logger.error(
-            "Customer account %s carries no customer link; access refused.", user.id
+            "Customer account %s carries no customer link. Access refused.", user.id
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1138,7 +1138,7 @@ def get_manager_user(request: Request) -> User:
     user = get_current_user(request)
     if not user.role.is_staff() or not user.role.has_at_least(UserRole.MANAGER):
         logger.warning(
-            "Account %s (%s) is below manager; denied %s %s.",
+            "Account %s (%s) is below manager. Denied %s %s.",
             user.id,
             user.role.value,
             request.method,
@@ -1299,7 +1299,7 @@ def get_admin_user(request: Request) -> User:
     user = get_current_user(request)
     if not user.is_admin():
         logger.warning(
-            "Account %s (%s) is not an administrator; denied %s %s.",
+            "Account %s (%s) is not an administrator. Denied %s %s.",
             user.id,
             user.role.value,
             request.method,

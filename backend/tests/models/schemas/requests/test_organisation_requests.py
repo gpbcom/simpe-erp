@@ -144,7 +144,7 @@ class TestAgencyUpdateRequest:
     # ------------------------------------------------------------------ #
 
     def test_it_accepts_the_three_site_fields(self) -> None:
-        """Name, address and type; nothing about the business behind them."""
+        """Name, address and type. Nothing about the business behind them."""
         request = AgencyUpdateRequest(name="Antenne Est", agency_type="warehouse")
         assert request.agency_type is AgencyType.WAREHOUSE
 

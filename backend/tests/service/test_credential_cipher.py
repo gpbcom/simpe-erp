@@ -180,7 +180,7 @@ class TestRefusingToOpen:
             monkeypatch (pytest.MonkeyPatch): The patcher.
 
         Notes:
-            The fixed salt means the derivation is the same everywhere; it is
+            The fixed salt means the derivation is the same everywhere. It is
             the *secret* that separates deployments, and this is the assertion
             that says so.
         """

@@ -32,7 +32,7 @@ class AgencyCreateRequest(BaseModel):
           A route taking a whole ``Agency`` as its body would let an
           administrator of one company file a site under another's identity, and
           set the IBAN that every invoice is printed with. None of those fields
-          exist here, so no payload can carry them; the head office inherits
+          exist here, so no payload can carry them. The head office inherits
           them from its company inside
           :class:`~service.organisation.agencies.AgencyService`.
         - ``company_id`` is absent for the same reason it is absent from

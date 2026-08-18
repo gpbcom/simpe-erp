@@ -32,7 +32,7 @@ class ObservabilityConfig(BaseModel):
 
     Notes:
         - **Metrics and tracing switch independently.** Metrics are cheap and
-          wanted everywhere, including on a laptop; tracing needs a collector to
+          wanted everywhere, including on a laptop. Tracing needs a collector to
           export to, and a process configured to export to one that is not there
           adds a failed connection to every request. So the local
           configuration turns the first on and the second off, and neither
@@ -43,7 +43,7 @@ class ObservabilityConfig(BaseModel):
           instead would make "API latency across staging and production" two
           series that cannot be compared.
         - There is no sampling rate here. It belongs to the collector, which
-          sees every service's traffic and can decide consistently; a rate set
+          sees every service's traffic and can decide consistently. A rate set
           per process produces traces that are complete for one hop and missing
           the next.
     """
@@ -195,7 +195,7 @@ class ObservabilityConfig(BaseModel):
                 positive number.
 
         Notes:
-            A zero timeout is not "wait forever"; it fails the export
+            A zero timeout is not "wait forever". It fails the export
             immediately, and the only symptom is an empty trace view.
         """
         if isinstance(value, bool) or not isinstance(value, (int, float)):

@@ -24,7 +24,7 @@ class StaffAccountRequest(BaseModel):
 
     Notes:
         **There is no password field, and that is the design.** The temporary
-        password is generated server-side and returned once; letting an
+        password is generated server-side and returned once. Letting an
         administrator choose it would mean the first credential is one they
         picked, typed into a ticket and probably reused across three new
         starters.

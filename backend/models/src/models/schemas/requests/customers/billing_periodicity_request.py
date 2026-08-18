@@ -35,7 +35,7 @@ class BillingPeriodicityRequest(BaseModel):
 
     periodicity: Optional[BillingPeriodicity] = Field(
         default=None,
-        description="The periodicity to bill this customer on; null follows "
+        description="The periodicity to bill this customer on. Null follows "
         "the agency's own.",
     )
 

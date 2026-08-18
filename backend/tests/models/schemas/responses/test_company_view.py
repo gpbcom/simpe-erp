@@ -51,7 +51,7 @@ class TestCompanyViewRevealsOnlyToAnAdministrator:
         assert view.iban_is_masked is False
 
     def test_everybody_else_reads_it_masked(self) -> None:
-        """A manager runs the week; they have no reason to hold the account.
+        """A manager runs the week. They have no reason to hold the account.
 
         Notes:
             The assertion that matters is the negative one. Checking the

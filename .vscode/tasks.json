@@ -44,7 +44,7 @@
         },
         {
             // Same run with the browser on screen. The suites default to
-            // headless; this is the switch a developer reaches for when a
+            // headless. This is the switch a developer reaches for when a
             // failure only makes sense when watched.
             "label": "QA: run the campaign (headed)",
             "type": "shell",

@@ -665,7 +665,7 @@ class TestInvoiceDocuments:
     def test_the_key_is_random_not_derived_from_the_number(
         self, storage: S3Storage
     ) -> None:
-        """**The invoice number is printed; the key must not be guessable.**
+        """**The invoice number is printed. The key must not be guessable.**
 
         Notes:
             A key built from the number would be derivable by anybody who has

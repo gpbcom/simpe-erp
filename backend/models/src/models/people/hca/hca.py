@@ -11,12 +11,15 @@ from pydantic import (
     field_validator,
 )
 
+from models.base.exceptions import MTInvalidPersonException
+from models.base.person import Person
+from models.base.portrait_holder import PortraitHolder
+
 # First-party imports
 from models.enums import ContractType, Weekday
 from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.hca.certification import Certification
 from models.people.hca.driving_license import DrivingLicense
-from models.people.hca.skill import Skill
 from models.people.hca.exceptions import (
     MTHcaInvalidAddress,
     MTHcaInvalidAvailability,
@@ -34,9 +37,7 @@ from models.people.hca.exceptions import (
     MTHcaInvalidSkills,
     MTHcaInvalidWorkingWeekdays,
 )
-from models.base.exceptions import MTInvalidPersonException
-from models.base.person import Person
-from models.base.portrait_holder import PortraitHolder
+from models.people.hca.skill import Skill
 
 
 class Hca(Person, PortraitHolder):
@@ -101,7 +102,7 @@ class Hca(Person, PortraitHolder):
          of these three.
        - **``skills`` sits on the other side of that line, and is the only
          planner-visible field its owner may write.** A certification is a
-         claim about what somebody was awarded, so a manager records it; a
+         claim about what somebody was awarded, so a manager records it. A
          skill is a claim about what they can do, so they declare it. Letting
          an assistant grant themselves a diploma would put them on work they
          are not trained for; making them ask a manager to record that they
@@ -113,7 +114,7 @@ class Hca(Person, PortraitHolder):
        - ``field_employee`` **defaults to True**, and the default is the whole
          reason the field could be added safely. Every assistant record that
          existed before it did was, by definition, somebody the planner was
-         already free to schedule; defaulting to False would have emptied the
+         already free to schedule. Defaulting to False would have emptied the
          workforce on the deployment that introduced it and failed every
          planning run until somebody ticked a box they had not been told about.
          It is a boolean on the *person*, not a role check, because who goes

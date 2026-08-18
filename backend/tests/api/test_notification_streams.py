@@ -76,7 +76,7 @@ class TestWaking:
         """Nobody connected is the normal case, not a failure.
 
         Notes:
-            The notification is already in the database; the reader will find it
+            The notification is already in the database. The reader will find it
             when they next look.
         """
         assert streams.wake("nobody") == 0
@@ -295,7 +295,7 @@ class TestFrames:
         assert response.headers["cache-control"] == "no-cache"
 
     def test_the_frames_are_valid_server_sent_events(self) -> None:
-        """``EventSource`` needs the blank line; a comment needs the colon.
+        """``EventSource`` needs the blank line. A comment needs the colon.
 
         Notes:
             The event names are the contract with the browser: the client

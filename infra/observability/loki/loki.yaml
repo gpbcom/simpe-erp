@@ -1,5 +1,5 @@
 # Loki, single-binary and filesystem-backed. Enough to read a laptop's logs and
-# to prove the derived-field link from a log line to its trace; the cluster runs
+# to prove the derived-field link from a log line to its trace. The cluster runs
 # the same component with object storage behind it.
 auth_enabled: false
 

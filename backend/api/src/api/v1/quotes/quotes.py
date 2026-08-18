@@ -9,15 +9,16 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 # First-party imports
 from api.dependencies import (
-    get_quote_document_service,
     get_admin_user,
     get_event_publisher,
     get_manager_user,
+    get_quote_document_service,
     get_quote_service,
 )
 from models.auth.user import User
 from models.enums import EventRoutingKey, QuoteStatus
 from models.quoting.quote import Quote
+from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
 from models.schemas.requests.quoting.quote_create_request import (
     QuoteCreateRequest,
 )
@@ -25,15 +26,14 @@ from models.schemas.requests.quoting.quote_filter import QuoteFilter
 from models.schemas.requests.quoting.quote_header_request import (
     QuoteHeaderRequest,
 )
+from models.schemas.requests.quoting.quote_interruption_request import (
+    QuoteInterruptionRequest,
+)
 from models.schemas.requests.quoting.quote_lines_request import QuoteLinesRequest
 from models.schemas.requests.quoting.quote_reschedule_request import (
     QuoteRescheduleRequest,
 )
-from models.schemas.requests.quoting.quote_interruption_request import (
-    QuoteInterruptionRequest,
-)
 from models.schemas.requests.quoting.quote_team_request import QuoteTeamRequest
-from models.quoting.quote_type_week_aggregate import QuoteTypeWeekAggregate
 from service.messaging.publisher import EventPublisher
 from service.quotes.documents import QuoteDocumentService
 from service.quotes.quotes import QuoteService
@@ -64,7 +64,7 @@ async def create_quote(
         MTQuoteUnassignable: If no team can be given the work — the household is
             unknown, or the company has no team with anybody on it; 422.
         MTPricingUnknownInterventionType: If a line names a type that is not in
-            the catalog; answered as a 422.
+            the catalog. Answered as a 422.
 
     Notes:
         - The author and the agency are taken from the credential, never from
@@ -110,7 +110,7 @@ async def list_quotes(
         List[Quote]: The matching quotes of the teams the caller may read.
 
     Raises:
-        MTInvalidQuoteFilterException: If a filter is malformed; answered as a
+        MTInvalidQuoteFilterException: If a filter is malformed. Answered as a
             422.
 
     Notes:
@@ -133,7 +133,7 @@ async def list_quotes(
             caller.email,
             authored_by,
         )
-    return await service.list_for(
+    return await service.list(
         caller,
         page=page,
         size=size,
@@ -190,18 +190,18 @@ async def reschedule_quote_line(
         Quote: The repriced quote, still waiting to be validated.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
         MTQuoteLineNotFound: If the quote no longer carries that line;
             answered as a 404.
         MTQuoteLineWindowTooShort: If the window is narrower than the work
-            takes; answered as a 422.
+            takes. Answered as a 422.
         MTPricingUnknownInterventionType: If the line names a type that is not
-            in the catalogue; answered as a 422.
+            in the catalogue. Answered as a 422.
 
     Notes:
         - **This is how the slots on the validation screen become clickable.**
           A planner that returned a quote also offers the times somebody
-          qualified is free; accepting one here writes the new day and window
+          qualified is free. Accepting one here writes the new day and window
           onto the line it belongs to.
         - **The status does not move.** Accepting a time answers *when* the
           work happens, not *whether* the agency has agreed to it — so the
@@ -247,9 +247,9 @@ async def interrupt_quote(
         Quote: The shortened quote, with its new total.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
         MTQuoteInvalidInterruption: If the day falls before the quote was
-            issued or before its first service; answered as a 422.
+            issued or before its first service. Answered as a 422.
 
     Notes:
         The cancelled visits stay on the quote, priced, and stop counting
@@ -280,7 +280,7 @@ async def set_quote_auto_renew(
         Quote: The updated quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
 
     Notes:
         Nothing is renewed until the quote reaches ``valid_until``, so turning
@@ -311,7 +311,7 @@ async def set_quote_team(
 
     Raises:
         MTQuoteNotFound: If no such quote exists, or it belongs to another
-            company; answered as a 404.
+            company. Answered as a 404.
         MTQuoteTeamForbidden: If the caller runs neither team; 403.
         MTTeamNotFound: If the destination team does not exist; 404.
 
@@ -355,7 +355,7 @@ async def get_quote(
         Quote: The quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
     """
     return await service.get(quote_id)
 
@@ -377,7 +377,7 @@ async def get_quote_aggregates(
         List[QuoteTypeWeekAggregate]: The totals, in display order.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
 
     Notes:
         Served separately as well as inline on the quote, so a summary view can
@@ -407,8 +407,8 @@ async def replace_quote_lines(
         Quote: The repriced quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteNotEditable: If the quote is past draft; answered as a 409.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteNotEditable: If the quote is past draft. Answered as a 409.
         MTPricingUnknownInterventionType: If a line names an unknown type;
             answered as a 422.
 
@@ -439,7 +439,7 @@ async def update_quote_header(
         Quote: The updated quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
 
     Notes:
         Everything a screen shows about a quote is editable somewhere, and
@@ -480,8 +480,8 @@ async def reprice_quote(
         Quote: The repriced quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteNotEditable: If the quote is past draft; answered as a 409.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteNotEditable: If the quote is past draft. Answered as a 409.
         MTPricingUnknownInterventionType: If a line names an unknown type;
             answered as a 422.
 
@@ -511,10 +511,10 @@ async def validate_quote(
         Quote: The validated quote, accepted and schedulable.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteNotEditable: If the quote is not awaiting validation; answered
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteNotEditable: If the quote is not awaiting validation. Answered
             as a 409.
-        MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.
+        MTQuoteNotPriced: If the quote has no priced lines. Answered as a 409.
 
     Notes:
         - **Manager-gated, and that is the whole point of the status.** An
@@ -565,8 +565,8 @@ async def refuse_quote_validation(
         Quote: The quote, back in draft and editable again.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteNotEditable: If the quote is not awaiting validation; answered
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteNotEditable: If the quote is not awaiting validation. Answered
             as a 409.
 
     Notes:
@@ -609,9 +609,9 @@ async def send_quote(
         Quote: The issued quote, accepted and schedulable.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.
-        MTQuoteNotEditable: If the quote is past draft; answered as a 409.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteNotPriced: If the quote has no priced lines. Answered as a 409.
+        MTQuoteNotEditable: If the quote is past draft. Answered as a 409.
 
     Notes:
         Sending accepts the quote, so this is the moment its lines are
@@ -639,8 +639,8 @@ async def accept_quote(
         Quote: The updated quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteNotPriced: If the quote has no priced lines; answered as a 409.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteNotPriced: If the quote has no priced lines. Answered as a 409.
 
     Notes:
         This is the moment work is committed to: an accepted quote's lines are
@@ -666,7 +666,7 @@ async def reject_quote(
         Quote: The updated quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
     """
     return await service.reject(quote_id)
 
@@ -685,7 +685,7 @@ async def delete_quote(
         caller (User): The authenticated caller; enforces administrator access.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
 
     Notes:
         - **Administrator-gated, not manager-gated**, unlike every other route
@@ -725,9 +725,9 @@ async def download_quote_document(
         Response: The document, as ``application/pdf``.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; a 404.
-        MTQuoteNotPriced: If it has never been priced; a 422.
-        MTQuoteRenderFailed: If the document could not be laid out; a 500.
+        MTQuoteNotFound: If no such quote exists. A 404.
+        MTQuoteNotPriced: If it has never been priced. A 422.
+        MTQuoteRenderFailed: If the document could not be laid out. A 500.
 
     Notes:
         - **Rendered on demand, not read from a bucket.** Unlike an invoice, a
@@ -735,7 +735,7 @@ async def download_quote_document(
           lines are edited. A stored file would go stale silently and somebody
           would download last month's prices.
         - Written in the **caller's** language. A manager checking what a
-          household will receive reads it in their own; the portal route below
+          household will receive reads it in their own. The portal route below
           uses the household's.
         - ``response_model=None`` because the body is bytes — without it FastAPI
           tries to serialise the PDF as JSON. The ``responses`` block keeps the

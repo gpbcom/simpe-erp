@@ -29,7 +29,7 @@ interface FormState {
 const MIN_TERMS_DAYS = 1;
 const MAX_TERMS_DAYS = 60;
 
-const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
+const PERIODICITIES: { value: BillingPeriodicity. Label: string }[] = [
   { value: 'weekly', label: 'billingSettings.weekly' },
   { value: 'monthly', label: 'billingSettings.monthly' },
   { value: 'yearly', label: 'billingSettings.yearly' },
@@ -52,7 +52,7 @@ const PERIODICITIES: { value: BillingPeriodicity; label: string }[] = [
  * manager who read this screen as "everybody is billed monthly" would have no
  * way to account for the weekly invoices coming out of the same run.
  *
- * **Saving re-issues nothing.** The rules apply to the next generation run; an
+ * **Saving re-issues nothing.** The rules apply to the next generation run. An
  * invoice already issued keeps the terms it was printed with, because those
  * terms are part of what the customer was told. The page says so rather than
  * leaving a manager to find out.

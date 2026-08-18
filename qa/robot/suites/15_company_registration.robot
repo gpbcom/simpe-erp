@@ -2,12 +2,12 @@
 Documentation    Founding an agency from the sign-in card, and becoming its administrator.
 ...
 ...              The one screen somebody with no account can reach and act on.
-...              Everything else in this campaign starts signed in; this starts
+...              Everything else in this campaign starts signed in. This starts
 ...              from nothing and ends with a session.
 ...
 ...              **Idempotent by construction, and it has to work harder at it
 ...              than the other suites do.** The others create quotes and delete
-...              them; this creates an *agency and an account*, which are what
+...              them. This creates an *agency and an account*, which are what
 ...              every other record hangs off. The suffix keeps two runs from
 ...              colliding, and the teardown removes the account first and then
 ...              the agency — in that order, because an agency somebody still
@@ -115,7 +115,7 @@ A Taken Name Is Refused Rather Than Silently Accepted
     Wait For Elements State    [data-testid="register-company-card"]     visible
 
 A Taken Address Is Refused The Same Way
-    [Documentation]    The founder's address is a credential; it cannot be reused.
+    [Documentation]    The founder's address is a credential. It cannot be reused.
     [Tags]    registration
     ${suffix}=    Unique Suffix
     Open The Registration Form
@@ -213,7 +213,7 @@ Remove The Founded Agency
     ...    account — and both are looked up independently so whichever
     ...    landed is removed.
     IF    '${FOUNDED_COMPANY_NAME}' == '${EMPTY}'
-        Log    This run founded no agency; nothing to remove.
+        Log    This run founded no agency. Nothing to remove.
         RETURN
     END
     ${agency}=    Agency Named    ${FOUNDED_COMPANY_NAME}

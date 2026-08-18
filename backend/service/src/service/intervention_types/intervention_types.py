@@ -54,7 +54,7 @@ class InterventionTypeService:
             types (InterventionTypeRepository): The catalog store.
             certifications (Optional[CertificationTypeService]): The
                 certification catalogue. Optional so a caller that only reads
-                the catalog need not build one; a write naming a requirement
+                the catalog need not build one. A write naming a requirement
                 without it is refused rather than stored unchecked.
             skills (Optional[SkillTypeService]): The skill catalogue, optional
                 on the same terms.
@@ -101,7 +101,7 @@ class InterventionTypeService:
                 len(codes),
             )
             raise MTCertificationTypeUnknownCode(
-                "Certification requirements cannot be verified; the "
+                "Certification requirements cannot be verified. The "
                 "certification catalogue is unavailable."
             )
         await self.certifications.assert_known(codes)
@@ -131,7 +131,7 @@ class InterventionTypeService:
                 len(codes),
             )
             raise MTSkillTypeUnknownCode(
-                "Skill requirements cannot be verified; the skill catalogue is "
+                "Skill requirements cannot be verified. The skill catalogue is "
                 "unavailable."
             )
         await self.skills.assert_known(codes)
@@ -336,6 +336,6 @@ class InterventionTypeService:
         )
         if not types:
             self.logger.warning(
-                "The catalog returned nothing; no service can be quoted."
+                "The catalog returned nothing. No service can be quoted."
             )
         return types

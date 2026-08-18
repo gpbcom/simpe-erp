@@ -86,7 +86,7 @@ class TestEmploymentUpdateRequest:
         Notes:
             **This placement is the rule that an assistant may not withdraw
             themselves from the workforce.** A manager or an administrator
-            reaches this model for anybody, including themselves; an assistant
+            reaches this model for anybody, including themselves. An assistant
             reaches only
             :class:`~models.schemas.requests.hca.hca_profile_update_request.HcaProfileUpdateRequest`,
             which carries no such field. Expressing it as a check inside a

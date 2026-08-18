@@ -15,7 +15,7 @@ import { useIntegrations } from '@/api/queries';
  * **Electronic invoicing is an obligation, not a feature**, which is why an
  * agency with nothing connected is told rather than left to notice an empty
  * list. From September 2027 a PME must issue electronic invoices and perform
- * e-reporting; invoicing a conseil départemental through Chorus Pro has been
+ * e-reporting. Invoicing a conseil départemental through Chorus Pro has been
  * mandatory since 2020.
  *
  * **Rendered on the bills list as well as in the settings**, because the bills

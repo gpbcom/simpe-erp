@@ -187,7 +187,7 @@ class TestTheAnnouncement:
 
         Notes:
             The invoice is already written, numbered and downloadable. An
-            unreachable mailer must not dead-letter the message; the bill stays
+            unreachable mailer must not dead-letter the message. The bill stays
             at accepted, which reads as "approved but not yet out".
         """
         monkeypatch.setenv(TOKEN_ENV, "s3cret")

@@ -384,7 +384,7 @@ class TestOptionalCollaborators:
     async def test_a_visit_with_no_identifier_is_still_deletable(
         self, service: InterventionService, interventions: AsyncMock
     ) -> None:
-        """The caller passes the identifier; the model's own may be unset.
+        """The caller passes the identifier. The model's own may be unset.
 
         Notes:
             Interventions read back from the store always carry one, but the

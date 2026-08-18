@@ -154,7 +154,7 @@ class TestBillingSettingsAudit:
     """Tests for the record of who changed the terms."""
 
     def test_the_editor_is_optional_but_never_blank(self) -> None:
-        """Seeded defaults were nobody's decision; an edit is somebody's.
+        """Seeded defaults were nobody's decision. An edit is somebody's.
 
         Notes:
             "Who put the payment terms to sixty days?" is a question with a name
@@ -194,12 +194,12 @@ class TestBillingSettingsBehaviour:
             date on the document and the one in the record cannot differ.
         """
         settings = BillingSettings(payment_terms_days=30)
-        assert settings.due_date_for(date(2026, 4, 1)) == date(2026, 5, 1)
+        assert settings.due_date(date(2026, 4, 1)) == date(2026, 5, 1)
 
     def test_the_window_comes_from_the_configured_rule(self) -> None:
         """A caller holding the settings never reaches past them."""
         weekly = BillingSettings(periodicity=BillingPeriodicity.WEEKLY)
-        assert weekly.window_for(date(2026, 8, 13)) == (
+        assert weekly.window(date(2026, 8, 13)) == (
             date(2026, 8, 10),
             date(2026, 8, 16),
         )

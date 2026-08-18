@@ -284,7 +284,7 @@ A Manager With An Assistant Record May Edit Employment
     [Tags]    smoke    account    access
     ${manager_hca}=    Manager Assistant Record
     Skip If    '${manager_hca}' == 'None'
-    ...    No seeded manager is also an assistant; nothing to observe.
+    ...    No seeded manager is also an assistant. Nothing to observe.
 
     Sign In As    ${MANAGER_EMAIL}
     Navigate To    /me
@@ -293,7 +293,7 @@ A Manager With An Assistant Record May Edit Employment
     [Teardown]    Sign Out
 
 The Server Refuses A Locked Field However It Arrives
-    [Documentation]    The screen decides what to offer; the server what it accepts.
+    [Documentation]    The screen decides what to offer. The server what it accepts.
     ...
     ...    **The test the whole arrangement rests on.** Hiding a control proves
     ...    nothing — anybody can send the request by hand. The self-service
@@ -347,7 +347,7 @@ An Assistant Cannot Promote Themselves
 An Assistant Cannot Read A Colleague's Record
     [Documentation]    There is no path parameter on /me to tamper with.
     ...
-    ...    The manager-facing route exists and is guarded; this asserts the
+    ...    The manager-facing route exists and is guarded. This asserts the
     ...    guard rather than the absence of a link.
     [Tags]    account    access
     ${token}=    Sign In Through The API    ${ASSISTANT_EMAIL}

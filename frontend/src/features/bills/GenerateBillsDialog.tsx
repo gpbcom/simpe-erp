@@ -35,7 +35,7 @@ interface GenerateBillsDialogProps {
  * customer whose year is still open is passed over, and a manager counting rows
  * against the customer book would otherwise read that as a failure.
  *
- * The run answers 202 with an identifier; the invoices are written by a worker,
+ * The run answers 202 with an identifier. The invoices are written by a worker,
  * so the dialog polls until the run is terminal. A **partial** run is finished
  * — the invoices that could be written are written — and its failure count is
  * reported rather than hidden, because a month with three customers unbilled is

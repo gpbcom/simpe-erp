@@ -7,7 +7,7 @@ Create Date: 2026-08-05
 Notes:
     Line amounts are ``Numeric(12, 2)`` — they are money. The intervention
     type's *rate* is three decimals (see 0002), because the contractual base
-    rate is 31.905 €/h; a line total is a rounded amount and two decimals is
+    rate is 31.905 €/h. A line total is a rounded amount and two decimals is
     correct for it.
 """
 

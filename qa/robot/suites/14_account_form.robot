@@ -304,7 +304,7 @@ Restore The Assistant And Close
     ...    Restore The Original Profile
     Close The Application
     IF    '${status}' != 'PASS'
-        Fail    The seeded assistant was left modified; the next run starts dirty: ${error}
+        Fail    The seeded assistant was left modified. The next run starts dirty: ${error}
     END
 
 Restore The Original Profile

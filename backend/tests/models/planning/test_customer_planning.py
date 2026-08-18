@@ -301,5 +301,5 @@ class TestCustomerPlanning:
         ],
     )
     def test_exceptions_share_base_class(self, exception_class: type) -> None:
-        """The family the API maps; the members are reached through the MRO."""
+        """The family the API maps. The members are reached through the MRO."""
         assert issubclass(exception_class, MTInvalidCustomerPlanningException)

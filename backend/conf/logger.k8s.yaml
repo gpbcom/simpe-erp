@@ -47,7 +47,7 @@ loggers:
     level: ERROR
 root:
   # INFO, where the development configuration is DEBUG. A pod's log is charged
-  # for and searched; the DEBUG lines that are useful beside a running solve
+  # for and searched. The DEBUG lines that are useful beside a running solve
   # are noise once there are forty of them a second across twelve replicas.
   level: INFO
   handlers: [console]

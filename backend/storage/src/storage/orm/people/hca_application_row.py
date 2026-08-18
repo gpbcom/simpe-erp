@@ -42,7 +42,7 @@ class HcaApplicationRow(Base):
     Notes:
         - ``email`` is **not** unique here, unlike on ``users``. Somebody
           declined by one agency may apply to another, and somebody whose
-          application lapsed may apply again; a unique index would refuse both.
+          application lapsed may apply again. A unique index would refuse both.
           Uniqueness is enforced where it belongs, on the account created at
           approval.
         - ``company_id`` restricts on delete rather than cascading. A company

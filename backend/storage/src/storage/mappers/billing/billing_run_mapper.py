@@ -14,9 +14,9 @@ class BillingRunMapper(BaseMapper[BillingRun, BillingRunRow]):
     """Converts between :class:`BillingRun` and its row.
 
     Attributes:
-        HAS_ROW_TIMESTAMPS (ClassVar[bool]): ``False``; the table dates a run by
+        HAS_ROW_TIMESTAMPS (ClassVar[bool]): ``False``. The table dates a run by
             what it did rather than by when its row was touched.
-        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``; likewise on the model.
+        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``. Likewise on the model.
 
     Notes:
         - A run carries three timestamps of its own — requested, started,

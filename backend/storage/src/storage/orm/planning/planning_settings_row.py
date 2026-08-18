@@ -16,7 +16,7 @@ class PlanningSettingsRow(Base):
     """The ``planning_settings`` table.
 
     Attributes:
-        id (str): Primary key; always the singleton identifier.
+        id (str): Primary key. Always the singleton identifier.
         max_intervention_radius_km (float): How far from home an assistant may
             be sent.
         day_start_minute (int): Earliest start minute of the working day.
@@ -30,7 +30,7 @@ class PlanningSettingsRow(Base):
 
     Notes:
         - One row, with a fixed textual primary key rather than a UUID. These are
-          agency-wide rules; a table that can hold two of them raises the
+          agency-wide rules. A table that can hold two of them raises the
           question of which the solver read, and the answer would depend on
           insertion order.
         - ``updated_by`` is deliberately not a foreign key to ``users``. It is an

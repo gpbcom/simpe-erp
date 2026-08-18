@@ -32,7 +32,7 @@ import type { Intervention } from '@/api/types';
  *   the household are looking at one thing described one way.
  * - **Weekends are shown here**, unlike the assistant's diary. That screen hides
  *   them because the solved work is weekday work and two empty columns waste
- *   width; a household asking "is anybody coming on Saturday?" is asking a
+ *   width. A household asking "is anybody coming on Saturday?" is asking a
  *   question the empty column answers.
  * - Clicking a visit opens it, with **cancel** and **move**. Both send the quote
  *   back to the agency for approval and neither takes effect until a manager

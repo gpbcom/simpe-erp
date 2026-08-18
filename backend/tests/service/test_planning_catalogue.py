@@ -164,7 +164,7 @@ class TestTheScenarioCatalogue:
             The original complaint that started this work: one week replanned
             three times returned 404, then 371, then 355 minutes of travel,
             and a manager had no way to tell an improvement from noise. At one
-            search worker this holds; the assertion is here so that the
+            search worker this holds. The assertion is here so that the
             per-day refactor cannot quietly give it up again.
         """
         first = _solve(config, scenario)

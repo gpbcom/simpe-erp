@@ -77,7 +77,7 @@ class HcaRow(Base):
           before anything else the planner does.
         - ``working_weekdays`` is one delimited column, not a child table and
           not a bitmask. It is always read whole and never queried by day, so a
-          table would be seven rows per assistant for no gain; a bitmask would
+          table would be seven rows per assistant for no gain. A bitmask would
           be four bytes nobody can read in a ``psql`` session. The whole week
           spelled out is 62 characters, so ``String(80)`` has room to spare.
         - It is ``NOT NULL`` for the same reason ``field_employee`` is, and

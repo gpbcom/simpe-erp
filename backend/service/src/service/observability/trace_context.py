@@ -31,7 +31,7 @@ class TraceContext:
           and none of them does it over a broker.** A trace therefore stops at
           ``POST /api/v1/planning/runs`` unless something carries it across, and
           the thirty seconds that actually matter — the solve — are attributed
-          to nothing. This is that something; the field it travels in is
+          to nothing. This is that something. The field it travels in is
           :attr:`~models.messaging.event_envelope.EventEnvelope.traceparent`.
         - **OpenTelemetry is optional and imported once, at module level.**
           Without it every method here is a no-op returning ``None``, which is

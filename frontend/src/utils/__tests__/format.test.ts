@@ -45,7 +45,7 @@ describe('initialsOf', () => {
 describe('minutesToTime', () => {
   it('zero-pads both halves', () => {
     // The planning rules are minutes from midnight because that is the unit
-    // the solver works in; a `<input type="time">` needs `HH:MM`.
+    // the solver works in. A `<input type="time">` needs `HH:MM`.
     expect(minutesToTime(9 * 60)).toBe('09:00');
     expect(minutesToTime(19 * 60 + 30)).toBe('19:30');
   });

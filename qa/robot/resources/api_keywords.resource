@@ -383,7 +383,7 @@ The Monday Of The Planned Week
     ...    Computed the same way the seeder computes it rather than written
     ...    down, so the window follows the seeded data instead of going stale
     ...    the day after it was typed. Suite 19 has its own copy of this for
-    ...    historical reasons; this is the one the shared precondition uses.
+    ...    historical reasons. This is the one the shared precondition uses.
     ${today}=      Get Current Date    result_format=%Y-%m-%d
     ${weekday}=    Convert Date    ${today}    result_format=%w
     ${ahead}=      Evaluate    7 - int(${weekday}) if int(${weekday}) > 0 else 1

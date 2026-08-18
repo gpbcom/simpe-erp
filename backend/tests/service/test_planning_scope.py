@@ -250,7 +250,7 @@ class TestReadingTheRuns:
     async def test_an_administrator_lists_every_team_of_their_company(
         self, service: PlanningService, runs: AsyncMock
     ) -> None:
-        """``None`` is every team; the company is still the boundary."""
+        """``None`` is every team. The company is still the boundary."""
         await service.list_runs(_caller(UserRole.ADMIN))
 
         assert runs.list.await_args.args == ("company-1", None)
@@ -261,7 +261,7 @@ class TestReadingTheRuns:
         """The ordinary case: the run they just started."""
         teams.readable_team_ids.return_value = ["team-1"]
 
-        assert (await service.run_for("run-1", _caller())).team_id == "team-1"
+        assert (await service.run("run-1", _caller())).team_id == "team-1"
 
     async def test_polling_a_colleagues_run_is_refused(
         self, service: PlanningService, teams: AsyncMock, runs: AsyncMock
@@ -277,4 +277,4 @@ class TestReadingTheRuns:
         runs.get.return_value = _run("team-2")
 
         with pytest.raises(MTPlanningForbidden):
-            await service.run_for("run-1", _caller())
+            await service.run("run-1", _caller())

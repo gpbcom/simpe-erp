@@ -87,7 +87,7 @@ async def metrics(
           appears in any label, which is a property
           :class:`~service.observability.metrics.ApplicationMetrics` is
           responsible for and has a test for. It should still be reachable only
-          from inside the cluster; the ingress does not route it.
+          from inside the cluster. The ingress does not route it.
         - **Absent from the OpenAPI document.** It is not part of the API a
           client programs against, and including it would put a
           non-JSON endpoint in a schema every client generator reads.

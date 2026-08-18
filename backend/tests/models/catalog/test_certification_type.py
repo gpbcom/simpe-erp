@@ -79,7 +79,7 @@ class TestCertificationType:
 
         Notes:
             Normalised on the way in because matching is a plain equality test
-            in the solver's hot loop; normalising at every comparison would
+            in the solver's hot loop. Normalising at every comparison would
             make "does this person hold it?" depend on how somebody typed it.
         """
         assert CertificationType(**{**valid_kwargs, "code": " deaes "}).code == "DEAES"
@@ -118,7 +118,7 @@ class TestCertificationType:
     def test_the_label_keeps_its_accents(
         self, valid_kwargs: Dict[str, ModelInput]
     ) -> None:
-        """The label is read by a person; the code carries the machine-safe form."""
+        """The label is read by a person. The code carries the machine-safe form."""
         entry = CertificationType(**valid_kwargs)
         assert entry.label.startswith("Diplôme d'État")
 

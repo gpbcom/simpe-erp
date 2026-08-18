@@ -17,7 +17,7 @@ class MTConnectorUnavailable(MTInvoicingConnectorException):
 
     Notes:
         Retryable, and deliberately distinct from a rejection. A platform that
-        was down is a transmission to attempt again; a platform that refused the
+        was down is a transmission to attempt again. A platform that refused the
         document is one to fix first.
     """
 

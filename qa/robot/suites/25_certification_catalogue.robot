@@ -56,7 +56,7 @@ A Malformed Code Is Refused Before It Can Be Stored
     ...
     ...    The code travels into exports and URLs, where an accent is escaped
     ...    differently by every consumer and the same qualification comes back
-    ...    as two. The server refuses it; the form says so first, so the
+    ...    as two. The server refuses it. The form says so first, so the
     ...    operator is not told after they press save.
     [Tags]    certifications    validation
     Click    [data-testid="new-certification"]
@@ -201,7 +201,7 @@ Remove The QA Certification And Close
     [Documentation]    Strip this run's entry however the suite ended.
     ...
     ...    A belt-and-braces teardown. The last test does this in the normal
-    ...    path; this catches the case where an earlier one failed and left the
+    ...    path. This catches the case where an earlier one failed and left the
     ...    entry — and its references — behind, which would poison the next
     ...    run. Reported rather than ignored, because a cleanup that fails
     ...    quietly breaks tomorrow's run instead of today's.

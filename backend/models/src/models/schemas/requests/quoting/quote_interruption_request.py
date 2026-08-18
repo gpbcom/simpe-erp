@@ -18,7 +18,7 @@ class QuoteInterruptionRequest(BaseModel):
         last_day (date): The final day the arrangement is delivered.
 
     Notes:
-        - **Inclusive.** ``last_day`` is delivered; the day after it is not. A
+        - **Inclusive.** ``last_day`` is delivered. The day after it is not. A
           family cancelling "from the 15th" means the 15th is the last visit, and
           reading it as the first cancelled day takes away a visit somebody is
           expecting to receive.

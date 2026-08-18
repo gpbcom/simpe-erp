@@ -87,7 +87,7 @@ async def list_hcas(
         List[HcaResponse]: The matching assistants of the caller's teams.
 
     Raises:
-        MTInvalidHcaFilterException: If a filter is malformed; answered as a
+        MTInvalidHcaFilterException: If a filter is malformed. Answered as a
             422.
 
     Notes:
@@ -130,7 +130,7 @@ async def get_hca(
         HcaResponse: The assistant.
 
     Raises:
-        MTHcaNotFound: If no such assistant exists; answered as a 404.
+        MTHcaNotFound: If no such assistant exists. Answered as a 404.
     """
     logger.debug("Reading assistant %s.", hca_id)
     return HcaResponse.from_hca(await service.get(hca_id))
@@ -156,7 +156,7 @@ async def set_hca_employment(
         HcaResponse: The updated assistant.
 
     Raises:
-        MTHcaNotFound: If no such assistant exists; answered as a 404.
+        MTHcaNotFound: If no such assistant exists. Answered as a 404.
 
     Notes:
         - **This is the only route by which a manager may edit an assistant,
@@ -231,11 +231,11 @@ async def delete_hca(
         ``None`` when the assistant had no future visits at all.
 
     Raises:
-        MTHcaNotFound: If no such assistant exists; answered as a 404.
+        MTHcaNotFound: If no such assistant exists. Answered as a 404.
         MTHcaHasAccount: If a login is bound to them and cannot be removed;
             answered as a 409.
         MTAuthLastAdmin: If the bound account is the caller's own or the last
-            administrator's; answered as a 409.
+            administrator's. Answered as a 409.
 
     Notes:
         - **The period is worked out here, not asked for.** A deletion from the
@@ -257,7 +257,7 @@ async def delete_hca(
     await service.delete(hca_id, requested_by=caller)
     logger.info("%s deleted assistant %s.", caller.email, hca_id)
     if period is None:
-        logger.info("Assistant %s had no future visit; no replan is queued.", hca_id)
+        logger.info("Assistant %s had no future visit. No replan is queued.", hca_id)
         response.status_code = status.HTTP_204_NO_CONTENT
         return None
     runs = await plannings.queue_replan(

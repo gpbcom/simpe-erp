@@ -154,7 +154,7 @@ class CompanyRegistrationService:
         )
         if not announced:
             self.logger.warning(
-                "Agency %s was founded but could not be announced; its queues "
+                "Agency %s was founded but could not be announced. Its queues "
                 "will be bound the next time a worker starts.",
                 company.id,
             )

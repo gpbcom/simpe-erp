@@ -230,7 +230,7 @@ class TestMigration0016Backfill:
             Guessing would file a quote under an agency that never wrote it, and
             the next planning run would schedule its visits and send that
             agency's assistants to deliver them. A migration that stops, naming
-            the problem, is recoverable; a deployment that silently rehomed
+            the problem, is recoverable. A deployment that silently rehomed
             somebody's commercial history is not.
 
             This mirrors the policy migration 0008 set for the same situation.

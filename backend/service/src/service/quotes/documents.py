@@ -88,13 +88,13 @@ class QuoteDocumentService:
             prints a complete document without one.
         """
         if not logo_url or self.logos is None:
-            self.logger.debug("No logo to fetch; the quote prints without one.")
+            self.logger.debug("No logo to fetch. The quote prints without one.")
             return None
         try:
             return await self.logos.fetch_logo(logo_url)
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
             self.logger.warning(
-                "Could not read the agency's logo (%s); the quote prints without it.",
+                "Could not read the agency's logo (%s). The quote prints without it.",
                 exc,
             )
             return None
@@ -118,7 +118,7 @@ class QuoteDocumentService:
         Raises:
             MTQuoteNotFound: If no such quote exists, or its customer or agency
                 no longer does.
-            MTQuoteNotPriced: If it has never been priced; a 422.
+            MTQuoteNotPriced: If it has never been priced. A 422.
             MTQuoteRenderFailed: If the document could not be laid out.
 
         Notes:
@@ -133,7 +133,7 @@ class QuoteDocumentService:
         customer = await self.customers.get(quote.customer_id)
         if customer is None:
             self.logger.error(
-                "Quote %s names customer %s, which no longer exists; the "
+                "Quote %s names customer %s, which no longer exists. The "
                 "document cannot say who it is addressed to.",
                 quote.reference,
                 quote.customer_id,
@@ -145,7 +145,7 @@ class QuoteDocumentService:
         company = await self.companies.get(quote.company_id)
         if company is None:
             self.logger.error(
-                "Quote %s names agency %s, which no longer exists; the "
+                "Quote %s names agency %s, which no longer exists. The "
                 "document would identify no issuer.",
                 quote.reference,
                 quote.company_id,
@@ -156,7 +156,7 @@ class QuoteDocumentService:
 
         if not quote.status.is_editable():
             self.logger.info(
-                "Quote %s is %s; the document reflects the offer as it stands "
+                "Quote %s is %s. The document reflects the offer as it stands "
                 "now, not as it was when it was sent.",
                 quote.reference,
                 quote.status.value,

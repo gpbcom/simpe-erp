@@ -166,7 +166,7 @@ class TestAskingWhatAPlatformCanDo:
         assert descriptor.covers(TransmissionKind.INVOICE) is True
         assert descriptor.covers(TransmissionKind.CHORUS_PRO) is False
 
-    def test_it_answers_which_credentials_the_dialog_must_ask_for(self) -> None:
+    def test_it_answers_which_credentials_the_dialog_must_ask(self) -> None:
         """This is why Storecove's dialog has two fields and Iopole's one."""
         descriptor = _descriptor(required_fields=("legal_entity_id",))
 

@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.auth.user import User
 from models.enums import NotificationKind, UserRole
 from models.notifications.notification import Notification
-from storage.repositories.notifications.notification import NotificationRepository
 from storage.repositories.auth.user import UserRepository
+from storage.repositories.notifications.notification import NotificationRepository
 
 
 @pytest_asyncio.fixture
@@ -65,7 +65,7 @@ async def other_reader(session: AsyncSession) -> User:
 
 
 @pytest.fixture
-def three_for(reader: User) -> List[Notification]:
+def three(reader: User) -> List[Notification]:
     """Return three unsaved notifications for one account, oldest first.
 
     Args:
@@ -148,7 +148,7 @@ class TestReading:
         repository = NotificationRepository(session)
         await repository.create_many(three_for)
 
-        listed = await repository.list_for(reader.id)
+        listed = await repository.list(reader.id)
 
         assert [notification.title for notification in listed] == [
             "Devis D-2 à valider",
@@ -156,15 +156,15 @@ class TestReading:
             "Devis D-0 à valider",
         ]
 
-    async def test_a_page_is_the_size_it_was_asked_for(
+    async def test_a_page_is_the_size_it_was_asked(
         self, session: AsyncSession, reader: User, three_for: List[Notification]
     ) -> None:
         """The popover shows a page, not the whole history."""
         repository = NotificationRepository(session)
         await repository.create_many(three_for)
 
-        first = await repository.list_for(reader.id, page=1, size=2)
-        second = await repository.list_for(reader.id, page=2, size=2)
+        first = await repository.list(reader.id, page=1, size=2)
+        second = await repository.list(reader.id, page=2, size=2)
 
         assert len(first) == 2
         assert len(second) == 1
@@ -180,7 +180,7 @@ class TestReading:
         written = await repository.create_many(three_for)
         await repository.mark_read(written[0].id, reader.id)
 
-        unread = await repository.list_for(reader.id, unread_only=True)
+        unread = await repository.list(reader.id, unread_only=True)
 
         assert len(unread) == 2
         assert all(notification.is_read is False for notification in unread)
@@ -192,11 +192,11 @@ class TestReading:
         other_reader: User,
         three_for: List[Notification],
     ) -> None:
-        """The recipient is the credential; there is no way to name another."""
+        """The recipient is the credential. There is no way to name another."""
         repository = NotificationRepository(session)
         await repository.create_many(three_for)
 
-        assert await repository.list_for(other_reader.id) == []
+        assert await repository.list(other_reader.id) == []
         assert await repository.count_unread(other_reader.id) == 0
 
     async def test_the_badge_counts_only_what_is_unread(
@@ -322,4 +322,4 @@ class TestPersistence:
         after_signing_back_in = NotificationRepository(session)
 
         assert await after_signing_back_in.count_unread(reader.id) == 3
-        assert len(await after_signing_back_in.list_for(reader.id)) == 3
+        assert len(await after_signing_back_in.list(reader.id)) == 3

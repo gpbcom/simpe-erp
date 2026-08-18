@@ -44,14 +44,14 @@ async def register(
             answered as a 409.
         MTAuthHcaLinkRequired: If the account names no assistant record;
             answered as a 422.
-        MTAuthUnknownHca: If it names a record that does not exist; answered
+        MTAuthUnknownHca: If it names a record that does not exist. Answered
             as a 422.
 
     Notes:
         **The role is not taken from the payload, and cannot be.** This is the
         one route that creates an account without a credential, so honouring a
         role sent with the request would let anybody register themselves an
-        administrator. It always grants :attr:`~models.enums.UserRole.HCA`; a
+        administrator. It always grants :attr:`~models.enums.UserRole.HCA`. A
         manager or an administrator is created through the manager-gated
         ``POST /api/v1/auth/accounts``.
     """
@@ -83,8 +83,8 @@ async def login(
     Raises:
         MTAuthInvalidCredentials: If the address or password does not match;
             answered as a 401 carrying the ``WWW-Authenticate`` challenge.
-        MTAuthUserInactive: If the account is deactivated; answered as a 403.
-        MTAuthMissingSecret: If signing is not configured; answered as a 503.
+        MTAuthUserInactive: If the account is deactivated. Answered as a 403.
+        MTAuthMissingSecret: If signing is not configured. Answered as a 503.
 
     Notes:
         The 401 carries the same message whether the address is unknown or the
@@ -133,7 +133,7 @@ async def issue_stream_token(
         AccessToken: The stream token and its lifetime, in seconds.
 
     Raises:
-        MTAuthMissingSecret: If the signing secret is not configured; answered
+        MTAuthMissingSecret: If the signing secret is not configured. Answered
             as a 503.
 
     Notes:

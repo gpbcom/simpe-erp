@@ -79,7 +79,7 @@ class TestTheSeededSites:
         """A company may not hold two sites of one name.
 
         Notes:
-            The unique index says so too; this says it before a developer sees
+            The unique index says so too. This says it before a developer sees
             an opaque integrity error halfway through a seed.
         """
         names = [row[0] for row in sites]

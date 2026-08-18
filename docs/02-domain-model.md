@@ -67,7 +67,7 @@ one of them to be relaxed.
 **`Hca`** — a home care assistant. Identity, address, contract, qualifications,
 an optional driving licence, an optional photograph, and declared absences.
 `can_drive()` decides which travel speed the planner uses for them;
-`is_available_on(day)` is what an absence removes them from; and
+`is_available_on(day)` is what an absence removes them from. And
 `holds_certifications(codes, day)` / `holds_skills(codes, day)` are what a
 gated intervention asks before it can be given to them.
 
@@ -179,7 +179,7 @@ prefix, so neither can be pointed at a third-party address.
 everything the planner touches. `company_id` is required on `User` and on `Hca`
 alike — administrator, manager and assistant — and `NOT NULL` in both tables
 since migration `0008`. It was optional while companies were newer
-than the rows pointing at them; nothing keeps that true now. An account without
+than the rows pointing at them. Nothing keeps that true now. An account without
 an agency is covered by no per-company scoping and produces events that cannot
 be routed to a queue, so the state is refused rather than stored and puzzled
 over later.
@@ -285,7 +285,7 @@ separate permissions rather than in one list with a flag.
 
 The declaration takes effect **immediately**. Approval-first would leave
 somebody off the visit they are the right person for while a form sat in a
-queue; instead every manager and administrator gets a `skill-added`
+queue. Instead every manager and administrator gets a `skill-added`
 notification and any of them can withdraw it before the next run acts on it.
 
 **`SkillType`** — the skill catalogue, character for character the twin of
@@ -300,7 +300,7 @@ entries would produce a list nobody could require anything from.
 ## Everybody can be deleted, and something has to happen next
 
 Deleting a person used to be refused wherever it mattered. A customer with any
-quote answered 409 and was told to be *stopped* instead; an assistant with a
+quote answered 409 and was told to be *stopped* instead. An assistant with a
 sign-in account answered 409 because the foreign key would not have it. Both
 refusals were defensible and both were wrong in the same way: they left no way
 at all to remove a household entered by mistake, or an assistant raised in
@@ -325,7 +325,7 @@ exactly the orphan this avoids. Both writes share one transaction, so a refusal
 rolls the whole thing back.
 
 Deleting a `User` replans nothing, and that is not an oversight. An account is
-not scheduled; the assistant record is. Removing one cannot change a calendar.
+not scheduled. The assistant record is. Removing one cannot change a calendar.
 
 **Stopping a customer is still the right answer** for one who was really served
 and has really left — it keeps what was billed and who agreed to it. Deletion
@@ -339,7 +339,7 @@ and four authorship fields: `authored_by`, `submitted_at`, `validated_by`,
 `validated_at`.
 
 The aggregates are **derived from the lines but stored alongside them**.
-Recomputing on read would be cheap; the reason to store them is that a reprinted
+Recomputing on read would be cheap. The reason to store them is that a reprinted
 quote must show the figures it showed when it was issued, even after a service
 is renamed or repriced.
 
@@ -415,7 +415,7 @@ document that was *sent*, and a household that moves house must not retroactivel
 change the address on a bill already in an accountant's file. `customer_id` is
 still there, and its foreign key is `ON DELETE RESTRICT` — the one relationship
 in the schema that refuses to cascade. Everything else about a customer can be
-erased with them; their invoices cannot, because deleting them would destroy the
+erased with them. Their invoices cannot, because deleting them would destroy the
 agency's accounting record.
 
 Three unique indexes carry three separate rules:
@@ -583,7 +583,7 @@ with the real database.
 
 The split in 0014 is the one with a data hazard, and it is handled in the
 backfill rather than left to chance. Names are split on the **first** space so
-`full_name()` reproduces the original exactly; a name with no space at all goes
+`full_name()` reproduces the original exactly. A name with no space at all goes
 wholly into `last_name`, because inventing a given name for a mononym or a
 service account would be worse than leaving the column blank. Both columns land
 with a server default of `''` so the constraint can be added before the backfill
@@ -650,7 +650,7 @@ the tax.
 
 The field has **no default**. Defaulting to necessity would understate the tax
 on every line somebody forgot to set, an error that surfaces at the tax return
-rather than on the screen; defaulting to comfort would overcharge families
+rather than on the screen. Defaulting to comfort would overcharge families
 entitled to the reduced rate. A line without a category is not a line. The two
 quote dialogs *suggest* the catalogue entry's own category when a service is
 picked, and leave the field editable.

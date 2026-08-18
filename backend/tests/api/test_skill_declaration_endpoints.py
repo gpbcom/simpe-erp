@@ -277,7 +277,7 @@ class TestWithdrawingMySkill:
     def test_a_withdrawal_announces_nothing(
         self, hcas: AsyncMock, publisher: RecordingPublisher
     ) -> None:
-        """An addition widens what somebody may be sent to; a removal narrows it.
+        """An addition widens what somebody may be sent to. A removal narrows it.
 
         Notes:
             A badge for every correction of a typed name would train
@@ -318,7 +318,7 @@ class TestSupervisorWithdrawal:
 
         Notes:
             A skill is a claim about what somebody can do. A manager may
-            withdraw one they believe is wrong; nothing lets them put a claim
+            withdraw one they believe is wrong. Nothing lets them put a claim
             in somebody else's mouth.
         """
         assert [sorted(route.methods) for route in hca_skills_router.routes] == [

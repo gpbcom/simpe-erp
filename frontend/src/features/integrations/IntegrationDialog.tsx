@@ -22,7 +22,7 @@ const FIELDS = ['api_key', 'account_id', 'legal_entity_id'] as const;
  * @returns The rendered dialog.
  *
  * @remarks
- * **Two clicks and a paste.** The card opens this; the button saves. There is
+ * **Two clicks and a paste.** The card opens this. The button saves. There is
  * no separate "test" step because the server proves the credentials against the
  * live platform as part of enabling — a rejected key comes back as an error
  * into the dialog that is still open, which is where the person who typed it is
@@ -30,7 +30,7 @@ const FIELDS = ['api_key', 'account_id', 'legal_entity_id'] as const;
  *
  * **Only the fields this platform needs are rendered**, from `required_fields`
  * on the card. Storecove wants a legal-entity reference created in its own
- * console; B2Brouter wants an account; the other two want a key alone. Asking
+ * console; B2Brouter wants an account. The other two want a key alone. Asking
  * every platform for every field would be three empty boxes and a question
  * about which matter.
  *

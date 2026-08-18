@@ -148,7 +148,7 @@ describe('CompanyPage', () => {
     await user.upload(screen.getByTestId('logo-input'), file);
 
     expect(uploadLogo).toHaveBeenCalledWith(file);
-    // The Save button is for the form; the logo is already stored by now.
+    // The Save button is for the form. The logo is already stored by now.
     expect(updateCompany).not.toHaveBeenCalled();
   });
 

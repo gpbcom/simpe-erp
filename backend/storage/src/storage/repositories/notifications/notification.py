@@ -30,7 +30,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
     Notes:
         Every read is scoped by recipient, and there is deliberately no method
         that reads a notification by identifier alone. A notification is
-        addressed to one person; a lookup that did not take the reader would be
+        addressed to one person. A lookup that did not take the reader would be
         a way to read somebody else's queue by guessing an identifier.
     """
 
@@ -90,7 +90,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
             if unread_only and applied.is_read:
                 self.logger.warning(
                     "unread_only asked for the unread notifications and the "
-                    "filter asked for the read ones; the filter wins."
+                    "filter asked for the read ones. The filter wins."
                 )
             statement = statement.where(NotificationRow.is_read.is_(applied.is_read))
         elif unread_only:
@@ -157,7 +157,7 @@ class NotificationRepository(BaseRepository[NotificationRow]):
         self.logger.info("Stored %d notification(s).", len(rows))
         return self.mapper.to_models(rows)
 
-    async def list_for(
+    async def list(
         self,
         recipient_id: str,
         page: int = 1,

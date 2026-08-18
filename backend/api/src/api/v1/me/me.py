@@ -139,10 +139,10 @@ async def update_my_company(
     Raises:
         MTCompanyNotFound: If the agency has since been deleted; 404.
         MTInvalidCompanyException: If a submitted value does not satisfy the
-            domain model — a malformed IBAN or VAT number; answered as a 422.
+            domain model — a malformed IBAN or VAT number. Answered as a 422.
 
     Notes:
-        - Administrator-only, not manager. A manager runs the agency's work; its
+        - Administrator-only, not manager. A manager runs the agency's work. Its
           legal identity — trading name, SIRET, registered address, and now the
           account it is paid into — is not part of running the week, and the one
           field with an outward effect (``is_accepting_applications``) decides
@@ -160,7 +160,7 @@ async def update_my_company(
     existing = await service.get(caller.company_id)
     if not request.is_accepting_applications and existing.is_accepting_applications:
         logger.warning(
-            "Agency %s will stop appearing to applicants; its pending "
+            "Agency %s will stop appearing to applicants. Its pending "
             "applications still need deciding.",
             caller.company_id,
         )
@@ -199,12 +199,12 @@ async def upload_my_company_logo(
             answered as a 503.
         MTS3PayloadTooLarge: If the file exceeds the configured limit;
             answered as a 413.
-        MTS3UnsupportedContentType: If it is not an accepted image; answered
+        MTS3UnsupportedContentType: If it is not an accepted image. Answered
             as a 415.
-        MTS3EmptyPayload: If it is empty; answered as a 422.
-        MTS3BucketUnavailable: If the object store cannot be reached; answered
+        MTS3EmptyPayload: If it is empty. Answered as a 422.
+        MTS3BucketUnavailable: If the object store cannot be reached. Answered
             as a 503.
-        MTS3UploadFailed: If the write itself failed; answered as a 500.
+        MTS3UploadFailed: If the write itself failed. Answered as a 500.
 
     Notes:
         - **Administrator-only, and the agency comes from the credential.** A
@@ -225,7 +225,7 @@ async def upload_my_company_logo(
     payload = await logo.read()
     if not payload:
         logger.warning(
-            "Administrator %s uploaded an empty file; the store will refuse it.",
+            "Administrator %s uploaded an empty file. The store will refuse it.",
             caller.email,
         )
     logger.info("Administrator %s uploaded a %d-byte logo.", caller.email, len(payload))
@@ -317,7 +317,7 @@ async def update_my_account(
 
     Raises:
         MTAuthEmailAlreadyRegistered: If another account already uses that
-            address; answered as a 409.
+            address. Answered as a 409.
 
     Notes:
         - The payload carries a display name and an address and **nothing else**
@@ -354,7 +354,7 @@ async def replace_my_account_photo(
         UserResponse: The updated account, carrying the new URL.
 
     Raises:
-        MTAuthUnknownAccount: If the account has since been removed; answered
+        MTAuthUnknownAccount: If the account has since been removed. Answered
             as a 404.
         MTS3UnsupportedContentType: If the bytes are not a JPEG, PNG or WebP;
             answered as a 415.
@@ -398,7 +398,7 @@ async def remove_my_account_photo(
         UserResponse: The updated account, with no portrait.
 
     Raises:
-        MTAuthUnknownAccount: If the account has since been removed; answered
+        MTAuthUnknownAccount: If the account has since been removed. Answered
             as a 404.
 
     Notes:
@@ -425,7 +425,7 @@ async def read_my_team(
         TeamView: Their team and its member count.
 
     Raises:
-        MTTeamNotFound: If the account is on no team; answered as a 404.
+        MTTeamNotFound: If the account is on no team. Answered as a 404.
 
     Notes:
         - **The identifier comes from the credential**, as it does for the
@@ -458,7 +458,7 @@ async def read_my_profile(
     Raises:
         MTHcaForbidden: If the account is bound to no assistant record;
             answered as a 403.
-        MTHcaNotFound: If the record has since been deleted; answered as a 404.
+        MTHcaNotFound: If the record has since been deleted. Answered as a 404.
     """
     hca = await service.get(_own_hca_id(caller))
     return HcaResponse.from_hca(hca)
@@ -483,7 +483,7 @@ async def update_my_profile(
     Raises:
         MTHcaForbidden: If the account is bound to no assistant record;
             answered as a 403.
-        MTHcaNotFound: If the record does not exist; answered as a 404.
+        MTHcaNotFound: If the record does not exist. Answered as a 404.
 
     Notes:
         - **The contract type, the certifications and the role cannot be changed
@@ -496,7 +496,7 @@ async def update_my_profile(
           to work they are not trained for.
         - A manager editing their **own** record reaches those two endpoints the
           same way they would for anybody else's, so this payload never widens
-          for them. The screen decides which fields to offer; the server decides
+          for them. The screen decides which fields to offer. The server decides
           which it will accept, and the two are checked separately.
     """
     hca_id = _own_hca_id(caller)
@@ -534,7 +534,7 @@ async def declare_my_skill(
     Raises:
         MTHcaForbidden: If the account is bound to no assistant record;
             answered as a 403.
-        MTHcaNotFound: If the record has since been deleted; answered as a 404.
+        MTHcaNotFound: If the record has since been deleted. Answered as a 404.
         MTSkillCreateRequestInvalidName: If the payload names nothing;
             answered as a 422.
 
@@ -543,7 +543,7 @@ async def declare_my_skill(
           themselves**, and the reason it is not the certifications beside it:
           what somebody was *awarded* is a manager's record, what they *can do*
           is their own. An assistant who could grant themselves a diploma could
-          be routed to work they are not trained for; an assistant who cannot
+          be routed to work they are not trained for. An assistant who cannot
           say they speak Portuguese is one the agency does not know it has.
         - It takes effect immediately rather than waiting for approval. The
           agency is told instead — every manager and administrator gets a
@@ -593,7 +593,7 @@ async def withdraw_my_skill(
     Raises:
         MTHcaForbidden: If the account is bound to no assistant record;
             answered as a 403.
-        MTSkillNotFound: If the skill is not one of the caller's; answered as
+        MTSkillNotFound: If the skill is not one of the caller's. Answered as
             a 404.
 
     Notes:
@@ -603,7 +603,7 @@ async def withdraw_my_skill(
           not theirs — distinguishing the two would let somebody discover which
           identifiers are real by trying them.
         - No notification is sent. The addition widens what somebody may be
-          sent to and is worth telling the agency about; a withdrawal only
+          sent to and is worth telling the agency about. A withdrawal only
           narrows it, and a badge for every correction of a typed name would
           train supervisors to ignore the ones that matter.
     """
@@ -745,7 +745,7 @@ async def read_my_customer(
         MTHcaForbidden: If the account is bound to no assistant record;
             answered as a 403.
         MTCustomerNotFound: If the customer does not exist **or** is not in the
-            caller's portfolio; answered as a 404 either way.
+            caller's portfolio. Answered as a 404 either way.
 
     Notes:
         The same 404 whether the customer is absent or simply not theirs.
@@ -800,7 +800,7 @@ async def create_my_quote(
 
     Raises:
         MTPricingUnknownInterventionType: If a line names a type that is not in
-            the catalog; answered as a 422.
+            the catalog. Answered as a 422.
 
     Notes:
         It is created as a **draft**, not submitted. Writing a quote and
@@ -833,15 +833,15 @@ async def replace_my_quote_lines(
         Quote: The repriced quote.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteForbidden: If the caller did not write it; answered as a 403.
-        MTQuoteNotEditable: If it is past draft; answered as a 409.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteForbidden: If the caller did not write it. Answered as a 403.
+        MTQuoteNotEditable: If it is past draft. Answered as a 409.
         MTPricingUnknownInterventionType: If a line names a type that is not in
-            the catalog; answered as a 422.
+            the catalog. Answered as a 422.
 
     Notes:
         - The assistant's half of the editing surface. A manager edits any quote
-          in the agency through ``PUT /api/v1/quotes/{id}/lines``; this one is
+          in the agency through ``PUT /api/v1/quotes/{id}/lines``. This one is
           narrowed to the caller's own by the service, against the stored
           author rather than against anything in the payload.
         - **Only a draft may change**, for both roles. What a customer was sent
@@ -877,10 +877,10 @@ async def submit_my_quote(
         Quote: The submitted quote, now awaiting a manager.
 
     Raises:
-        MTQuoteNotFound: If no such quote exists; answered as a 404.
-        MTQuoteForbidden: If the caller did not write it; answered as a 403.
-        MTQuoteNotEditable: If it is not a draft; answered as a 409.
-        MTQuoteNotPriced: If it has no priced lines; answered as a 409.
+        MTQuoteNotFound: If no such quote exists. Answered as a 404.
+        MTQuoteForbidden: If the caller did not write it. Answered as a 403.
+        MTQuoteNotEditable: If it is not a draft. Answered as a 409.
+        MTQuoteNotPriced: If it has no priced lines. Answered as a 409.
     """
     logger.info("Assistant %s is submitting quote %s.", caller.email, quote_id)
     submitted = await service.submit_for_validation(

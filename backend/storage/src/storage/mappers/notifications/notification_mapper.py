@@ -93,7 +93,7 @@ class NotificationMapper(BaseMapper[Notification, NotificationRow]):
         row.read_at = model.read_at
         if kind.concerns_a_quote() and model.quote_id is None:
             self.logger.warning(
-                "Notification row %s is about a quote but names none; the "
+                "Notification row %s is about a quote but names none. The "
                 "reader will have nowhere to click through to.",
                 row.id,
             )

@@ -98,7 +98,7 @@ class TransactionMiddleware(BaseHTTPMiddleware):
             # not land: the session is rolled back and the failure recorded.
             await session.rollback()
             self.logger.error(
-                "Could not commit %s %s; the work was rolled back: %s",
+                "Could not commit %s %s. The work was rolled back: %s",
                 request.method,
                 request.url.path,
                 exc,

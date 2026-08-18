@@ -69,7 +69,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
         Notes:
             **``is_active`` wins over ``include_inactive`` when it is set.**
             The older switch has two states and no way to ask for the retired
-            entries *on their own*; the filter has three. Unset, the switch
+            entries *on their own*. The filter has three. Unset, the switch
             still decides, so every caller that predates the filter behaves
             exactly as it did.
         """
@@ -84,7 +84,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
             if include_inactive and applied.is_active:
                 self.logger.warning(
                     "include_inactive asked for the retired entries and the "
-                    "filter asked for the active ones; the filter wins."
+                    "filter asked for the active ones. The filter wins."
                 )
             statement = statement.where(
                 InterventionTypeRow.is_active.is_(applied.is_active)
@@ -192,7 +192,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
 
         Notes:
             Pricing a quote needs the type behind every line. Fetching them one
-            at a time would issue one query per line; this is the single query
+            at a time would issue one query per line. This is the single query
             the pricing service uses instead.
         """
         if not type_ids:
@@ -321,7 +321,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
 
         Notes:
             Retired types are hidden by default, so a quote-building screen
-            offers only what may still be sold; a catalog-administration screen
+            offers only what may still be sold. A catalog-administration screen
             asks for them explicitly.
         """
         self.logger.debug(
@@ -356,7 +356,7 @@ class InterventionTypeRepository(BaseRepository[InterventionTypeRow]):
         """Verify the catalog's uniqueness constraints are in place.
 
         Notes:
-            The indexes are created by the migration; this only reports on
+            The indexes are created by the migration. This only reports on
             them, so a database that drifted from its migrations is visible in
             the logs rather than discovered when a duplicate slips through.
         """

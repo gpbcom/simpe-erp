@@ -67,7 +67,7 @@ class AgencyRow(Base):
         - The foreign key to ``companies`` is ``RESTRICT`` rather than
           ``CASCADE``. Deleting a company out from under its sites would take
           the teams, the plannings and the quotes with them in one statement
-          nobody confirmed; the refusal is the point.
+          nobody confirmed. The refusal is the point.
         - **The company's own columns are repeated here**, because a site *is*
           a company in the model: the head office is where the business is
           registered, and a quote prints its SIRET, its VAT number and its bank

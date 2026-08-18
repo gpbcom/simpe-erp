@@ -1,7 +1,7 @@
 *** Settings ***
 Documentation    Editing the services on a quote, from both sides of the rule.
 ...
-...              A manager may edit any quote in the agency; an assistant may
+...              A manager may edit any quote in the agency. An assistant may
 ...              edit only the ones they wrote. Both use the same dialog, and
 ...              the difference is which quotes they can open and which endpoint
 ...              saves them — so the two halves are tested against each other
@@ -376,7 +376,7 @@ Restore The Necessity Category
     ...    Through the API rather than the screen: the test that changed it may
     ...    have failed with the dialog open, and clicking a control that might
     ...    not be there would fail the teardown for the same reason the test
-    ...    did. The fixture is deleted at suite teardown anyway; this keeps the
+    ...    did. The fixture is deleted at suite teardown anyway. This keeps the
     ...    tests after it starting from the state they were written against.
     ${quote}=    Quote Read By A Manager    ${OWN_QUOTE}[id]
     ${lines}=    Evaluate

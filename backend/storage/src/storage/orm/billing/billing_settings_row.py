@@ -17,7 +17,7 @@ class BillingSettingsRow(Base):
     """The ``billing_settings`` table.
 
     Attributes:
-        id (str): Primary key; always the singleton identifier.
+        id (str): Primary key. Always the singleton identifier.
         periodicity (str): How often customers are invoiced.
         payment_terms_days (int): How long a customer has to pay.
         late_penalty_multiplier (int): Times the legal interest rate a late
@@ -31,7 +31,7 @@ class BillingSettingsRow(Base):
 
     Notes:
         - One row, with a fixed textual primary key rather than a UUID, exactly
-          as the planning rules have. These are agency-wide; a table that can
+          as the planning rules have. These are agency-wide. A table that can
           hold two of them raises the question of which one an invoice was
           issued under, and a printed document cannot answer that afterwards.
         - ``updated_by`` is deliberately not a foreign key to ``users``. It is

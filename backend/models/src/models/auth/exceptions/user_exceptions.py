@@ -55,7 +55,7 @@ class MTUserRoleCustomerRequiresCustomerId(MTInvalidUserException):
 
     Notes:
         The mirror of :class:`MTUserRoleHcaRequiresHcaId`, and it matters more.
-        Every portal route resolves the household from ``customer_id``; an
+        Every portal route resolves the household from ``customer_id``. An
         account without one could read nothing — or, under a check written the
         forgiving way, everything.
     """

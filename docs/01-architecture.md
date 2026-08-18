@@ -6,7 +6,7 @@ that neither answers a real question on its own — the layer graph explains why
 `worker` may not import `api`, and the process map explains what the worker does
 instead, and you cannot follow either without the other.
 
-It is long. Read the diagram and **Processes**, then stop; the rest is reference.
+It is long. Read the diagram and **Processes**, then stop. The rest is reference.
 
 | Want | Section |
 |---|---|
@@ -178,7 +178,7 @@ supplier should be replaceable without touching a domain rule.
 
 **The worker does not depend on `api`**, deliberately. A background consumer
 that pulled in FastAPI and uvicorn to read one YAML file would make the graph a
-ring; it duplicates fifteen lines of logging setup instead, and the duplication
+ring. It duplicates fifteen lines of logging setup instead, and the duplication
 is documented where it sits. It is also the reason the loopback webhooks exist
 at all — see [②](#-the-loopback-webhooks).
 
@@ -236,7 +236,7 @@ module imports is a table `create_all` silently omits.
 Alongside those domain packages, `base/` holds what several of them share
 rather than what any one of them is: `Person` — the identity fields and
 validators every human record carries — and the `PortraitHolder` mixin for
-the two that hold a photograph. Nothing is stored as a `Person`; it is a
+the two that hold a photograph. Nothing is stored as a `Person`. It is a
 base, and the rule for extending it is in [12](12-conventions.md).
 
 ### What each layer refuses to do
@@ -313,7 +313,7 @@ with the agency **last**, so one binding can select a single agency
 id raises rather than producing `quote.submitted.`, which is a valid key that
 binds to nothing.
 
-The API answers **202** to a planning or billing request and publishes; the
+The API answers **202** to a planning or billing request and publishes. The
 worker consumes, does the work, and stores the result. The message is
 acknowledged only once the handler returns, so a worker killed mid-solve leaves
 the message for the next one. That replaced FastAPI `BackgroundTasks`, which
@@ -361,7 +361,7 @@ planning.run.        quote.submitted.*   notification.    billing.run.  company.
 | `x-queue-type` | `quorum` | Survives a broker node loss; cannot be changed after declaration |
 | `x-delivery-limit` | `5` | Caps a message that *kills* its consumer — poison-pill protection |
 | `x-dead-letter-exchange` | `simple-erp.dlx` | A raising handler dead-letters immediately |
-| `prefetch` | `1` | A solve pins a core for its whole budget; a second message would queue behind it inside the process |
+| `prefetch` | `1` | A solve pins a core for its whole budget. A second message would queue behind it inside the process |
 | ack | on handler **return** | `requeue=False`, so a raise dead-letters rather than looping |
 
 A Prometheus alert fires on **any** DLQ depth — a dead-lettered message is
@@ -396,7 +396,7 @@ broker consumes the key before the handler ever sees the message.
 `EventPublisher.publish` logs and returns `False` on every failure path —
 broker disabled, unreachable, or the publish itself throwing. The database
 already holds the fact; only the push is lost. A quote stays in
-`pending-validation` where the manager's queue reads it anyway; a planning run
+`pending-validation` where the manager's queue reads it anyway. A planning run
 stays `pending` and can be re-queued.
 
 Consumers are the mirror image: `EventConsumer.start()` deliberately does *not*
@@ -436,7 +436,7 @@ Describe it as a **loopback dispatch trigger**, not an integration.
 | Retry | None — one attempt |
 | Timeout | `timeout_seconds`, 10s default / 30s deployed |
 | Failure | Swallowed, logged, returns `False`. Never fails the run |
-| Bearer middleware | `/api/v1/webhooks/` is exempt; the token *is* the auth |
+| Bearer middleware | `/api/v1/webhooks/` is exempt. The token *is* the auth |
 
 ---
 
@@ -476,7 +476,7 @@ exclusive, auto-deleted queue bound to the same key.
 **A separate 60-second stream token.** `EventSource` cannot set an
 `Authorization` header, so the credential must go in the URL — and URLs leak
 into referrers, proxy logs and history. A 12-hour session token there would be a
-real exposure; a 60-second one scoped `stream` is not. The scope is enforced
+real exposure. A 60-second one scoped `stream` is not. The scope is enforced
 both ways: a stream token is refused by the normal API path, and a session token
 is refused by the stream.
 
@@ -586,7 +586,7 @@ document dispatch.
 |---|---|---|
 | Broker down, API publishing | Request still succeeds; push lost | Row is committed; re-queue manually |
 | Broker down, worker starting | Worker **crashes** | Supervisor restarts it |
-| Broker down, API relay | Logged; API serves on | No live pushes; next REST fetch shows all |
+| Broker down, API relay | Logged. API serves on | No live pushes. Next REST fetch shows all |
 | Worker crashes mid-handle | Message never acked → redelivered | Session rolled back; starts clean |
 | Handler raises | Dead-lettered immediately (`requeue=False`) | Alert on DLQ depth |
 | Poison pill (kills process) | Broker dead-letters after 5 deliveries | Alert on DLQ depth |
@@ -602,13 +602,13 @@ document dispatch.
 |---|---|---|
 | **PostgreSQL** | Everything durable: quotes, assistants, customers, interventions, planning runs, notifications, bills | api + all three workers |
 | **MinIO / S3** | Assistant photographs, account portraits, company logos, invoice documents | api + worker-billing |
-| **RabbitMQ** | In-flight events; nothing durable that matters | api + workers |
+| **RabbitMQ** | In-flight events. Nothing durable that matters | api + workers |
 
 **One database, shared.** There is no per-service schema and no service
 boundary — see the note at the top. Multi-tenancy is by `company_id` column,
 not by database.
 
-In production the API reaches PostgreSQL through **pgbouncer**; the workers hold
+In production the API reaches PostgreSQL through **pgbouncer**. The workers hold
 their own pool and open one session per message, so a crash mid-handle rolls
 back to a known state.
 
@@ -650,7 +650,7 @@ never scale it.
 **The chart is one workload short.** It ships `api`, `frontend`,
 `worker-planning`, `worker-notifications` and the migration Job — and **no
 `worker-billing`**. The word "billing" does not appear anywhere in
-`infra/chart/`. Compose runs the role; Kubernetes does not.
+`infra/chart/`. Compose runs the role. Kubernetes does not.
 
 | Process | Compose | Helm chart |
 |---|---|---|

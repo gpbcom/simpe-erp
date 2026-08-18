@@ -96,7 +96,7 @@ class CustomerService:
         if account.id is None:
             self.logger.error(
                 "The portal account of customer %s carries no identifier and "
-                "cannot be deleted; the customer stays.",
+                "cannot be deleted. The customer stays.",
                 customer_id,
             )
             raise MTCustomerHasQuotes(
@@ -104,7 +104,7 @@ class CustomerService:
                 f"identified, so it cannot be removed with them."
             )
         self.logger.warning(
-            "Deleting the portal account %s of customer %s; they lose access "
+            "Deleting the portal account %s of customer %s. They lose access "
             "to their space.",
             account.email,
             customer_id,
@@ -137,7 +137,7 @@ class CustomerService:
         )
         if not customer.address.is_geocoded():
             self.logger.warning(
-                "Customer %s %s has no coordinate (%s); their work cannot be "
+                "Customer %s %s has no coordinate (%s). Their work cannot be "
                 "planned until the address resolves.",
                 customer.first_name,
                 customer.last_name,
@@ -185,7 +185,7 @@ class CustomerService:
             customer_filter (Optional[CustomerFilter]): The richer filter the
                 customers screen sends.
             customer_ids (Optional[List[str]]): The households the caller may
-                read. ``None`` means every household; an empty list means none.
+                read. ``None`` means every household. An empty list means none.
 
         Returns:
             List[Customer]: The matching customers.
@@ -366,7 +366,7 @@ class CustomerService:
             raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
         if not status.can_be_scheduled():
             self.logger.warning(
-                "Customer %s is now %s; their accepted work stands but no "
+                "Customer %s is now %s. Their accepted work stands but no "
                 "further visit will be planned for them.",
                 customer_id,
                 status.value,
@@ -427,7 +427,7 @@ class CustomerService:
             )
             raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
         self.logger.warning(
-            "%s put customer %s on %s billing; this applies to the next run "
+            "%s put customer %s on %s billing. This applies to the next run "
             "and re-issues nothing.",
             actor,
             customer_id,
@@ -490,12 +490,12 @@ class CustomerService:
             )
             raise MTCustomerNotFound(f"No customer {customer_id!r} exists.")
         self.logger.info(
-            "Customer %s is active; their accepted work enters the next planning run.",
+            "Customer %s is active. Their accepted work enters the next planning run.",
             customer_id,
         )
         return promoted
 
-    async def quotes_for(self, customer_id: str) -> List[Quote]:
+    async def quotes(self, customer_id: str) -> List[Quote]:
         """Return every quote issued to a customer.
 
         Args:
@@ -552,7 +552,7 @@ class CustomerService:
         if quotes:
             self.logger.warning(
                 "Deleting customer %s also deletes %d quote(s) and everything "
-                "scheduled from them; this cannot be undone.",
+                "scheduled from them. This cannot be undone.",
                 customer_id,
                 len(quotes),
             )
@@ -560,7 +560,7 @@ class CustomerService:
                 if quote.id is None:
                     self.logger.error(
                         "A quote of customer %s carries no identifier and "
-                        "cannot be deleted; the customer stays.",
+                        "cannot be deleted. The customer stays.",
                         customer_id,
                     )
                     raise MTCustomerHasQuotes(

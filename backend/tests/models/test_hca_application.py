@@ -239,7 +239,7 @@ class TestStaffCreatedAccount:
         Notes:
             **This is the rule, expressed where it cannot be forgotten.** An
             account whose password was typed by somebody else is a credential
-            two people know; a flag that the next admin screen might leave off
+            two people know. A flag that the next admin screen might leave off
             is not a requirement.
         """
         with pytest.raises(MTUserStaffAccountNeedsChange):

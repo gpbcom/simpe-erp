@@ -20,12 +20,12 @@ class RegistrationStatus(StrEnum):
     """Enumeration for the registration status of a customer.
 
     Attributes:
-        ACTIVE (str): The customer is registered and served; their accepted
+        ACTIVE (str): The customer is registered and served. Their accepted
             work is planned.
         PROSPECT (str): The agency is in discussion with them. They may be
             quoted, but no visit is ever planned for them — see
             :meth:`can_be_scheduled`.
-        STOPPED (str): The customer has stopped the service; no new quote or
+        STOPPED (str): The customer has stopped the service. No new quote or
             intervention may be created for them.
 
     Notes:
@@ -67,7 +67,7 @@ class RegistrationStatus(StrEnum):
             Distinct from
             :meth:`~models.people.customer.customer.Customer.is_active` even
             though the two agree today. That one answers "what state is this
-            customer in"; this one answers "may the solver place their work",
+            customer in". This one answers "may the solver place their work",
             and a later state — a customer suspended mid-contract, say — would
             separate them.
         """
@@ -308,7 +308,7 @@ class UserRole(StrEnum):
         """Return the numeric access rank of this role.
 
         Returns:
-            int: The access rank; a higher rank unlocks strictly more.
+            int: The access rank. A higher rank unlocks strictly more.
 
         Raises:
             MTRoleNotRankable: If this role is not on the staff ladder.
@@ -316,7 +316,7 @@ class UserRole(StrEnum):
         Notes:
             - The ordering is shared by the whole stack so the API guards and
               any client agree on which role unlocks which feature. Rank
-              comparison answers "at least a manager"; it must not be used for
+              comparison answers "at least a manager". It must not be used for
               the checks that are specific to being an HCA (such as owning a
               planning), which compare the role by identity instead.
             - **:attr:`CUSTOMER` is refused rather than ranked**, and that
@@ -384,7 +384,7 @@ class QuoteStatus(StrEnum):
     """Enumeration for the lifecycle status of a quote.
 
     Attributes:
-        DRAFT (str): Being composed; lines may still be added or removed.
+        DRAFT (str): Being composed. Lines may still be added or removed.
         PENDING_VALIDATION (str): Submitted by an assistant and waiting for a
             manager to validate it.
         SENT (str): Sent to the customer and awaiting their answer.
@@ -463,7 +463,7 @@ class BillingPeriodicity(StrEnum):
           therefore straddle a period boundary, and "only the part of the quote
           inside the window is billed" reduces exactly to a date filter, with no
           fractional amount computed anywhere. Lines dated after the window are
-          simply absent from this bill; the next period has a different window
+          simply absent from this bill. The next period has a different window
           and picks them up unchanged.
         - **Both bounds are inclusive**, matching every other period in the
           application: ``QuoteRepository.list_schedulable``,
@@ -490,7 +490,7 @@ class BillingPeriodicity(StrEnum):
         """
         return tuple(periodicity.value for periodicity in cls)
 
-    def window_for(self, day: Union[date, datetime]) -> Tuple[date, date]:
+    def window(self, day: Union[date, datetime]) -> Tuple[date, date]:
         """Return the billing window that contains a day.
 
         Args:
@@ -545,8 +545,8 @@ class BillingPeriodicity(StrEnum):
             from ``day``, which would land on 28 February from 31 March. Doing
             it here stops every caller getting that wrong separately.
         """
-        start, _ = self.window_for(day)
-        return self.window_for(start - timedelta(days=1))
+        start, _ = self.window(day)
+        return self.window(start - timedelta(days=1))
 
 
 @unique
@@ -557,7 +557,7 @@ class BillStatus(StrEnum):
         TO_BE_VALIDATED (str): Generated, with its document, and waiting for a
             manager to approve it. Nothing has reached the customer.
         ACCEPTED (str): Approved by a manager. Approval is what sends it.
-        WAITING_PAYMENT (str): Sent to the customer; the money is outstanding.
+        WAITING_PAYMENT (str): Sent to the customer. The money is outstanding.
         PAID (str): Settled.
 
     Notes:
@@ -853,7 +853,7 @@ class TransmissionKind(StrEnum):
           administration is the fact that money changed hands — flux 10.4,
           mandatory for services because VAT falls due on collection. Recording
           which of the three happened is what makes a transmission auditable
-          afterwards; a single "sent" flag could not answer "sent as what?".
+          afterwards. A single "sent" flag could not answer "sent as what?".
         - :attr:`CHORUS_PRO` is kept apart from :attr:`INVOICE` even though both
           carry a structured document, because a public body is reached through
           a different route and addressed by an additional service code. Folding
@@ -907,7 +907,7 @@ class TransmissionStatus(StrEnum):
     Attributes:
         PENDING (str): Queued, not yet attempted.
         SENT (str): The platform accepted it for delivery.
-        FAILED (str): The attempt failed; it may be retried.
+        FAILED (str): The attempt failed. It may be retried.
 
     Notes:
         - **Deliberately not a mirror of the regulatory statuses.** The reform
@@ -943,7 +943,7 @@ class InterventionStatus(StrEnum):
         PLANNED (str): Produced by the planning computation, not yet confirmed.
         CONFIRMED (str): Acknowledged by the assigned Home Care Assistant.
         COMPLETED (str): Delivered.
-        CANCELLED (str): Called off; it no longer occupies the HCA's day.
+        CANCELLED (str): Called off. It no longer occupies the HCA's day.
     """
 
     PLANNED = "planned"
@@ -973,7 +973,7 @@ class AvailabilityKind(StrEnum):
         UNAVAILABLE (str): Unavailable for any other reason.
 
     Notes:
-        Every kind blocks scheduling identically; the distinction is recorded
+        Every kind blocks scheduling identically. The distinction is recorded
         for reporting, not for the solver, which only asks whether a slot
         exists for a given day.
     """
@@ -1212,7 +1212,7 @@ class UnplacedReason(StrEnum):
         - :attr:`MISSING_SKILL` follows it, ahead of anything geographical for
           the same reason and *behind* the certification for a different one:
           the two are fixed by different people. A missing certification is a
-          hire or a training course; a missing skill may be nothing more than
+          hire or a training course. A missing skill may be nothing more than
           somebody who can already do the work not having said so on their own
           screen. Reporting the certification first puts the harder problem in
           front of the manager, and a run blocked by both is blocked by the
@@ -1256,8 +1256,8 @@ class HcaApplicationStatus(StrEnum):
 
     Attributes:
         PENDING: Submitted, waiting for the chosen company to decide.
-        APPROVED: Accepted; the assistant record and the account now exist.
-        REJECTED: Declined; no account was ever created.
+        APPROVED: Accepted. The assistant record and the account now exist.
+        REJECTED: Declined. No account was ever created.
 
     Notes:
         Terminal states are kept rather than deleted. An applicant who was
@@ -1299,7 +1299,7 @@ class AccountOrigin(StrEnum):
     Notes:
         Recorded because the two paths carry different obligations. An account
         created by staff starts with a password its owner has never chosen, and
-        must be made to choose one before it can do anything; a self-registered
+        must be made to choose one before it can do anything. A self-registered
         account chose its own at the point of applying.
     """
 
@@ -1478,7 +1478,7 @@ class EventRoutingKey(StrEnum):
         - ``BILL_ACCEPTED`` is a separate topic from ``BILLING_RUN_COMPLETED``
           rather than a status carried on it, because the two have different
           payloads and different consequences. A completed run tells the agency
-          it has invoices to look at; an accepted bill puts one in a customer's
+          it has invoices to look at. An accepted bill puts one in a customer's
           inbox. Folding them together would mean a run's completion could
           post an invoice nobody had approved, which is the whole reason a bill
           is generated waiting for validation.

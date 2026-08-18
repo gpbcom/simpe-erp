@@ -87,7 +87,7 @@ class TestCustomerRepository:
         """A stored customer defaults to somebody the agency is talking to.
 
         Notes:
-            The store keeps whatever the model decided; this asserts the two
+            The store keeps whatever the model decided. This asserts the two
             agree, so a default changed in one place cannot be silently
             overridden by the other.
         """
@@ -478,7 +478,7 @@ class TestCustomerRepository:
             an **accepted** quote that has not passed its interruption date —
             narrower than the customer drawer's notion of "in flight", which
             also counts quotes merely sent or awaiting validation. The two
-            answer different questions and are allowed to differ; this test is
+            answer different questions and are allowed to differ. This test is
             what pins the server's answer down.
         """
         customers = CustomerRepository(session)

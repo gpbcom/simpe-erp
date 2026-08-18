@@ -510,7 +510,7 @@ class TestDownloadingTheDocument:
     def test_an_unreadable_document_answers_503(
         self, client: TestClient, service: MagicMock
     ) -> None:
-        """The invoice exists; the store is what did not answer.
+        """The invoice exists. The store is what did not answer.
 
         Args:
             service (MagicMock): The billing service double.

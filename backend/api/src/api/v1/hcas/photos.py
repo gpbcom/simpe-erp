@@ -40,15 +40,15 @@ async def upload_photo(
         the stored object.
 
     Raises:
-        MTHcaNotFound: If the assistant does not exist; answered as a 404.
+        MTHcaNotFound: If the assistant does not exist. Answered as a 404.
         MTS3PayloadTooLarge: If the file exceeds the configured limit;
             answered as a 413.
-        MTS3UnsupportedContentType: If it is not an accepted image; answered
+        MTS3UnsupportedContentType: If it is not an accepted image. Answered
             as a 415.
-        MTS3EmptyPayload: If it is empty; answered as a 422.
-        MTS3BucketUnavailable: If the object store cannot be reached; answered
+        MTS3EmptyPayload: If it is empty. Answered as a 422.
+        MTS3BucketUnavailable: If the object store cannot be reached. Answered
             as a 503.
-        MTS3UploadFailed: If the write itself failed; answered as a 500.
+        MTS3UploadFailed: If the write itself failed. Answered as a 500.
 
     Notes:
         - The whole file is read into memory before it is uploaded, so its real
@@ -83,8 +83,8 @@ async def delete_photo(
         HcaResponse: The updated assistant, with no photograph.
 
     Raises:
-        MTHcaNotFound: If the assistant does not exist; answered as a 404.
-        MTS3BucketUnavailable: If the object store cannot be reached; answered
+        MTHcaNotFound: If the assistant does not exist. Answered as a 404.
+        MTS3BucketUnavailable: If the object store cannot be reached. Answered
             as a 503.
     """
     updated = await service.clear_photo(hca_id)

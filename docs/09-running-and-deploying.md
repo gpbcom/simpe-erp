@@ -184,7 +184,7 @@ credential and so reads like a typo in the configuration:
 asyncpg.exceptions.InvalidPasswordError: password authentication failed for user "simple_erp"
 ```
 
-The application is asking for the right thing; the volume has never heard of it.
+The application is asking for the right thing. The volume has never heard of it.
 It surfaced when the product was renamed from `rt-erp` to SimpleERP, and it will
 surface again for any rotation of these three values. Rotating a *password* is
 different — the application-facing ones come from the environment on every
@@ -222,7 +222,7 @@ runtime: the pods start, report Ready, and do the wrong thing.
 | `solverWorkers` ≠ the planning worker's CPU limit | The budget is wall-clock; more threads than cores means the kernel throttles the cgroup and thirty seconds takes a minute. The run still reports as having used its budget |
 | CPU request ≠ CPU limit on the planning worker | Anything but Guaranteed QoS is the same throttling from the other side |
 | A grace period under 60s on the planning worker | Kubernetes' default is 30, which is *exactly* the solve budget — a scale-down would `SIGKILL` mid-solve |
-| `workerNotifications` scaling to zero | A badge should be instant; a cold start is not |
+| `workerNotifications` scaling to zero | A badge should be instant. A cold start is not |
 | An empty `integrations.providers` | The cluster would serve every screen except the one that makes the agency compliant: an e-invoicing gallery with nothing to connect |
 
 ### Two flags a cluster must set deliberately
@@ -297,7 +297,7 @@ same backup discipline as the database, and restoring `postgres-data` without it
 restores rows nothing can decrypt.
 
 It is read by the API alone. A worker publishes `bill.paid` and calls the
-loopback webhook; the transmission — and so the one decryption — happens in the
+loopback webhook. The transmission — and so the one decryption — happens in the
 API process, which is why the compose files set it there and nowhere else.
 
 There is no backup job in this repository. That is a gap, not a decision.

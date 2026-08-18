@@ -436,7 +436,7 @@ class Dataset:
         """
         return str(uuid5(NAMESPACE_URL, f"{self.NAMESPACE}/{kind}/{key}"))
 
-    def rate_for(self, code: str) -> Decimal:
+    def rate(self, code: str) -> Decimal:
         """Return the hourly rate of one catalog entry.
 
         Args:

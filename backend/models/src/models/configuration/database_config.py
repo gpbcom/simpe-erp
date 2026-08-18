@@ -273,7 +273,7 @@ class DatabaseConfig(BaseModel):
 
         Notes:
             The return value carries a secret. It must be handed straight to
-            the engine factory and never logged; log
+            the engine factory and never logged. Log
             :attr:`dsn_without_password` instead.
         """
         return (

@@ -75,7 +75,7 @@ def _bill(kind: RecipientKind = RecipientKind.BUSINESS) -> Bill:
         issued_on=date(2026, 8, 1),
         due_on=date(2026, 8, 31),
         status=BillStatus.PAID,
-        # A settled invoice must have a rendered document; the model refuses
+        # A settled invoice must have a rendered document. The model refuses
         # the combination without one, which is the same rule that stops a
         # bill being marked paid before anybody could have been sent it.
         document_key="invoices/company-1/FA-2026-0001.pdf",
@@ -211,7 +211,7 @@ class TestEveryPlatformSpeaksTheSameLanguage:
     async def test_the_key_never_appears_in_a_url(
         self, provider: EInvoicingProvider
     ) -> None:
-        """**Keys belong in headers; a URL is logged by every proxy in between.**
+        """**Keys belong in headers. A URL is logged by every proxy in between.**
 
         Args:
             provider (EInvoicingProvider): The platform.

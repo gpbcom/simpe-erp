@@ -42,7 +42,7 @@ class TestPhotoConstraintsResponse:
         assert response.accepted_content_types == ["image/jpeg", "image/png"]
 
     def test_a_tuple_of_types_is_accepted(self) -> None:
-        """The configuration holds a tuple; the response publishes a list."""
+        """The configuration holds a tuple. The response publishes a list."""
         response = PhotoConstraintsResponse(
             max_upload_bytes=1, accepted_content_types=("image/webp",)
         )

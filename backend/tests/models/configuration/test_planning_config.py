@@ -311,8 +311,8 @@ class TestPlanningConfig:
     def test_speed_for_selects_by_licence(self) -> None:
         """An assistant without a licence gets the slower speed."""
         config = PlanningConfig()
-        assert config.speed_for(True) == config.average_speed_kmh
-        assert config.speed_for(False) == config.average_speed_without_license_kmh
+        assert config.speed(True) == config.average_speed_kmh
+        assert config.speed(False) == config.average_speed_without_license_kmh
 
     # ------------------------------------------------------------------ #
     #  Exception hierarchy

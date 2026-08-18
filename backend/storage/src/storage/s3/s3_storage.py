@@ -75,7 +75,7 @@ class S3Storage:
         "image/webp": "webp",
         "application/pdf": "pdf",
         # A Zip container, because the signature cannot tell an .docx from an
-        # .xlsx. The stored file name keeps the real one; this only decides
+        # .xlsx. The stored file name keeps the real one. This only decides
         # what the object key ends in.
         "application/zip": "zip",
     }
@@ -232,7 +232,7 @@ class S3Storage:
         extension = self.CONTENT_TYPE_EXTENSIONS.get(content_type)
         if extension is None:
             self.logger.error(
-                "No file extension is registered for %s; the accepted types are %s.",
+                "No file extension is registered for %s. The accepted types are %s.",
                 content_type,
                 ", ".join(sorted(self.CONTENT_TYPE_EXTENSIONS)),
             )
@@ -242,7 +242,7 @@ class S3Storage:
             )
         if not company_id.strip():
             self.logger.warning(
-                "Building a logo key for an unnamed company; the object would "
+                "Building a logo key for an unnamed company. The object would "
                 "land directly under %s and no record could claim it.",
                 self.config.logo_key_prefix,
             )
@@ -288,13 +288,13 @@ class S3Storage:
         """
         if len(payload) > self.config.max_upload_bytes:
             self.logger.warning(
-                "Refused a %d-byte upload for hca %s; the limit is %d.",
+                "Refused a %d-byte upload for hca %s. The limit is %d.",
                 len(payload),
                 hca_id,
                 self.config.max_upload_bytes,
             )
             raise MTS3PayloadTooLarge(
-                f"The uploaded file is {len(payload)} bytes; the limit is "
+                f"The uploaded file is {len(payload)} bytes. The limit is "
                 f"{self.config.max_upload_bytes}."
             )
         content_type = self.detect_content_type(payload)
@@ -349,17 +349,17 @@ class S3Storage:
         """
         if len(payload) > self.config.max_upload_bytes:
             self.logger.warning(
-                "Refused a %d-byte logo for company %s; the limit is %d.",
+                "Refused a %d-byte logo for company %s. The limit is %d.",
                 len(payload),
                 company_id,
                 self.config.max_upload_bytes,
             )
             raise MTS3PayloadTooLarge(
-                f"The uploaded file is {len(payload)} bytes; the limit is "
+                f"The uploaded file is {len(payload)} bytes. The limit is "
                 f"{self.config.max_upload_bytes}."
             )
         self.logger.debug(
-            "Accepted a %d-byte logo for company %s; detecting its type.",
+            "Accepted a %d-byte logo for company %s. Detecting its type.",
             len(payload),
             company_id,
         )
@@ -466,7 +466,7 @@ class S3Storage:
             return None
         if not payload:
             self.logger.warning(
-                "The logo at %s is a zero-byte object; treating it as absent.", key
+                "The logo at %s is a zero-byte object. Treating it as absent.", key
             )
             return None
         self.logger.info("Read %d bytes of logo from %s.", len(payload), key)
@@ -527,11 +527,11 @@ class S3Storage:
             number is printed on a document a customer holds, so a key built
             from it would be guessable by anybody who has ever received one —
             and these objects are the agency's whole billing history. The number
-            stays the human-facing identity; the key stays unguessable.
+            stays the human-facing identity. The key stays unguessable.
         """
         if not company_id.strip():
             self.logger.warning(
-                "Building an invoice key for an unnamed company; the object "
+                "Building an invoice key for an unnamed company. The object "
                 "would land directly under %s and no record could claim it.",
                 self.config.invoice_key_prefix,
             )
@@ -559,7 +559,7 @@ class S3Storage:
 
         Notes:
             - **Returns a key and never a URL**, unlike the photograph and logo
-              paths. Those objects are fetched by a browser; an invoice is only
+              paths. Those objects are fetched by a browser. An invoice is only
               ever read back server-side and streamed through an authenticated
               endpoint, so there is no public URL to build and storing one would
               invite somebody to use it.
@@ -569,13 +569,13 @@ class S3Storage:
         """
         if len(payload) > self.config.max_upload_bytes:
             self.logger.warning(
-                "Refused a %d-byte invoice document for %s; the limit is %d.",
+                "Refused a %d-byte invoice document for %s. The limit is %d.",
                 len(payload),
                 number,
                 self.config.max_upload_bytes,
             )
             raise MTS3PayloadTooLarge(
-                f"The document is {len(payload)} bytes; the limit is "
+                f"The document is {len(payload)} bytes. The limit is "
                 f"{self.config.max_upload_bytes}."
             )
         content_type = self.detect_document_type(payload)
@@ -649,7 +649,7 @@ class S3Storage:
             return None
         if not payload:
             self.logger.warning(
-                "The invoice document at %s is a zero-byte object; treating it "
+                "The invoice document at %s is a zero-byte object. Treating it "
                 "as absent.",
                 key,
             )
@@ -714,7 +714,7 @@ class S3Storage:
             - **A third sniffer, and deliberately not a widening of either
               existing one.** :meth:`detect_content_type` guards a bucket
               serving portraits to a browser and :meth:`detect_document_type`
-              exists to prove a payload is an invoice; admitting a spreadsheet
+              exists to prove a payload is an invoice. Admitting a spreadsheet
               to either would admit it for photographs or for legal documents
               too. A team's shared space gets its own allow-list, its own prefix
               and the private cache header.
@@ -753,11 +753,11 @@ class S3Storage:
             from what somebody called their file would be guessable by anybody
             who has seen the name, and these objects are a team's private
             paperwork. The file name stays the human-facing identity, stored on
-            the row; the key stays unguessable.
+            the row. The key stays unguessable.
         """
         if not team_id.strip():
             self.logger.warning(
-                "Building a team-document key for an unnamed team; the object "
+                "Building a team-document key for an unnamed team. The object "
                 "would land directly under %s and no record could claim it.",
                 self.config.team_document_key_prefix,
             )
@@ -799,13 +799,13 @@ class S3Storage:
         """
         if len(payload) > self.config.max_upload_bytes:
             self.logger.warning(
-                "Refused a %d-byte document for team %s; the limit is %d.",
+                "Refused a %d-byte document for team %s. The limit is %d.",
                 len(payload),
                 team_id,
                 self.config.max_upload_bytes,
             )
             raise MTS3PayloadTooLarge(
-                f"The file is {len(payload)} bytes; the limit is "
+                f"The file is {len(payload)} bytes. The limit is "
                 f"{self.config.max_upload_bytes}."
             )
         content_type = self.detect_team_document_type(payload)
@@ -977,7 +977,7 @@ class S3Storage:
         self.logger.debug("Resolving %r against the %s prefix.", object_url, expected)  # noqa: E501
         if not isinstance(object_url, str) or not object_url.strip():
             self.logger.warning(
-                "Cannot resolve an empty URL; nothing will be acted on."
+                "Cannot resolve an empty URL. Nothing will be acted on."
             )
             return None
         try:

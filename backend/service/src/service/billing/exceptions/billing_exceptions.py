@@ -16,7 +16,7 @@ class MTBillAlreadyIssued(MTInvalidBillingServiceException):
     Notes:
         A conflict rather than a malformed request: the caller asked for
         something reasonable, and the period simply has an invoice already. In
-        an ordinary run this is caught and reported as a skip; it reaches a
+        an ordinary run this is caught and reported as a skip. It reaches a
         caller only when somebody asked for one customer explicitly.
     """
 
@@ -70,7 +70,7 @@ class MTBillDocumentUnavailable(MTInvalidBillingServiceException):
     """Exception raised when an invoice's stored document cannot be read.
 
     Notes:
-        The record exists and the number is real; the object store is what did
+        The record exists and the number is real. The object store is what did
         not answer. Distinct from a missing invoice so a manager is told to try
         again rather than told their invoice does not exist.
     """

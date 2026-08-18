@@ -155,7 +155,7 @@ class TestDatabaseConfig:
         """The loggable URL never carries the password.
 
         Notes:
-            This is the form that goes into log lines; leaking the credential
+            This is the form that goes into log lines. Leaking the credential
             into a log file is exactly what it exists to prevent.
         """
         monkeypatch.setenv("TEST_PG_PASSWORD", "s3cret")
@@ -294,7 +294,7 @@ class TestAuthConfig:
     def test_get_jwt_secret_raises_when_unset(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """There is no default secret; a missing one refuses to sign.
+        """There is no default secret. A missing one refuses to sign.
 
         Notes:
             A fallback would let the service boot in production with a signing

@@ -35,7 +35,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
           is a quote that prints blank, and there is no use case for one.
         - :attr:`LIVE_STATUSES` is deliberately wider than
           :attr:`~models.quoting.quote.Quote.SCHEDULABLE_STATUSES`. The planner
-          schedules only accepted work; the *workload* a team is carrying
+          schedules only accepted work. The *workload* a team is carrying
           includes what it has offered and is waiting on, because a team with
           twenty quotes out is not a team to send the next one to. Rejected and
           expired quotes are excluded — that is work the agency is not doing.
@@ -104,7 +104,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             quote_filter (Optional[QuoteFilter]): The richer filter from the
                 screen. Its own fields win over the three named arguments.
             team_ids (Optional[List[str]]): The teams whose quotes the caller
-                may read. ``None`` means every team; an **empty list means
+                may read. ``None`` means every team. An **empty list means
                 none**.
 
         Returns:
@@ -135,13 +135,13 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             applied.model_dump(exclude_none=True),  # noqa: E501
         )
         if applied.is_empty() and not any((customer_id, status, authored_by)):
-            self.logger.info("No filter was given; the query is every quote.")
+            self.logger.info("No filter was given. The query is every quote.")
 
         statement = select(QuoteRow)
         if team_ids is not None:
             if not team_ids:
                 self.logger.warning(
-                    "The caller may read no team; the quote query matches nothing."
+                    "The caller may read no team. The quote query matches nothing."
                 )
             statement = statement.where(QuoteRow.team_id.in_(team_ids))
         if customer_id is not None:
@@ -158,7 +158,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         elif applied.authored_by and applied.authored_by != authored_by:
             self.logger.warning(
                 "A quote filter asked for author %r while the caller is scoped "
-                "to %r; the scope wins.",
+                "to %r. The scope wins.",
                 applied.authored_by,
                 authored_by,
             )
@@ -322,7 +322,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
             authored_by (Optional[str]): Restrict to one author's quotes.
             quote_filter (Optional[QuoteFilter]): The screen's filter.
             team_ids (Optional[List[str]]): The teams the caller may read.
-                ``None`` means every team; an empty list means none.
+                ``None`` means every team. An empty list means none.
 
         Returns:
             List[Quote]: The matching quotes, newest reference first.
@@ -441,7 +441,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
               means a caller who runs no team, and the answer is already known.
         """
         if not team_ids:
-            self.logger.warning("No team was given; no household is in scope.")
+            self.logger.warning("No team was given. No household is in scope.")
             return []
         statement = (
             select(QuoteRow.customer_id)
@@ -488,7 +488,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
               quote issued in January can carry work in March, and asking by
               issue date would either miss it or drag in months of irrelevant
               history.
-            - A returned quote may still hold lines outside the window; the
+            - A returned quote may still hold lines outside the window. The
               requirement builder filters those. Loading the quote whole keeps
               its totals consistent with what was accepted.
             - **Scoped to the agency and to the team.** This is the input half
@@ -533,7 +533,7 @@ class QuoteRepository(BaseRepository[QuoteRow]):
         rows = await self._fetch_all(statement)
         if not rows:
             self.logger.warning(
-                "No accepted quote of %s covers %s to %s; a planning run "
+                "No accepted quote of %s covers %s to %s. A planning run "
                 "would have nothing to schedule.",
                 f"team {team_id}" if team_id else "the agency",
                 period_start,

@@ -35,7 +35,7 @@ const query = { data: undefined as Bill[] | undefined, isLoading: false };
 vi.mock('@/api/queries', () => ({
   // The rules tab renders the e-invoicing warning, which asks whether a
   // platform is connected. Stubbed as "one is" so these tests stay about
-  // the invoicing rules; the warning has its own tests.
+  // the invoicing rules. The warning has its own tests.
   useIntegrations: () => ({ data: [{ enabled: true }], isLoading: false }),
   useBills: () => query,
   useBill: () => ({ data: undefined }),
@@ -179,7 +179,7 @@ describe('BillsPage', () => {
 
   it('says plainly that generating sends nothing', async () => {
     // **The one sentence that stops a manager hunting for emails.** Generating
-    // writes invoices that wait for validation; a manager who assumed the
+    // writes invoices that wait for validation. A manager who assumed the
     // customers had been mailed would spend the afternoon looking.
     const user = userEvent.setup();
     query.data = [];

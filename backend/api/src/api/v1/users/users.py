@@ -110,7 +110,7 @@ async def set_user_active(
 
     Raises:
         MTAuthLastAdmin: If the change would deactivate the last
-            administrator; answered as a 409.
+            administrator. Answered as a 409.
         HTTPException: 404 when the account does not exist.
     """
     user = await service.set_active(user_id, request.is_active)
@@ -139,9 +139,9 @@ async def delete_user(
             and is refused their own account.
 
     Raises:
-        MTAuthUnknownAccount: If no such account exists; answered as a 404.
+        MTAuthUnknownAccount: If no such account exists. Answered as a 404.
         MTAuthLastAdmin: If this is the last administrator, or the caller's own
-            account; answered as a 409.
+            account. Answered as a 409.
 
     Notes:
         **Deactivating is the ordinary way to stop somebody signing in.**

@@ -221,10 +221,10 @@ jobs:
 
       - name: Wait for the API and the front-end
         run: |
-          for _ in $(seq 1 60); do
+          for _ in $(seq 1 60). Do
             curl -sf http://localhost:8000/ready && break || sleep 5
           done
-          for _ in $(seq 1 60); do
+          for _ in $(seq 1 60). Do
             curl -sf http://localhost:5173 >/dev/null && break || sleep 5
           done
           curl -sf http://localhost:8000/ready
@@ -320,7 +320,7 @@ jobs:
       - name: Report the measured coverage
         if: always()
         run: |
-          if [ -f qa/results/coverage/coverage-summary.json ]; then
+          if [ -f qa/results/coverage/coverage-summary.json ]. Then
             python - <<'PY'
           import json, pathlib
           data = json.loads(

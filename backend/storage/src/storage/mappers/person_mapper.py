@@ -21,7 +21,7 @@ class PersonMapper(BaseMapper[ModelType, RowType], ABC):
           blob, which is why it needs mapping at all: the planner filters on the
           city and reads the coordinates on every solve.
         - A licence, a contract or a registration status is *not* handled here.
-          Only what both tables genuinely share belongs at this level; the rest
+          Only what both tables genuinely share belongs at this level. The rest
           stays in the mapper that owns it.
     """
 

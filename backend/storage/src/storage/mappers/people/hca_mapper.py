@@ -7,16 +7,16 @@ from uuid import uuid4
 
 # First-party imports
 from models.enums import ContractType, Weekday
+from models.people.hca import Hca
 from models.people.hca.availability_slot import AvailabilitySlot
 from models.people.hca.certification import Certification
 from models.people.hca.driving_license import DrivingLicense
 from models.people.hca.skill import Skill
-from models.people.hca import Hca
 from storage.mappers.person_mapper import PersonMapper
 from storage.orm.people.availability_row import AvailabilityRow
 from storage.orm.people.certification_row import CertificationRow
-from storage.orm.people.skill_row import SkillRow
 from storage.orm.people.hca_row import HcaRow
+from storage.orm.people.skill_row import SkillRow
 
 
 class HcaMapper(PersonMapper[Hca, HcaRow]):
@@ -261,7 +261,7 @@ class HcaMapper(PersonMapper[Hca, HcaRow]):
         raw = (row.working_weekdays or "").strip()
         if not raw:
             self.logger.warning(
-                "Hca row %s has no working week stored; defaulting to the "
+                "Hca row %s has no working week stored. Defaulting to the "
                 "standard week.",
                 row.id,
             )

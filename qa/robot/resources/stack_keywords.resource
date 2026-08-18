@@ -46,7 +46,7 @@ Start The Stack
     ...    rather than blocking on their logs. Readiness is a separate question
     ...    and a separate keyword: compose considers a container started long
     ...    before uvicorn has finished importing the application.
-    Log    Starting the stack; the first run builds the images.    console=${True}
+    Log    Starting the stack. The first run builds the images.    console=${True}
     ${result}=    Run Process
     ...    docker    compose    @{COMPOSE_FILES.split()}    up    -d    --build
     ...    cwd=${COMPOSE_ROOT}

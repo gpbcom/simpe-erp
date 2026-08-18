@@ -61,7 +61,7 @@ planning:
   # Minutes from midnight: 540 = 09:00, 1200 = 20:00.
   day_start_minute: 540
   day_end_minute: 1200
-  # The business floor is one hour; the value is configurable by requirement.
+  # The business floor is one hour. The value is configurable by requirement.
   lunch_break_minutes: 60
   lunch_window_start_minute: 690   # 11:30
   lunch_window_end_minute: 870     # 14:30
@@ -70,7 +70,7 @@ planning:
   # Not seeded: these are a property of the road network, not an agency rule.
   average_speed_kmh: 30.0
   average_speed_without_license_kmh: 12.0
-  # A safety net, not a budget. It bounds a pathological instance; a solve
+  # A safety net, not a budget. It bounds a pathological instance. A solve
   # that reaches it has stopped being reproducible and says so at WARNING.
   # It must stay well above what the budget below actually costs in seconds,
   # or the net truncates every search — the Helm chart shipped that mistake,
@@ -156,7 +156,7 @@ planning:
   # **A budget is spent once per day, not once per period.** The week is
   # solved as one independent model per day, so the figure below is what
   # each of them gets. It was 150.0 when one model covered the whole
-  # period; leaving it there made a five-day week cost five times 150
+  # period. Leaving it there made a five-day week cost five times 150
   # rather than 150, and the decomposition looked like a regression.
   #
   # Measured on a 150-visit, 12-assistant, 5-day instance, one worker per
@@ -195,10 +195,10 @@ geocoding:
     - fr
 
 s3:
-  # Assistant photographs are stored here; the HCA record holds the object URL.
+  # Assistant photographs are stored here. The HCA record holds the object URL.
   bucket: simple-erp
   region: fr-par
-  # Set endpoint_url for MinIO or Scaleway; leave null for AWS.
+  # Set endpoint_url for MinIO or Scaleway. Leave null for AWS.
   endpoint_url: null
   # Set public_base_url when the URL a browser fetches differs from the
   # endpoint the backend writes through (a CDN, or an in-cluster address).
@@ -232,7 +232,7 @@ email:
   timeout_seconds: 30.0
 
 webhook:
-  # Called once a planning run succeeds; the endpoint it names emails every
+  # Called once a planning run succeeds. The endpoint it names emails every
   # assistant their diary and every customer their quote. The same secret is
   # sent as X-Webhook-Token and checked on the way in, so it must be set for
   # the dispatch to happen at all.
@@ -266,7 +266,7 @@ observability:
   service_name: simple-erp
   metrics_enabled: true
   # The worker's own port. The API serves /metrics on the port it already
-  # listens on; the worker had no port at all, and therefore no readiness
+  # listens on. The worker had no port at all, and therefore no readiness
   # probe either.
   metrics_port: 9100
   # Off on a host: there is no collector to export to, and a process pointed at

@@ -453,7 +453,7 @@ class TestRoleGuards:
             the reasoning.
 
             The three guards must agree. ``get_hca_user`` and
-            ``get_admin_user`` compare by identity and were always right; the
+            ``get_admin_user`` compare by identity and were always right. The
             manager gate is the one that ranks.
         """
         with pytest.raises(HTTPException) as raised:

@@ -31,7 +31,7 @@ class TeamCreateRequest(BaseModel):
           person belongs to exactly one team, so adding somebody to this one
           takes them off another — a consequence worth a deliberate call rather
           than a side effect of creating a team. Members are added afterwards
-          through ``PUT /api/v1/teams/{id}/members``; the manager alone is
+          through ``PUT /api/v1/teams/{id}/members``. The manager alone is
           enrolled by the creating call, because a team that named a manager who
           was not on it would be a roster missing the person in charge.
         - Whether the named account *may* run a team — that it holds a manager's

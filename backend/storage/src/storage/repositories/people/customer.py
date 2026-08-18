@@ -69,7 +69,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               interrupted today is still running today.
             - Deliberately narrower than the customer drawer's notion of "in
               flight", which also counts quotes that are merely sent or awaiting
-              validation. Those answer *what is in the pipeline*; this answers
+              validation. Those answer *what is in the pipeline*. This answers
               *who are we serving*, which is the question a manager filters the
               book by. The two are allowed to differ, and this note is so they
               differ on purpose rather than by drift.
@@ -129,7 +129,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         self.logger.info("Telephone matching compares digits, not stored text.")
         if column.key != "phone_number":
             self.logger.error(
-                "Column %s is not a telephone number; digit-stripping it will "
+                "Column %s is not a telephone number. Digit-stripping it will "
                 "match something other than what was asked for.",
                 column.key,
             )
@@ -161,7 +161,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 ``search`` and ``status`` win over the two positional arguments
                 when both are given.
             customer_ids (Optional[List[str]]): The households the caller may
-                read. ``None`` means every household; an **empty list means
+                read. ``None`` means every household. An **empty list means
                 none**.
 
         Returns:
@@ -182,7 +182,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         )
         if customer_filter is not None and search and applied.search:
             self.logger.warning(
-                "Two searches were passed (%r and %r); the filter's %r is used.",
+                "Two searches were passed (%r and %r). The filter's %r is used.",
                 search,
                 applied.search,
                 applied.search,
@@ -190,7 +190,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
         search = applied.search or search
         status = applied.status or status
         if applied.is_empty() and search is None and status is None:
-            self.logger.info("No filter was given; the query is the whole book.")
+            self.logger.info("No filter was given. The query is the whole book.")
 
         statement = select(CustomerRow)
         if customer_ids is not None:
@@ -200,7 +200,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             # who runs no team the whole customer book.
             if not customer_ids:
                 self.logger.warning(
-                    "The caller may read no household; the query matches nothing."
+                    "The caller may read no household. The query matches nothing."
                 )
             statement = statement.where(CustomerRow.id.in_(customer_ids))
         if status is not None:
@@ -235,7 +235,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
                 # would be `LIKE '%%'` — every customer, under a filter that
                 # says it is narrowing by telephone number.
                 self.logger.error(
-                    "Telephone filter %r holds no digit; it is dropped rather "
+                    "Telephone filter %r holds no digit. It is dropped rather "
                     "than matched as a wildcard.",
                     applied.phone,
                 )
@@ -267,7 +267,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
 
         Notes:
             - **One definition of the portfolio, three readers.** The list, the
-              single-customer check and the planning rail all have to agree; a
+              single-customer check and the planning rail all have to agree. A
               rail that offers a household whose detail view then refuses is
               worse than either behaviour alone. Written once here, the three
               cannot drift.
@@ -278,7 +278,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               feature looks broken.
             - **The two halves are keyed differently, and that is why both
               identifiers are taken.** An intervention names the assistant, so
-              it joins on ``hca_id``; a quote records the *account* that wrote
+              it joins on ``hca_id``. A quote records the *account* that wrote
               it — see :attr:`QuoteRow.authored_by` — so it joins on
               ``account_id``. Comparing ``authored_by`` to an assistant
               identifier matches nothing, which quietly reduces the union to its
@@ -473,7 +473,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
             status (Optional[RegistrationStatus]): Restrict to one status.
             customer_filter (Optional[CustomerFilter]): The richer filter.
             customer_ids (Optional[List[str]]): The households the caller may
-                read. ``None`` means every household; an empty list means none.
+                read. ``None`` means every household. An empty list means none.
 
         Returns:
             List[Customer]: The matching customers, ordered by family name.
@@ -580,7 +580,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               nobody and the feature would appear broken on their first day.
             - **The two halves are keyed differently, and that is why both
               identifiers are taken.** An intervention names the assistant, so
-              it joins on ``hca_id``; a quote records the *account* that wrote
+              it joins on ``hca_id``. A quote records the *account* that wrote
               it — see :attr:`QuoteRow.authored_by` — so it joins on
               ``account_id``. Comparing ``authored_by`` to an assistant
               identifier matches nothing, which quietly reduced the union to its
@@ -628,7 +628,7 @@ class CustomerRepository(BaseRepository[CustomerRow]):
               household — a calendar missing a family, with nothing on it
               saying so.
             - Identifiers only. The caller that needs the records asks for them
-              by name afterwards; a rail of forty households does not need forty
+              by name afterwards. A rail of forty households does not need forty
               addresses and telephone numbers read out of the database to draw
               it.
             - Ordered so two reads of an unchanged portfolio produce the same

@@ -1,6 +1,6 @@
 """A scheduled visit, and the piece of work it was scheduled from.
 
-The requirement is what the solver is handed; the intervention is what
+The requirement is what the solver is handed. The intervention is what
 it decided. They live together because the second is only ever produced
 from the first, and neither is read without the other nearby.
 """

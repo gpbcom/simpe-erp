@@ -8,7 +8,7 @@ Notes:
     The same service is necessity care for one customer and comfort care for
     another — help with washing under a care plan is billed at the reduced
     rate, and the same hour arranged privately is not. So the rate cannot be a
-    property of the service being sold; it is decided when the quote is
+    property of the service being sold. It is decided when the quote is
     written, by the person who knows which the customer is.
 
     **Added nullable, backfilled, then made NOT NULL.** Adding a non-nullable

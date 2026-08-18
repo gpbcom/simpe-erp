@@ -42,7 +42,7 @@ class TeamDocumentService:
           refusal answered 403, because everybody on the team can plainly see
           the file — telling them it does not exist would read as a bug.
         - The **row is written after the object and removed before it**. An
-          orphaned object costs storage; an orphaned row costs a download that
+          orphaned object costs storage. An orphaned row costs a download that
           answers 503 to somebody who can see the file on their screen.
     """
 
@@ -153,7 +153,7 @@ class TeamDocumentService:
 
         Notes:
             **Both halves are tested, and both are needed.** A manager and an
-            administrator are on a team as an *account*; an assistant may be on
+            administrator are on a team as an *account*. An assistant may be on
             it as an account too, but the record is what the planner schedules
             and the one an assistant without a sign-in would be listed under.
             Testing only one would shut out whichever group holds the other.
@@ -317,7 +317,7 @@ class TeamDocumentService:
               not a secret from them — telling them it does not exist would read
               as a bug rather than as a rule.
             - The **row goes first and the object second**. Losing the object
-              after the row is gone costs storage; losing the row after the
+              after the row is gone costs storage. Losing the row after the
               object would leave a download offering bytes that are no longer
               there.
         """
@@ -351,7 +351,7 @@ class TeamDocumentService:
         if not removed:
             self.logger.error(
                 "The record for team document %s is gone but its object at %s "
-                "remains; it is now unreachable and costs storage.",
+                "remains. It is now unreachable and costs storage.",
                 document_id,
                 document.document_key,
             )
@@ -379,7 +379,7 @@ class TeamDocumentService:
         """
         if self.storage is None:
             self.logger.warning(
-                "Team %s is being emptied with no object store configured; its "
+                "Team %s is being emptied with no object store configured. Its "
                 "records go, and there are no objects to remove.",
                 team_id,
             )
@@ -391,7 +391,7 @@ class TeamDocumentService:
                 removed += 1
         if removed != len(keys):
             self.logger.error(
-                "Emptied team %s: %d of %d object(s) removed; the rest remain "
+                "Emptied team %s: %d of %d object(s) removed. The rest remain "
                 "in the bucket with nothing pointing at them.",
                 team_id,
                 removed,

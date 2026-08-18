@@ -25,7 +25,7 @@ import { TeamDocumentsDialog } from './TeamDocumentsDialog';
  * elsewhere is a screen that can be aimed at the wrong roster.
  *
  * Membership, not management. A manager who runs two teams is a *member* of
- * one, and it is that one whose roster and shared space are theirs; the teams
+ * one, and it is that one whose roster and shared space are theirs. The teams
  * they run are a different list on a different screen.
  *
  * An account on no team is told so plainly rather than shown an error. It is an

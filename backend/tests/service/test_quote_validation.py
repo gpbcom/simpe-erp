@@ -157,7 +157,7 @@ class TestQuoteSubmission:
 
         Notes:
             **This is the test the scoping rests on.** A route guard proves the
-            caller is an assistant; nothing at the routing layer stops assistant
+            caller is an assistant. Nothing at the routing layer stops assistant
             A putting assistant B's quote identifier in the path. The comparison
             can only be made here, against the stored author.
         """

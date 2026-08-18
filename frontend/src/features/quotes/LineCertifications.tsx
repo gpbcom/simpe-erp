@@ -25,7 +25,7 @@ interface LineCertificationsProps {
  *
  * @remarks
  * **Three states, and the control exists to keep them apart.** `null` means
- * "whatever the service requires"; an array means "these instead"; and an
+ * "whatever the service requires". An array means "these instead". And an
  * *empty* array means "this hour needs no qualification at all". The last is a
  * real answer — the catalogue's default is occasionally wrong for one customer
  * — and collapsing it into `null` would silently reinstate a requirement the

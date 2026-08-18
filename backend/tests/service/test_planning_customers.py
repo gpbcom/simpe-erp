@@ -293,7 +293,7 @@ class TestWhoMayReadAHouseholdsCare:
             `UserRole.rank` refuses to rank a customer — there is no number that
             is correct for an axis rather than a rung — and the refusal surfaces
             as a 422 whose body discusses role ladders. A household reaching a
-            staff route is not sending a malformed request; it is asking for
+            staff route is not sending a malformed request. It is asking for
             something that is not theirs. Testing for
             :class:`MTPlanningForbidden` is what pins the 403, because the wrong
             answer here is not an exception nobody notices — it is a plausible

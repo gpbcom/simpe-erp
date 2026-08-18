@@ -7,9 +7,10 @@ from typing import Optional
 # Third-party imports
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from models.geo.postal_address import PostalAddress
+
 # First-party imports
 from models.organisation.companies.company import Company
-from models.geo.postal_address import PostalAddress
 from models.schemas.exceptions import (
     MTCompanyProfileUpdateRequestInvalidBic,
     MTCompanyProfileUpdateRequestInvalidIban,
@@ -169,7 +170,7 @@ class CompanyProfileUpdateRequest(BaseModel):
         Notes:
             The shape and the check digits are **not** verified here. That rule
             lives on :class:`~models.organisation.companies.company.Company`, which is what
-            the service writes; duplicating it would mean two definitions of a
+            the service writes. Duplicating it would mean two definitions of a
             valid IBAN and, sooner or later, two different answers.
 
             Blank becomes ``None`` rather than an empty string, so "no account

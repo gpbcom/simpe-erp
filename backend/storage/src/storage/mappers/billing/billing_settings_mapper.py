@@ -14,7 +14,7 @@ class BillingSettingsMapper(BaseMapper[BillingSettings, BillingSettingsRow]):
     """Converts between :class:`BillingSettings` and its row.
 
     Attributes:
-        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``; the model carries no
+        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``. The model carries no
             ``created_at``, so the row's own creation time is the only one.
 
     Notes:

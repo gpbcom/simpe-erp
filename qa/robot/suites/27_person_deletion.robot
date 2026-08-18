@@ -210,7 +210,7 @@ Build The Fixtures
     [Documentation]    Create the customer and the assistant this run destroys.
     ...
     ...    Through the API, and created fresh rather than borrowed from the
-    ...    seed. Every other suite in this campaign edits; this one deletes,
+    ...    seed. Every other suite in this campaign edits. This one deletes,
     ...    and a suite that deletes seeded data is a suite that breaks every
     ...    suite after it.
     ${headers}=    Manager Headers

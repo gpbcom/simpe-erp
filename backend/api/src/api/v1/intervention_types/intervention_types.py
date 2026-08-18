@@ -138,7 +138,7 @@ async def get_intervention_type(
         InterventionType: The type.
 
     Raises:
-        MTInterventionTypeNotFound: If no such type exists; answered as a 404.
+        MTInterventionTypeNotFound: If no such type exists. Answered as a 404.
     """
     return await service.get(type_id)
 
@@ -162,8 +162,8 @@ async def update_intervention_type(
         InterventionType: The updated type.
 
     Raises:
-        MTInterventionTypeNotFound: If no such type exists; answered as a 404.
-        MTInterventionTypeAlreadyExists: If the new name is taken; answered as
+        MTInterventionTypeNotFound: If no such type exists. Answered as a 404.
+        MTInterventionTypeAlreadyExists: If the new name is taken. Answered as
             a 409.
 
     Notes:
@@ -206,11 +206,11 @@ async def retire_intervention_type(
         InterventionType: The retired type.
 
     Raises:
-        MTInterventionTypeNotFound: If no such type exists; answered as a 404.
+        MTInterventionTypeNotFound: If no such type exists. Answered as a 404.
 
     Notes:
         A soft delete, despite the verb. The row stays so a quote issued last
-        year can still be printed and its VAT rate still explained; the type
+        year can still be printed and its VAT rate still explained. The type
         simply stops appearing when a new quote is built.
     """
     return await service.retire(type_id)

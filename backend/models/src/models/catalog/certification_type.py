@@ -264,7 +264,7 @@ class CertificationType(BaseModel):
 
         Notes:
             Used in the planner's unplaced-work diagnosis. A manager told only
-            "DEAES is missing" has to go and look the code up; naming both is
+            "DEAES is missing" has to go and look the code up. Naming both is
             what makes the message actionable where it is read.
         """
         return f"{self.code} ({self.label})"

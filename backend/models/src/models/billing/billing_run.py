@@ -45,7 +45,7 @@ class BillingRun(BaseModel):
           a caller is handed back is real even when the broker is unreachable —
           the same reason a planning run is recorded first.
         - Both outcome lists are kept, not just the successes. A partial run is
-          only actionable if it says *which* customers went unbilled; a count
+          only actionable if it says *which* customers went unbilled. A count
           would leave somebody comparing two lists by hand to find them.
         - The window is stored rather than recomputed from ``reference_date`` and
           ``periodicity`` on read. An agency that changes its periodicity between

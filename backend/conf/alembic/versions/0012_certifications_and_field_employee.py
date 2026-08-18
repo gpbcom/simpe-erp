@@ -28,7 +28,7 @@ Notes:
 
     ``field_employee`` is added with a server default of true which is then
     dropped. Every assistant that existed before this column did was, by
-    definition, somebody the planner was already free to schedule; a default of
+    definition, somebody the planner was already free to schedule. A default of
     false would have emptied the workforce on the deployment that introduced it
     and failed every planning run until somebody ticked a box they had not been
     told about. Dropping the default afterwards is deliberate too: the value

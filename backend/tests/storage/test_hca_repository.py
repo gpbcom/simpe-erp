@@ -68,7 +68,7 @@ class TestHcaRepository:
         """Timestamps are UTC-aware regardless of the backend.
 
         Notes:
-            SQLite has no timezone type and returns a naive value; the mapper
+            SQLite has no timezone type and returns a naive value. The mapper
             normalises it so test and production agree.
         """
         stored = await HcaRepository(session).create(hca)

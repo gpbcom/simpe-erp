@@ -53,7 +53,7 @@ class TestPricingConfig:
         assert PricingConfig().base_hourly_rate_ht == Decimal("31.905")
 
     def test_defaults_have_no_surcharges(self) -> None:
-        """A bare config surcharges nothing; the rules come from the file."""
+        """A bare config surcharges nothing. The rules come from the file."""
         config = PricingConfig()
         assert config.weekday_surcharges == {}
         assert config.holiday_surcharges == []
@@ -191,19 +191,19 @@ class TestPricingConfig:
         self, business_rules_config: PricingConfig
     ) -> None:
         """4 August 2026 is a Tuesday, so the base rate applies unchanged."""
-        assert business_rules_config.multiplier_for(date(2026, 8, 4)) == Decimal("1")
+        assert business_rules_config.multiplier(date(2026, 8, 4)) == Decimal("1")
 
     def test_sunday_carries_a_quarter_surcharge(
         self, business_rules_config: PricingConfig
     ) -> None:
         """9 August 2026 is a Sunday, so the rate is uplifted by 25%."""
-        assert business_rules_config.multiplier_for(date(2026, 8, 9)) == Decimal("1.25")
+        assert business_rules_config.multiplier(date(2026, 8, 9)) == Decimal("1.25")
 
     def test_christmas_day_carries_a_half_surcharge(
         self, business_rules_config: PricingConfig
     ) -> None:
         """25 December 2026 is a Friday, and bills at +50%."""
-        assert business_rules_config.multiplier_for(date(2026, 12, 25)) == Decimal(
+        assert business_rules_config.multiplier(date(2026, 12, 25)) == Decimal(
             "1.50"
         )
 
@@ -211,7 +211,7 @@ class TestPricingConfig:
         self, business_rules_config: PricingConfig
     ) -> None:
         """1 January 2027 is a Friday, and bills at +50%."""
-        assert business_rules_config.multiplier_for(date(2027, 1, 1)) == Decimal("1.50")
+        assert business_rules_config.multiplier(date(2027, 1, 1)) == Decimal("1.50")
 
     @pytest.mark.parametrize(
         "overlapping",
@@ -234,8 +234,8 @@ class TestPricingConfig:
             cannot quietly stop exercising the overlap.
         """
         assert overlapping.isoweekday() == Weekday.SUNDAY.iso_weekday()
-        assert business_rules_config.multiplier_for(overlapping) == Decimal("1.50")
-        assert business_rules_config.multiplier_for(overlapping) != Decimal("1.875")
+        assert business_rules_config.multiplier(overlapping) == Decimal("1.50")
+        assert business_rules_config.multiplier(overlapping) != Decimal("1.875")
 
     def test_the_larger_surcharge_wins_when_the_weekday_is_higher(self) -> None:
         """The maximum is taken whichever rule happens to be the larger one."""
@@ -248,20 +248,20 @@ class TestPricingConfig:
             ],
         )
         # 1 January 2034 is a Sunday.
-        assert config.multiplier_for(date(2034, 1, 1)) == Decimal("1.80")
+        assert config.multiplier(date(2034, 1, 1)) == Decimal("1.80")
 
     def test_surcharge_for_returns_zero_on_an_ordinary_day(
         self, business_rules_config: PricingConfig
     ) -> None:
         """An unsurcharged day yields a zero uplift, not None."""
-        assert business_rules_config.surcharge_for(date(2026, 8, 4)) == Decimal("0")
+        assert business_rules_config.surcharge(date(2026, 8, 4)) == Decimal("0")
 
     def test_the_holiday_recurs_every_year(
         self, business_rules_config: PricingConfig
     ) -> None:
         """A fixed-date holiday ignores the year."""
         for year in (2026, 2027, 2028, 2029):
-            assert business_rules_config.multiplier_for(date(year, 12, 25)) == Decimal(
+            assert business_rules_config.multiplier(date(year, 12, 25)) == Decimal(
                 "1.50"
             )
 
@@ -270,7 +270,7 @@ class TestPricingConfig:
     ) -> None:
         """The multiplier is a Decimal so it composes with the rate exactly."""
         assert isinstance(
-            business_rules_config.multiplier_for(date(2026, 8, 9)), Decimal
+            business_rules_config.multiplier(date(2026, 8, 9)), Decimal
         )
 
     # ------------------------------------------------------------------ #
@@ -297,4 +297,4 @@ class TestPricingConfig:
         """A config survives a dump-and-rebuild unchanged."""
         rebuilt = PricingConfig(**business_rules_config.model_dump())
         assert rebuilt.base_hourly_rate_ht == business_rules_config.base_hourly_rate_ht
-        assert rebuilt.multiplier_for(date(2034, 1, 1)) == Decimal("1.50")
+        assert rebuilt.multiplier(date(2034, 1, 1)) == Decimal("1.50")

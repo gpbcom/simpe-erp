@@ -288,7 +288,7 @@ class TestFormatter:
         assert sheet.cell(row=total, column=8).value == pytest.approx(67.33)
 
     def test_an_unpriced_line_leaves_its_cells_empty(self) -> None:
-        """Empty reads as "not priced yet"; a zero would read as "free"."""
+        """Empty reads as "not priced yet". A zero would read as "free"."""
         quote = _quote()
         quote.lines[0].total_ht = None
         quote.lines[0].total_ttc = None
@@ -473,7 +473,7 @@ class TestTeamWorkbook:
         assert workbook.sheetnames == ["Ana", "Zoe"]
 
     def test_a_forbidden_character_does_not_break_the_workbook(self) -> None:
-        """Excel refuses five characters in a sheet name; a name may carry them."""
+        """Excel refuses five characters in a sheet name. A name may carry them."""
         plannings = [
             _planning().model_copy(
                 update={"hca_id": "hca-1", "hca_full_name": "Ana/Bea [test]"}
@@ -1299,7 +1299,7 @@ class TestFetchingTheLogoForAQuote:
         logos.fetch_logo.assert_not_awaited()
 
     async def test_a_deployment_with_no_object_store_fetches_nothing(self) -> None:
-        """Quotes still go out; they simply have no letterhead."""
+        """Quotes still go out. They simply have no letterhead."""
         service = EmailService(config=EmailConfig(enabled=True))
 
         agency = _company().model_copy(
@@ -1316,7 +1316,7 @@ class TestFetchingTheLogoForAQuote:
         """**The failure mode that must not reach the customer.**
 
         Notes:
-            The store already reports rather than raises; this asserts the
+            The store already reports rather than raises. This asserts the
             mailer does not turn that ``None`` back into an exception on the
             way to the renderer.
         """

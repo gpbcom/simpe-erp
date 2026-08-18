@@ -4,7 +4,7 @@ Documentation    The bell, the popover and the notification centre.
 ...              Covered against notifications this suite creates itself, so it
 ...              never depends on what a previous run left behind — and never
 ...              leaves anything for the next one. The cross-role journey suite
-...              proves the *event pipeline*; this one proves the two screens
+...              proves the *event pipeline*. This one proves the two screens
 ...              that display what comes out of it.
 
 Library          Browser

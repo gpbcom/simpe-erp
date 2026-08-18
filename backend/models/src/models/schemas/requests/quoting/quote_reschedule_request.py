@@ -29,7 +29,7 @@ class QuoteRescheduleRequest(BaseModel):
     Notes:
         - **The shape is the permission.** The payload names a line, a day and
           a window, and nothing else. It cannot carry a status, so accepting a
-          new time cannot approve the quote; it cannot carry a price, so
+          new time cannot approve the quote. It cannot carry a price, so
           rescheduling cannot change what is charged — the server reprices from
           the day it lands on.
         - **No assistant.** The offered slot names one, and that is what makes

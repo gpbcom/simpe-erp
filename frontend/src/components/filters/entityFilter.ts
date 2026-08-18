@@ -123,7 +123,7 @@ export interface EntityFilterState {
  * filter — none of which works when the same thing lives in a `useState`.
  *
  * Two speeds, because the controls are two different gestures. Typing settles
- * for {@link SETTLE_MS} before the URL moves; a tab, a select or a flag applies
+ * for {@link SETTLE_MS} before the URL moves. A tab, a select or a flag applies
  * at once, since a click is already a finished decision and delaying it reads
  * as the control not working.
  *

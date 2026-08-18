@@ -87,7 +87,7 @@ async def planning_completed(
 
     Raises:
         HTTPException: 401 when the shared secret is missing or wrong.
-        MTPlanningRunNotFound: If the run does not exist; answered as a 404.
+        MTPlanningRunNotFound: If the run does not exist. Answered as a 404.
 
     Notes:
         - **Not** behind the bearer-token middleware: a webhook has no signed-in
@@ -135,7 +135,7 @@ async def planning_completed(
     requester = await users.get(run.requested_by)
     if requester is None:
         logger.error(
-            "Planning run %s names requester %s, who no longer exists; the "
+            "Planning run %s names requester %s, who no longer exists. The "
             "documents cannot be attributed to an agency.",
             run.id,
             run.requested_by,
@@ -223,14 +223,14 @@ async def bill_accepted(
 
     Raises:
         HTTPException: 401 when the shared secret is missing or wrong.
-        MTBillNotFound: If the invoice does not exist; answered as a 404.
-        MTBillDocumentUnavailable: If the stored PDF cannot be read; answered
+        MTBillNotFound: If the invoice does not exist. Answered as a 404.
+        MTBillDocumentUnavailable: If the stored PDF cannot be read. Answered
             as a 503.
 
     Notes:
         - **This is what puts an invoice in a customer's inbox**, and it fires
           only after a manager moved the bill to accepted. A generation run
-          renders every document and stops; nothing reaches anybody until the
+          renders every document and stops. Nothing reaches anybody until the
           record says a human approved it.
         - **Not** behind the bearer-token middleware: a webhook has no signed-in
           user. Its own secret is what authenticates it, compared with
@@ -242,7 +242,7 @@ async def bill_accepted(
           store rather than re-rendered. What the customer receives and what the
           agency can re-download are then provably the same file.
         - A delivery failure is reported, not raised. The invoice is written,
-          numbered and downloadable; the bill simply stays at accepted, which
+          numbered and downloadable. The bill simply stays at accepted, which
           reads as "approved but not yet out" — the truth, and actionable.
     """
     configured = get_app_config().billing_webhook.get_token()
@@ -265,7 +265,7 @@ async def bill_accepted(
     company = await companies.get(bill.company_id)
     if company is None:
         logger.error(
-            "Invoice %s names agency %s, which no longer exists; it cannot be "
+            "Invoice %s names agency %s, which no longer exists. It cannot be "
             "sent because the covering note has nobody to come from.",
             bill.number,
             bill.company_id,
@@ -319,18 +319,18 @@ async def bill_paid(
 
     Raises:
         HTTPException: 401 when the shared secret is missing or wrong.
-        MTBillNotFound: If the invoice does not exist; answered as a 404.
+        MTBillNotFound: If the invoice does not exist. Answered as a 404.
 
     Notes:
         - **What is transmitted depends on who owed the money**, not on this
           endpoint. A household's settled invoice is *declared* — flux 10.4,
           because VAT on services falls due on collection — and reaches nobody;
-          a business receives the structured document; a public body is reached
+          a business receives the structured document. A public body is reached
           through Chorus Pro. Most of this agency's revenue takes the first
           route, which is why a literal reading of "send the paid bill" would be
           wrong for nearly every invoice it issues.
         - **A failed transmission answers 200 with ``sent=false``.** The payment
-          is recorded and true whatever a platform said; answering 5xx would have
+          is recorded and true whatever a platform said. Answering 5xx would have
           the announcement redelivered and, worse, would make a working payment
           look like a broken one. The failure is logged with the platform's own
           words.

@@ -59,15 +59,15 @@ async def delete_intervention(
         PlanningRun: The pending replan, with the identifier to poll.
 
     Raises:
-        MTInterventionNotFound: If no such visit exists; answered as a 404.
-        MTInterventionNotQuoted: If its quote line has vanished; answered as a
+        MTInterventionNotFound: If no such visit exists. Answered as a 404.
+        MTInterventionNotQuoted: If its quote line has vanished. Answered as a
             409.
-        MTPlanningPeriodTooLong: If the period runs backwards; answered as a
+        MTPlanningPeriodTooLong: If the period runs backwards. Answered as a
             422.
 
     Notes:
         - Answers **202**, like every other request that ends in a solve. The
-          quote is already changed by the time this returns; the calendar
+          quote is already changed by the time this returns. The calendar
           catches up when the worker finishes.
         - **The period is the window the caller is looking at**, not one
           derived here. A cancellation is an edit to a screen showing six
@@ -129,8 +129,8 @@ async def change_intervention_type(
         second request.
 
     Raises:
-        MTInterventionNotFound: If no such visit exists; answered as a 404.
-        MTInterventionNotQuoted: If its quote line has vanished; answered as a
+        MTInterventionNotFound: If no such visit exists. Answered as a 404.
+        MTInterventionNotQuoted: If its quote line has vanished. Answered as a
             409.
         MTInterventionTypeNotFound: If the catalogue has no such entry;
             answered as a 404.

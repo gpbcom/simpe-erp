@@ -152,7 +152,7 @@ class TestEnums:
         Notes:
             Raises rather than answering ``False``. Either behaviour closes the
             hole, but a call that quietly answers a plausible boolean is one
-            nobody finds; a call that raises is fixed the day it is written.
+            nobody finds. A call that raises is fixed the day it is written.
         """
         with pytest.raises(MTRoleNotRankable):
             role.has_at_least(UserRole.CUSTOMER)
@@ -335,7 +335,7 @@ class TestEnums:
         """An account and an assistant record are different things.
 
         Notes:
-            A manager has an account and no assistant record; an assistant has
+            A manager has an account and no assistant record. An assistant has
             a record and may or may not have an account. One kind would leave
             one of those two outside every agency.
         """

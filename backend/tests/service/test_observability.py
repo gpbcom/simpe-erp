@@ -101,7 +101,7 @@ class TestJsonLogFormatter:
         assert payload["run_id"] == "run-1"
 
     def test_the_machinery_s_own_attributes_are_not_context(self) -> None:
-        """Every record carries these; none of them is something a caller added."""
+        """Every record carries these. None of them is something a caller added."""
         payload = _rendered(JsonLogFormatter(), _record())
 
         for noise in ("msg", "args", "pathname", "levelno", "relativeCreated"):
@@ -264,7 +264,7 @@ class TestApplicationMetrics:
         }
 
     def test_the_content_type_comes_back_with_the_body(self) -> None:
-        """Prometheus content-negotiates; text/plain parses as one bad sample."""
+        """Prometheus content-negotiates. Text/plain parses as one bad sample."""
         _, content_type = ApplicationMetrics().render()
 
         assert "openmetrics-text" in content_type

@@ -58,7 +58,7 @@ class CompanyRow(Base):
         not the column, because the administrator it belongs to has to be able
         to read it back to correct it.
 
-        Only the logo's URL is stored; the image itself lives in the object
+        Only the logo's URL is stored. The image itself lives in the object
         store. A column wide enough for a signed URL would still be the wrong
         place to keep an image somebody's browser has to fetch anyway.
     """

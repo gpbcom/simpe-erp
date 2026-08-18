@@ -60,7 +60,7 @@ class Person(BaseModel):
             store.
 
     Notes:
-        - **A base, not an entity.** Nothing stores a ``Person``; it exists so
+        - **A base, not an entity.** Nothing stores a ``Person``. It exists so
           :class:`~models.people.hca.Hca`,
           :class:`~models.people.customer.Customer` and
           :class:`~models.people.hca_application.HcaApplication` state the same
@@ -72,7 +72,7 @@ class Person(BaseModel):
           not: an account carries a password hash, a role and an active flag,
           and a customer that inherited those would publish a credential field
           on every response and a role nobody granted. A person is somebody the
-          agency deals with; an account is something that signs in. Some people
+          agency deals with. An account is something that signs in. Some people
           have one, most do not, and the two are joined by ``hca_id`` rather
           than by inheritance.
         - **Per-model exceptions survive.** A validator here raises
@@ -208,7 +208,7 @@ class Person(BaseModel):
             Only the shape is checked here. Whether the digits form a dialable
             number is decided by
             :class:`~pydantic_extra_types.phone_numbers.PhoneNumber`, which
-            wraps the ``phonenumbers`` library; this validator exists so a
+            wraps the ``phonenumbers`` library. This validator exists so a
             missing or non-string value raises the model's own exception rather
             than a bare ``ValidationError``.
         """

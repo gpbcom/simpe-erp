@@ -36,7 +36,7 @@ class CertificationRow(Base):
         - ``code`` is nullable and carries **no foreign key** to
           ``certification_types``. The catalogue arrived after the records did,
           so a qualification typed before it existed has no code and is still
-          somebody's qualification; and the matching side of the pair — an
+          somebody's qualification. And the matching side of the pair — an
           intervention type's list of required codes — cannot be constrained
           anyway. Both are checked in the service instead, where an unknown
           code produces a message naming it.

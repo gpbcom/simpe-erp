@@ -28,7 +28,7 @@ class SlotFinder:
           nothing to propose; being told "Wednesday at 14:00 with Amina Benali,
           or Thursday at 09:00 with Luc Martin" turns the call into a decision.
         - It is a search over the plan that was just stored, not a second solve.
-          Each eligible assistant's day is a sorted list of visits; the gaps
+          Each eligible assistant's day is a sorted list of visits. The gaps
           between them, and the ends of the day, are where the work could go. A
           gap counts only if it holds the whole service **and** the travel at
           both ends, so a slot offered here is one the next planning run can
@@ -164,7 +164,7 @@ class SlotFinder:
 
         Notes:
             - Capped rather than exhaustive. Twenty options is not a choice, it
-              is a second problem; three is enough to telephone a customer with.
+              is a second problem. Three is enough to telephone a customer with.
             - Days are walked in the order given, so the earliest alternatives
               come first. An operator renegotiating a missed visit is almost
               always trying to move it as little as possible.

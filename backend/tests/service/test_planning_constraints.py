@@ -94,7 +94,7 @@ def _requirement(
     Args:
         requirement_id (str): The identifier to assign.
         location (GeoPoint): Where the work happens.
-        customer_id (Optional[str]): Whose work it is; defaults to its own.
+        customer_id (Optional[str]): Whose work it is. Defaults to its own.
         window (tuple[int, int]): Its start and end bounds, in minutes.
         duration (int): How long it takes.
         day (date): The day it must happen.
@@ -335,7 +335,7 @@ class TestWorkingWeekdays:
         """Neither half of the rule shadows the other.
 
         Notes:
-            One assistant does not work Mondays; the other works Mondays but is
+            One assistant does not work Mondays. The other works Mondays but is
             on leave this one. Both are within the radius, and the visit still
             cannot be placed — so neither check is quietly standing in for the
             other.
@@ -756,7 +756,7 @@ class TestFeasibilityDiagnosis:
     def test_the_radius_is_reported_before_the_slot(
         self, service: PlanningService
     ) -> None:
-        """Both are true of unreachable work; the actionable one wins.
+        """Both are true of unreachable work. The actionable one wins.
 
         Notes:
             A visit nobody can reach also has no feasible slot. Reporting the

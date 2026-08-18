@@ -117,7 +117,7 @@ class TestReading:
     def test_the_page_parameters_are_passed_through(
         self, client: TestClient, notifications: MagicMock
     ) -> None:
-        """The popover asks for a page; the page is what it gets.
+        """The popover asks for a page. The page is what it gets.
 
         Notes:
             An empty ``NotificationFilter`` always travels with the request:
@@ -277,7 +277,7 @@ class TestStream:
         assert streams.response.call_args.kwargs["recipient_id"] == "reader-1"
 
     async def test_an_invalid_token_opens_nothing(self) -> None:
-        """The 401 comes from the auth service; no stream is registered."""
+        """The 401 comes from the auth service. No stream is registered."""
         auth = MagicMock()
         auth.resolve_stream_token = AsyncMock(side_effect=MTAuthInvalidToken("expired"))
         streams = MagicMock()

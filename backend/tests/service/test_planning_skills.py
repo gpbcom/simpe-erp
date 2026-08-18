@@ -484,7 +484,7 @@ class TestSkillRequirementBuild:
         assert built[0].required_skill_codes == ["TOILETTE"]
 
     def test_a_line_override_wins(self, config: PlanningConfig) -> None:
-        """The line knows this customer; the catalogue knows the service."""
+        """The line knows this customer. The catalogue knows the service."""
         built = _service(config).build(
             [_quote(["ARABE"])],
             {"customer-1": _customer()},

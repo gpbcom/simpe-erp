@@ -35,7 +35,7 @@ class EmailConfig(BaseModel):
         - The credentials are **not** in the YAML. Each field holds the *name*
           of the environment variable carrying the value, resolved at send
           time, exactly as the database and authentication settings do. A
-          configuration file lands in a repository; a mailbox password must
+          configuration file lands in a repository. A mailbox password must
           not.
         - ``enabled`` exists so a developer's machine and the test suite never
           open an SMTP connection. Disabled, the service reports that it did

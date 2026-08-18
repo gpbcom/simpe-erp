@@ -132,7 +132,7 @@ class RegisterRequest(BaseModel):
         if len(value.encode("utf-8")) > cls.MAX_PASSWORD_BYTES:
             raise MTRegisterRequestInvalidPassword(
                 f"Invalid password. Must be at most {cls.MAX_PASSWORD_BYTES} "
-                f"bytes once encoded; anything beyond that is silently ignored."
+                f"bytes once encoded. Anything beyond that is silently ignored."
             )
         return value
 

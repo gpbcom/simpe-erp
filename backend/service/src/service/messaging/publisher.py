@@ -148,7 +148,7 @@ class EventPublisher:
         """
         scoped = routing_key.scoped_to(company_id)
         if not self.config.enabled:
-            self.logger.debug("Broker disabled; dropping %s.", scoped)
+            self.logger.debug("Broker disabled. Dropping %s.", scoped)
             return False
         exchange = await self._exchange_or_none()
         if exchange is None:

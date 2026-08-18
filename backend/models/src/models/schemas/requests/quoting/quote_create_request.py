@@ -150,7 +150,7 @@ class QuoteCreateRequest(BaseModel):
               so that the one place a payload becomes a quote is the one place
               that has to be read to know what a payload can and cannot set.
             - **The team is a parameter for a stronger reason than the agency.**
-              It decides whose week the planner rewrites to deliver this work; a
+              It decides whose week the planner rewrites to deliver this work. A
               payload able to name one could file a household onto another
               manager's queue and commit their assistants to it. It is not
               chosen by the caller at all — it is derived from where the

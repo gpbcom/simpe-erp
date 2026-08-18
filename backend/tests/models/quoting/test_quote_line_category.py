@@ -47,7 +47,7 @@ class TestQuoteLineServiceCategory:
         assert _line(category).service_category is category
 
     def test_a_string_is_coerced(self) -> None:
-        """The browser sends a string; the model stores the enumeration."""
+        """The browser sends a string. The model stores the enumeration."""
         assert _line("comfort").service_category is ServiceCategory.COMFORT
 
     @pytest.mark.parametrize("value", [None, "", "luxury", 5, True])

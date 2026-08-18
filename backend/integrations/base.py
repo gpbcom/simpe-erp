@@ -41,8 +41,8 @@ class InvoicingConnector(ABC):
     Notes:
         - **Three methods, because the reform has three obligations**, not
           because three seemed tidy. An invoice to a business is routed to a
-          recipient; a household's settled invoice is *declared* and reaches
-          nobody; a public body is reached through Chorus Pro. A connector with
+          recipient. A household's settled invoice is *declared* and reaches
+          nobody. A public body is reached through Chorus Pro. A connector with
           one ``send`` would have to be told which of the three it was doing
           anyway, and the caller would be the one deciding — which is exactly
           the decision :meth:`~models.enums.TransmissionKind.for_recipient`
@@ -162,7 +162,7 @@ class InvoicingConnector(ABC):
             )
         if response.status_code >= self.SERVER_ERROR:
             self.logger.error(
-                "%s answered %d; it is unavailable.",
+                "%s answered %d. It is unavailable.",
                 self.PROVIDER.value,
                 response.status_code,
             )
@@ -346,7 +346,7 @@ class InvoicingConnector(ABC):
             and dropping it looks exactly like success.
         """
         self.logger.error(
-            "%s cannot route invoice %s to Chorus Pro; the platform documents "
+            "%s cannot route invoice %s to Chorus Pro. The platform documents "
             "no route to public bodies.",
             self.PROVIDER.value,
             bill.number,

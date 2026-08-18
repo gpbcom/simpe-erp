@@ -9,7 +9,7 @@ class MTInterventionTypeChangeRequestInvalidTypeId(
 
     Notes:
         There is no default. "Sell this visit as something else" has to say as
-        what; an empty body that silently meant "leave it alone" would answer
+        what. An empty body that silently meant "leave it alone" would answer
         200 to a request that changed nothing, and the manager would go on
         believing the quote had been repriced.
     """

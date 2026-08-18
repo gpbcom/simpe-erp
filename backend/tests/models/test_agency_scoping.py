@@ -246,7 +246,7 @@ class TestEveryPlannedRecordNamesItsAgency:
         assert run.requested_by == "admin-1"
 
     def test_a_quote_keeps_its_agency_without_an_author(self) -> None:
-        """``authored_by`` is optional; the agency is not.
+        """``authored_by`` is optional. The agency is not.
 
         Notes:
             This is the pair that made the field necessary. The agency used to

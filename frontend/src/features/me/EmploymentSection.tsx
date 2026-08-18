@@ -39,7 +39,7 @@ interface EmploymentSectionProps {
  *
  * When they cannot, they render as **locked chips with a tooltip naming who
  * owns them** rather than as disabled inputs. A disabled input says "you cannot
- * type here"; a locked chip says who to ask, which is the difference between a
+ * type here". A locked chip says who to ask, which is the difference between a
  * confused assistant and one who knows what to do next.
  *
  * When they can, saving goes through `PATCH /api/v1/hcas/{id}/employment` — the

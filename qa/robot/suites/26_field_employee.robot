@@ -87,7 +87,7 @@ Everybody Seeded Is On The Rounds
     ${workforce}=    The Whole Workforce
     ${office}=    Evaluate    [h for h in $workforce if not h["field_employee"]]
     Should Be Empty    ${office}
-    ...    msg=A seeded assistant is not a field employee; the backfill is wrong.
+    ...    msg=A seeded assistant is not a field employee. The backfill is wrong.
 
 A Manager Takes Somebody Off The Rounds
     [Documentation]    The switch is on the employment dialog, beside the qualifications.
@@ -139,7 +139,7 @@ An Assistant Sees The Flag Locked On Their Own Page
     ...
     ...    A page that omits what it will not let you change answers "what does
     ...    this system say about me?" with silence. A disabled input says "you
-    ...    cannot type here"; a locked chip says who to ask.
+    ...    cannot type here". A locked chip says who to ask.
     [Tags]    smoke    field-employee    scoping
     Sign Out
     Sign In As    ${ASSISTANT_EMAIL}

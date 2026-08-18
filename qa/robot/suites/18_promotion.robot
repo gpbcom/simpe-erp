@@ -160,7 +160,7 @@ Put Everybody Back
 Demote The Promoted Account
     [Documentation]    Put the promoted account back to the assistant role.
     IF    '${PROMOTED_ACCOUNT_ID}' == '${EMPTY}'
-        Log    This run promoted nobody; nothing to undo.
+        Log    This run promoted nobody. Nothing to undo.
         RETURN
     END
     ${token}=    Sign In Through The API    ${ADMIN_EMAIL}

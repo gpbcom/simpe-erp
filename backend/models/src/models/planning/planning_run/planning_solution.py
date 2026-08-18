@@ -99,7 +99,7 @@ class PlanningSolution(BaseModel):
             round_.sort(key=lambda entry: entry.start_minute)
         return grouped
 
-    def assignment_for(self, requirement_id: str) -> Optional[ScheduledAssignment]:
+    def assignment(self, requirement_id: str) -> Optional[ScheduledAssignment]:
         """Return where a requirement was placed, if it was.
 
         Args:

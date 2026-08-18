@@ -229,7 +229,7 @@ class TestInterruptionPricing:
         Notes:
             An issued quote must reprint identically, so amounts are stored. A
             total recomputed on read would drift the first time the catalog
-            changed; interrupting is the deliberate act that makes a new total
+            changed. Interrupting is the deliberate act that makes a new total
             correct, so it is the moment to write one.
         """
         service.quotes.get.return_value = _quote([WEEK_ONE, WEEK_TWO, WEEK_THREE])

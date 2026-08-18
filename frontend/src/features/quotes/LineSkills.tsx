@@ -36,7 +36,7 @@ interface LineSkillsProps {
  * One merged picker would produce the same plan and a worse diagnosis.
  *
  * **Three states, and the control exists to keep them apart.** `null` means
- * "whatever the service requires"; an array means "these instead"; and an
+ * "whatever the service requires". An array means "these instead". And an
  * *empty* array means "this hour needs no skill at all". Collapsing the last
  * into `null` would silently reinstate a requirement the person writing the
  * quote had deliberately removed.

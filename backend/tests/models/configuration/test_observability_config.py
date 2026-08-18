@@ -43,7 +43,7 @@ class TestObservabilityConfig:
         """The worker has no HTTP surface of its own to share.
 
         Notes:
-            The API serves its metrics on the port it already listens on; this
+            The API serves its metrics on the port it already listens on. This
             is the worker's, which otherwise has no port at all and therefore no
             readiness probe either.
         """
@@ -71,7 +71,7 @@ class TestObservabilityConfig:
     def test_an_unusable_service_name_is_refused(
         self, invalid_name: ModelInput
     ) -> None:
-        """A blank name does not fail; it merges every process into one series.
+        """A blank name does not fail. It merges every process into one series.
 
         Notes:
             That is the quiet failure this refuses: a dashboard where the API's
@@ -198,7 +198,7 @@ class TestObservabilityConfig:
         ],
     )
     def test_an_unusable_timeout_is_refused(self, invalid_timeout: ModelInput) -> None:
-        """Zero is not "wait forever"; it fails every export immediately."""
+        """Zero is not "wait forever". It fails every export immediately."""
         with pytest.raises(MTObservabilityConfigInvalidTimeout):
             ObservabilityConfig(export_timeout_seconds=invalid_timeout)
 

@@ -167,7 +167,7 @@ class CompanyView(BaseModel):
         Args:
             company (Company): The agency to project.
             reveal (bool): Whether the caller may read the account number in
-                full. Administrators may; nobody else does.
+                full. Administrators may. Nobody else does.
 
         Returns:
             CompanyView: The agency, with its IBAN whole or masked.

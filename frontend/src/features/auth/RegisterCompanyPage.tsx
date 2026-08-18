@@ -179,8 +179,8 @@ export function RegisterCompanyPage({ onCancel }: RegisterCompanyPageProps) {
  *
  * @remarks
  * The three cases a founder can act on are told apart. A 404 means the
- * deployment does not offer this at all, and retrying will never help; a 409
- * names a clash they can fix by choosing again; a 422 means a field is wrong.
+ * deployment does not offer this at all, and retrying will never help. A 409
+ * names a clash they can fix by choosing again. A 422 means a field is wrong.
  * Collapsing them into one message would leave somebody retyping a valid form.
  */
 function messageFor(cause: unknown, t: (key: string) => string): string {

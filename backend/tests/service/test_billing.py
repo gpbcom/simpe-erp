@@ -13,7 +13,6 @@ import pytest
 from models.billing.bill import Bill
 from models.billing.bill_recipient import BillRecipient
 from models.billing.billing_run import BillingRun
-from models.organisation.companies.company import Company
 from models.configuration.billing_config import BillingConfig
 from models.enums import (
     BillingPeriodicity,
@@ -24,6 +23,7 @@ from models.enums import (
     ServiceCategory,
 )
 from models.geo.postal_address import PostalAddress
+from models.organisation.companies.company import Company
 from models.people.customer import Customer
 from models.planning.intervention import Intervention
 from models.quoting.quote import Quote
@@ -784,7 +784,7 @@ class TestDownloadingTheDocument:
     async def test_an_unreadable_document_is_reported_as_unavailable(
         self,
     ) -> None:
-        """The record is real; the store is what did not answer."""
+        """The record is real. The store is what did not answer."""
         service = a_service()
         service.bills.get = AsyncMock(return_value=_a_stored_bill())
         service.documents.fetch_invoice = AsyncMock(return_value=None)
@@ -934,8 +934,8 @@ class TestACustomersOwnGranularity:
         """So a manager is not shown a period the customer will never get."""
         service = a_service(customer=a_customer(BillingPeriodicity.WEEKLY))
 
-        assert await service.window_for(IN_MARCH) == MARCH
-        assert await service.window_for(IN_MARCH, CUSTOMER) == (
+        assert await service.window(IN_MARCH) == MARCH
+        assert await service.window(IN_MARCH, CUSTOMER) == (
             date(2026, 3, 9),
             date(2026, 3, 15),
         )
@@ -974,7 +974,7 @@ class TestTheInvoicingRules:
             return_value=BillingSettings(periodicity=BillingPeriodicity.WEEKLY)
         )
 
-        assert await service.window_for(date(2026, 8, 13)) == (
+        assert await service.window(date(2026, 8, 13)) == (
             date(2026, 8, 10),
             date(2026, 8, 16),
         )

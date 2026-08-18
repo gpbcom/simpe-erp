@@ -26,7 +26,7 @@ import type { Agency } from '@/api/types';
  * measure a distance from.
  *
  * The head office is **shown rather than editable as such**. Exactly one site
- * holds it, and moving it would be two writes that must both succeed; a
+ * holds it, and moving it would be two writes that must both succeed. A
  * half-applied move leaves a company with none. The server refuses both the
  * promotion and the demotion, so the type field simply will not take.
  *

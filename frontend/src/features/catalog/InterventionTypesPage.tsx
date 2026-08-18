@@ -77,7 +77,7 @@ const CATALOG_DETAILS: FilterDetail[] = [
  * — are shown but **not editable here**. They live in the deployment's
  * configuration, because a change to what every service costs is a commercial
  * decision with a release behind it rather than a form somebody fills in on a
- * Tuesday. The caption says so; a read-only field that does not explain itself
+ * Tuesday. The caption says so. A read-only field that does not explain itself
  * reads as a bug.
  */
 export function InterventionTypesPage() {

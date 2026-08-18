@@ -8,7 +8,7 @@ Documentation    The household's own space, and the boundary around it.
 ...              else.
 ...
 ...              **The boundary is the point.** A household's calendar carries
-...              their address and when somebody is in the house; their invoices
+...              their address and when somebody is in the house. Their invoices
 ...              say what they pay for care. Half of what follows is therefore
 ...              about what a customer account is *refused*, and it is asserted
 ...              against the API rather than against a hidden button — a missing

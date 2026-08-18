@@ -79,7 +79,7 @@ class PricingRulesResponse(BaseModel):
         Notes:
             A rate of zero would publish "every entry that names no rate is
             free", and the screen would show it as the figure a manager is
-            deciding against. The configuration already refuses one; this
+            deciding against. The configuration already refuses one. This
             refuses to *restate* one, so a bad value cannot reach the screen
             through a path the configuration did not check.
         """

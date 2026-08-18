@@ -42,7 +42,7 @@ def publisher(
     Notes:
         The connection itself is replaced rather than a broker being started.
         What is worth testing here is the envelope, the routing key and the
-        never-raise contract; that a real AMQP socket works is aio-pika's test
+        never-raise contract. That a real AMQP socket works is aio-pika's test
         suite, not this one. The integration test against a live broker is
         marked separately.
     """

@@ -5,10 +5,10 @@ from decimal import Decimal
 
 # Third-party imports
 import pytest
+from seed.dataset import Dataset
 
 # First-party imports
 from models.configuration.pricing_config import PricingConfig
-from seed.dataset import Dataset
 
 
 class TestSeededRates:
@@ -26,7 +26,7 @@ class TestSeededRates:
             rather than reporting that "the catalog" is wrong and leaving
             somebody to find which of eight rows it was.
         """
-        assert Dataset().rate_for(code) == Decimal(Dataset.HOURLY_RATE_HT)
+        assert Dataset().rate(code) == Decimal(Dataset.HOURLY_RATE_HT)
 
     def test_the_catalog_offers_exactly_one_price(self) -> None:
         """**The invariant, stated as one assertion over the whole catalog.**
@@ -39,7 +39,7 @@ class TestSeededRates:
             fails here even though nothing else changed.
         """
         dataset = Dataset()
-        distinct = {dataset.rate_for(code) for code, _, _ in dataset.INTERVENTION_TYPES}
+        distinct = {dataset.rate(code) for code, _, _ in dataset.INTERVENTION_TYPES}
 
         assert distinct == {Decimal("31.905")}
 
@@ -79,4 +79,4 @@ class TestSeededRates:
             build a quote line pointing at nothing.
         """
         with pytest.raises(KeyError):
-            Dataset().rate_for("NOPE")
+            Dataset().rate("NOPE")

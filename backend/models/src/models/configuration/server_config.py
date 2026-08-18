@@ -28,7 +28,7 @@ class ServerConfig(BaseModel):
     Notes:
         ``cors_origins`` defaults to an empty list rather than to ``["*"]``. A
         permissive default combined with credentialed requests would let any
-        site drive the API with a logged-in user's token; the deployment must
+        site drive the API with a logged-in user's token. The deployment must
         name its front-end explicitly.
     """
 

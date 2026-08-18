@@ -95,7 +95,7 @@ class PasswordChangeRequest(BaseModel):
         if len(value.encode("utf-8")) > cls.MAX_PASSWORD_BYTES:
             raise MTPasswordChangeRequestInvalidNew(
                 f"Invalid new_password. Must be at most "
-                f"{cls.MAX_PASSWORD_BYTES} bytes once encoded; anything beyond "
+                f"{cls.MAX_PASSWORD_BYTES} bytes once encoded. Anything beyond "
                 f"that is silently ignored."
             )
         return value

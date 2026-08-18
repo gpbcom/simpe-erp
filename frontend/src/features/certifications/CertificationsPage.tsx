@@ -50,7 +50,7 @@ const CERTIFICATION_DETAILS: FilterDetail[] = [
  *
  * Retired entries are **listed rather than hidden**, greyed with a status chip.
  * A manager wondering why they cannot pick a qualification needs to see that it
- * exists and is retired; a screen that simply omits it answers "why is DEAVS
+ * exists and is retired. A screen that simply omits it answers "why is DEAVS
  * not in the list?" with silence.
  *
  * Deleting is offered but usually refused. The server counts the assistants

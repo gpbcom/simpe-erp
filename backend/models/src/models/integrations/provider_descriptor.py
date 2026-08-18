@@ -51,7 +51,7 @@ class ProviderDescriptor(BaseModel):
           so a platform cannot declare a field the credentials have no room for
           — which would render an input whose value goes nowhere.
         - ``documentation_verified`` is unusual and deliberate. Three of the four
-          platforms have documentation that was read directly; Iopole's renders
+          platforms have documentation that was read directly. Iopole's renders
           client-side and its servers return malformed headers, so its connector
           is written to documented *shape* rather than to something anybody
           confirmed. A screen offering all four as equals would be lying by

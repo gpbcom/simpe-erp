@@ -15,7 +15,7 @@ v1/                   the routers
 service method, and returns. Anything longer belongs a layer down.
 
 **Middleware order is load-bearing.** CORS outermost, so a rejected credential
-still carries the CORS headers; the transaction innermost, committing *before*
+still carries the CORS headers. The transaction innermost, committing *before*
 the response is written.
 
 Authentication is middleware rather than a dependency, so a route added without

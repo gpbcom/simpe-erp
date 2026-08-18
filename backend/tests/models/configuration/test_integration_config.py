@@ -67,7 +67,7 @@ class TestTheDefaults:
         """**The distinction that lets this section sit in the open.**
 
         Notes:
-            The name is configuration; the value is a secret. A key written in
+            The name is configuration. The value is a secret. A key written in
             ``app.yaml`` would be a key in the image and in version control.
         """
         config = IntegrationConfig()
@@ -120,7 +120,7 @@ class TestRefusingAnUnusableSection:
 
         Notes:
             The floor exists because a sub-second timeout fails against every
-            real platform; the ceiling because one that never answers must not
+            real platform. The ceiling because one that never answers must not
             hold a worker open.
         """
         with pytest.raises(MTIntegrationConfigInvalidTimeout):
@@ -299,7 +299,7 @@ class TestRefusingAnUnusableCatalogue:
 
         Notes:
             An ``MT*`` rather than a ``KeyError`` so the API boundary answers
-            it; a built-in would reach the client as an unexplained 500.
+            it. A built-in would reach the client as an unexplained 500.
         """
         with pytest.raises(MTIntegrationConfigProviderUnknown):
             _configured().describe_provider("nobody")

@@ -38,7 +38,7 @@ class SkillType(BaseModel):
     Notes:
         - **A skill is not a certification, and the two catalogues are
           separate on purpose.** A certification is awarded by somebody else
-          and a manager records it; a skill is what an assistant says they can
+          and a manager records it. A skill is what an assistant says they can
           do, and they enter it themselves. Folding them into one catalogue
           would mean either letting an assistant grant themselves a diploma or
           making them ask a manager to record that they speak Portuguese —
@@ -272,7 +272,7 @@ class SkillType(BaseModel):
 
         Notes:
             Used in the planner's unplaced-work diagnosis. A manager told only
-            "LEVE-PERSONNE is missing" has to go and look the code up; naming
+            "LEVE-PERSONNE is missing" has to go and look the code up. Naming
             both is what makes the message actionable where it is read.
         """
         return f"{self.code} ({self.label})"

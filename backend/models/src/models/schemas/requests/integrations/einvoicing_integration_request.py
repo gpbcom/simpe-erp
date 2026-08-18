@@ -72,7 +72,7 @@ class EInvoicingIntegrationRequest(BaseModel):
                 string.
 
         Notes:
-            Only the type is checked here; the shape is checked by
+            Only the type is checked here. The shape is checked by
             :meth:`credentials`, which is what builds the model that owns the
             rule. Two copies of "how long may a key be" would drift, and this
             one would be the copy nobody updated.

@@ -350,7 +350,7 @@ class TestPlanningService:
 
         Notes:
             Letting this through would mean planning a round around a place
-            nobody can find; the travel term would silently treat it as being
+            nobody can find. The travel term would silently treat it as being
             at the origin of the coordinate system, off the coast of Africa.
             It is reported at ERROR rather than dropped quietly.
         """
@@ -403,7 +403,7 @@ class TestPlanningService:
             - This one takes the ``catalog`` **fixture**, where its neighbours
               refer to the bare name and so pass the fixture *function*. They
               get away with it because they assert an empty result and return
-              before the catalog is ever dereferenced; this one plans real work
+              before the catalog is ever dereferenced. This one plans real work
               and would raise ``AttributeError`` on the function object.
         """
         prospect = {"customer-1": _customer(status=RegistrationStatus.PROSPECT)}

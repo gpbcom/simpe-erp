@@ -142,7 +142,7 @@ def _client(service: AsyncMock, caller: User) -> TestClient:
         deliberately raise domain exceptions rather than ``HTTPException`` —
         the status mapping lives in one table, not in each endpoint.
 
-        The service goes through ``dependency_overrides``; the background job
+        The service goes through ``dependency_overrides``. The background job
         cannot, because it is handed to ``BackgroundTasks`` rather than
         resolved through ``Depends``, so it is replaced on the router module
         itself. Leaving the real one in place would have every 202 open its own
@@ -427,7 +427,7 @@ class TestTheCustomersPlanning:
         """**The row-level check needs to know who is asking.**
 
         Notes:
-            A guard proves the caller is signed in; it cannot express "the
+            A guard proves the caller is signed in. It cannot express "the
             households this assistant visits". Dropping the caller on the way
             through would leave the service scoping against nobody.
         """

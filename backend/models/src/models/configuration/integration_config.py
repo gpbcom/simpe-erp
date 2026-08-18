@@ -53,7 +53,7 @@ class IntegrationConfig(BaseModel):
         - **The key is named here and held in the environment**, exactly as
           :class:`~models.configuration.auth_config.AuthConfig` names the JWT
           secret. A key in a configuration file is a key in the image and in
-          version control; a key in the environment is one a deployment injects
+          version control. A key in the environment is one a deployment injects
           from its own secret store.
         - **There is deliberately no default key.** A fallback would let the
           service boot in production encrypting every agency's platform
@@ -132,7 +132,7 @@ class IntegrationConfig(BaseModel):
 
         Notes:
             The floor exists because a sub-second timeout would fail against
-            every real platform; the ceiling because a platform that never
+            every real platform. The ceiling because a platform that never
             answers must not hold a worker open indefinitely.
         """
         if value is None:

@@ -115,7 +115,7 @@ class ProbeServer:
             writer (asyncio.StreamWriter): The response stream.
 
         Notes:
-            - Only the request line is read; the rest of the request is discarded
+            - Only the request line is read. The rest of the request is discarded
               unread. A probe sends no body, and a server that waited for one
               would hang on every check.
             - Every failure is caught. This endpoint exists to report on the
@@ -123,7 +123,7 @@ class ProbeServer:
               problem that took the process down — which is the wrong way round.
         """
         try:
-            request_line = await asyncio.wait_for(
+            request_line = await asyncio.wait(
                 reader.readline(), timeout=self.REQUEST_TIMEOUT
             )
             parts = request_line.decode("latin-1").split()

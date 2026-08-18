@@ -60,9 +60,9 @@ async def update_planning_settings(
 
     Raises:
         MTPlanningSettingsRequestInvalidRadius: When the radius is outside the
-            accepted range; answered as a 422.
+            accepted range. Answered as a 422.
         MTPlanningSettingsRequestInvalidDayEnd: When the working day ends at or
-            before it starts; answered as a 422.
+            before it starts. Answered as a 422.
         MTPlanningSettingsRequestInvalidLunchWindow: When the lunch window
             falls outside the working day or is too narrow to hold the break;
             answered as a 422.

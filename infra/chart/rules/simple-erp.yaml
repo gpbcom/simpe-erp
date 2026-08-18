@@ -97,7 +97,7 @@ groups:
           description: >-
             Nothing is queued and nothing is being solved. If runs are pending
             in the database, the broker was unreachable when they were
-            requested; they can be re-queued.
+            requested. They can be re-queued.
 
   - name: simple-erp-api
     rules:

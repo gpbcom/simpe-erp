@@ -36,7 +36,7 @@ signs in again.
 ## My account — `/api/v1/me`
 
 The assistant's self-service surface. The record acted on always comes from the
-credential; no path parameter names it.
+credential. No path parameter names it.
 
 | Method | Path | Guard | |
 |---|---|---|---|
@@ -53,7 +53,7 @@ credential; no path parameter names it.
 | GET | `/account` | The caller's own **account**. Needs no assistant record |
 | PATCH | `/account` | Display name and sign-in address. Nothing else exists on the payload |
 | PUT | `/account/photo` | The caller's own portrait, as a **file**. Needs no assistant record |
-| DELETE | `/account/photo` | Removes it; the screen falls back to the holder's initials |
+| DELETE | `/account/photo` | Removes it. The screen falls back to the holder's initials |
 | GET | `/company` | The caller's own agency. **Administrator only** |
 | PUT | `/company` | Its name, SIRET, contact address, registered address and whether it accepts applications |
 
@@ -89,7 +89,7 @@ read from somewhere else is how a screen edits the wrong tenant. The
 agency-wide `PUT /api/v1/companies/{id}` still exists for the case where an
 administrator genuinely means to name one.
 
-Administrator, not manager. A manager runs the agency's work; its legal identity
+Administrator, not manager. A manager runs the agency's work. Its legal identity
 is not part of running the week, and the one field with an outward effect —
 `is_accepting_applications` — decides whether strangers can apply for a job.
 
@@ -116,9 +116,9 @@ nothing.
 
 | Method | Path | |
 |---|---|---|
-| POST | `` | Creates and prices; the author is the caller |
+| POST | `` | Creates and prices. The author is the caller |
 | GET | `` | `page`, `size`, `customer_id`, `status`, `authored_by`. **`status=pending-validation` is the validation queue** |
-| GET | `/{id}` · `/{id}/aggregates` | One quote; its weekly totals |
+| GET | `/{id}` · `/{id}/aggregates` | One quote. Its weekly totals |
 | PUT | `/{id}/lines` | Replaces the lines and reprices **any** quote in the agency. Drafts only |
 | POST | `/{id}/price` | Reprices against the current catalog. Drafts only |
 | POST | `/{id}/validate` | Approves a submitted quote → **`accepted`**, recording who. Its visits enter the next planning run |
@@ -215,7 +215,7 @@ would produce a list nobody could require anything from.
 
 There is **no route by which a manager declares a skill for somebody else**,
 and that is a routing decision rather than an oversight. A skill is a claim
-about what somebody can do; a supervisor may withdraw one they believe is
+about what somebody can do. A supervisor may withdraw one they believe is
 wrong, but nothing lets them put a claim in another person's mouth.
 
 `POST /me/hca/skills` takes an owner from the credential and mints the
@@ -227,7 +227,7 @@ message sent from inside would fire on a write a later failure could roll back,
 and tell three managers about a skill nobody holds.
 
 A withdrawal announces nothing. An addition widens what somebody may be sent
-to; a removal only narrows it, and a badge for every correction of a typed name
+to. A removal only narrows it, and a badge for every correction of a typed name
 would train supervisors to ignore the ones that matter.
 
 ## Notifications — `/api/v1/notifications`
@@ -263,21 +263,21 @@ the log line says *promoted*.
 
 `GET /customers` takes eight optional filters, bound as one `CustomerFilter`
 model: `search`, `status`, `city`, `postal_code`, `email`, `phone`,
-`has_ongoing_arrangement`, `is_geocoded`. An absent field narrows nothing; a
-blank string is the same as absent; a status the system has no word for is
+`has_ongoing_arrangement`, `is_geocoded`. An absent field narrows nothing. A
+blank string is the same as absent. A status the system has no word for is
 **422** rather than an empty page, because an empty page is what a valid filter
 matching nobody looks like.
 
 The flags are three-state — `true`, `false`, or absent. `is_geocoded=false` is a
 question worth asking: those are the customers no planning run can ever route
 to. `has_ongoing_arrangement` is defined **server-side** as an accepted quote
-that has not been interrupted on or before today; note this is narrower than the
+that has not been interrupted on or before today. Note this is narrower than the
 drawer's client-side "live" set, which also counts `sent` and
 `pending-validation` because it answers "what is in flight" rather than "who are
 we serving".
 
 The filter model is bound with `Depends()`, not `Annotated[..., Query()]`. Only
-the former flattens it into individual query parameters; the latter binds it as
+the former flattens it into individual query parameters. The latter binds it as
 one parameter taking a JSON object, which 422s every request the screen sends.
 
 **Assistants** — `/api/v1/hcas`, all `manager`: `POST`, `GET` (with `search`,
@@ -295,7 +295,7 @@ caller's own account, never the last administrator, both 409.
 
 **The shape of `EmploymentUpdateRequest` is the permission.** A manager may
 change three things about an assistant and nothing else, for anybody including
-themselves; an assistant reaches no route that carries any of the three. That
+themselves. An assistant reaches no route that carries any of the three. That
 rule lives in the payload rather than in a check somewhere that could be
 forgotten.
 
@@ -316,7 +316,7 @@ self-service payload and not on a manager-gated one. An unknown code is a
 
 **Working days** — `PUT /api/v1/hcas/{id}/working-days`, the same guard and
 the same ownership check. This is the *recurring* pattern — "never
-Wednesdays" — as opposed to the dated absences above; the two are separate
+Wednesdays" — as opposed to the dated absences above. The two are separate
 because only one of them ends when somebody comes back from leave. The
 payload carries the whole week and no assistant identifier: the owner is
 the one the path addresses, so there is nothing for a caller to put a
@@ -324,7 +324,7 @@ colleague's identifier into. A week naming no day is a 422 — clearing every
 box is a statement, and its two readings are opposites. Answers the whole
 `HcaResponse`, so a client need not re-read to redisplay.
 
-**Applications** — `/api/v1/hca-applications`. `POST` is public; the queue and
+**Applications** — `/api/v1/hca-applications`. `POST` is public. The queue and
 the approve/reject decisions are `manager`.
 
 ## Planning — `/api/v1/planning`
@@ -336,7 +336,7 @@ the approve/reject decisions are `manager`.
 | GET | `/settings` · PUT | manager | Radius, working day, lunch break and its window |
 | GET | `/hcas` | current | Every diary. An assistant gets a one-element list of their own |
 | GET | `/hcas/{id}` | current | One diary, with a row-level ownership check |
-| GET | `/customers` | current | Every household's care. A manager gets the agency; an assistant only their own portfolio |
+| GET | `/customers` | current | Every household's care. A manager gets the agency. An assistant only their own portfolio |
 | GET | `/customers/{id}` | current | One household's care. Outside an assistant's portfolio it is a **404**, not a 403 |
 
 `POST /runs` moved from administrator to manager because a run no longer
@@ -372,7 +372,7 @@ If the broker is unreachable the run stays `pending` rather than vanishing — t
 identifier the caller polls is real either way.
 
 `DELETE /api/v1/planning/interventions/{id}` answers 202 the same way, taking
-the period from the caller's own screen; the two person deletions derive theirs
+the period from the caller's own screen. The two person deletions derive theirs
 from the days that person was due to work. All four record the run before
 publishing it, so a 202 always hands back an identifier that already exists.
 
@@ -392,10 +392,10 @@ publishing it, so a 202 always hands back an identifier that already exists.
 | PUT | `/teams/{id}` | admin | Name, site and manager. Members do not follow a move |
 | DELETE | `/teams/{id}` | admin | **409** while quotes still name it — they would be planned by no run again |
 | GET · POST | `/teams/{id}/members` | current · admin | One person at a time, and a **move**: somebody on another team is taken off it. **409** only if they run that team; **422** if they are based at another site |
-| DELETE | `/teams/{id}/members/{kind}/{id}` | admin | The manager cannot be removed; name a new one instead |
+| DELETE | `/teams/{id}/members/{kind}/{id}` | admin | The manager cannot be removed. Name a new one instead |
 | GET · POST | `/teams/{id}/documents` | current | **Everybody on the team may add one.** A non-member gets a 404 |
 | GET | `/teams/{id}/documents/{doc}` | current | Streamed as an attachment, with the stored media type |
-| DELETE | `/teams/{id}/documents/{doc}` | current | The uploader, the team's manager or an administrator; anybody else gets a **403** |
+| DELETE | `/teams/{id}/documents/{doc}` | current | The uploader, the team's manager or an administrator. Anybody else gets a **403** |
 | GET | `/teams/document-constraints` | current | The size limit and the recognised media types |
 | GET | `/me/team` | current | The team the caller is *on*, from the credential |
 | PATCH | `/quotes/{id}/team` | manager | Move a quote. Both the team it leaves and the one it joins must be the caller's |
@@ -516,7 +516,7 @@ produces no auth handling. The front-end attaches the bearer header itself.
 
 **Pydantic v2 splits models** into `X-Input` and `X-Output` variants for
 `Customer`, `Quote` and `InterventionType`. The front-end's hand-written types
-collapse that; the `openapi-drift` CI job is what stops them going stale.
+collapse that. The `openapi-drift` CI job is what stops them going stale.
 
 
 ## Founding an agency
@@ -542,7 +542,7 @@ address would put a live Nominatim lookup on the sign-up path where a slow third
 party reads as a broken form. The founder fills it in afterwards.
 
 **No token comes back.** Founding an agency and holding a session are separate
-things; issuing one here would be a second place that mints credentials, and so
+things. Issuing one here would be a second place that mints credentials, and so
 a second place to get expiry, scope and revocation wrong. The founder signs in
 through `POST /api/v1/auth/login` with the password they just chose.
 

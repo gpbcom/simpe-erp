@@ -8,66 +8,6 @@ from typing import ClassVar, Dict, Optional, Type
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-# First-party imports
-from models.base.exceptions import (
-    MTInvalidEntityFilterException,
-    MTInvalidPersonException,
-)
-from models.billing.exceptions import (
-    MTInvalidBillException,
-    MTInvalidBillLineException,
-    MTInvalidBillRecipientException,
-    MTInvalidBillingRunException,
-)
-from models.auth.exceptions import (
-    MTInvalidAccessTokenException,
-    MTInvalidUserException,
-)
-from models.catalog.exceptions import (
-    MTInvalidCertificationTypeException,
-    MTInvalidSkillTypeException,
-    MTInvalidInterventionTypeException,
-)
-from models.organisation.companies.exceptions import MTInvalidCompanyException
-from models.base.exceptions.organisation_member_exceptions import (
-    MTInvalidOrganisationMemberException,
-)
-from models.organisation.agency.exceptions import (
-    MTInvalidAgencyException,
-)
-from models.organisation.team.exceptions import (
-    MTInvalidTeamDocumentException,
-    MTInvalidTeamException,
-    MTInvalidTeamMemberException,
-)
-from service.organisation.exceptions import (
-    MTAgencyForbidden,
-    MTAgencyHeadquartersProtected,
-    MTAgencyMemberRunsATeam,
-    MTAgencyMemberOutsideCompany,
-    MTAgencyNameTaken,
-    MTAgencyNotEmpty,
-    MTAgencyNotFound,
-    MTInvalidAgencyServiceException,
-    MTInvalidTeamDocumentServiceException,
-    MTInvalidTeamServiceException,
-    MTTeamDocumentForbidden,
-    MTTeamDocumentNotFound,
-    MTTeamDocumentStorageUnavailable,
-    MTTeamForbidden,
-    MTTeamHasWork,
-    MTTeamManagerRequired,
-    MTTeamMemberManagesAnother,
-    MTTeamMemberOutsideAgency,
-    MTTeamNameTaken,
-    MTTeamNotFound,
-)
-from models.integrations.exceptions import (
-    MTInvalidEInvoicingIntegrationException,
-    MTInvalidIntegrationCredentialsException,
-    MTInvalidProviderDescriptorException,
-    MTInvalidTransmissionReceiptException,
-)
 from integrations.exceptions import (
     MTConnectorNotImplemented,
     MTConnectorRejected,
@@ -76,26 +16,39 @@ from integrations.exceptions import (
     MTConnectorUnsupported,
     MTInvoicingConnectorException,
 )
-from service.integrations.exceptions import (
-    MTInvoicingServiceException,
-    MTIntegrationCredentialsRefused,
-    MTIntegrationNotConfigured,
-    MTNoActivePlatform,
+from models.auth.exceptions import (
+    MTInvalidAccessTokenException,
+    MTInvalidUserException,
 )
-from service.security.exceptions import (
-    MTCredentialCipherException,
-    MTCredentialCipherKeyUnusable,
-    MTCredentialCipherUnreadable,
+
+# First-party imports
+from models.base.exceptions import (
+    MTInvalidEntityFilterException,
+    MTInvalidPersonException,
+)
+from models.base.exceptions.organisation_member_exceptions import (
+    MTInvalidOrganisationMemberException,
+)
+from models.billing.exceptions import (
+    MTInvalidBillException,
+    MTInvalidBillingRunException,
+    MTInvalidBillLineException,
+    MTInvalidBillRecipientException,
+)
+from models.catalog.exceptions import (
+    MTInvalidCertificationTypeException,
+    MTInvalidInterventionTypeException,
+    MTInvalidSkillTypeException,
 )
 from models.configuration.exceptions import (
     MTInvalidAppConfigException,
-    MTInvalidBillingConfigException,
-    MTInvalidIntegrationConfigException,
     MTInvalidAuthConfigException,
+    MTInvalidBillingConfigException,
     MTInvalidDatabaseConfigException,
     MTInvalidEmailConfigException,
     MTInvalidGeocodingConfigException,
     MTInvalidHolidaySurchargeException,
+    MTInvalidIntegrationConfigException,
     MTInvalidObservabilityConfigException,
     MTInvalidPlanningConfigException,
     MTInvalidPricingConfigException,
@@ -109,8 +62,23 @@ from models.geo.exceptions import (
     MTInvalidGeoPointException,
     MTInvalidPostalAddressException,
 )
+from models.integrations.exceptions import (
+    MTInvalidEInvoicingIntegrationException,
+    MTInvalidIntegrationCredentialsException,
+    MTInvalidProviderDescriptorException,
+    MTInvalidTransmissionReceiptException,
+)
 from models.messaging.exceptions import MTInvalidEventEnvelopeException
 from models.notifications.exceptions import MTInvalidNotificationException
+from models.organisation.agency.exceptions import (
+    MTInvalidAgencyException,
+)
+from models.organisation.companies.exceptions import MTInvalidCompanyException
+from models.organisation.team.exceptions import (
+    MTInvalidTeamDocumentException,
+    MTInvalidTeamException,
+    MTInvalidTeamMemberException,
+)
 from models.people.customer.exceptions import MTInvalidCustomerException
 from models.people.hca.exceptions import (
     MTInvalidAvailabilitySlotException,
@@ -140,69 +108,70 @@ from models.quoting.exceptions import (
     MTInvalidQuoteTypeWeekAggregateException,
 )
 from models.schemas.exceptions import (
-    MTInvalidQuoteTeamRequestException,
+    MTInvalidAccountUpdateRequestException,
+    MTInvalidActiveUpdateRequestException,
     MTInvalidAgencyCreateRequestException,
     MTInvalidAgencyUpdateRequestException,
     MTInvalidAgencyViewException,
-    MTInvalidTeamCreateRequestException,
-    MTInvalidTeamDocumentConstraintsResponseException,
-    MTInvalidTeamUpdateRequestException,
-    MTInvalidTeamViewException,
-    MTInvalidBillPaidRequestException,
-    MTInvalidIntegrationSchemaException,
+    MTInvalidApplicationDecisionRequestException,
     MTInvalidBillAcceptedRequestException,
-    MTInvalidBillingPeriodicityRequestException,
     MTInvalidBillDispatchResponseException,
     MTInvalidBillFilterException,
     MTInvalidBillGenerationRequestException,
+    MTInvalidBillingPeriodicityRequestException,
     MTInvalidBillingSettingsRequestException,
+    MTInvalidBillPaidRequestException,
     MTInvalidBillStatusRequestException,
     MTInvalidCertificationTypeUpdateRequestException,
-    MTInvalidSkillCreateRequestException,
-    MTInvalidSkillTypeUpdateRequestException,
-    MTInvalidAccountUpdateRequestException,
     MTInvalidCompanyProfileUpdateRequestException,
-    MTInvalidCompanyViewException,
-    MTInvalidInterventionTypeChangeRequestException,
-    MTInvalidInterventionTypeUpdateRequestException,
-    MTInvalidQuoteCreateRequestException,
-    MTInvalidQuoteHeaderRequestException,
-    MTInvalidQuoteInterruptionRequestException,
-    MTInvalidQuoteLinesRequestException,
-    MTInvalidQuoteRescheduleRequestException,
-    MTInvalidActiveUpdateRequestException,
-    MTInvalidApplicationDecisionRequestException,
     MTInvalidCompanyRegistrationRequestException,
-    MTInvalidPricingRulesResponseException,
+    MTInvalidCompanyViewException,
+    MTInvalidCustomerAccountRequestException,
+    MTInvalidCustomerFilterException,
+    MTInvalidCustomerProfileUpdateRequestException,
     MTInvalidEmailDispatchResponseException,
     MTInvalidEmploymentUpdateRequestException,
     MTInvalidHcaApplicationRequestException,
     MTInvalidHcaProfileUpdateRequestException,
     MTInvalidHcaResponseException,
-    MTInvalidWorkingDaysRequestException,
     MTInvalidHealthResponseException,
+    MTInvalidIntegrationSchemaException,
+    MTInvalidInterventionRescheduleRequestException,
+    MTInvalidInterventionTypeChangeRequestException,
+    MTInvalidInterventionTypeUpdateRequestException,
     MTInvalidLoginRequestException,
     MTInvalidPasswordChangeRequestException,
     MTInvalidPhotoConstraintsResponseException,
     MTInvalidPlanningCompletedRequestException,
     MTInvalidPlanningSettingsRequestException,
+    MTInvalidPricingRulesResponseException,
+    MTInvalidQuoteCreateRequestException,
+    MTInvalidQuoteHeaderRequestException,
+    MTInvalidQuoteInterruptionRequestException,
+    MTInvalidQuoteLinesRequestException,
+    MTInvalidQuoteRescheduleRequestException,
+    MTInvalidQuoteTeamRequestException,
     MTInvalidReadinessResponseException,
     MTInvalidRegisterRequestException,
-    MTInvalidCustomerFilterException,
     MTInvalidRoleUpdateRequestException,
-    MTInvalidCustomerAccountRequestException,
-    MTInvalidCustomerProfileUpdateRequestException,
-    MTInvalidInterventionRescheduleRequestException,
+    MTInvalidSkillCreateRequestException,
+    MTInvalidSkillTypeUpdateRequestException,
     MTInvalidStaffAccountRequestException,
     MTInvalidStatusUpdateRequestException,
+    MTInvalidTeamCreateRequestException,
+    MTInvalidTeamDocumentConstraintsResponseException,
+    MTInvalidTeamUpdateRequestException,
+    MTInvalidTeamViewException,
     MTInvalidTemporaryCredentialsResponseException,
     MTInvalidUserResponseException,
+    MTInvalidWorkingDaysRequestException,
 )
 from models.settings.exceptions import (
     MTInvalidBillingSettingsException,
     MTInvalidPlanningSettingsException,
 )
 from service.auth.exceptions import (
+    MTAuthCustomerAlreadyHasAccount,
     MTAuthEmailAlreadyRegistered,
     MTAuthHcaLinkRequired,
     MTAuthInvalidCredentials,
@@ -212,20 +181,10 @@ from service.auth.exceptions import (
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
     MTAuthUnknownAccount,
-    MTAuthCustomerAlreadyHasAccount,
     MTAuthUnknownCustomer,
     MTAuthUnknownHca,
     MTAuthUserInactive,
     MTInvalidAuthException,
-)
-from service.companies.exceptions import (
-    MTCompanyLogoStorageUnavailable,
-    MTCompanyNameTaken,
-    MTCompanyNotAcceptingApplications,
-    MTCompanyNotEmpty,
-    MTCompanyNotFound,
-    MTCompanyRegistrationDisabled,
-    MTInvalidCompanyServiceException,
 )
 from service.billing.exceptions import (
     MTBillAlreadyIssued,
@@ -247,12 +206,14 @@ from service.certifications.exceptions import (
     MTCertificationTypeUnknownCode,
     MTInvalidCertificationCatalogException,
 )
-from service.skills.exceptions import (
-    MTInvalidSkillCatalogException,
-    MTSkillTypeAlreadyExists,
-    MTSkillTypeInUse,
-    MTSkillTypeNotFound,
-    MTSkillTypeUnknownCode,
+from service.companies.exceptions import (
+    MTCompanyLogoStorageUnavailable,
+    MTCompanyNameTaken,
+    MTCompanyNotAcceptingApplications,
+    MTCompanyNotEmpty,
+    MTCompanyNotFound,
+    MTCompanyRegistrationDisabled,
+    MTInvalidCompanyServiceException,
 )
 from service.customers.exceptions import (
     MTCustomerHasQuotes,
@@ -271,12 +232,22 @@ from service.hcas.exceptions import (
     MTApplicationForbidden,
     MTApplicationNotFound,
     MTAvailabilitySlotNotFound,
-    MTSkillNotFound,
     MTDuplicateApplication,
     MTHcaForbidden,
     MTHcaHasAccount,
     MTHcaNotFound,
     MTInvalidHcaServiceException,
+    MTSkillNotFound,
+)
+from service.integrations.exceptions import (
+    MTIntegrationCredentialsRefused,
+    MTIntegrationNotConfigured,
+    MTInvoicingServiceException,
+    MTNoActivePlatform,
+)
+from service.integrations.utils.exceptions import (
+    MTInvalidCiiInvoiceException,
+    MTInvalidFacturXException,
 )
 from service.intervention_types.exceptions import (
     MTInterventionTypeAlreadyExists,
@@ -284,10 +255,32 @@ from service.intervention_types.exceptions import (
     MTInvalidInterventionTypeCatalogException,
 )
 from service.messaging.exceptions import MTInvalidMessagingException
+from service.organisation.exceptions import (
+    MTAgencyForbidden,
+    MTAgencyHeadquartersProtected,
+    MTAgencyMemberOutsideCompany,
+    MTAgencyMemberRunsATeam,
+    MTAgencyNameTaken,
+    MTAgencyNotEmpty,
+    MTAgencyNotFound,
+    MTInvalidAgencyServiceException,
+    MTInvalidTeamDocumentServiceException,
+    MTInvalidTeamServiceException,
+    MTTeamDocumentForbidden,
+    MTTeamDocumentNotFound,
+    MTTeamDocumentStorageUnavailable,
+    MTTeamForbidden,
+    MTTeamHasWork,
+    MTTeamManagerRequired,
+    MTTeamMemberManagesAnother,
+    MTTeamMemberOutsideAgency,
+    MTTeamNameTaken,
+    MTTeamNotFound,
+)
 from service.planning.exceptions import (
-    MTInvalidPlanningException,
     MTInterventionNotFound,
     MTInterventionNotQuoted,
+    MTInvalidPlanningException,
     MTPlanningCustomerNotFound,
     MTPlanningForbidden,
     MTPlanningInfeasible,
@@ -304,13 +297,21 @@ from service.quotes.exceptions import (
     MTQuoteLineNotFound,
     MTQuoteNotEditable,
     MTQuoteNotFound,
+    MTQuoteNotPriced,
     MTQuoteTeamForbidden,
     MTQuoteUnassignable,
-    MTQuoteNotPriced,
 )
-from service.integrations.utils.exceptions import (
-    MTInvalidCiiInvoiceException,
-    MTInvalidFacturXException,
+from service.security.exceptions import (
+    MTCredentialCipherException,
+    MTCredentialCipherKeyUnusable,
+    MTCredentialCipherUnreadable,
+)
+from service.skills.exceptions import (
+    MTInvalidSkillCatalogException,
+    MTSkillTypeAlreadyExists,
+    MTSkillTypeInUse,
+    MTSkillTypeNotFound,
+    MTSkillTypeUnknownCode,
 )
 from service.utils.exceptions import (
     MTInvalidInvoiceRendererException,
@@ -554,7 +555,7 @@ class ExceptionHandlers:
         # household or by forming a team — and the message says which.
         MTQuoteUnassignable: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # 403 rather than 404, unlike the agency and team refusals. The caller
-        # is a manager of this company and already reads the quote; the teams
+        # is a manager of this company and already reads the quote. The teams
         # they may move it between are not a secret from them, so pretending
         # the quote vanished would read as a bug.
         MTQuoteTeamForbidden: status.HTTP_403_FORBIDDEN,
@@ -590,7 +591,7 @@ class ExceptionHandlers:
         MTS3UploadFailed: status.HTTP_500_INTERNAL_SERVER_ERROR,
         # A broker misuse — binding a queue before connecting — is this
         # process's fault, not the caller's. It is raised by the worker and
-        # should never reach an HTTP response at all; the row exists so that
+        # should never reach an HTTP response at all. The row exists so that
         # if it ever does, it is answered honestly rather than as a 422
         # blaming the request.
         MTInvalidMessagingException: status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -655,7 +656,7 @@ class ExceptionHandlers:
             status.HTTP_422_UNPROCESSABLE_ENTITY
         ),
         # Operations on the organisation. The family bases answer 422 so a
-        # subclass added without a row of its own is still a typed refusal; the
+        # subclass added without a row of its own is still a typed refusal. The
         # rows below say where each genuinely differs.
         MTInvalidAgencyServiceException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         MTInvalidTeamServiceException: status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -759,7 +760,7 @@ class ExceptionHandlers:
         MTInvalidIntegrationConfigException: (status.HTTP_500_INTERNAL_SERVER_ERROR),
         MTInvalidBillingRunException: status.HTTP_422_UNPROCESSABLE_ENTITY,
         # A service refusing an operation. The concrete members carry their own
-        # meaning above; a new one defaults to "refused", never to a 500, which
+        # meaning above. A new one defaults to "refused", never to a 500, which
         # would blame this deployment for the caller's request.
         MTInvalidAuthException: status.HTTP_400_BAD_REQUEST,
         MTInvalidHcaServiceException: status.HTTP_400_BAD_REQUEST,
@@ -820,7 +821,7 @@ class ExceptionHandlers:
         MTInvalidS3ConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidRabbitMqConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
         MTInvalidServerConfigException: status.HTTP_500_INTERNAL_SERVER_ERROR,
-        # Storage. A store that cannot be reached is temporary; a row that will
+        # Storage. A store that cannot be reached is temporary. A row that will
         # not map is not.
         MTInvalidDatabaseConnectionException: status.HTTP_503_SERVICE_UNAVAILABLE,
         MTInvalidS3StorageException: status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -857,7 +858,7 @@ class ExceptionHandlers:
     # Internal Helpers Methods #
     ############################
 
-    def _status_for(self, exc: Exception) -> int:
+    def _status(self, exc: Exception) -> int:
         """Return the status an exception answers with.
 
         Args:
@@ -879,13 +880,13 @@ class ExceptionHandlers:
         # says nothing about which exception produced it, and the table is only
         # discovered to be incomplete by reading a stack trace.
         self.logger.error(
-            "%s is not mapped to a status; answering 500. Add it to "
+            "%s is not mapped to a status. Answering 500. Add it to "
             "STATUS_BY_EXCEPTION.",
             type(exc).__name__,
         )
         return status.HTTP_500_INTERNAL_SERVER_ERROR
 
-    def _detail_for(self, exc: Exception) -> str:
+    def _detail(self, exc: Exception) -> str:
         """Return the message a client is shown for an exception.
 
         Args:
@@ -901,7 +902,7 @@ class ExceptionHandlers:
                 return replacement
         return str(exc)
 
-    def _headers_for(self, exc: Exception) -> Optional[Dict[str, str]]:
+    def _headers(self, exc: Exception) -> Optional[Dict[str, str]]:
         """Return the extra headers an exception's response must carry.
 
         Args:
@@ -971,12 +972,12 @@ class ExceptionHandlers:
         Returns:
             JSONResponse: The mapped status, carrying ``detail``.
         """
-        status_code = self._status_for(exc)
+        status_code = self._status(exc)
         self._log(request, status_code, exc)
         return JSONResponse(
             status_code=status_code,
-            content={"detail": self._detail_for(exc)},
-            headers=self._headers_for(exc),
+            content={"detail": self._detail(exc)},
+            headers=self._headers(exc),
         )
 
     async def handle_unexpected_exception(

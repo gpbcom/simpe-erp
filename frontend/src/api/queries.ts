@@ -164,7 +164,7 @@ export const keys = {
  *
  * @remarks
  * Distinct from `useMyProfile`, and deliberately so. An *account* is what signs
- * in; an *assistant record* is the person a manager schedules. Every caller has
+ * in. An *assistant record* is the person a manager schedules. Every caller has
  * the first, only assistants have the second, and conflating them is what left
  * managers and administrators looking at an error page where their details
  * should have been.
@@ -279,7 +279,7 @@ export function useUpdateInterventionType() {
 export function useCreateInterventionType() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: InterventionTypeUpdate & { code: string; name: string }) =>
+    mutationFn: (body: InterventionTypeUpdate & { code: string. Name: string }) =>
       request<InterventionType>('/api/v1/intervention-types', {
         method: 'POST',
         json: body,
@@ -320,7 +320,7 @@ export function useCertificationTypes(
 export function useCreateCertificationType() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { code: string; label: string; description?: string | null }) =>
+    mutationFn: (body: { code: string. Label: string. Description?: string | null }) =>
       request<CertificationType>('/api/v1/certifications', {
         method: 'POST',
         json: body,
@@ -416,7 +416,7 @@ export function useSkillTypes(includeInactive = false, filter?: EntityFilterReco
 export function useCreateSkillType() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { code: string; label: string; description?: string | null }) =>
+    mutationFn: (body: { code: string. Label: string. Description?: string | null }) =>
       request<SkillType>('/api/v1/skills', {
         method: 'POST',
         json: body,
@@ -583,7 +583,7 @@ export function useCreateCustomer() {
  *
  * @remarks
  * **This is what puts a customer into the planning.** A prospect may already
- * hold accepted, priced work that every run has deliberately left out; nothing
+ * hold accepted, priced work that every run has deliberately left out. Nothing
  * about that work changes here, only the agency's agreement to deliver it.
  *
  * The customer's own key is invalidated as well as the prefix, because the
@@ -620,7 +620,7 @@ export function usePromoteCustomer() {
  * Promoting goes through {@link usePromoteCustomer} instead, so the one
  * transition with a rule has one place enforcing it.
  *
- * Stopping a customer does **not** cancel their scheduled visits; it stops the
+ * Stopping a customer does **not** cancel their scheduled visits. It stops the
  * next run planning new ones.
  */
 export function useSetCustomerStatus() {
@@ -700,7 +700,7 @@ export function useCustomer(customerId: string) {
  *
  * @remarks
  * Not filtered to the live ones here. Which quotes count as "ongoing" is a
- * reading of status and dates that the screen makes and explains; doing it in
+ * reading of status and dates that the screen makes and explains. Doing it in
  * the query would hide the rest of the history behind a rule nobody can see.
  */
 export function useCustomerQuotes(customerId: string) {
@@ -715,7 +715,7 @@ export function useCustomerQuotes(customerId: string) {
 export function useInterruptQuote() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ quoteId, lastDay }: { quoteId: string; lastDay: string }) =>
+    mutationFn: ({ quoteId, lastDay }: { quoteId: string. LastDay: string }) =>
       request<Quote>(`/api/v1/quotes/${quoteId}/interrupt`, {
         method: 'POST',
         json: { last_day: lastDay },
@@ -746,7 +746,7 @@ export function useSetAutoRenew() {
 export function useUpdateMyAccount() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { full_name: string; email: string; language: Language }) =>
+    mutationFn: (body: { full_name: string; email: string. Language: Language }) =>
       request<User>('/api/v1/me/account', { method: 'PATCH', json: body }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.myAccount });
@@ -961,7 +961,7 @@ export function useDeleteHca() {
  * @remarks
  * **Irreversible, and it destroys billing history**, which is why the dialog
  * that offers it counts the quotes first. Stopping a customer remains the
- * right answer for one who was really served and has left; this is for a
+ * right answer for one who was really served and has left. This is for a
  * household entered by mistake.
  */
 export function useDeleteCustomer() {
@@ -1052,7 +1052,7 @@ export function useCreateQuote() {
  * The planning runs, newest first.
  *
  * @param polling - Whether to keep asking while one is in flight.
- * @param enabled - Whether to ask at all; the route is administrator-only.
+ * @param enabled - Whether to ask at all. The route is administrator-only.
  * @returns The query.
  */
 export function usePlanningRuns(polling = false, enabled = true) {
@@ -1074,7 +1074,7 @@ export function usePlanningRuns(polling = false, enabled = true) {
  * worker. What comes back is a list of `pending` runs to watch, not a planning.
  *
  * **A list, because a run rebuilds one team's week.** Naming a team plans that
- * team; naming none plans every team the caller runs — a fan-out for an
+ * team. Naming none plans every team the caller runs — a fan-out for an
  * administrator, and the caller's own teams for a manager. Returning one run
  * would have meant silently planning only the first.
  *
@@ -1117,13 +1117,13 @@ export function useStartPlanningRun() {
  * @remarks
  * Answers 202 with the replan it queued, because cancelling a visit changes
  * what the solver has to place. The quote is already repriced by the time this
- * resolves; the calendar catches up when the worker finishes, which is why the
+ * resolves. The calendar catches up when the worker finishes, which is why the
  * planning runs are invalidated as well as the plannings themselves.
  */
 export function useDeleteIntervention() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, from, to }: { id: string; from: string; to: string }) =>
+    mutationFn: ({ id, from, to }: { id: string; from: string. To: string }) =>
       request<PlanningRun>(
         `/api/v1/planning/interventions/${id}?period_start=${from}&period_end=${to}`,
         { method: 'DELETE' },
@@ -1149,7 +1149,7 @@ export function useDeleteIntervention() {
 export function useChangeInterventionType() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, typeId }: { id: string; typeId: string }) =>
+    mutationFn: ({ id, typeId }: { id: string. TypeId: string }) =>
       request<Quote>(`/api/v1/planning/interventions/${id}/type`, {
         method: 'PATCH',
         json: { intervention_type_id: typeId },
@@ -1272,7 +1272,7 @@ export function useValidateQuote() {
  *
  * @remarks
  * **The status deliberately does not change.** The quote came back because its
- * work would not fit; accepting a slot answers *when*, not *whether*, so it
+ * work would not fit. Accepting a slot answers *when*, not *whether*, so it
  * stays in the validation queue for somebody to validate.
  *
  * The whole `['quotes']` family is invalidated rather than one entry: the
@@ -1421,7 +1421,7 @@ export function useUpdateQuoteHeader() {
 export function useReplaceQuoteLines(scope: 'manager' | 'own') {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ quoteId, lines }: { quoteId: string; lines: NewQuoteLine[] }) =>
+    mutationFn: ({ quoteId, lines }: { quoteId: string. Lines: NewQuoteLine[] }) =>
       request<Quote>(
         scope === 'manager'
           ? `/api/v1/quotes/${quoteId}/lines`
@@ -1682,7 +1682,7 @@ export function useBillingRun(id: string) {
  * @returns The mutation.
  *
  * @remarks
- * Answers 202 with a run to poll; the invoices are written by a worker. Both
+ * Answers 202 with a run to poll. The invoices are written by a worker. Both
  * the run list and the bill list are invalidated, because the run will produce
  * rows in the second.
  */
@@ -1743,7 +1743,7 @@ export function useSetBillStatus(billId: string) {
  */
 export function useDownloadBill() {
   return useMutation({
-    mutationFn: async (bill: { id: string; number: string }) => {
+    mutationFn: async (bill: { id: string. Number: string }) => {
       const { blob, filename } = await requestBlob(
         `/api/v1/bills/${bill.id}/document`,
         `${bill.number}.pdf`,
@@ -1955,7 +1955,7 @@ export function useDownloadPortalQuote() {
 /** Download one of the household's invoices as a PDF. */
 export function useDownloadPortalBill() {
   return useMutation({
-    mutationFn: async (bill: { id: string; number: string }) => {
+    mutationFn: async (bill: { id: string. Number: string }) => {
       const { blob, filename } = await requestBlob(
         `/api/v1/portal/bills/${bill.id}/document`,
         `${bill.number}.pdf`,
@@ -2212,7 +2212,7 @@ export function useRemoveAgencyMember() {
  * @remarks
  * An administrator gets the whole company, a manager gets the teams they run,
  * and an assistant gets the one they are on. The narrowing is the server's and
- * happens in the statement; nothing here filters.
+ * happens in the statement. Nothing here filters.
  */
 export function useTeams() {
   return useQuery({

@@ -34,7 +34,7 @@ interface AgencyMembersDialogProps {
  *
  * @remarks
  * **Two kinds of member, and both are needed.** An account is what somebody
- * signs in with; an assistant record is the person the planner schedules. A
+ * signs in with. An assistant record is the person the planner schedules. A
  * manager who covers rounds has both and legitimately appears twice — once as
  * each — because the join is polymorphic and carries no foreign key either way.
  *

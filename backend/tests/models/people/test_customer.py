@@ -69,7 +69,7 @@ class TestCustomer:
         """**A new customer is somebody the agency is talking to.**
 
         Notes:
-            Registering a customer records an enquiry; agreeing to deliver care
+            Registering a customer records an enquiry. Agreeing to deliver care
             is a separate act. Defaulting to active would have the planner
             routing an assistant to a door nobody had agreed to knock on.
         """

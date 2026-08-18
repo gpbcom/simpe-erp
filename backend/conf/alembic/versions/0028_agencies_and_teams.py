@@ -20,7 +20,7 @@ Notes:
 
     The head office **copies the company's whole record** — its address and
     coordinate, and its legal identity with it. The coordinate is what makes the
-    closest-team rule work on the first quote written after the upgrade; a site
+    closest-team rule work on the first quote written after the upgrade. A site
     with no coordinate cannot win a distance contest, so an empty address would
     send every quote down the busyness fallback and make the feature look broken
     on day one. The legal identity is copied because an ``Agency`` *is* a
@@ -102,7 +102,7 @@ def _manager_of(connection: sa.Connection, company_id: str) -> str:
         A manager is preferred over an administrator, and the earliest of either
         over a later one, so the choice is deterministic rather than whichever
         row the database happened to return. An administrator is the fallback
-        because a small agency often has no separate manager at all; nobody at
+        because a small agency often has no separate manager at all. Nobody at
         all is refused, because a team run by an arbitrary account is a team
         whose re-plan button belongs to the wrong person.
     """

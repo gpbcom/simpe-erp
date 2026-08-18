@@ -166,7 +166,7 @@ class TestCancellingAVisit:
     def test_it_answers_202_with_the_replan(
         self, interventions: AsyncMock, plannings: AsyncMock
     ) -> None:
-        """The quote is already changed; the calendar catches up on a worker."""
+        """The quote is already changed. The calendar catches up on a worker."""
         response = _client(interventions, plannings).delete(VISIT, params=PERIOD)
 
         assert response.status_code == 202
@@ -224,7 +224,7 @@ class TestCancellingAVisit:
     def test_a_quote_deleted_with_its_last_line_still_answers_202(
         self, interventions: AsyncMock, plannings: AsyncMock
     ) -> None:
-        """The service reports "no quote left"; the replan is still queued."""
+        """The service reports "no quote left". The replan is still queued."""
         interventions.delete.return_value = ("team-1", None)
 
         response = _client(interventions, plannings).delete(VISIT, params=PERIOD)
@@ -282,7 +282,7 @@ class TestSellingAVisitAsSomethingElse:
     def test_it_does_not_replan(
         self, interventions: AsyncMock, plannings: AsyncMock
     ) -> None:
-        """The hour costs something different; it happens at the same time.
+        """The hour costs something different. It happens at the same time.
 
         Notes:
             Every constraint the solver placed the visit under still holds, so

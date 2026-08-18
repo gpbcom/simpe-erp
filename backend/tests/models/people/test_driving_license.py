@@ -27,7 +27,7 @@ class TestDrivingLicense:
     # ------------------------------------------------------------------ #
 
     def test_an_empty_licence_is_valid(self) -> None:
-        """Every field is optional; an empty record holds no categories."""
+        """Every field is optional. An empty record holds no categories."""
         licence = DrivingLicense()
         assert licence.categories == []
         assert licence.number is None

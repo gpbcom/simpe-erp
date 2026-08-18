@@ -46,7 +46,7 @@ async def create_team(
         MTTeamNameTaken: If the company already has a team of that name; 409.
         MTTeamManagerRequired: If the named account cannot run it; 422.
         MTTeamMemberManagesAnother: If the named manager already runs another
-            team; answered as a 409.
+            team. Answered as a 409.
 
     Notes:
         Administrator-only, as the requirement states — a manager cannot form
@@ -106,7 +106,7 @@ async def get_team(
         TeamView: The team and its member count.
 
     Raises:
-        MTTeamNotFound: If no such team exists; answered as a 404.
+        MTTeamNotFound: If no such team exists. Answered as a 404.
         MTTeamForbidden: If it is not one the caller may read; 403.
     """
     logger.debug("Reading team %s for %s.", team_id, caller.email)
@@ -132,7 +132,7 @@ async def update_team(
         TeamView: The updated team.
 
     Raises:
-        MTTeamNotFound: If no such team exists; answered as a 404.
+        MTTeamNotFound: If no such team exists. Answered as a 404.
         MTTeamNameTaken: If another team already uses the name; 409.
         MTTeamManagerRequired: If the named account cannot run it; 422.
     """
@@ -155,8 +155,8 @@ async def delete_team(
         caller (User): The authenticated caller; enforces administrator access.
 
     Raises:
-        MTTeamNotFound: If no such team exists; answered as a 404.
-        MTTeamHasWork: If quotes still name it; answered as a 409.
+        MTTeamNotFound: If no such team exists. Answered as a 404.
+        MTTeamHasWork: If quotes still name it. Answered as a 409.
 
     Notes:
         The team's shared documents are **not** removed here, and that is a gap
@@ -186,7 +186,7 @@ async def list_team_members(
         List[TeamMember]: The memberships, each a kind and an identifier.
 
     Raises:
-        MTTeamNotFound: If no such team exists; answered as a 404.
+        MTTeamNotFound: If no such team exists. Answered as a 404.
         MTTeamForbidden: If it is not one the caller may read; 403.
     """
     logger.debug("Listing the members of team %s for %s.", team_id, caller.email)  # noqa: E501
@@ -216,7 +216,7 @@ async def add_team_member(
         TeamMember: The stored membership.
 
     Raises:
-        MTTeamNotFound: If no such team exists; answered as a 404.
+        MTTeamNotFound: If no such team exists. Answered as a 404.
         MTTeamMemberManagesAnother: If they run the team they would leave;
             answered as a 409.
         MTTeamMemberOutsideAgency: If they do not work at the team's site; 422.
@@ -266,7 +266,7 @@ async def remove_team_member(
 
     Raises:
         MTTeamNotFound: If no such team exists, or they are not on it; 404.
-        MTTeamManagerRequired: If they are the team's manager; answered as a
+        MTTeamManagerRequired: If they are the team's manager. Answered as a
             422, because the way to replace a manager is to name a new one.
     """
     logger.info(

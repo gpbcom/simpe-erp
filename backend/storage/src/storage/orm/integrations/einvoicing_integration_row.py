@@ -42,7 +42,7 @@ class EInvoicingIntegrationRow(Base):
           keys and no way to say which one an invoice went out under.
         - **The ciphertext is ``Text`` rather than a sized string.** Fernet
           output grows with the payload and the payload grows when a platform
-          wants extra references; a column sized to today's four fields would
+          wants extra references. A column sized to today's four fields would
           fail on the day a fifth was added, in production, on a save.
         - There is a partial index on the enabled row rather than a unique
           constraint over ``(company_id, enabled)``: only one row per agency may

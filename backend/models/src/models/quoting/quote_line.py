@@ -69,15 +69,15 @@ class QuoteLine(BaseModel):
         - **The VAT category belongs to the line, not to the catalog entry.**
           The same service is necessity care for one customer and comfort care
           for another — help with washing under a care plan is billed at the
-          reduced rate; the same hour arranged privately is not — so the rate
+          reduced rate. The same hour arranged privately is not — so the rate
           cannot be a property of the service being sold. It is decided when
           the quote is written, by the person who knows which the customer is,
           and it is stored on the line so the quote reprints identically
           afterwards.
         - **``required_certification_codes`` distinguishes three states**, and
           the third is why it is nullable rather than a plain list. ``None``
-          means "whatever the catalog entry requires"; a list means "these,
-          instead of the catalog's"; and an **empty list** means "this hour
+          means "whatever the catalog entry requires". A list means "these,
+          instead of the catalog's". And an **empty list** means "this hour
           needs no qualification at all", which is a real answer somebody has
           to be able to give when the catalog's default is wrong for one
           customer. Collapsing ``None`` and ``[]`` would silently reinstate a
@@ -109,7 +109,7 @@ class QuoteLine(BaseModel):
         description="The catalog entry fixing the rate.",
     )
     service_category: ServiceCategory = Field(
-        description="What kind of care this is; decides the VAT rate.",
+        description="What kind of care this is. Decides the VAT rate.",
     )
     service_date: date = Field(description="The day the service is delivered.")
     earliest_start: time = Field(description="Earliest the service may begin.")

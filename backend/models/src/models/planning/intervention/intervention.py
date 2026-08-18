@@ -150,7 +150,7 @@ class Intervention(BaseModel):
             Its own validator rather than a member of the grouped identifier
             check beside it, because the failure it describes is a different
             one. A missing catalogue entry or customer makes a visit
-            *incomplete*; a missing team makes it **unreplaceable** — the delete
+            *incomplete*. A missing team makes it **unreplaceable** — the delete
             that rewrites a period is scoped by ``(company, team, day)``, so a
             visit naming no team escapes every re-plan for ever.
         """

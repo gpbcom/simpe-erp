@@ -164,7 +164,7 @@ class TestSkillCreateRequest:
             SkillCreateRequest(name="x", **{field: 42})
 
     def test_to_skill_builds_a_skill_with_no_identifier(self) -> None:
-        """The store mints one; a caller-chosen id could collide."""
+        """The store mints one. A caller-chosen id could collide."""
         skill = SkillCreateRequest(
             name="  Lève-personne  ",
             code="leve-personne",

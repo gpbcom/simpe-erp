@@ -59,6 +59,6 @@ ${STACK_POLL}           3s
 # because monocart wants JSON, and a threshold is a policy decision that should
 # be visible on its own rather than buried among addresses.
 ${COVERAGE_CONFIG}      ${CURDIR}/../../coverage.config.json
-# Each suite writes its raw V8 output into its own directory here; the merge
+# Each suite writes its raw V8 output into its own directory here. The merge
 # step at the end of the run turns the lot into one report.
 ${COVERAGE_RAW_DIR}     ${OUTPUT DIR}/coverage-raw

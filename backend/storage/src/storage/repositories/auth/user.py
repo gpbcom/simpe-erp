@@ -92,7 +92,7 @@ class UserRepository(BaseRepository[UserRow]):
         rows = await self._fetch_all(statement)
         if not rows:
             self.logger.error(
-                "No active supervisor found for company %s; nobody can be told "
+                "No active supervisor found for company %s. Nobody can be told "
                 "about work waiting for a decision.",
                 company_id,
             )

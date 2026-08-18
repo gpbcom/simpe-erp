@@ -12,7 +12,7 @@ Documentation    Skills — the catalogue, and the one thing an assistant declar
 ...              and the safeguard is that every manager and administrator is
 ...              notified instead. So three things are worth proving rather
 ...              than trusting: an assistant really can declare one and it
-...              really reaches their record; the supervisors really are told;
+...              really reaches their record. The supervisors really are told;
 ...              and a manager really can withdraw it — while there is no
 ...              route at all by which a manager *declares* one for somebody
 ...              else.

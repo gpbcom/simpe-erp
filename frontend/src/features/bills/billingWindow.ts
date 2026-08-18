@@ -9,7 +9,7 @@ import type { BillingPeriodicity } from '@/api/types';
  *
  * @remarks
  * A **preview**, not the decision. The server resolves the real window from the
- * stored rule and the invoices carry that one; this is here so a manager sees
+ * stored rule and the invoices carry that one. This is here so a manager sees
  * which month they are about to bill *before* pressing, rather than reading it
  * off the run afterwards.
  *

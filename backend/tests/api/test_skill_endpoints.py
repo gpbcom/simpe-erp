@@ -110,7 +110,7 @@ class TestSkillCatalogueEndpoints:
         assert response.status_code == 200
         assert response.json()[0]["code"] == "TOILETTE"
 
-    def test_retired_entries_are_hidden_unless_asked_for(
+    def test_retired_entries_are_hidden_unless_asked(
         self, client: TestClient, service: AsyncMock
     ) -> None:
         """The picker offers only what may still be declared."""

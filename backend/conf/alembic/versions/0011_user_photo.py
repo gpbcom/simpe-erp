@@ -10,7 +10,7 @@ Notes:
 
     It is a **second** column rather than a move, because the two answer
     different questions. The assistant's portrait is their pin on the manager's
-    map, and it belongs to the person a manager schedules; this one belongs to
+    map, and it belongs to the person a manager schedules. This one belongs to
     the credential, and every signed-in account has one — including the managers
     and administrators who have no assistant record at all and therefore had
     nowhere to put a face.

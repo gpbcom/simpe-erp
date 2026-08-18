@@ -32,7 +32,7 @@ class MigrationTemplates:
           once per stop revision and copied thereafter. A copy is about a
           millisecond.
         - **Each test still gets its own database.** The template is never
-          opened by a test; it is copied first. Isolation is unchanged — what
+          opened by a test. It is copied first. Isolation is unchanged — what
           is shared is the *work of building*, not the file.
         - Session-scoped, and therefore **per xdist worker**. A worker builds
           only the revisions its own tests ask for, so the parallel run pays for

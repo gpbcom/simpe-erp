@@ -44,7 +44,7 @@ class HcaProfileUpdateRequest(BaseModel):
           travel speed the planner routes them at, so an assistant who passes
           their test wants it recorded the same day.
         - There is no ``photo_url`` either. A photograph is uploaded as a file
-          and its URL is minted by the object store; accepting a URL here would
+          and its URL is minted by the object store. Accepting a URL here would
           let an assistant point their portrait at any address on the internet,
           which the manager's map would then load on every pin.
         - Changing the address re-geocodes it, because

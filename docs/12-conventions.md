@@ -32,7 +32,7 @@ block.
 
 The `Notes` sections are the signature of this codebase. They explain **why**,
 and specifically why the obvious alternative is wrong. A comment restating what
-the line does is noise; a note saying "asserting immediately would fail on a slow
+the line does is noise. A note saying "asserting immediately would fail on a slow
 machine and pass on a fast one" is the reason somebody does not undo the work
 next month.
 
@@ -70,7 +70,7 @@ every table through it, and one that nothing imports is a table `create_all`
 silently omits. → [01](01-architecture.md)
 
 **Shared fields live on a base in `models/base/`, and the exception stays per
-model.** Every record describing a human extends `Person`; the two that carry a
+model.** Every record describing a human extends `Person`. The two that carry a
 photograph also mix in `PortraitHolder`. A new people model inherits both rather
 than restating eight fields and seven validators — that is what the base is for,
 and four hand-copied versions of "an email must be a non-empty string" is what it
@@ -101,10 +101,10 @@ one rather than replacing it, and the two then run in an order nobody reading
 either can predict.
 
 **One service per entity.** The planning service absorbed the settings service
-and the feasibility checker for this reason; the mapper package did the same.
+and the feasibility checker for this reason. The mapper package did the same.
 
 **Exceptions are `MT`-prefixed** and domain-scoped: `MTQuoteNotEditable`,
-`MTAuthInvalidCredentials`, `MTS3PayloadTooLarge`. A service raises its own; the
+`MTAuthInvalidCredentials`, `MTS3PayloadTooLarge`. A service raises its own. The
 endpoint raises nothing. Translation happens once, in
 `api/exception_handlers.py`, and `tests/api/test_exception_coverage.py` fails if
 a family has no row.
@@ -128,7 +128,7 @@ TSDoc on every exported function and component, with the same `@remarks` habit
 of explaining why.
 
 Every element the GUI campaign touches carries a `data-testid`. A CSS class is
-Emotion's to rename and a visible string changes with the copy; neither is a
+Emotion's to rename and a visible string changes with the copy. Neither is a
 contract.
 
 One feature per directory under `src/features/`. Server state belongs to
@@ -139,7 +139,7 @@ nothing else.
 
 Suites numbered in the order they run. Every locator a `data-testid`. Fixtures
 created and torn down **through the API**, never by clicking. Anything created
-carries a unique suffix; teardown removes exactly what that run made, by
+carries a unique suffix. Teardown removes exactly what that run made, by
 identifier. Seeded data is read-only, or snapshotted and restored.
 
 Suite documentation says what the suite proves and why it is worth proving.
@@ -186,7 +186,7 @@ into `except InvalidOperation, ValueError:` — Python 2 syntax, and a
 `SyntaxError` on 3.14 — for handlers at method depth. It corrupted nine files
 here in a single run.
 
-**The dangerous part is not the corruption; it is that the test suite stayed
+**The dangerous part is not the corruption. It is that the test suite stayed
 green.** CPython kept importing those modules from the `.pyc` files compiled
 from the previous, correct source, so every test passed against bytecode whose
 source no longer parsed. The damage would have surfaced on the next clean

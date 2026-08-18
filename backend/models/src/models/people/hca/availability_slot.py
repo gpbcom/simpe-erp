@@ -294,7 +294,7 @@ class AvailabilitySlot(BaseModel):
             bool: ``True`` when no time window is set.
 
         Notes:
-            A whole-day slot removes the assistant from that day entirely; a
+            A whole-day slot removes the assistant from that day entirely. A
             partial one only carves a window out of it.
         """
         return self.start_time is None

@@ -76,7 +76,7 @@ An Assistant Sees Fewer Customers Than The Agency Has
     [Documentation]    The scoping rule, asserted as a number.
     ...
     ...    **The test the whole portfolio rests on.** A home-care record carries
-    ...    an address, a telephone number and a care schedule; there is no
+    ...    an address, a telephone number and a care schedule. There is no
     ...    reason for every assistant to hold every one of them. If these two
     ...    counts are equal, the scoping is not being applied and the screen is
     ...    the agency's directory wearing a different heading.

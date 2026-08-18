@@ -23,7 +23,7 @@ class BillDispatchResponse(BaseModel):
           approval's effect, so a manager reading the list sees an invoice
           approved but not yet out — which is the truth, and is actionable.
         - A failed delivery is **not** an error response. The invoice is written,
-          numbered and downloadable; the customer's mail server being unreachable
+          numbered and downloadable. The customer's mail server being unreachable
           is not a reason to answer a 5xx and have the announcement retried until
           it dead-letters.
     """

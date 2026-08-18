@@ -118,7 +118,7 @@ class TestGeoPoint:
         assert origin.distance_km(north) == pytest.approx(111.2, rel=0.01)
 
     def test_antipodal_points_are_half_the_circumference_apart(self) -> None:
-        """Antipodes sit half a great circle apart; the arcsin never overflows."""
+        """Antipodes sit half a great circle apart. The arcsin never overflows."""
         origin = GeoPoint(latitude=0.0, longitude=0.0)
         antipode = GeoPoint(latitude=0.0, longitude=180.0)
         assert origin.distance_km(antipode) == pytest.approx(20015.0, rel=0.01)

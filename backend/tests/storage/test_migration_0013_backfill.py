@@ -211,7 +211,7 @@ class TestMigration0013Backfill:
         """The two defaults disagree deliberately, and that is the design.
 
         Notes:
-            The migration is about not changing anybody's existing rota; the
+            The migration is about not changing anybody's existing rota. The
             model is about what a new hire means by full-time. Making them
             agree either cancels weekend rounds on deployment or puts every new
             hire on a seven-day week.

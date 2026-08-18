@@ -169,7 +169,7 @@ Vite dev server and the whole observability chain, runs the migrations once
 through the `migrate` service, and seeds a working agency — 12 assistants,
 40 customers, a service catalog and 54 quotes spread across every status.
 
-Wait for `Bucket simple-erp is ready.` and the seeder's credential block; the first
+Wait for `Bucket simple-erp is ready.` and the seeder's credential block. The first
 build takes a few minutes, and afterwards a start is seconds.
 
 | | |
@@ -371,7 +371,7 @@ docker compose $DEV up --build                 # rebuild and reseed from nothing
 ```
 
 `-v` destroys `postgres-data`, `minio-data` and `rabbitmq-data`. In development
-that is the fastest way back to a known state; anywhere else it is data loss.
+that is the fastest way back to a known state. Anywhere else it is data loss.
 `make clean` is the same thing and just as destructive — it is not a cache
 sweep.
 
@@ -452,7 +452,7 @@ asyncpg.exceptions.InvalidPasswordError: password authentication failed for user
 when the store initialises itself.** Changing them in compose does nothing to a
 volume that already exists — the database still holds `rt_erp` while the
 application now connects as `simple_erp`. Postgres fails first because the
-backend reaches it first; the broker and the object store would fail next.
+backend reaches it first. The broker and the object store would fail next.
 
 For a development stack, throw the volumes away — the data is seeded, and
 reseeding takes seconds:
@@ -518,7 +518,7 @@ Different in ways that matter:
   them fails immediately rather than coming up with
   `change-me-in-any-real-deployment` as its signing key.
 - **The stores publish no ports.** PostgreSQL, MinIO and RabbitMQ are reachable
-  on the compose network and nowhere else; administration goes through
+  on the compose network and nowhere else. Administration goes through
   `docker compose exec`.
 - **The front-end is built and served by nginx**, which also proxies `/api` — so
   the browser sees one origin. The API's address is **not** built into the
@@ -566,7 +566,7 @@ helm template simple-erp infra/chart -f infra/chart/values-dev.yaml \
 
 What the chart does **not** contain is the part worth knowing: PostgreSQL,
 RabbitMQ, MinIO and PgBouncer are not in it. In compose they are services
-because a laptop has to run something; in a cluster they are operator-managed
+because a laptop has to run something. In a cluster they are operator-managed
 and installed by [`infra/bootstrap`](infra/bootstrap/README.md). They outlive
 any one release, and a chart that owned them would uninstall cert-manager on a
 failed rollback and take every certificate with it. Mailpit and the seeder have

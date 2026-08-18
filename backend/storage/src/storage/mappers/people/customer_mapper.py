@@ -19,7 +19,7 @@ class CustomerMapper(PersonMapper[Customer, CustomerRow]):
           leaves ``storage``, and the domain model never carries a SQLAlchemy
           type. Every repository read ends here, and every write starts here.
         - The identity block and the address are mapped by
-          :class:`~storage.mappers.person_mapper.PersonMapper`; a customer adds
+          :class:`~storage.mappers.person_mapper.PersonMapper`. A customer adds
           only its registration status on top of them.
     """
 

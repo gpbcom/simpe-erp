@@ -46,7 +46,7 @@ TABLE = "einvoicing_integrations"
 #: One key per agency per platform.
 UNIQUE_PROVIDER = "uq_einvoicing_company_provider"
 
-#: One *enabled* platform per agency; disabled rows are unconstrained.
+#: One *enabled* platform per agency. Disabled rows are unconstrained.
 UNIQUE_ENABLED = "uq_einvoicing_one_enabled_per_company"
 
 

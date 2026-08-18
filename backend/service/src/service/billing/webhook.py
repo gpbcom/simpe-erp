@@ -21,7 +21,7 @@ class BillingWebhook:
 
     Notes:
         - **This is the only thing that puts an invoice in a customer's inbox.**
-          A generation run renders every document and stops; the manager's move
+          A generation run renders every document and stops. The manager's move
           to accepted is what fires this call, and without it the endpoint
           exists and nothing ever reaches it. The failure would be silent in
           both directions: no error logged, and no invoice sent.
@@ -31,7 +31,7 @@ class BillingWebhook:
           :class:`~service.planning.webhook.PlanningWebhook` has, and for the
           same reason.
         - A failure is **logged and swallowed**. The invoice is already written,
-          numbered and downloadable; an unreachable mailer must not dead-letter
+          numbered and downloadable. An unreachable mailer must not dead-letter
           the message, and the bill simply stays at accepted — which reads as
           "approved but not yet out", the truth, and is actionable.
     """
@@ -79,7 +79,7 @@ class BillingWebhook:
         """
         if not self.config.enabled:
             self.logger.debug(
-                "The billing webhook is disabled; not announcing bill %s (%s).",
+                "The billing webhook is disabled. Not announcing bill %s (%s).",
                 bill_id,
                 what,
             )
@@ -106,7 +106,7 @@ class BillingWebhook:
             self.logger.error("Could not announce bill %s: %s", bill_id, exc)
             return False
         self.logger.info(
-            "Bill %s announced; the dispatcher answered %d.",
+            "Bill %s announced. The dispatcher answered %d.",
             bill_id,
             response.status_code,
         )
@@ -154,7 +154,7 @@ class BillingWebhook:
               document — one that could disagree with the stored one and decide
               what a customer is charged.
             - The two "off" cases are reported differently on purpose. Disabled
-              is a decision and logs at debug; a secret that was never set is a
+              is a decision and logs at debug. A secret that was never set is a
               misconfiguration — somebody switched the webhook on and stopped
               there — and says so at warning, naming the variable to set.
         """

@@ -1,9 +1,9 @@
 *** Settings ***
 Documentation    The journey the whole validation feature exists for.
 ...
-...              An assistant writes a quote and submits it; the event crosses
-...              RabbitMQ; the worker writes a notification; the API pushes it
-...              over SSE; a manager sees the badge, validates the quote; and
+...              An assistant writes a quote and submits it. The event crosses
+...              RabbitMQ. The worker writes a notification. The API pushes it
+...              over SSE. A manager sees the badge, validates the quote. And
 ...              the assistant is told. Every piece built in this change is on
 ...              that path, and this is the only test that exercises them
 ...              together.

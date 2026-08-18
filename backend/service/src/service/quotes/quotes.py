@@ -152,7 +152,7 @@ class QuoteService:
                 quote.reference,
             )
             raise MTCertificationTypeUnknownCode(
-                "Certification requirements cannot be verified; the "
+                "Certification requirements cannot be verified. The "
                 "certification catalogue is unavailable."
             )
         self.logger.debug(
@@ -176,7 +176,7 @@ class QuoteService:
             The twin of :meth:`_assert_line_requirements_known`, with the same
             two rules: only the lines that actually override are checked,
             because a line inheriting its catalog entry carries ``None`` and
-            that entry was checked when it was saved; and no catalogue wired in
+            that entry was checked when it was saved. And no catalogue wired in
             is tolerable only while nothing overrides.
         """
         overridden = [
@@ -194,7 +194,7 @@ class QuoteService:
                 quote.reference,
             )
             raise MTSkillTypeUnknownCode(
-                "Skill requirements cannot be verified; the skill catalogue is "
+                "Skill requirements cannot be verified. The skill catalogue is "
                 "unavailable."
             )
         self.logger.debug(
@@ -424,7 +424,7 @@ class QuoteService:
               choose means the quote cannot exist.
             - The two causes carry **different messages**, deliberately. One is
               fixed by correcting a household's address and the other by forming
-              a team; a single "could not be assigned" sends somebody to look
+              a team. A single "could not be assigned" sends somebody to look
               for both.
             - A household with no resolved coordinate is **not** refused here.
               It falls through to the busyness tie-break, which is the honest
@@ -499,7 +499,7 @@ class QuoteService:
               as its author would land in their list, and they would be the one
               a manager asks about a price they never set.
             - The team is resolved **before** the lines are validated or priced.
-              Both orders give the same answer; this one means a company with no
+              Both orders give the same answer. This one means a company with no
               team is told so instead of being told about a missing catalogue
               entry on a quote it could never have filed.
         """
@@ -531,9 +531,9 @@ class QuoteService:
 
         Raises:
             MTQuoteNotFound: If no such quote exists, or it belongs to another
-                company; answered as a 404.
+                company. Answered as a 404.
             MTQuoteTeamForbidden: If the caller may read neither the team the
-                quote leaves nor the one it joins; answered as a 403.
+                quote leaves nor the one it joins. Answered as a 403.
 
         Notes:
             - **Explicit rather than automatic.** Attribution runs once, when
@@ -648,12 +648,12 @@ class QuoteService:
               remove again.
             - Absence is reported rather than passed over. A caller deleting a
               quote it believes it created wants to know when there was nothing
-              there; a silent success hides a fixture that was never made, or
+              there. A silent success hides a fixture that was never made, or
               one already removed by something else.
         """
         removed = await self.quotes.delete(quote_id)
         if not removed:
-            self.logger.warning("Quote %s does not exist; nothing deleted.", quote_id)  # noqa: E501
+            self.logger.warning("Quote %s does not exist. Nothing deleted.", quote_id)  # noqa: E501
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         self.logger.info("Deleted quote %s.", quote_id)
 
@@ -677,7 +677,7 @@ class QuoteService:
             authored_by (Optional[str]): Restrict to one author's quotes.
             quote_filter (Optional[QuoteFilter]): The screen's filter.
             team_ids (Optional[List[str]]): The teams the caller may read.
-                ``None`` means every team; an empty list means none.
+                ``None`` means every team. An empty list means none.
 
         Returns:
             List[Quote]: The matching quotes.
@@ -698,7 +698,7 @@ class QuoteService:
             team_ids=team_ids,
         )
 
-    async def list_for(
+    async def list(
         self,
         caller: User,
         page: int = 1,
@@ -786,7 +786,7 @@ class QuoteService:
               their own, but everything after that decision — the draft check,
               the repricing, the write — is identical, and two copies of it
               would be two places for the pricing rules to drift apart. The
-              route decides who is asking; this decides what happens next.
+              route decides who is asking. This decides what happens next.
         """
         existing = await self.get(quote_id)
         if author_id is not None and existing.authored_by != author_id:
@@ -846,12 +846,12 @@ class QuoteService:
             MTQuoteNotFound: If no such quote exists.
             MTQuoteLineNotFound: If the quote does not carry that line.
             MTQuoteLineWindowTooShort: If the offered window is narrower than
-                the work takes; answered as a 422.
+                the work takes. Answered as a 422.
             MTPricingUnknownInterventionType: If the line names a missing type.
 
         Notes:
             - **The status is deliberately untouched.** The quote came back to
-              be validated because its work would not fit; accepting a new time
+              be validated because its work would not fit. Accepting a new time
               answers *when*, not *whether*, so it stays in the queue for
               somebody to validate. Moving it on here would let a scheduling
               tweak approve work nobody agreed to.
@@ -861,7 +861,7 @@ class QuoteService:
               do not follow from its own dates.
             - **The planning note is cleared.** Its reasons describe a date that
               has just changed and its offers were computed against a plan that
-              no longer applies; leaving them on screen invites a second click
+              no longer applies. Leaving them on screen invites a second click
               that silently overwrites the first. The next run re-attaches a
               fresh one if the work still does not fit.
             - No assistant is recorded. A quote says what is sold and when, not
@@ -872,7 +872,7 @@ class QuoteService:
         line = next((item for item in existing.lines if item.id == quote_line_id), None)
         if line is None:
             self.logger.warning(
-                "Quote %s carries no line %s to reschedule; the offer was "
+                "Quote %s carries no line %s to reschedule. The offer was "
                 "probably computed before the quote was last edited.",
                 existing.reference,
                 quote_line_id,
@@ -953,7 +953,7 @@ class QuoteService:
 
         Notes:
             - **The planning note is cleared.** A quote carries the reason its
-              work would not fit and the times that were free instead; the
+              work would not fit and the times that were free instead. The
               moment somebody edits it, that note describes a quote which no
               longer exists. Leaving it would send the next reader to
               renegotiate a date that has already been changed.
@@ -963,7 +963,7 @@ class QuoteService:
               against the wrong record — and never something to do without
               leaving a trace.
             - Not repriced. The amounts follow the lines, and the lines are not
-              touched here; a header edit that silently moved the total would
+              touched here. A header edit that silently moved the total would
               change what a customer owes because somebody corrected a date.
         """
         existing = await self.get(quote_id)
@@ -1054,7 +1054,7 @@ class QuoteService:
               :meth:`~models.quoting.quote.Quote.effective_lines` decides and
               what the aggregates are then built from.
             - **Repricing happens here rather than at read time.** An issued
-              quote must reprint identically, so amounts are stored; a total
+              quote must reprint identically, so amounts are stored. A total
               recomputed on every read would drift the first time the catalog
               changed. Interrupting is the deliberate act that makes a new total
               correct, so it is the moment to write one.
@@ -1117,7 +1117,7 @@ class QuoteService:
         """Write successors for the arrangements that have expired.
 
         Args:
-            today (Optional[date]): The day to treat as now; defaults to today.
+            today (Optional[date]): The day to treat as now. Defaults to today.
 
         Returns:
             List[Quote]: The successor quotes created, newest last.
@@ -1147,7 +1147,7 @@ class QuoteService:
         for parent in candidates:
             if parent.is_interrupted():
                 self.logger.info(
-                    "Quote %s ended on %s; not renewing it.",
+                    "Quote %s ended on %s. Not renewing it.",
                     parent.reference,
                     parent.interrupted_on,
                 )
@@ -1263,7 +1263,7 @@ class QuoteService:
 
         Notes:
             **The authorship check is here, not in the endpoint.** A route guard
-            proves the caller is an assistant; it cannot stop assistant A
+            proves the caller is an assistant. It cannot stop assistant A
             submitting assistant B's draft, and only a comparison against the
             stored author can. A manager is allowed through: they own every
             quote in the agency, and refusing them their own draft would be
@@ -1374,7 +1374,7 @@ class QuoteService:
         if validated is None:
             raise MTQuoteNotFound(f"No quote {quote_id!r} exists.")
         self.logger.info(
-            "Quote %s validated by %s; its %d line(s) are now schedulable.",
+            "Quote %s validated by %s. Its %d line(s) are now schedulable.",
             validated.reference,
             validator_id,
             len(validated.lines),
@@ -1475,7 +1475,7 @@ class QuoteService:
         """
         return await self._move_to(quote_id, QuoteStatus.REJECTED)
 
-    def base_rate_for(self, intervention_type: InterventionType) -> Decimal:
+    def base_rate(self, intervention_type: InterventionType) -> Decimal:
         """Return the hourly rate a type bills at, before any surcharge.
 
         Args:
@@ -1501,7 +1501,7 @@ class QuoteService:
             )
         return resolved
 
-    def multiplier_for(self, service_date: date) -> Decimal:
+    def multiplier(self, service_date: date) -> Decimal:
         """Return the multiplier applying to a service date.
 
         Args:
@@ -1511,7 +1511,7 @@ class QuoteService:
             Decimal: ``1`` on an ordinary day, ``1.25`` on a surcharged
             Sunday, ``1.50`` on Christmas Day or New Year's Day.
         """
-        multiplier = self.config.multiplier_for(service_date)
+        multiplier = self.config.multiplier(service_date)
         if multiplier != Decimal("1"):
             self.logger.info(
                 "%s carries a surcharge: billing at x%s.",
@@ -1522,7 +1522,7 @@ class QuoteService:
             self.logger.debug("%s carries no surcharge.", service_date)
         return multiplier
 
-    def vat_rate_for(self, line: QuoteLine) -> Decimal:
+    def vat_rate(self, line: QuoteLine) -> Decimal:
         """Return the VAT rate a quote line is taxed at.
 
         Args:
@@ -1537,7 +1537,7 @@ class QuoteService:
               for another — help with washing under a care plan is billed at the
               reduced rate, and the same hour arranged privately is not. Which it
               is depends on the customer, so it cannot be a property of the
-              service; it is chosen when the quote is written, by the person who
+              service. It is chosen when the quote is written, by the person who
               knows.
             - The catalog still fixes the *rate*. It no longer fixes the tax.
         """
@@ -1624,9 +1624,9 @@ class QuoteService:
             customer querying a Sunday visit can be shown the uplifted rate
             rather than being asked to trust the total.
         """
-        base_rate = self.base_rate_for(intervention_type)
-        multiplier = self.multiplier_for(line.service_date)
-        vat_rate = self.vat_rate_for(line)
+        base_rate = self.base_rate(intervention_type)
+        multiplier = self.multiplier(line.service_date)
+        vat_rate = self.vat_rate(line)
 
         effective_rate = base_rate * multiplier
         total_ht = self._to_cents(effective_rate * line.duration_hours())
@@ -1725,7 +1725,7 @@ class QuoteService:
         )
         if not priced.lines:
             self.logger.warning(
-                "Quote %s has no lines; it totals nothing and cannot be sent.",
+                "Quote %s has no lines. It totals nothing and cannot be sent.",
                 quote.reference,
             )
         return priced

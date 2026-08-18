@@ -598,7 +598,7 @@ class TestCustomerPromotion:
         """A route written but never included would pass every test above.
 
         Notes:
-            The tests above mount the router by hand; this reads the real
+            The tests above mount the router by hand. This reads the real
             application, where a missing ``include_router`` is the one failure
             a hand-built app cannot see.
         """

@@ -128,7 +128,7 @@ class TestBillLineDescription:
             BillLine(**a_line(service_category=value))
 
     def test_the_assistant_may_be_unknown_but_never_blank(self) -> None:
-        """A named assistant is optional; a blank one is a lost value."""
+        """A named assistant is optional. A blank one is a lost value."""
         assert BillLine(**a_line(hca_full_name=None)).hca_full_name is None
         with pytest.raises(MTBillLineInvalidHca):
             BillLine(**a_line(hca_full_name="   "))
@@ -251,7 +251,7 @@ class TestBillLineMoney:
 
         Notes:
             **The one place this differs from a quote line.** A quote is
-            legitimately unpriced while it is being composed; an invoice with a
+            legitimately unpriced while it is being composed. An invoice with a
             blank amount column is a legal defect, so the model refuses to exist
             rather than print one.
         """

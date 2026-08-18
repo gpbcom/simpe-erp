@@ -61,7 +61,7 @@ const BILL_DETAILS: FilterDetail[] = [
  * second page either: two grids to keep in step is two places to fix a column.
  *
  * **Generating sends nothing.** The button writes invoices that wait for a
- * manager; the drawer is where one is validated, and validating is what emails
+ * manager. The drawer is where one is validated, and validating is what emails
  * the customer.
  */
 export function BillsPage() {

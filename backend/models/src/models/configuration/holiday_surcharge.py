@@ -35,7 +35,7 @@ class HolidaySurcharge(BaseModel):
         business rules name — Christmas Day and New Year's Day — and makes the
         catalog pure data, so adding another fixed holiday is a configuration
         entry rather than a code change. A moveable feast such as Easter Monday
-        would need a different rule type; none is required today.
+        would need a different rule type. None is required today.
     """
 
     MAX_SURCHARGE: ClassVar[Decimal] = Decimal("10")

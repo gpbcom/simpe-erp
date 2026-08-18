@@ -8,7 +8,7 @@ Documentation    Invoicing what the agency delivered, and tracking it to payment
 ...              invoice — and only then does a customer receive anything.
 ...
 ...              **The order matters more than any single assertion.** A
-...              generation run renders every document and stops; nothing
+...              generation run renders every document and stops. Nothing
 ...              reaches a customer until a human approves it. So the suite
 ...              checks Mailpit *before* validating as well as after: an empty
 ...              mailbox at that point is the requirement, not an absence of
@@ -62,7 +62,7 @@ The Invoices Are Reachable From The Navigation
     ...    message=The invoices have no navigation entry.
     Click    [data-testid="nav--bills"]
     Wait For Elements State    [data-testid="bills-page"]    visible
-    ...    message=The bills page did not open; the route may be missing.
+    ...    message=The bills page did not open. The route may be missing.
     [Teardown]    Sign Out
 
 The Billing Rules Are Reachable And Say They Re-Issue Nothing
@@ -107,13 +107,13 @@ Payment Terms Beyond The Statutory Ceiling Cannot Be Saved
     ...
     ...    The code de commerce caps agreed payment terms, so a longer one would
     ...    print an obligation the agency could not enforce. Refused on the
-    ...    screen *and* by the server; this walks the screen's half.
+    ...    screen *and* by the server. This walks the screen's half.
     [Tags]    billing-settings
     Sign In As    ${MANAGER_EMAIL}
     Open The Billing Rules
     Fill Text    [data-testid="billing-payment-terms"]    90
     Wait For Elements State    [data-testid="billing-settings-problem"]    visible
-    ...    message=A 90-day payment term was accepted; the statutory ceiling is 60.
+    ...    message=A 90-day payment term was accepted. The statutory ceiling is 60.
     Get Element States    [data-testid="billing-settings-save"]    contains    disabled
     [Teardown]    Reload And Sign Out
 
@@ -130,7 +130,7 @@ Generating A Period Writes Invoices That Nobody Has Been Sent
     Bill A Past Period Through The API
     ${messages}=    Mail Catcher Message Count
     Should Be Equal As Integers    ${messages}    0
-    ...    msg=Generating invoices emailed ${messages} customer(s); nothing may be sent before validation.
+    ...    msg=Generating invoices emailed ${messages} customer(s). Nothing may be sent before validation.
 
 Every Invoice A Run Writes Is Waiting To Be Validated
     [Documentation]    The status a generated invoice starts in.
@@ -145,9 +145,9 @@ Every Invoice A Run Writes Is Waiting To Be Validated
     FOR    ${bill_id}    IN    @{LAST_RUN_BILLS}
         ${bill}=    Invoice As Stored    ${bill_id}
         Should Be Equal    ${bill}[status]    to-be-validated
-        ...    msg=Invoice ${bill}[number] was written as ${bill}[status]; a run must leave every invoice awaiting validation.
+        ...    msg=Invoice ${bill}[number] was written as ${bill}[status]. A run must leave every invoice awaiting validation.
         Should Be Equal    ${bill}[sent_at]    ${None}
-        ...    msg=Invoice ${bill}[number] reports itself as sent; a run sends nothing.
+        ...    msg=Invoice ${bill}[number] reports itself as sent. A run sends nothing.
     END
 
 An Invoice Charges Only The Work Inside Its Window
@@ -173,7 +173,7 @@ An Invoice Charges Only The Work Inside Its Window
 Generating The Same Period Twice Produces No Second Invoice
     [Documentation]    **The duplicate-billing guard, end to end.**
     ...
-    ...    Two runs waking together both pass the service's own check; the
+    ...    Two runs waking together both pass the service's own check. The
     ...    unique index is what stops the customer receiving two invoices for
     ...    one month. A re-run is a reported no-op, and the count must not move.
     [Tags]    billing    idempotency
@@ -200,9 +200,9 @@ An Invoice Names No Quote Anywhere On The Screen
     ${text}=    Get Text    [data-testid="bill-detail-drawer"]
     ${lowered}=    Convert To Lower Case    ${text}
     Should Not Contain    ${lowered}    quote
-    ...    msg=The invoice drawer names a quote; a bill must list only interventions.
+    ...    msg=The invoice drawer names a quote. A bill must list only interventions.
     Should Not Contain    ${lowered}    devis
-    ...    msg=The invoice drawer names a quote; a bill must list only interventions.
+    ...    msg=The invoice drawer names a quote. A bill must list only interventions.
     [Teardown]    Sign Out
 
 The Invoice Downloads As A PDF Behind The Credential
@@ -304,7 +304,7 @@ A Customer Billed Weekly Gets Their Own Window
 
     ${bill}=    The Invoice Of    ${customer_id}
     Should Be Equal    ${bill}[periodicity]    weekly
-    ...    msg=Invoice ${bill}[number] was issued monthly; the customer is billed weekly.
+    ...    msg=Invoice ${bill}[number] was issued monthly. The customer is billed weekly.
     ${days}=    Evaluate
     ...    (datetime.date.fromisoformat($bill["period_end"]) - datetime.date.fromisoformat($bill["period_start"])).days
     ...    modules=datetime
@@ -783,7 +783,7 @@ Customer Should Follow The Agency
     [Arguments]    ${customer_id}
     ${stored}=    Customer Billing Periodicity Of    ${customer_id}
     Should Be Equal    ${stored}    ${None}
-    ...    msg=The override was not cleared; the customer is still billed ${stored}.
+    ...    msg=The override was not cleared. The customer is still billed ${stored}.
 
 Open The File Of Customer
     [Documentation]    Open the customer book and the drawer on one household.

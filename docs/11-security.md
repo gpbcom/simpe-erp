@@ -25,7 +25,7 @@ ownership is in the service.**
 That split is deliberate. A route added without a guard is still
 *authenticated*, so forgetting one leaves the endpoint unauthorised rather than
 open. And the row-level comparison can only be made where the stored record is —
-a guard proves the caller is *an* assistant; nothing at the routing layer stops
+a guard proves the caller is *an* assistant. Nothing at the routing layer stops
 assistant A putting assistant B's identifier in the path.
 
 | Guard | Passes for |
@@ -98,7 +98,7 @@ somebody adds later without remembering the first.
 
 An assistant sees the customers they have a planned visit with, **union** those
 on quotes they wrote — not the agency's book. A home-care record carries an
-address, a telephone number and a care schedule; there is no reason for every
+address, a telephone number and a care schedule. There is no reason for every
 assistant to hold every one of them.
 
 That rule now governs a second surface. `/plannings` shows the households'
@@ -340,7 +340,7 @@ Content type is detected from **magic bytes**, never the `Content-Type` header.
 JPEG, PNG and WebP only, 5 MiB, with the key freshly generated per upload so a
 CDN never serves a stale portrait. The account's own portrait
 (`PUT /api/v1/me/account/photo`) goes through the same store and the same
-checks; those are the only upload endpoints in the API.
+checks. Those are the only upload endpoints in the API.
 
 ## Three endpoints that answer without a credential
 
@@ -360,7 +360,7 @@ The `*_env` pattern is unchanged — a YAML key names an environment variable, t
 value is read at connection time, and no password is ever written into a
 configuration file.
 
-What changes is where the variable comes from. In compose it is `.env`; in the
+What changes is where the variable comes from. In compose it is `.env`. In the
 cluster it is a Secret written by **External Secrets** from the cluster's own
 store, which the chart declares as an `ExternalSecret` and never as a value.
 Rotating one is a change in that store and a pod restart — never a rebuild, and

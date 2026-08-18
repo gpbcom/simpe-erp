@@ -86,7 +86,7 @@ async def create_certification_type(
         CertificationType: The stored entry.
 
     Raises:
-        MTCertificationTypeAlreadyExists: If the code is taken; answered as a
+        MTCertificationTypeAlreadyExists: If the code is taken. Answered as a
             409.
     """
     stored = await service.create(certification_type)
@@ -115,7 +115,7 @@ async def update_certification_type(
         CertificationType: The updated entry.
 
     Raises:
-        MTCertificationTypeNotFound: If no such entry exists; answered as a
+        MTCertificationTypeNotFound: If no such entry exists. Answered as a
             404.
 
     Notes:
@@ -155,10 +155,10 @@ async def delete_certification_type(
         caller (User): The authenticated caller; enforces manager access.
 
     Raises:
-        MTCertificationTypeNotFound: If no such entry exists; answered as a
+        MTCertificationTypeNotFound: If no such entry exists. Answered as a
             404.
         MTCertificationTypeInUse: If an assistant holds it or a service
-            requires it; answered as a 409 naming both counts.
+            requires it. Answered as a 409 naming both counts.
 
     Notes:
         **Retiring is the ordinary way to take a qualification out of use.**

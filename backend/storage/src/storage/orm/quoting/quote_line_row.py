@@ -56,7 +56,7 @@ class QuoteLineRow(Base):
           must reprint identically after its intervention type is repriced, so
           the figures are frozen at the moment the quote was priced.
         - The intervention-type foreign key restricts. A type is retired with a
-          flag rather than deleted precisely so this reference stays valid; the
+          flag rather than deleted precisely so this reference stays valid. The
           constraint is what makes that a rule rather than a convention.
         - ``position`` exists because a quote is a document. The order the
           operator entered the services in is what the customer reads, and a

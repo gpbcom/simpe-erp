@@ -106,11 +106,11 @@ class TestAppConfig:
         """
         config = AppConfig.load(BACKEND_ROOT / "conf" / "app.yaml")
         # 9 August 2026 is a Sunday.
-        assert config.pricing.multiplier_for(date(2026, 8, 9)) == Decimal("1.25")
-        assert config.pricing.multiplier_for(date(2026, 12, 25)) == Decimal("1.50")
-        assert config.pricing.multiplier_for(date(2027, 1, 1)) == Decimal("1.50")
+        assert config.pricing.multiplier(date(2026, 8, 9)) == Decimal("1.25")
+        assert config.pricing.multiplier(date(2026, 12, 25)) == Decimal("1.50")
+        assert config.pricing.multiplier(date(2027, 1, 1)) == Decimal("1.50")
         # 1 January 2034 is a Sunday: the surcharges must not stack.
-        assert config.pricing.multiplier_for(date(2034, 1, 1)) == Decimal("1.50")
+        assert config.pricing.multiplier(date(2034, 1, 1)) == Decimal("1.50")
 
     def test_the_shipped_configuration_keeps_secrets_out(self) -> None:
         """No literal secret is committed; only env-var names."""

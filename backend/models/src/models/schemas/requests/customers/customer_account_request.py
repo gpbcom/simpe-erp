@@ -18,7 +18,7 @@ class CustomerAccountRequest(BaseModel):
         full_name (str): The display name.
 
     Notes:
-        - **The household is not in the payload; it is in the path.** The route
+        - **The household is not in the payload. It is in the path.** The route
           is ``POST /customers/{customer_id}/account``, and taking the
           identifier from the body as well would give a well-formed request two
           answers to "whose account is this" — the shape a mistyped invitation
@@ -30,7 +30,7 @@ class CustomerAccountRequest(BaseModel):
           typed into a ticket and probably reused.
         - **There is no role either**, and here it matters more than it does for
           staff. This route mints a *customer*, which is the one role that is
-          not on the staff ladder; a role field would be a way to ask for an
+          not on the staff ladder. A role field would be a way to ask for an
           employee account through a customer-facing endpoint.
         - The address is not defaulted from the customer record. A household's
           postal address is where care is delivered, and the person who reads

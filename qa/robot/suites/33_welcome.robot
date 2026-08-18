@@ -96,7 +96,7 @@ Signing Out From It Comes Back To It
     ...    msg=Signing out from the welcome page left the session open.
 
 The Foot Of The Page Carries The Same Control
-    [Documentation]    The page is long; a reader who reached the end should not scroll back.
+    [Documentation]    The page is long. A reader who reached the end should not scroll back.
     [Tags]    welcome
     Click    [data-testid="welcome-session-button-footer"]
     Wait For Elements State    [data-testid="login-submit"]    visible

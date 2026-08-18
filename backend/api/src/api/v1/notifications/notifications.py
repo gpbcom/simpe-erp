@@ -60,7 +60,7 @@ async def list_notifications(
           closed laptop and a dropped stream alike: the row is the truth, and
           this reads the row.
     """
-    return await notifications.list_for(
+    return await notifications.list(
         recipient_id=caller.id or "",
         page=page,
         size=size,
@@ -172,7 +172,7 @@ async def stream_notifications(
 
     Raises:
         MTAuthInvalidToken: If the token is missing, expired, or not scoped for
-            a stream; answered as a 401.
+            a stream. Answered as a 401.
 
     Notes:
         - **The credential is in the query string because it has to be.**

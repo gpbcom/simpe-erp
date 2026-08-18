@@ -8,7 +8,7 @@ React 19 + TypeScript (strict) + MUI v6, built by Vite. `frontend/`.
 |---|---|---|
 | UI | MUI v6 + MUI X DataGrid, date pickers | An ERP needs dense tables, date ranges and a consistent dark theme on day one |
 | Server state | TanStack Query v5 | Caching, invalidation and loading states belong to one layer |
-| Client state | Zustand — **the session only** | Everything else on screen is server state; duplicating it is how two components disagree about the same quote |
+| Client state | Zustand — **the session only** | Everything else on screen is server state. Duplicating it is how two components disagree about the same quote |
 | Routing | React Router v7 | — |
 | Forms | React Hook Form + Zod | — |
 | i18n | react-i18next, **French default** | The domain is French: CDI/CDD, +33 numbers, EUR, French holidays |
@@ -53,7 +53,7 @@ page that answers 403.
 one**: the landing page is *named* — `/` and `/welcome` — and the sign-in form
 is the fallback. Making the welcome page the catch-all reads well until an
 operator's session expires on `/quotes` and they are shown a product tour
-instead of the password box they wanted; it also breaks every GUI suite, which
+instead of the password box they wanted. It also breaks every GUI suite, which
 opens the root and expects to sign in. `Sign In As` navigates to `/login`
 itself for that reason.
 
@@ -148,7 +148,7 @@ who works for it.
 would be satisfied by every employee — admitting staff to a household's
 calendar, address and invoices. The same narrowing applies to
 `RoleRoute minimum=` and to a nav entry's `minimum`, so neither can be gated on
-a customer either; the portal uses `CustomerRoute`, which compares by identity,
+a customer either. The portal uses `CustomerRoute`, which compares by identity,
 and the nav uses a `customerOnly` flag. The server refuses the question the same
 way — `rank()` raises. → [11](11-security.md#the-customer-is-not-a-rung-of-the-ladder)
 
@@ -194,13 +194,13 @@ change having been ignored rather than refused.
 
 The portal calendar **shows weekends**, unlike the assistant's diary. That
 screen hides them because solved work is weekday work and two empty columns
-waste width; a household asking "is anybody coming on Saturday?" is asking a
+waste width. A household asking "is anybody coming on Saturday?" is asking a
 question the empty column answers.
 
 ## The language is server state now
 
 The toggle in the top bar used to write `localStorage` and stop. That was
-enough while it only decided what was on screen; it stopped being enough
+enough while it only decided what was on screen. It stopped being enough
 once the quotes emailed to customers had to come out in it, because those
 are built by a background webhook with no browser attached.
 
@@ -297,7 +297,7 @@ explain itself reads as a bug.
 
 **Retired entries are listed, not hidden**, greyed with a status chip. A
 manager wondering why they cannot require a qualification needs to see that it
-exists and is retired; a screen that simply omitted it would answer that
+exists and is retired. A screen that simply omitted it would answer that
 question with silence.
 
 **Deleting is offered and usually refused.** The server counts the assistants
@@ -325,14 +325,14 @@ Three things follow from that, and they are on screen rather than in a comment:
   afterwards*.
 - **The picker offers only coded catalogue entries**, and hides what the
   assistant has already declared. A free-text skill matches no requirement, so
-  it would be a record that looks right and satisfies nothing; a duplicate would
+  it would be a record that looks right and satisfies nothing. A duplicate would
   be stored twice and read once.
 - **The mutation invalidates `['planning']`**, like `field_employee` does. A
   declaration changes who the next run may schedule, so the calendars stop
   agreeing with the workforce until they are refetched.
 
 The withdrawal control sits beside each chip. A manager removes anybody's from
-`/hcas`; there is no control anywhere for a manager to *add* one, because there
+`/hcas`. There is no control anywhere for a manager to *add* one, because there
 is no endpoint — a supervisor may withdraw a claim they believe is wrong, but
 not put one in somebody else's mouth.
 
@@ -358,7 +358,7 @@ the only control that wrote it — a switch inside a dialog labelled "edit the
 qualifications" — turned out to be somewhere nobody looks for "is this person
 out this week": the field a manager changes weekly was the hardest one on the
 screen to find. The dialog's switch stays, because that dialog edits the whole
-employment record at once; the cell is the shortcut. And on `/me` it is an
+employment record at once. The cell is the shortcut. And on `/me` it is an
 editable switch for a manager and a **locked chip with a tooltip** for an
 assistant: a disabled input says "you cannot type here", a locked chip says who
 to ask.
@@ -405,7 +405,7 @@ hint says so in words.
 
 Both apply the same two rules as each other, and for the same reasons: the
 **whole week** is submitted rather than the day that was clicked, so two open
-tabs cannot race into a week nobody chose; and a week with **no** day is
+tabs cannot race into a week nobody chose. And a week with **no** day is
 refused before the request, because the server answers 422 for it and a
 disabled button says so before the click rather than after.
 
@@ -522,7 +522,7 @@ Two fields are editable — display name and sign-in address — and everything 
 the account holds is **shown as a locked chip with a tooltip naming who owns
 it**. Shown rather than hidden: a page that omits what it will not let you
 change answers "what does this system say about me?" with silence. A disabled
-input says "you cannot type here"; a locked chip says who to ask.
+input says "you cannot type here". A locked chip says who to ask.
 
 **The catalogue** (`/intervention-types`, manager and above) is where an hourly
 rate is set, and the only place that is. Nothing on a quote lets an operator
@@ -559,7 +559,7 @@ the one on the invoice come from the same place.
 The line row is a **grid, not a flex row**. With `flex: N` (shorthand for
 `flex: N 1 0%`) the two dropdowns were given a zero basis and shrank under their
 own content, while the date input — which had no `flex` at all — kept its
-intrinsic width and took the room; the controls ended up overlapping. Every
+intrinsic width and took the room. The controls ended up overlapping. Every
 test-id-driven test passed straight through it, because Playwright fills a
 control regardless of how wide it is drawn. Picking a service fills it in with what that
 service usually is — the common case in one click — and leaves it editable,
@@ -594,7 +594,7 @@ same state sits in a `useState`. History entries are **replaced** rather than
 pushed, or leaving the screen would take a press per filter.
 
 Two speeds, because the controls are two gestures. Typing settles for 300 ms
-before the URL moves; a status tab or a flag applies at once, since a click is
+before the URL moves. A status tab or a flag applies at once, since a click is
 already a finished decision and delaying it reads as the control not working.
 The search box used to fire a request **per keystroke**, and six text filters
 make that materially worse.
@@ -614,7 +614,7 @@ rest of the book.
 **Promote is offered only on a prospect**, in the drawer, where their quotes are
 visible — that is the context the decision is taken in. Not disabled everywhere
 else: disabled buttons on all ninety rows would bury the six that are waiting.
-No `hasAtLeast` call either; the nav entry, the route and every customers
+No `hasAtLeast` call either. The nav entry, the route and every customers
 endpoint are already manager-gated, and `hasAtLeast` ranks admin above manager,
 so "admin and manager" *is* the existing guard.
 
@@ -656,7 +656,7 @@ quotes they wrote. Neither is the control: the server checks both, and suite 20
 sends the forbidden request by hand to prove it.
 
 **Plannings** — `/plannings`, open to every member of staff. The endpoint
-already existed and only the map used it; the map answers *where*, while a
+already existed and only the map used it. The map answers *where*, while a
 manager asking whether Monday is covered needs *who and when*.
 
 **Two lenses, one screen.** An intervention names an assistant *and* a
@@ -675,8 +675,8 @@ they could not already reach.
 
 **The households lens is the household's own calendar.** It reads the span
 `customerPlanningWindow()` from `utils/planningWindow.ts`, which
-`/portal/planning` reads too; it shows weekends, because care does not stop on a
-Sunday and the family's own screen shows them; and narrowed to one household it
+`/portal/planning` reads too. It shows weekends, because care does not stop on a
+Sunday and the family's own screen shows them. And narrowed to one household it
 colours by status, which is what that family sees. On the whole-agency grid the
 hue answers "whose visit is that" instead — there is no portal counterpart to a
 view of forty households.
@@ -689,7 +689,7 @@ call.
 It is a calendar — the same `FullCalendar` an assistant reads their own week
 off, so the two screens read alike and a fix to one is a fix to both — with a
 rail of assistants down the left. The rail opens on **All assistants**, because
-"who is out this week" is what brings a manager here; landing on the first
+"who is out this week" is what brings a manager here. Landing on the first
 assistant alphabetically would answer a question nobody asked and hide the rest
 behind a click. Choosing a name narrows the grid to that person alone.
 

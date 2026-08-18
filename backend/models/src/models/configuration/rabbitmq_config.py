@@ -35,7 +35,7 @@ class RabbitMqConfig(BaseModel):
     Notes:
         - ``enabled`` defaults to **false**, matching the email section. A
           developer running the API alone must not have every quote submission
-          fail because there is no broker on their machine; the event is logged
+          fail because there is no broker on their machine. The event is logged
           and dropped instead.
         - The password is named rather than stored, like every other secret in
           this configuration. The value is read at connection time so a rotated
@@ -43,7 +43,7 @@ class RabbitMqConfig(BaseModel):
         - ``prefetch`` is one by default because the heaviest consumer runs an
           OR-Tools solve, which pins a core for its whole budget. Taking a
           second message while the first is solving would not make it finish
-          sooner; it would only delay the acknowledgement of both.
+          sooner. It would only delay the acknowledgement of both.
     """
 
     enabled: bool = Field(

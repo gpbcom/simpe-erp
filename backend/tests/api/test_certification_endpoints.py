@@ -111,7 +111,7 @@ class TestCertificationCatalogueEndpoints:
         assert response.status_code == 200
         assert response.json()[0]["code"] == "DEAES"
 
-    def test_retired_entries_are_hidden_unless_asked_for(
+    def test_retired_entries_are_hidden_unless_asked(
         self, client: TestClient, service: AsyncMock
     ) -> None:
         """A screen offering a requirement offers only what may be required."""

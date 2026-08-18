@@ -34,7 +34,7 @@ class CustomerFilter(BaseModel):
 
     Notes:
         - **A model rather than eight query parameters.** The endpoint took four
-          and was already at the edge of readable; a ninth would have made the
+          and was already at the edge of readable. A ninth would have made the
           signature the longest thing in the router. Gathering them here also
           puts the validation somewhere it can be tested without an HTTP client.
         - **Every field is optional, and ``None`` means "not applied".** That is

@@ -32,7 +32,7 @@ interface RuntimeConfig {
 /**
  * Read `/config.json` and point the client at whatever it names.
  *
- * @returns Nothing; the module-level base URL is replaced.
+ * @returns Nothing. The module-level base URL is replaced.
  *
  * @remarks
  * Awaited once before the app renders, so no request can be made against the
@@ -305,7 +305,7 @@ export function fetchMe(): Promise<User> {
  * reads it — which is why the session token is not used here.
  *
  * **The frames carry no data.** A `notification` frame says only that something
- * changed; the caller fetches what changed over HTTP. That keeps the database
+ * changed. The caller fetches what changed over HTTP. That keeps the database
  * the single source of truth, and means the same code path serves a live push
  * and a reader who has just signed back in.
  *

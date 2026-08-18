@@ -16,7 +16,7 @@ import { formatDate } from '@/utils/format';
  *
  * @remarks
  * - **Unfiltered, including refused and expired ones.** A household asking
- *   "what did you quote me in March" is asking about the history; a list
+ *   "what did you quote me in March" is asking about the history. A list
  *   narrowed to what is live answers a different question without saying so.
  * - Cards rather than a grid. This is a handful of documents read on a phone,
  *   not ninety rows scanned for one — the opposite of the manager's screen, and

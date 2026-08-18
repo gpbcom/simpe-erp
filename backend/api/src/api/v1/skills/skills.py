@@ -84,7 +84,7 @@ async def create_skill_type(
         SkillType: The stored entry.
 
     Raises:
-        MTSkillTypeAlreadyExists: If the code is taken; answered as a 409.
+        MTSkillTypeAlreadyExists: If the code is taken. Answered as a 409.
 
     Notes:
         **The catalogue is a manager's, even though the declarations are not.**
@@ -117,7 +117,7 @@ async def update_skill_type(
         SkillType: The updated entry.
 
     Raises:
-        MTSkillTypeNotFound: If no such entry exists; answered as a 404.
+        MTSkillTypeNotFound: If no such entry exists. Answered as a 404.
 
     Notes:
         ``PATCH`` and not ``PUT``, and the payload carries no ``code``. A code
@@ -156,9 +156,9 @@ async def delete_skill_type(
         caller (User): The authenticated caller; enforces manager access.
 
     Raises:
-        MTSkillTypeNotFound: If no such entry exists; answered as a 404.
+        MTSkillTypeNotFound: If no such entry exists. Answered as a 404.
         MTSkillTypeInUse: If an assistant has declared it or a service requires
-            it; answered as a 409 naming both counts.
+            it. Answered as a 409 naming both counts.
 
     Notes:
         **Retiring is the ordinary way to take a skill out of use.** This is for

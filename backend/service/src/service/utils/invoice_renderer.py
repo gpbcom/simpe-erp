@@ -61,13 +61,13 @@ class InvoiceRenderer:
           rate and the duration — because those sentences must read identically
           on a quote and on the invoice that follows it.
         - **Instance methods, not static ones.** ``Formatter`` predates the
-          house rule and is uniformly static; new code follows the rule.
+          house rule and is uniformly static. New code follows the rule.
         - Built on ``platypus`` rather than drawing on a canvas, so the visit
           table flows onto as many pages as it needs and repeats its header row.
           A yearly invoice can run to three hundred lines, and a fixed canvas
           would have printed the first forty and silently dropped the rest.
         - The obligations are French whatever language the reader chose. The
-          catalogue translates the words; it does not translate the law, which
+          catalogue translates the words. It does not translate the law, which
           is why the penalty and indemnity sentences say the same thing in both.
     """
 
@@ -272,13 +272,13 @@ class InvoiceRenderer:
             number burnt on nothing.
         """
         if not logo:
-            self.logger.debug("No logo was supplied; the invoice prints without one.")
+            self.logger.debug("No logo was supplied. The invoice prints without one.")
             return None
         try:
             return Image(BytesIO(logo), width=self.LOGO_WIDTH, height=self.LOGO_HEIGHT)
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
             self.logger.warning(
-                "Could not draw the agency's logo (%s); the invoice prints without it.",
+                "Could not draw the agency's logo (%s). The invoice prints without it.",
                 exc,
             )
             return None
@@ -331,7 +331,7 @@ class InvoiceRenderer:
         if not identity:
             self.logger.warning(
                 "Invoice %s is being issued by an agency with no address, "
-                "registration number or contact details; the document will not "
+                "registration number or contact details. The document will not "
                 "identify its issuer.",
                 bill.number,
             )
@@ -484,7 +484,7 @@ class InvoiceRenderer:
             - **The IBAN is printed in full**, and deliberately not through
               :meth:`~models.organisation.companies.company.Company.masked_iban`. That method
               exists so a manager reading the API does not see the whole
-              account; a customer cannot pay into a masked one.
+              account. A customer cannot pay into a masked one.
             - The *services à la personne* mention prints only when the agency
               has a declaration number. An agency that has not registered gets a
               document missing an optional line rather than one carrying a false
@@ -525,7 +525,7 @@ class InvoiceRenderer:
             )
         else:
             self.logger.warning(
-                "Agency %s has no IBAN; the invoice tells the customer what "
+                "Agency %s has no IBAN. The invoice tells the customer what "
                 "they owe and not where to pay it.",
                 company.name,
             )

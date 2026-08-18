@@ -42,7 +42,7 @@ async def list_availability(
         List[AvailabilitySlot]: The matching absences.
 
     Raises:
-        MTHcaForbidden: If an assistant reads a colleague's absences; answered
+        MTHcaForbidden: If an assistant reads a colleague's absences. Answered
             as a 403.
 
     Notes:
@@ -75,10 +75,10 @@ async def set_working_days(
 
     Raises:
         MTWorkingDaysRequestInvalidWeekdays: If the payload names no day or an
-            unknown one; answered as a 422.
+            unknown one. Answered as a 422.
         MTHcaForbidden: If an assistant sets a colleague's working week;
             answered as a 403.
-        MTHcaNotFound: If no such assistant exists; answered as a 404.
+        MTHcaNotFound: If no such assistant exists. Answered as a 404.
 
     Notes:
         Authenticated rather than role-gated, matching the absence routes: an
@@ -124,9 +124,9 @@ async def add_availability(
         AvailabilitySlot: The stored absence.
 
     Raises:
-        MTHcaForbidden: If an assistant files against a colleague; answered as
+        MTHcaForbidden: If an assistant files against a colleague. Answered as
             a 403.
-        MTHcaNotFound: If no such assistant exists; answered as a 404.
+        MTHcaNotFound: If no such assistant exists. Answered as a 404.
 
     Notes:
         This is the route by which an assistant declares their own
@@ -165,7 +165,7 @@ async def remove_availability(
         MTHcaForbidden: If an assistant withdraws a colleague's absence;
             answered as a 403.
         MTAvailabilitySlotNotFound: If the absence does not belong to that
-            assistant; answered as a 404.
+            assistant. Answered as a 404.
 
     Notes:
         Withdrawing an absence does not re-plan the period. The planning is

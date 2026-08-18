@@ -68,7 +68,7 @@ class FacturXBuilder:
         - The French rules are a profile of a European standard, so the file
           declares ``urn:cen.eu:en16931:2017`` and is checked against that rule
           set. What the reform adds on top — routing, lifecycle, transmission —
-          is not in this file at all; it belongs to the platform.
+          is not in this file at all. It belongs to the platform.
         - What this does **not** do is make the document archival-grade PDF/A-3.
           That additionally needs an output intent carrying an ICC profile,
           which is a binary asset this repository does not ship. The gap is
@@ -242,7 +242,7 @@ class FacturXBuilder:
         code = self.COUNTRY_CODES.get(address.country.strip().lower())
         if code is None:
             self.logger.warning(
-                "No ISO country code is known for %r; the structured invoice "
+                "No ISO country code is known for %r. The structured invoice "
                 "will declare FR.",
                 address.country,
             )
@@ -268,7 +268,7 @@ class FacturXBuilder:
         """
         if not company.vat_number:
             self.logger.error(
-                "Agency %s has no VAT number; no conforming structured "
+                "Agency %s has no VAT number. No conforming structured "
                 "invoice can be built for it.",
                 company.name,
             )
@@ -285,7 +285,7 @@ class FacturXBuilder:
             identifier.set("schemeID", "0002")
         else:
             self.logger.warning(
-                "Agency %s has no readable SIREN; the structured invoice will "
+                "Agency %s has no readable SIREN. The structured invoice will "
                 "name it without a legal registration.",
                 company.name,
             )
@@ -555,7 +555,7 @@ class FacturXBuilder:
         self.logger.debug("Building the structured invoice for %s.", bill.number)  # noqa: E501
         if bill.recipient.share_ttc is not None:
             self.logger.error(
-                "Bill %s is split with a share of %s; the European rule set "
+                "Bill %s is split with a share of %s. The European rule set "
                 "ties the amount due to the total less prepayments, so a share "
                 "cannot be stated without calling the other party's part a "
                 "prepayment.",

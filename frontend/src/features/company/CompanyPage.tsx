@@ -68,7 +68,7 @@ const ACCEPTED_LOGO_TYPES = 'image/jpeg,image/png,image/webp';
  *
  * @remarks
  * **Administrator-only, and reached without an identifier.** A manager runs the
- * agency's work; its legal identity is not part of running the week. And the
+ * agency's work. Its legal identity is not part of running the week. And the
  * agency shown is the one on the caller's own credential — the screen never
  * holds an identifier it could point at another tenant with.
  *

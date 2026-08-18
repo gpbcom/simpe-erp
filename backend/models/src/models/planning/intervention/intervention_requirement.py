@@ -56,7 +56,7 @@ class InterventionRequirement(BaseModel):
     Notes:
         - This is what the solver actually schedules: the quote said *what* and
           *roughly when*, and the solver decides *who* and *exactly when*. The
-          window is the customer's constraint; the start inside it is the
+          window is the customer's constraint. The start inside it is the
           planner's choice.
         - Times are minutes from midnight because that is the unit the constraint
           solver works in. Converting once here keeps clock arithmetic out of the

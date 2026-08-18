@@ -44,7 +44,7 @@ class TeamDocument(BaseModel):
     Notes:
         - **The key is stored, never a URL**, which is the invoice's shape and
           not the portrait's. A team's documents are the agency's private
-          paperwork; a public URL would make them readable by anybody who is
+          paperwork. A public URL would make them readable by anybody who is
           sent one, forever, whatever the application later decided about
           permissions. Downloads go through an authenticated endpoint that
           resolves the key.
@@ -276,7 +276,7 @@ class TeamDocument(BaseModel):
             outside this prefix would let a stored record address any object in
             the bucket — the invoices among them. Which *bucket* it belongs to
             cannot be checked here, because a model has no access to
-            configuration; the object store re-checks that before deleting,
+            configuration. The object store re-checks that before deleting,
             where getting it wrong would remove somebody else's object.
         """
         if not isinstance(value, str) or not value.strip():

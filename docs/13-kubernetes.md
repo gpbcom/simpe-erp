@@ -90,7 +90,7 @@ every reconnect and the client refetches. A 60-second grace period and a
 ## The connection tier
 
 `pool_size: 10` + `max_overflow: 5` is up to **15 PostgreSQL connections per
-pod**. At ten API pods and twenty workers that is 450 backends; the default
+pod**. At ten API pods and twenty workers that is 450 backends. The default
 `max_connections` is 100.
 
 **PgBouncer in `transaction` mode**, and the pool sizes dropped to 3 + 2 per
@@ -127,7 +127,7 @@ rather than a pass or a fail.
 
 `cluster-autoscaler` rather than Karpenter, because Karpenter is AWS and Azure
 and this has to run on Kapsule, a hyperscaler or on-prem alike. Upstream
-primitives plus CNCF add-ons throughout; nothing in `infra/` names a cloud.
+primitives plus CNCF add-ons throughout. Nothing in `infra/` names a cloud.
 
 The stores are operator-managed in-cluster — CloudNativePG, the RabbitMQ Cluster
 Operator, the MinIO Operator — rather than managed services, for the same
@@ -173,7 +173,7 @@ robot -d qa/out qa/robot/suites           # the same campaign, against the ingre
 
 The claims worth testing rather than asserting:
 
-1. **Independent scaling** — publish 50 planning runs; the planning deployment
+1. **Independent scaling** — publish 50 planning runs. The planning deployment
    scales and the notification one does not.
 2. **Solves survive eviction** — `kubectl delete pod` mid-solve, then
    `kubectl drain` a node. The run completes elsewhere and the message is

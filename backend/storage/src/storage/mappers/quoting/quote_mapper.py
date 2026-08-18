@@ -20,7 +20,7 @@ class QuoteMapper(BaseMapper[Quote, QuoteRow]):
     """Converts between :class:`Quote` and its three tables.
 
     Attributes:
-        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``; the model carries no
+        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``. The model carries no
             timestamp field, so the table's own clock is the only one.
 
     Notes:

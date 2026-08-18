@@ -29,7 +29,7 @@ class BillGenerationRequest(BaseModel):
           under different settings, which is the intent: "bill the month
           containing this day".
         - ``customer_ids`` is for re-running one customer whose first attempt
-          failed. Omitted, every customer with billable work is billed; an
+          failed. Omitted, every customer with billable work is billed. An
           **empty list** is refused rather than read as "everybody", because the
           two readings differ by a whole month's invoicing.
     """

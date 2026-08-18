@@ -84,7 +84,7 @@ const EMPTY: ProfileForm = {
  * screen, and a page where somebody could raise their own rank is a page with
  * no rank at all.
  *
- * The screen decides what to *offer*; the server decides what it will *accept*.
+ * The screen decides what to *offer*. The server decides what it will *accept*.
  * The self-service payload has no `contract_type`, `certifications` or `role`
  * field at all, so a manager's edits go through the manager-gated route rather
  * than widening it. Neither check depends on the other.

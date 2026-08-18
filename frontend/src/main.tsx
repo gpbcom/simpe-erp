@@ -24,7 +24,7 @@ const client = new QueryClient({
 
 // Awaited before the first render, so no request can be made against the
 // origin the bundle was *built* for rather than the one it is *deployed* to.
-// It is a single same-origin fetch of a file nginx already has open; the cost
+// It is a single same-origin fetch of a file nginx already has open. The cost
 // is invisible beside loading the bundle itself.
 void loadRuntimeConfig().then(() => {
   createRoot(document.getElementById('root')!).render(

@@ -207,7 +207,7 @@ class TestAcceptingAnOfferedSlot:
 
         Notes:
             The quote came back because its work would not fit. Choosing a new
-            time is a scheduling decision; approving the work is a separate one
+            time is a scheduling decision. Approving the work is a separate one
             that a manager still has to make. Moving the status here would let
             the first silently perform the second.
         """

@@ -68,7 +68,7 @@ class TestHcaSkills:
 
         Notes:
             A manager sends the whole certification list because they are
-            editing a form; an assistant declares one skill at a time. A
+            editing a form. An assistant declares one skill at a time. A
             replace here would let somebody's second declaration silently
             delete their first.
         """

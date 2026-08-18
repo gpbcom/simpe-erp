@@ -110,7 +110,7 @@ class EInvoicingIntegrationRepository(BaseRepository[EInvoicingIntegrationRow]):
         row = (await self.session.execute(statement)).scalars().first()
         if row is None:
             self.logger.warning(
-                "Agency %s has no enabled e-invoicing platform; invoices cannot "
+                "Agency %s has no enabled e-invoicing platform. Invoices cannot "
                 "be transmitted.",
                 company_id,
             )

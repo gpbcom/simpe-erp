@@ -158,7 +158,7 @@ class TestQuoteDocumentService:
         """**A decoration must never withhold the offer.**
 
         Notes:
-            A deployment with no object store still issues quotes; they simply
+            A deployment with no object store still issues quotes. They simply
             arrive without a letterhead.
         """
         payload, _ = await service.document("quote-1")

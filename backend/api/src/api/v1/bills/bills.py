@@ -110,7 +110,7 @@ async def get_bill(
         Bill: The invoice.
 
     Raises:
-        MTBillNotFound: When there is no such invoice; answered as a 404 by the
+        MTBillNotFound: When there is no such invoice. Answered as a 404 by the
             central handler.
     """
     return await service.get(bill_id)
@@ -137,8 +137,8 @@ async def set_bill_status(
         Bill: The updated invoice.
 
     Raises:
-        MTBillNotFound: When there is no such invoice; answered as a 404.
-        MTBillTransitionNotAllowed: When the move skips a step; answered as a
+        MTBillNotFound: When there is no such invoice. Answered as a 404.
+        MTBillTransitionNotAllowed: When the move skips a step. Answered as a
             409.
 
     Notes:
@@ -150,7 +150,7 @@ async def set_bill_status(
           which is the whole reason a generation run leaves every invoice
           waiting rather than emailing as it goes.
         - A failed publish is logged and the call still succeeds. The approval
-          is real and stored; the invoice simply stays at ``accepted``, which
+          is real and stored. The invoice simply stays at ``accepted``, which
           reads as "approved but not yet out" and is actionable.
     """
     actor = caller.id if caller.id else caller.email
@@ -168,7 +168,7 @@ async def set_bill_status(
         )
         if not collected:
             logger.error(
-                "Invoice %s was marked paid but could not be announced; it will "
+                "Invoice %s was marked paid but could not be announced. It will "
                 "not reach the certified platform until it is re-published.",
                 updated.number,
             )
@@ -182,7 +182,7 @@ async def set_bill_status(
     )
     if not announced:
         logger.error(
-            "Invoice %s was approved but could not be announced; it stays at "
+            "Invoice %s was approved but could not be announced. It stays at "
             "accepted until it is re-published.",
             updated.number,
         )
@@ -211,8 +211,8 @@ async def download_bill_document(
         Response: The document, as an attachment.
 
     Raises:
-        MTBillNotFound: When there is no such invoice; answered as a 404.
-        MTBillDocumentUnavailable: When the document cannot be read; answered
+        MTBillNotFound: When there is no such invoice. Answered as a 404.
+        MTBillDocumentUnavailable: When the document cannot be read. Answered
             as a 503.
 
     Notes:
@@ -255,9 +255,9 @@ async def bill_one_customer(
         Bill: The issued invoice.
 
     Raises:
-        MTBillAlreadyIssued: When the period is billed already; answered as a
+        MTBillAlreadyIssued: When the period is billed already. Answered as a
             409.
-        MTBillNothingToBill: When the customer owes nothing; answered as a 409.
+        MTBillNothingToBill: When the customer owes nothing. Answered as a 409.
 
     Notes:
         - Behind a **static** ``customers`` segment, not ``/{customer_id}``

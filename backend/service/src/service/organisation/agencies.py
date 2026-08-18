@@ -164,7 +164,7 @@ class AgencyService(AbstractOrganisationService[Agency, AgencyView]):
         company = await self.companies.get(agency.company_id)
         if company is None:
             self.logger.error(
-                "Company %s does not exist; its head office is opened without "
+                "Company %s does not exist. Its head office is opened without "
                 "a legal identity.",
                 agency.company_id,
             )
@@ -311,7 +311,7 @@ class AgencyService(AbstractOrganisationService[Agency, AgencyView]):
               into a second one. Moving it is deliberately not offered here: it
               would mean two writes that must both succeed, and a half-applied
               move leaves a company with none.
-            - **Only the three site fields are taken from the argument**; the
+            - **Only the three site fields are taken from the argument**. The
               rest is kept from the stored record. A site inherits its company's
               legal identity, so storing the argument whole would let a form
               that asks for a name and an address blank the SIRET and the
@@ -437,7 +437,7 @@ class AgencyService(AbstractOrganisationService[Agency, AgencyView]):
               forms for one act, and the state in between — a person attached to
               no site at all — is one nothing else in the system expects.
               Everybody belongs to exactly one site, and the unique index says
-              so, so the old membership has to go either way; the only question
+              so, so the old membership has to go either way. The only question
               was whether the operator had to do it by hand.
             - **Their team goes with the old site.** A team is people *at a
               place*, and the planner measures every round from that place — so
@@ -457,7 +457,7 @@ class AgencyService(AbstractOrganisationService[Agency, AgencyView]):
         )
         if existing is not None and existing.id == agency_id:
             self.logger.debug(
-                "%s %s already works at agency %s; nothing to move.",
+                "%s %s already works at agency %s. Nothing to move.",
                 member.member_kind.value,
                 member.member_id,
                 agency_id,
@@ -557,7 +557,7 @@ class AgencyService(AbstractOrganisationService[Agency, AgencyView]):
             )
         else:
             self.logger.debug(
-                "%s %s belonged to no agency; nothing to detach.",
+                "%s %s belonged to no agency. Nothing to detach.",
                 member_kind.value,
                 member_id,
             )

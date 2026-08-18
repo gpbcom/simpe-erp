@@ -118,7 +118,7 @@ class TestPlanningSettings:
             value (Union[float, int, str, None]): The rejected radius.
 
         Notes:
-            Zero would place nothing at all and read as a broken planner; an
+            Zero would place nothing at all and read as a broken planner. An
             unbounded value would silently switch the constraint off, which is
             the failure that looks like success.
         """
@@ -157,7 +157,7 @@ class TestPlanningSettings:
             value (Union[int, bool, str]): The rejected break length.
 
         Notes:
-            A break under an hour is not a preference; it is a plan that
+            A break under an hour is not a preference. It is a plan that
             breaches the agreement it was built from, and enforcing it here
             means no screen has to remember to.
         """
@@ -331,7 +331,7 @@ class TestPlanningSettings:
             PlanningSettings(max_intervention_radius_km=30, **overrides)
 
     def test_a_lunch_window_exactly_as_wide_as_the_break_is_accepted(self) -> None:
-        """The width check is inclusive; a break that just fits, fits."""
+        """The width check is inclusive. A break that just fits, fits."""
         settings = PlanningSettings(
             max_intervention_radius_km=30,
             lunch_break_minutes=60,

@@ -492,7 +492,7 @@ class Formatter:
         Notes:
             - **The tax is stated per rate, and that is a legal requirement
               rather than a courtesy.** Home care is billed at 5.5% for a
-              necessity service and 20% for a comfort one; a single "VAT" line
+              necessity service and 20% for a comfort one. A single "VAT" line
               gives the customer no way to check either figure and an accountant
               no way to post it.
             - Laid out as a right-hand stack rather than as a row under the
@@ -759,7 +759,7 @@ class Formatter:
               it, and how much care in total — and a reader scanning for one of
               them should not have to read the other three.
             - The period comes from the lines rather than from ``issued_on`` and
-              ``valid_until``. Those two describe the *offer*; a customer asking
+              ``valid_until``. Those two describe the *offer*. A customer asking
               "when does the care run from and to" is asking about the work.
         """
         row = Formatter.QUOTE_SUMMARY_ROW
@@ -825,7 +825,7 @@ class Formatter:
 
         Notes:
             Written out rather than left as a raw minute count. "1110" is the
-            number the solver works in; a customer reading what they are being
+            number the solver works in. A customer reading what they are being
             asked to pay for wants to know it is eighteen and a half hours.
         """
         hours, remainder = divmod(max(minutes, 0), 60)
@@ -865,7 +865,7 @@ class Formatter:
               asked of a quote before its price: when does this start, when does
               it end, and how much care is it.
             - An unpriced line is written with empty amount cells rather than
-              zeroes. A zero reads as "free"; an empty cell reads as "not priced
+              zeroes. A zero reads as "free". An empty cell reads as "not priced
               yet", which is what it is.
             - The language is the one stored on the account that issued the
               quote. It is a stored preference rather than a request header

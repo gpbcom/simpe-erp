@@ -18,9 +18,9 @@ class InterventionMapper(BaseMapper[Intervention, InterventionRow]):
     """Converts a visit and the catalog entry it sells to and from their rows.
 
     Attributes:
-        HAS_ROW_TIMESTAMPS (ClassVar[bool]): ``False``; the visits table carries
+        HAS_ROW_TIMESTAMPS (ClassVar[bool]): ``False``. The visits table carries
             no timestamp column.
-        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``; the visit model
+        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``. The visit model
             carries no timestamp field.
 
     Notes:

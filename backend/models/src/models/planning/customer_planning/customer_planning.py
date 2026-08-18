@@ -50,7 +50,7 @@ class CustomerPlanning(BaseModel):
           the portal has no use for — it already knows whose planning it is —
           and a staff screen listing forty households cannot do without.
         - No ``overlapping_pairs``, unlike the assistant's diary. Two visits at
-          once is an error for a person who has to be in both places; a
+          once is an error for a person who has to be in both places. A
           household may legitimately have two assistants at the same hour, and a
           method reporting that as a clash would be inventing a rule the agency
           does not have.

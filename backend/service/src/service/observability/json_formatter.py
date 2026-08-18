@@ -22,11 +22,11 @@ class JsonLogFormatter(Formatter):
           newlines, so a formatter that let one through would turn a single
           traceback into eight unrelated entries — seven of them unparseable,
           and the one carrying the message not the one carrying the stack.
-          ``json.dumps`` escapes them; the exception text is a *field*.
+          ``json.dumps`` escapes them. The exception text is a *field*.
         - **Anything a caller attached with ``extra=`` becomes a field**, which
           is what makes ``company_id`` and ``routing_key`` queryable rather than
           something to grep a message for. The reserved set is what separates
-          those from the machinery's own attributes; it is taken from
+          those from the machinery's own attributes. It is taken from
           :class:`logging.LogRecord`'s own documented attributes rather than
           guessed, and a new one appearing there would show up as a field
           nobody added.
@@ -34,7 +34,7 @@ class JsonLogFormatter(Formatter):
           and a reader's is not, and a naive timestamp is one nobody can line up
           against another service's.
         - This is deliberately not a dependency. The whole of it is the
-          ``format`` method below; a library would bring a configuration surface
+          ``format`` method below. A library would bring a configuration surface
           to decide none of the above with.
     """
 
@@ -102,7 +102,7 @@ class JsonLogFormatter(Formatter):
         Notes:
             The exception goes in a field rather than after the message. A
             traceback appended to the text would be the eight-lines-of-nonsense
-            case above; as a field it stays attached to the record that raised
+            case above. As a field it stays attached to the record that raised
             it and can be searched on.
         """
         payload: Dict[str, str] = {

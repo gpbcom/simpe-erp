@@ -42,7 +42,7 @@ confirms, manual acknowledgement, `prefetch=1`, and a `simple-erp.dlx`
 dead-letter exchange.
 
 **Every routing key ends in an agency**, and every queue is that agency's own.
-`EventRoutingKey` holds the *event* half; the whole key is
+`EventRoutingKey` holds the *event* half. The whole key is
 `<event>.<company_id>`, built by `scoped_to()`.
 
 | Routing key | Queue | Consumer | Effect |
@@ -59,7 +59,7 @@ dead-letter exchange.
 `skill.added` is the one topic here raised by a **subordinate** rather than by
 the quote workflow or the solver, and it is what makes a self-declared skill
 safe to take effect without approval. Somebody adding one silently widens what
-the planner may send them to; the notification is what leaves a supervisor able
+the planner may send them to. The notification is what leaves a supervisor able
 to challenge it before the next run acts on it. It carries no `quote_id`, which
 is why `NotificationKind.concerns_a_quote` had to stop being written as "not
 the planning one" — a skill notification rendered as a link would be a dead
@@ -148,7 +148,7 @@ event happened. A consumer can log, retry and dead-letter one without
 understanding it; only the handler that claims a routing key looks inside.
 
 The payload carries **identifiers, not records**. A message naming quote `q-1`
-is still correct when the consumer reads it a minute later; a message carrying a
+is still correct when the consumer reads it a minute later. A message carrying a
 copy of the quote is a snapshot that may already be wrong, and the consumer
 would have no way to tell.
 
@@ -221,7 +221,7 @@ and two managers must be able to disagree about whether they have dealt with
 something.
 
 **Recipients are resolved from roles, in the worker.** The thing publishing an
-event knows a quote was submitted; it does not know who is allowed to rule on
+event knows a quote was submitted. It does not know who is allowed to rule on
 it. A caller naming its own recipients would be a way to send a notification to
 anybody.
 
@@ -262,14 +262,14 @@ readers on the others were never woken.
 ### A frame carries no data
 
 `event: notification` with an empty `data: {}`. It says only that something
-changed; the reader then fetches what changed from
+changed. The reader then fetches what changed from
 `GET /api/v1/notifications`.
 
 That is a deliberate constraint rather than an omission. It keeps one source of
-truth instead of two that can disagree; it means a notification is never
-delivered by a route that cannot also replay it after a logout; it lets the
+truth instead of two that can disagree. It means a notification is never
+delivered by a route that cannot also replay it after a logout. It lets the
 broker message carry recipient identifiers rather than records, in keeping with
-the rule above; and it means the API pushes without reading the database at all.
+the rule above. And it means the API pushes without reading the database at all.
 
 A reader that already has a wake-up pending is skipped rather than queued behind
 — the wake-ups are indistinguishable, so a second would only produce a duplicate
@@ -287,7 +287,7 @@ and the client refetches on it, so a stream that died over lunch catches up the
 moment it comes back rather than up to a minute later.
 
 **Signing out and signing back in changes nothing.** A notification is a row
-keyed by the account, not per-session state; the only thing that ends its unread
+keyed by the account, not per-session state. The only thing that ends its unread
 life is the reader marking it. A fresh sign-in reaches the same table through the
 same query, and the bell refetches when it mounts.
 

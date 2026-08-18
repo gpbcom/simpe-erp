@@ -27,7 +27,7 @@ class B2BRouterConnector(InvoicingConnector):
         - **Import and send are two calls, deliberately.** The API accepts
           ``send_after_import`` to do both at once, and this connector does not
           use it. A single call makes a malformed payload and a transmitted
-          invoice the same event; a rejected invoice has already consumed a
+          invoice the same event. A rejected invoice has already consumed a
           number from a series that cannot have gaps, so it cannot be edited and
           re-sent — only corrected by a credit note.
         - **The import door, not the JSON door.** The API will build an invoice
@@ -88,7 +88,7 @@ class B2BRouterConnector(InvoicingConnector):
                 if found is not None:
                     return str(found)
         self.logger.warning(
-            "B2Brouter returned no identifier; the transmission cannot be "
+            "B2Brouter returned no identifier. The transmission cannot be "
             "traced back to the platform."
         )
         return ""

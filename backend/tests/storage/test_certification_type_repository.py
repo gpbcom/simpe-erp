@@ -93,7 +93,7 @@ class TestCertificationTypeRepository:
 
         Notes:
             A new requirement naming a retired code is refused because it is
-            absent from this set; including it would quietly undo the
+            absent from this set. Including it would quietly undo the
             retirement.
         """
         repository = CertificationTypeRepository(session)

@@ -4,7 +4,7 @@
 robotframework==7.2.2
 # Pinned rather than floated. The coverage keywords (Start Coverage, Stop
 # Coverage, Merge Coverage Reports) arrived in 19.0 and their signatures have
-# moved since; an unpinned library turns somebody else's release into a red
+# moved since. An unpinned library turns somebody else's release into a red
 # pipeline.
 robotframework-browser==20.2.0
 robotframework-requests==0.9.7

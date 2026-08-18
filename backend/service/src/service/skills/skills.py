@@ -93,7 +93,7 @@ class SkillTypeService:
         Notes:
             Names rather than identifiers, because the answer ends up in a
             refusal message a manager reads. "Declared by Luc Martin and 2
-            others" tells them where to go; three UUIDs do not.
+            others" tells them where to go. Three UUIDs do not.
         """
         workforce = await self.hcas.list_all()
         return [
@@ -139,7 +139,7 @@ class SkillTypeService:
               would: it names the offending code and lists what the catalogue
               does offer, which is what somebody who has just made a typo needs.
             - Retired entries are refused as well as unknown ones. Retiring is
-              how a skill stops being asked for; letting a new requirement name
+              how a skill stops being asked for. Letting a new requirement name
               one would quietly undo that.
             - One query for every code, not one per code — see
               :meth:`~storage.repositories.catalog.skill_type.SkillTypeRepository.known_codes`.
@@ -283,7 +283,7 @@ class SkillTypeService:
         )
         if existing.is_active and updated.is_active is False:
             self.logger.warning(
-                "Skill %s is retired; no new requirement may name it, and the "
+                "Skill %s is retired. No new requirement may name it, and the "
                 "%d assistant(s) who declared it keep it.",
                 existing.code,
                 len(await self._holders_of(existing.code)),

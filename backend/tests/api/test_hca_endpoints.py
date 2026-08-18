@@ -116,13 +116,13 @@ def client(service: MagicMock, plannings: AsyncMock) -> TestClient:
     app.dependency_overrides[get_current_user] = lambda: caller
     # Removing an assistant ends in a replan, so the route reaches the planning
     # service and the broker. The default double reports no future work, which
-    # is the 204 path; the replan test replaces it.
+    # is the 204 path. The replan test replaces it.
     app.dependency_overrides[get_planning_service] = lambda: plannings
     app.dependency_overrides[get_event_publisher] = lambda: AsyncMock()
     # The workforce list narrows to the teams the caller runs, so the route
     # reaches the team service. This double is an administrator's answer —
     # `None` means every assistant — which keeps these fixtures asserting what
-    # they were written to assert; the narrowing itself is tested where it
+    # they were written to assert. The narrowing itself is tested where it
     # lives.
     teams = AsyncMock()
     teams.readable_hca_ids.return_value = None

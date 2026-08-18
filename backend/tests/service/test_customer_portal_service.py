@@ -293,7 +293,7 @@ class TestPortalReads:
             the history. A list narrowed to what is live answers a different
             question without saying so.
         """
-        await service.quotes_for("customer-1")
+        await service.quotes("customer-1")
 
         customers.quotes_for.assert_awaited_once_with("customer-1")
 
@@ -528,7 +528,7 @@ class TestPortalDocuments:
             read other households' figures — and an invoice carries a name, an
             address and what a family pays for their care.
         """
-        await service.bills_for("customer-1", "company-1")
+        await service.bills("customer-1", "company-1")
 
         applied = service.bills.list.await_args.kwargs["bill_filter"]
         assert applied.customer_id == "customer-1"

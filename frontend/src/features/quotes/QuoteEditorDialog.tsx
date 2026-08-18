@@ -98,7 +98,7 @@ interface QuoteEditorDialogProps {
  * Two dialogs would be two places for the line rules to drift apart.
  *
  * **Prices are not computed here.** The form collects services, dates and
- * durations; the server prices them against the catalog, applying the weekday
+ * durations. The server prices them against the catalog, applying the weekday
  * and holiday surcharges and the VAT rate the service category carries. A
  * total calculated in the browser would be a second pricing implementation,
  * and the one the customer is billed from is the other one.

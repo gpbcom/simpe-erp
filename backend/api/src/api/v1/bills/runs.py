@@ -46,7 +46,7 @@ async def start_billing_run(
         BillingRun: The pending run, with the identifier to poll.
 
     Raises:
-        MTBillingPeriodInFuture: When the period has not finished; answered as
+        MTBillingPeriodInFuture: When the period has not finished. Answered as
             a 422 by the central handler.
         MTBillingSettingsUnavailable: When the invoicing rules cannot be read;
             answered as a 503.
@@ -91,7 +91,7 @@ async def start_billing_run(
     )
     if not queued:
         logger.error(
-            "Billing run %s was recorded but could not be queued; it stays "
+            "Billing run %s was recorded but could not be queued. It stays "
             "pending until it is re-published.",
             run.id,
         )
@@ -141,7 +141,7 @@ async def get_billing_run(
         BillingRun: The run.
 
     Raises:
-        MTBillingRunNotFound: When there is no such run; answered as a 404 by
+        MTBillingRunNotFound: When there is no such run. Answered as a 404 by
             the central handler.
 
     Notes:

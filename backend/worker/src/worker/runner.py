@@ -44,11 +44,11 @@ from storage.repositories.companies.company import CompanyRepository
 from storage.repositories.notifications.notification import (
     NotificationRepository,  # noqa: E501
 )
+from storage.repositories.organisation.agency import AgencyRepository
+from storage.repositories.organisation.team import TeamRepository
 from storage.repositories.people.customer import CustomerRepository
 from storage.repositories.people.hca import HcaRepository
 from storage.repositories.planning.intervention import InterventionRepository
-from storage.repositories.organisation.agency import AgencyRepository
-from storage.repositories.organisation.team import TeamRepository
 from storage.repositories.planning.planning_run import PlanningRunRepository
 from storage.repositories.planning.planning_settings import (
     PlanningSettingsRepository,  # noqa: E501
@@ -99,7 +99,7 @@ class WorkerRunner:
           missed while this process was down is picked up next time it starts.
         - **Each handler opens its own session and closes it before returning.**
           A worker holds a connection for as long as it holds one, and a solve
-          runs for thirty seconds; keeping a session open across that would tie
+          runs for thirty seconds. Keeping a session open across that would tie
           up a pooled connection per in-flight message for no reason. It also
           means a handler that fails rolls back cleanly and the redelivery
           starts from a known state.
@@ -120,7 +120,7 @@ class WorkerRunner:
           safe — see :meth:`skill_added`.
         - **Recipients are resolved here, from roles, rather than named by the
           message.** The thing publishing an event knows that a quote was
-          submitted; it does not know who in the agency is allowed to rule on
+          submitted. It does not know who in the agency is allowed to rule on
           it, and it should not have to. A payload that named its own
           recipients would be a way to send a notification to anybody.
         - Fan-out failures are never fatal to the event that caused them. A
@@ -168,7 +168,7 @@ class WorkerRunner:
             Every consumer is constructed whatever the role, and only the one
             this process serves is ever started. Building them conditionally
             would put a ``None`` behind every attribute and a check in front of
-            every use; an unstarted consumer holds no connection and costs
+            every use. An unstarted consumer holds no connection and costs
             nothing.
         """
         self.config = config
@@ -270,7 +270,7 @@ class WorkerRunner:
             customers=CustomerRepository(session=session),
             companies=CompanyRepository(session=session),
             config=self.config.billing,
-            documents=S3Storage(config=self.config.s3, logger=self.logger),
+            documents=S3Storage(config=self.config.s3),
             logger=self.logger,
         )
 
@@ -432,7 +432,7 @@ class WorkerRunner:
               announcing first is how a badge comes to count something that is
               not yet visible.
             - Only identifiers travel. Each API instance holds its own open
-              streams and wakes the ones it has; the reader then fetches over
+              streams and wakes the ones it has. The reader then fetches over
               HTTP, from the same endpoint it would have used had the push never
               arrived. That is what keeps the database the single source of
               truth and a lost message a matter of latency.
@@ -441,12 +441,12 @@ class WorkerRunner:
               a notification nobody can be told about is not worth a message.
         """
         if not recipients:
-            self.logger.debug("Nothing was written; there is nobody to wake.")
+            self.logger.debug("Nothing was written. There is nobody to wake.")
             return
         if not company_id:
             self.logger.error(
                 "Wrote %d notification(s) with no agency to announce them "
-                "under; the readers will find them on their next fetch.",
+                "under. The readers will find them on their next fetch.",
                 len(recipients),
             )
             return
@@ -479,7 +479,7 @@ class WorkerRunner:
         author_id = envelope.string_field("author_id")
         if author_id is None:
             self.logger.info(
-                "Quote %s has no recorded author; nobody to tell.",
+                "Quote %s has no recorded author. Nobody to tell.",
                 envelope.string_field("quote_id"),
             )
             return
@@ -513,12 +513,12 @@ class WorkerRunner:
             This is the work that used to run in a FastAPI ``BackgroundTask``.
             Moving it here fixes two things at once: a restart no longer loses
             an in-flight run, because the message is only acknowledged when the
-            solve has finished; and a thirty-second solve no longer occupies a
+            solve has finished. And a thirty-second solve no longer occupies a
             web worker that should be answering requests.
         """
         run_id = envelope.string_field("run_id")
         if run_id is None:
-            self.logger.error("A planning message named no run; discarding it.")
+            self.logger.error("A planning message named no run. Discarding it.")
             return
         self.logger.info("Solving planning run %s.", run_id)
         async with self.manager.session() as session:
@@ -546,7 +546,7 @@ class WorkerRunner:
         company_id = envelope.string_field("company_id")
         if not company_id:
             self.logger.error(
-                "Planning run %s carried no agency; its completion cannot be "
+                "Planning run %s carried no agency. Its completion cannot be "
                 "announced to one and is dropped.",
                 run_id,
             )
@@ -584,7 +584,7 @@ class WorkerRunner:
         """
         run_id = envelope.string_field("run_id")
         if run_id is None:
-            self.logger.error("A billing message named no run; discarding it.")
+            self.logger.error("A billing message named no run. Discarding it.")
             return
         self.logger.info("Generating the invoices of billing run %s.", run_id)
         async with self.manager.session() as session:
@@ -599,7 +599,7 @@ class WorkerRunner:
         company_id = envelope.string_field("company_id")
         if not company_id:
             self.logger.error(
-                "Billing run %s carried no agency; its completion cannot be "
+                "Billing run %s carried no agency. Its completion cannot be "
                 "announced to one and is dropped.",
                 run_id,
             )
@@ -630,7 +630,7 @@ class WorkerRunner:
               is a month quietly unbilled, which is the failure the notification
               exists to prevent.
             - Nothing is emailed to a customer here. This tells the agency it
-              has work to do; the customer hears from the bill-accepted webhook,
+              has work to do. The customer hears from the bill-accepted webhook,
               after a manager approves each invoice.
             - Told to **that agency's** supervisors, named by the message, for
               the reason the planning notification is: a badge on every other
@@ -680,10 +680,10 @@ class WorkerRunner:
         bill_id = envelope.string_field("bill_id")
         if bill_id is None:
             self.logger.error(
-                "A bill-accepted message named no invoice; discarding it."
+                "A bill-accepted message named no invoice. Discarding it."
             )
             return
-        self.logger.info("Invoice %s was approved; announcing it.", bill_id)
+        self.logger.info("Invoice %s was approved. Announcing it.", bill_id)
         await self.billing_webhook.announce(bill_id)
 
     async def bill_paid(self, envelope: EventEnvelope) -> None:
@@ -702,9 +702,9 @@ class WorkerRunner:
         """
         bill_id = envelope.string_field("bill_id")
         if bill_id is None:
-            self.logger.error("A bill-paid message named no invoice; discarding it.")
+            self.logger.error("A bill-paid message named no invoice. Discarding it.")
             return
-        self.logger.info("Invoice %s was collected; announcing it.", bill_id)
+        self.logger.info("Invoice %s was collected. Announcing it.", bill_id)
         await self.billing_webhook.announce_paid(bill_id)
 
     async def quote_submitted(self, envelope: EventEnvelope) -> None:
@@ -790,7 +790,7 @@ class WorkerRunner:
         status = envelope.string_field("status")
         if status != "failed":
             self.logger.debug(
-                "Planning run %s finished as %s; nobody needs telling.",
+                "Planning run %s finished as %s. Nobody needs telling.",
                 run_id,
                 status,
             )
@@ -821,7 +821,7 @@ class WorkerRunner:
         Notes:
             - **This is the whole reason a declaration needs no approval.** A
               skill takes effect the moment its owner enters it, which is what
-              stops the agency losing track of who can do what; the safeguard
+              stops the agency losing track of who can do what. The safeguard
               is that every manager and administrator is told, and any of them
               can withdraw it before the next planning run acts on it.
             - The notification carries no ``quote_id`` — there is no quote — so
@@ -842,7 +842,7 @@ class WorkerRunner:
         described = f"{skill_name} ({skill_code})" if skill_code else skill_name
         if skill_code is None:
             self.logger.warning(
-                "%s declared %r with no catalogue code; no requirement can match it.",
+                "%s declared %r with no catalogue code. No requirement can match it.",
                 hca_name,
                 skill_name,
             )
@@ -976,7 +976,7 @@ class WorkerRunner:
               enumerated, not after. An agency founded between the enumeration
               and the binding would otherwise fall through the gap: too late to
               be listed, too early to be announced. Overlapping the two is safe
-              because :meth:`serve` is idempotent; leaving a gap is not.
+              because :meth:`serve` is idempotent. Leaving a gap is not.
         """
         await self.manager.connect()
         self.logger.info("The worker is connected to the database.")

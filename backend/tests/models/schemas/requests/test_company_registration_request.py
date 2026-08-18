@@ -163,7 +163,7 @@ class TestCompanyRegistrationRequestValidation:
         ],
     )
     def test_a_founder_needs_an_address(self, value: ModelInput) -> None:
-        """The address is the credential; there is no account without one.
+        """The address is the credential. There is no account without one.
 
         Args:
             value (ModelInput): The address to refuse.

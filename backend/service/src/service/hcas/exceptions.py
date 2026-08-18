@@ -43,7 +43,7 @@ class MTApplicationForbidden(MTInvalidHcaServiceException):
     """Exception raised when a manager decides another company's application.
 
     Notes:
-        Row-level, not route-level. A guard proves the caller is a manager; it
+        Row-level, not route-level. A guard proves the caller is a manager. It
         cannot tell whose hiring queue the identifier in the path belongs to.
     """
 

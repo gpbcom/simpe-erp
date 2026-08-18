@@ -15,7 +15,7 @@ const SPEC: EntityFilterSpec = {
  * @remarks
  * These are the parts seven screens now share, so a mistake here is a mistake
  * everywhere. The hook itself needs a router and is covered by the screens'
- * own tests; this is the logic that has no excuse for being untested.
+ * own tests. This is the logic that has no excuse for being untested.
  */
 describe('filterQuery', () => {
   it('drops what nobody filtered on', () => {

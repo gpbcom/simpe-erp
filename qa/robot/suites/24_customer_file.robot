@@ -241,7 +241,7 @@ Ending It Early Shortens The Price
     ${stored}=    Quote As Stored    ${FIXTURE_QUOTE_ID}
     ${lines}=    Get Length    ${stored}[lines]
     Should Be Equal As Integers    ${lines}    2
-    ...    msg=The cancelled visit was deleted; it should stay on the quote.
+    ...    msg=The cancelled visit was deleted. It should stay on the quote.
 
     ${counted}=    Evaluate    sum(a["line_count"] for a in $stored["aggregates"])
     Should Be Equal As Integers    ${counted}    1
@@ -257,7 +257,7 @@ The Cancelled Visit Stays On The Document
     ${priced}=    Evaluate
     ...    [line for line in $stored["lines"] if line["total_ttc"] is not None]
     Length Should Be    ${priced}    2
-    ...    msg=A cancelled visit lost its amounts; the quote can no longer show it.
+    ...    msg=A cancelled visit lost its amounts. The quote can no longer show it.
 
 An Interruption Before The First Visit Is Refused
     [Documentation]    It would leave an accepted quote delivering nothing.

@@ -32,7 +32,7 @@ class PlanningSettings(BaseModel):
         MIN_LUNCH_BREAK_MINUTES (ClassVar[int]): The contractual floor.
         MINUTES_PER_DAY (ClassVar[int]): Minutes in a day, the inclusive upper
             bound of every minute-of-day field.
-        id (str): Identifier; always :attr:`SINGLETON_ID`.
+        id (str): Identifier. Always :attr:`SINGLETON_ID`.
         max_intervention_radius_km (float): How far from their own home an
             assistant may be sent.
         day_start_minute (int): Earliest minute of the day a visit may start,
@@ -67,7 +67,7 @@ class PlanningSettings(BaseModel):
           per-anything collection, and a table that can hold two rows invites the
           question of which one the solver used.
         - The radius is bounded at both ends deliberately. Zero would place
-          nothing at all and read as "the planner is broken"; an unbounded value
+          nothing at all and read as "the planner is broken". An unbounded value
           would silently turn the constraint off, which is the failure that looks
           like success.
     """

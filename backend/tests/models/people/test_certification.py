@@ -66,7 +66,7 @@ class TestCertification:
 
         Notes:
             Source records sometimes carry a timestamp where a plain date was
-            meant; narrowing is kinder than rejecting.
+            meant. Narrowing is kinder than rejecting.
         """
         certification = Certification(
             name="DEAVS", obtained_on=datetime(2024, 3, 1, 0, 0, tzinfo=UTC)
@@ -186,7 +186,7 @@ class TestCertification:
     # ------------------------------------------------------------------ #
 
     def test_a_qualification_carries_no_code_by_default(self) -> None:
-        """A free-text record is still a record; the catalogue link is optional."""
+        """A free-text record is still a record. The catalogue link is optional."""
         assert Certification(name="DEAVS").code is None
 
     def test_a_code_is_upper_cased(self) -> None:

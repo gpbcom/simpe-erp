@@ -15,9 +15,9 @@ class PlanningRunMapper(BaseMapper[PlanningRun, PlanningRunRow]):
 
     Attributes:
         ID_SEPARATOR (ClassVar[str]): Delimiter joining the unassigned ids.
-        HAS_ROW_TIMESTAMPS (ClassVar[bool]): ``False``; the table carries no
+        HAS_ROW_TIMESTAMPS (ClassVar[bool]): ``False``. The table carries no
             timestamp column.
-        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``; the model carries no
+        HAS_MODEL_TIMESTAMPS (ClassVar[bool]): ``False``. The model carries no
             timestamp field.
 
     Notes:

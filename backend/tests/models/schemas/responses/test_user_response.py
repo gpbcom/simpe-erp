@@ -84,7 +84,7 @@ class TestUserResponse:
 
         Notes:
             This is the property the whole schema exists for. A dump that
-            excluded the hash by name could stop excluding it; a field that was
+            excluded the hash by name could stop excluding it. A field that was
             never declared cannot be published at all.
         """
         assert "hashed_password" not in UserResponse.model_fields

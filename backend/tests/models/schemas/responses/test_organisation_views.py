@@ -195,7 +195,7 @@ class TestTeamView:
             )
 
     def test_zero_is_accepted(self) -> None:
-        """A stored team always has its manager; a race must not fail a page."""
+        """A stored team always has its manager. A race must not fail a page."""
         view = TeamView(
             company_id="company-1",
             agency_id="agency-1",

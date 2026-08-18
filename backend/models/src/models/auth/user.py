@@ -298,7 +298,7 @@ class User(Person, PortraitHolder):
 
         Notes:
             **Overrides** the base's, which requires one. An account is a
-            credential; the number of somebody the agency schedules is on their
+            credential. The number of somebody the agency schedules is on their
             assistant record.
         """
         if value is None:
@@ -436,7 +436,7 @@ class User(Person, PortraitHolder):
 
         Notes:
             Stripped, and a whitespace-only value refused rather than kept. Every
-            portal route resolves the household from this field by equality; a
+            portal route resolves the household from this field by equality. A
             ``" "`` that matched nothing would present an empty space as though
             the customer simply had no visits.
         """
@@ -763,7 +763,7 @@ class User(Person, PortraitHolder):
         Notes:
             - The mirror of :meth:`owns_hca`, and the row-level rule behind "a
               customer sees only their own file". Staff are answered ``True``
-              because the manager screens already list every household; this
+              because the manager screens already list every household. This
               method is not what gates them, their route guards are.
             - A customer with no link is ``False`` rather than an error. The
               model refuses to build one — see :meth:`check_customer_link` — so

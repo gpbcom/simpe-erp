@@ -130,7 +130,7 @@ class InvopopConnector(InvoicingConnector):
                 if found is not None:
                     return str(found)
         self.logger.warning(
-            "Invopop returned no identifier; the transmission cannot be traced "
+            "Invopop returned no identifier. The transmission cannot be traced "
             "back to the platform."
         )
         return ""

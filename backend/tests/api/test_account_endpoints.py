@@ -26,14 +26,14 @@ from api.v1.auth.accounts import router as accounts_router
 from api.v1.companies.companies import router as companies_router
 from api.v1.hcas.applications import router as applications_router
 from models.auth.user import User
-from models.organisation.companies.company import Company
-from models.organisation.companies.company_choice import CompanyChoice
 from models.enums import (
     AccountOrigin,
     ContractType,
     HcaApplicationStatus,
     UserRole,
 )
+from models.organisation.companies.company import Company
+from models.organisation.companies.company_choice import CompanyChoice
 from models.people.hca_application import HcaApplication
 from service.auth.exceptions import MTAuthSamePassword
 from service.companies.exceptions import MTCompanyNotAcceptingApplications
@@ -522,7 +522,7 @@ class TestPasswordChangeEndpoint:
 class TestMandatoryChangeEnforcement:
     """Tests that the forced change is enforced, not merely requested."""
 
-    def _client_for(self, caller: User) -> TestClient:
+    def _client(self, caller: User) -> TestClient:
         """Build a client whose middleware resolves a token to one account.
 
         Args:
@@ -579,7 +579,7 @@ class TestMandatoryChangeEnforcement:
             it in the middleware rather than in each guard means a route added
             tomorrow is covered without anybody remembering to cover it.
         """
-        client = self._client_for(_user(role=UserRole.HCA, must_change=True))
+        client = self._client(_user(role=UserRole.HCA, must_change=True))
 
         response = client.get(
             "/api/v1/anything", headers={"Authorization": "Bearer token"}
@@ -590,7 +590,7 @@ class TestMandatoryChangeEnforcement:
 
     def test_the_password_route_stays_reachable(self) -> None:
         """The one exception, without which the account could never recover."""
-        client = self._client_for(_user(role=UserRole.HCA, must_change=True))
+        client = self._client(_user(role=UserRole.HCA, must_change=True))
 
         response = client.post(
             "/api/v1/auth/password", headers={"Authorization": "Bearer token"}
@@ -609,7 +609,7 @@ class TestMandatoryChangeEnforcement:
             server-side test passed, because each of those already knew which
             account it was acting as.
         """
-        client = self._client_for(_user(role=UserRole.HCA, must_change=True))
+        client = self._client(_user(role=UserRole.HCA, must_change=True))
 
         response = client.get(
             "/api/v1/auth/me", headers={"Authorization": "Bearer token"}
@@ -619,7 +619,7 @@ class TestMandatoryChangeEnforcement:
 
     def test_an_account_that_has_changed_is_not_blocked(self) -> None:
         """Clearing the flag restores ordinary use."""
-        client = self._client_for(_user(role=UserRole.HCA, must_change=False))
+        client = self._client(_user(role=UserRole.HCA, must_change=False))
 
         response = client.get(
             "/api/v1/anything", headers={"Authorization": "Bearer token"}
@@ -636,7 +636,7 @@ class TestMandatoryChangeEnforcement:
             client that cannot tell them apart shows the wrong message to
             somebody who simply needs to set a password.
         """
-        client = self._client_for(_user(role=UserRole.HCA, must_change=True))
+        client = self._client(_user(role=UserRole.HCA, must_change=True))
 
         body = client.get(
             "/api/v1/anything", headers={"Authorization": "Bearer token"}

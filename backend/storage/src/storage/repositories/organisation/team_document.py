@@ -24,7 +24,7 @@ class TeamDocumentRepository(BaseRepository[TeamDocumentRow]):
         mapper (TeamDocumentMapper): Converts between rows and models.
 
     Notes:
-        - This table indexes objects; it does not hold them. The bytes live in
+        - This table indexes objects. It does not hold them. The bytes live in
           the object store under the key each row carries, which is why there is
           no update path — a stored object is immutable, so changing a file
           means adding one and removing the other.

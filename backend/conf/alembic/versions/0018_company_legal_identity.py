@@ -17,7 +17,7 @@ Notes:
 
     **Every column is nullable, and that is deliberate.** There is no safe
     value to invent for any of them. A share capital backfilled to zero would
-    be a false declaration; an RCS entry backfilled to the SIRET would be a
+    be a false declaration. An RCS entry backfilled to the SIRET would be a
     wrong one. An agency that has not filled these in yet simply prints
     without them — the document joins only the parts that are set — and the
     administrator's own screen is where they get filled in.

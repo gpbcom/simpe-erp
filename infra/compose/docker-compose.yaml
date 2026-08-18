@@ -49,7 +49,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-simple_erp_dev_secret}
     # The bucket is private, and only the two *image* prefixes are opened to
     # anonymous readers. Photographs and logos are fetched straight from the
-    # bucket by a browser, which needs them public; invoices are not, and are
+    # bucket by a browser, which needs them public. Invoices are not, and are
     # streamed through `GET /api/v1/bills/{id}/document` behind the bearer
     # guard instead.
     #
@@ -64,7 +64,7 @@ services:
         mc anonymous set none local/simple-erp &&
         mc anonymous set download local/simple-erp/hca-photos &&
         mc anonymous set download local/simple-erp/company-logos &&
-        echo 'Bucket simple-erp is ready; invoices are private.'
+        echo 'Bucket simple-erp is ready. Invoices are private.'
       "
     networks: [simple-erp]
 
@@ -157,7 +157,7 @@ services:
       # start-up rather than transmit nothing and look healthy.
       #
       # **The API alone carries it.** A worker publishes `bill.paid` and calls
-      # the loopback webhook; the transmission — and so the one decryption —
+      # the loopback webhook. The transmission — and so the one decryption —
       # happens in this process. Handing the key to four containers to be used
       # by one is three more places to leak it from.
       EINVOICING_CREDENTIAL_KEY: ${EINVOICING_CREDENTIAL_KEY:-}
@@ -172,7 +172,7 @@ services:
     networks: [simple-erp]
 
   # Two deployments, one image. A solve is CPU-bound and pins its cores for
-  # minutes at a time; a notification fan-out is I/O-bound and finishes in
+  # minutes at a time. A notification fan-out is I/O-bound and finishes in
   # milliseconds. Sharing a process means they scale together, and a manager
   # waits out a whole solve for a badge because the pod is mid-plan.
   worker-planning:

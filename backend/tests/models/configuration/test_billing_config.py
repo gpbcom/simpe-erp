@@ -32,7 +32,7 @@ class TestBillingConfig:
         Notes:
             Thirty-day terms, the legal interest rate trebled, a forty-euro
             recovery indemnity and no early-settlement discount are what a
-            French home-care invoice carries; none of them is a placeholder
+            French home-care invoice carries. None of them is a placeholder
             somebody has to remember to change.
         """
         config = BillingConfig()
@@ -148,7 +148,7 @@ class TestBillingWebhookConfig:
         assert BillingWebhookConfig().enabled is False
 
     def test_it_inherits_the_parent_validators(self) -> None:
-        """No exception family of its own; a bad URL is refused as usual."""
+        """No exception family of its own. A bad URL is refused as usual."""
         with pytest.raises(Exception):
             BillingWebhookConfig(url="not-a-url")
 

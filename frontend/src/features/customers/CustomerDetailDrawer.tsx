@@ -44,7 +44,7 @@ interface CustomerDetailDrawerProps {
  * call finished, with nothing saying why, is a quote somebody will ring up
  * about.
  *
- * **The row that was clicked is a snapshot; this re-reads the record.** The
+ * **The row that was clicked is a snapshot. This re-reads the record.** The
  * grid's row is whatever the last list fetch held, and promoting somebody from
  * inside this drawer changes their status on the server. Drawn from the prop,
  * the chip would still say *prospect* and the promote button would still be

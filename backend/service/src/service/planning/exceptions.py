@@ -49,7 +49,7 @@ class MTPlanningInfeasible(MTInvalidPlanningException):
     """Exception raised when the planning constraints cannot all be met.
 
     Notes:
-        A run that cannot place every piece of accepted work **fails**; it does
+        A run that cannot place every piece of accepted work **fails**. It does
         not succeed with gaps. A calendar missing three visits looks like a
         calendar, and the visits nobody noticed were dropped are the ones that
         end with a customer waiting at home.
@@ -99,7 +99,7 @@ class MTPlanningScopeForbidden(MTInvalidPlanningException):
     """Exception raised when a caller asks for a company-wide computation.
 
     Notes:
-        - A planning is computed for a **team or a site**; the whole company at
+        - A planning is computed for a **team or a site**. The whole company at
           once is an administrator's act, because it rewrites the calendar of
           every assistant the company employs and no manager is answerable for
           all of them.

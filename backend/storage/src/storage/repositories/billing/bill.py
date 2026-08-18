@@ -32,7 +32,7 @@ class BillRepository(BaseRepository[BillRow]):
           second of them actually guarantees it: :meth:`find_overlapping` is
           the friendly check a run makes first so a re-run is a reported no-op;
           the unique index on ``(customer_id, period_start, period_end)`` is
-          what stops two runs racing past that check; and
+          what stops two runs racing past that check. And
           :meth:`next_number` serialises the numbering so the loser of such a
           race fails rather than leaving a gap.
         - There is no ``delete``. A number withdrawn from the series is exactly
@@ -136,7 +136,7 @@ class BillRepository(BaseRepository[BillRow]):
             applied.model_dump(exclude_none=True),
         )
         if applied.is_empty() and not any((company_id, customer_id)):
-            self.logger.info("No filter was given; the query is every bill.")
+            self.logger.info("No filter was given. The query is every bill.")
 
         statement = select(BillRow)
         if company_id is not None:
@@ -149,7 +149,7 @@ class BillRepository(BaseRepository[BillRow]):
         elif applied.customer_id and applied.customer_id != customer_id:
             self.logger.warning(
                 "A bill filter asked for customer %r while the caller is "
-                "scoped to %r; the scope wins.",
+                "scoped to %r. The scope wins.",
                 applied.customer_id,
                 customer_id,
             )
@@ -229,7 +229,7 @@ class BillRepository(BaseRepository[BillRow]):
 
         Notes:
             - **Wider than the exact-window match this replaced.** Comparing
-              the two dates catches a re-run; it does not catch a customer whose
+              the two dates catches a re-run. It does not catch a customer whose
               granularity changed. Billed for the week of 1–7 July and then
               moved to monthly, their July invoice would cover that week a
               second time — same customer, same days, two documents, and the

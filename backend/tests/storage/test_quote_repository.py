@@ -260,7 +260,7 @@ class TestQuoteRepository:
     async def test_line_order_is_preserved(
         self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
-        """A quote is a document; the operator's order is what prints.
+        """A quote is a document. The operator's order is what prints.
 
         Notes:
             Without an explicit position column the database is free to return
@@ -629,7 +629,7 @@ class TestQuoteRepository:
     async def test_deleting_a_quote_takes_its_lines_and_aggregates(
         self, session: AsyncSession, customer_kwargs: Dict[str, ModelInput]
     ) -> None:
-        """Both children cascade; neither has meaning without the quote."""
+        """Both children cascade. Neither has meaning without the quote."""
         customer_id = await _customer(session, customer_kwargs)
         type_id = await _intervention_type(session)
         repository = QuoteRepository(session)

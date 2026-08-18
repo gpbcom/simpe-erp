@@ -132,7 +132,7 @@ async def create_company(
         Company: The stored company.
 
     Raises:
-        MTCompanyNameTaken: If the name is already in use; answered as a 409.
+        MTCompanyNameTaken: If the name is already in use. Answered as a 409.
 
     Notes:
         Administrator-only. A company is who an applicant ends up working for,
@@ -201,11 +201,11 @@ async def get_company(
         CompanyView: The company.
 
     Raises:
-        MTCompanyNotFound: If no such company exists; answered as a 404.
+        MTCompanyNotFound: If no such company exists. Answered as a 404.
 
     Notes:
         A manager runs the agency's work and needs its address, its telephone
-        number and its registration; they have no reason to read the account
+        number and its registration. They have no reason to read the account
         it is paid into, and an account number is the one field here that lets
         a leak become a payment. An administrator reads their own agency whole
         at ``GET /api/v1/me/company``, and reads any agency whole here.
@@ -248,7 +248,7 @@ async def update_company(
         Company: The updated company.
 
     Raises:
-        MTCompanyNotFound: If no such company exists; answered as a 404.
+        MTCompanyNotFound: If no such company exists. Answered as a 404.
     """
     logger.info("Updating company %s.", company_id)
     return await service.update(company_id, company)
@@ -273,10 +273,10 @@ async def set_company_applications(
         Company: The updated company.
 
     Raises:
-        MTCompanyNotFound: If no such company exists; answered as a 404.
+        MTCompanyNotFound: If no such company exists. Answered as a 404.
 
     Notes:
-        Closing hides the company from applicants; it does not touch the
+        Closing hides the company from applicants. It does not touch the
         applications already waiting. Somebody who applied yesterday still
         deserves a decision.
     """
@@ -302,7 +302,7 @@ async def delete_company(
         caller (User): The authenticated caller; enforces administrator access.
 
     Raises:
-        MTCompanyNotFound: If no such agency exists; answered as a 404.
+        MTCompanyNotFound: If no such agency exists. Answered as a 404.
         MTCompanyNotEmpty: If an account or an assistant still names it;
             answered as a 409.
 

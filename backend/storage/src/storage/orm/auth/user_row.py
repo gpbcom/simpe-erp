@@ -30,7 +30,7 @@ class UserRow(Base):
         company_id (str): The company this account belongs to.
         account_origin (str): ``self-registered`` or ``created-by-staff``.
         photo_url (Optional[str]): Object-store URL of the holder's portrait.
-        language (str): ``fr`` or ``en``; the language this holder reads the
+        language (str): ``fr`` or ``en``. The language this holder reads the
             application, and the documents it emails them, in.
         must_change_password (bool): Whether the temporary password must
             still be replaced before the account can be used.

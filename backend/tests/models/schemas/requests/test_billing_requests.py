@@ -285,7 +285,7 @@ class TestBillFilter:
             BillFilter(**{field: value})
 
     def test_a_status_filter_is_coerced(self) -> None:
-        """The wire carries the value; the filter carries the member."""
+        """The wire carries the value. The filter carries the member."""
         assert BillFilter(status="paid").status is BillStatus.PAID
 
     def test_the_period_bounds_narrow_by_the_window_billed(self) -> None:
@@ -340,7 +340,7 @@ class TestBillWebhookSchemas:
         assert BillDispatchResponse(bill_id="bill-1").sent is False
         assert BillDispatchResponse(bill_id="bill-1", sent=True).sent is True
 
-    def test_a_dispatch_names_the_bill_it_was_for(self) -> None:
+    def test_a_dispatch_names_the_bill_it_was(self) -> None:
         """A count with no identifier cannot be reconciled with anything."""
         with pytest.raises(MTBillDispatchResponseInvalidId):
             BillDispatchResponse(bill_id="")

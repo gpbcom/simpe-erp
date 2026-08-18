@@ -39,14 +39,14 @@ class NotificationStreams:
           notification is never delivered by a route that cannot also replay it
           after a logout, and lets a message on the broker carry identifiers
           rather than records.
-        - **Losing a frame is survivable; losing a notification is not.** The
+        - **Losing a frame is survivable. Losing a notification is not.** The
           row is written to the database before anything is pushed, so a reader
           whose stream dropped finds the notification waiting when it
           reconnects — the ``ready`` frame tells it to look. That is what lets
           this class stay simple: it is an accelerator, not a delivery
           guarantee.
         - The fan-out is **in-process**, and deliberately so. The streams are
-          held open by this process; another process cannot write to them. What
+          held open by this process. Another process cannot write to them. What
           crosses processes is the broker message, which every API instance
           receives on a queue of its own and turns into wake-ups for the
           readers it happens to hold.
@@ -146,7 +146,7 @@ class NotificationStreams:
 
         Notes:
             - The ready frame is announced immediately so a client knows the
-              stream is live rather than merely accepted; a browser cannot
+              stream is live rather than merely accepted. A browser cannot
               otherwise tell the two apart until the first real event, which may
               be hours away. It doubles as the catch-up signal: a client that
               refetches on ``ready`` recovers everything it missed while the
@@ -172,7 +172,7 @@ class NotificationStreams:
                     )
                     break
                 try:
-                    await asyncio.wait_for(queue.get(), timeout=self.KEEPALIVE_SECONDS)  # noqa: E501
+                    await asyncio.wait(queue.get(), timeout=self.KEEPALIVE_SECONDS)  # noqa: E501
                 except TimeoutError:
                     yield self.KEEPALIVE_FRAME
                     continue
@@ -222,7 +222,7 @@ class NotificationStreams:
         queues = self.subscribers.get(recipient_id)
         if not queues:
             self.logger.debug(
-                "Account %s holds no open stream; the notification waits in "
+                "Account %s holds no open stream. The notification waits in "
                 "the database.",
                 recipient_id,
             )
@@ -252,7 +252,7 @@ class NotificationStreams:
         recipients = envelope.payload.get("recipient_ids")
         if not isinstance(recipients, list):
             self.logger.warning(
-                "A %s message named no recipients; nothing to wake.",
+                "A %s message named no recipients. Nothing to wake.",
                 envelope.routing_key,
             )
             return

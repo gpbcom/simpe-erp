@@ -73,7 +73,7 @@ async def enable_integration(
 
     Raises:
         MTIntegrationCredentialsRefused: When the platform would not accept the
-            credentials; answered as a 502 by the central handler, because the
+            credentials. Answered as a 502 by the central handler, because the
             refusal came from a third party rather than from this payload.
         MTInvalidIntegrationCredentialsException: When a value is unusable;
             answered as a 422, with a message that never quotes the key.

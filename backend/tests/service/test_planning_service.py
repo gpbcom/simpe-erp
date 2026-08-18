@@ -244,7 +244,7 @@ class TestPlanningConfidentiality:
         self, service: PlanningService
     ) -> None:
         """The ordinary case still works."""
-        planning = await service.planning_for(
+        planning = await service.planning(
             "hca-1", _user(UserRole.HCA, "hca-1"), MONDAY, SUNDAY
         )
 
@@ -258,12 +258,12 @@ class TestPlanningConfidentiality:
 
         Notes:
             **This is the test the whole rule rests on.** A route guard proves
-            only that the caller is an assistant; nothing at the routing layer
+            only that the caller is an assistant. Nothing at the routing layer
             stops assistant A putting assistant B's identifier in the path. The
             comparison can only be made here, against the caller's own record.
         """
         with pytest.raises(MTPlanningForbidden):
-            await service.planning_for(
+            await service.planning(
                 "hca-2", _user(UserRole.HCA, "hca-1"), MONDAY, SUNDAY
             )
 
@@ -278,7 +278,7 @@ class TestPlanningConfidentiality:
             query result would hold data the caller was never entitled to.
         """
         with pytest.raises(MTPlanningForbidden):
-            await service.planning_for(
+            await service.planning(
                 "hca-2", _user(UserRole.HCA, "hca-1"), MONDAY, SUNDAY
             )
 
@@ -306,7 +306,7 @@ class TestPlanningConfidentiality:
         )
 
         with pytest.raises(MTPlanningForbidden):
-            await service.planning_for("hca-1", unbound, MONDAY, SUNDAY)
+            await service.planning("hca-1", unbound, MONDAY, SUNDAY)
 
     @pytest.mark.parametrize(
         "role",
@@ -329,7 +329,7 @@ class TestPlanningConfidentiality:
             manager's scope is narrower, and the two tests below are what say
             so.
         """
-        planning = await service.planning_for("hca-1", _user(role), MONDAY, SUNDAY)
+        planning = await service.planning("hca-1", _user(role), MONDAY, SUNDAY)
 
         assert planning.hca_id == "hca-1"
 
@@ -353,7 +353,7 @@ class TestPlanningConfidentiality:
         )
 
         with pytest.raises(MTPlanningForbidden):
-            await service.planning_for("hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY)
+            await service.planning("hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY)
 
     async def test_an_assistant_on_no_team_is_read_by_nobody(
         self, service: PlanningService
@@ -369,7 +369,7 @@ class TestPlanningConfidentiality:
         service.teams.teams.team_for_member.return_value = None
 
         with pytest.raises(MTPlanningForbidden):
-            await service.planning_for("hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY)
+            await service.planning("hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY)
 
     # ------------------------------------------------------------------ #
     #  Listing every planning
@@ -644,7 +644,7 @@ class TestPlanningRunLifecycle:
         """No accepted work is an empty plan, not a failure.
 
         Notes:
-            An agency with a quiet week must not see a red run; the distinction
+            An agency with a quiet week must not see a red run. The distinction
             between "nothing to do" and "could not compute" is exactly what the
             status is for.
         """
@@ -705,7 +705,7 @@ class TestPlanningReads:
         self, service: PlanningService
     ) -> None:
         """The diary names who it belongs to, for display."""
-        planning = await service.planning_for(
+        planning = await service.planning(
             "hca-1", _user(UserRole.ADMIN), MONDAY, SUNDAY
         )
 
@@ -718,13 +718,13 @@ class TestPlanningReads:
         hcas.get.return_value = None
 
         with pytest.raises(MTPlanningRunNotFound):
-            await service.planning_for("ghost", _user(UserRole.ADMIN), MONDAY, SUNDAY)
+            await service.planning("ghost", _user(UserRole.ADMIN), MONDAY, SUNDAY)
 
     async def test_the_period_is_carried_onto_the_planning(
         self, service: PlanningService
     ) -> None:
         """A diary states the window it covers."""
-        planning = await service.planning_for(
+        planning = await service.planning(
             "hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY
         )
 
@@ -735,7 +735,7 @@ class TestPlanningReads:
         self, service: PlanningService
     ) -> None:
         """What the store holds is what the caller receives."""
-        planning = await service.planning_for(
+        planning = await service.planning(
             "hca-1", _user(UserRole.MANAGER), MONDAY, SUNDAY
         )
         visits: List[Intervention] = planning.interventions

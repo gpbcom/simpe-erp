@@ -105,7 +105,7 @@ class StorecoveConnector(InvoicingConnector):
                 if found is not None:
                     return str(found)
         self.logger.warning(
-            "Storecove returned no guid; the submission cannot be traced back "
+            "Storecove returned no guid. The submission cannot be traced back "
             "to the platform."
         )
         return ""

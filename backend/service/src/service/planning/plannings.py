@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 # Standard library imports
-
 # isort: on
 import asyncio
-import copy
-import math
-# iosrt: off
 
+# iosrt: off
 from collections import defaultdict
+import copy
 from datetime import UTC, date, datetime, time
 from logging import Logger, getLogger
+import math
 from time import monotonic
 from typing import ClassVar, Dict, List, Optional, Tuple
 
@@ -56,13 +55,13 @@ from service.organisation.teams import TeamService
 from service.planning.exceptions import (
     MTPlanningCustomerNotFound,
     MTPlanningForbidden,
-    MTPlanningScopeForbidden,
-    MTPlanningTeamForbidden,
     MTPlanningInconsistentSolution,
     MTPlanningInfeasible,
     MTPlanningInvalidSpeed,
     MTPlanningRunNotFound,
+    MTPlanningScopeForbidden,
     MTPlanningSettingsUnavailable,
+    MTPlanningTeamForbidden,
 )
 from service.planning.slot_finder import SlotFinder
 from storage.repositories.catalog.intervention_type import (
@@ -104,7 +103,7 @@ class PlanningService:
         - One service for the whole planning entity. The manager-owned rules,
           the solve, and the diagnosis of what would not fit were three classes
           reading the same :class:`~models.configuration.planning_config.PlanningConfig`
-          and passing each other the same settings; they answer one question —
+          and passing each other the same settings. They answer one question —
           what is the plan, and why is it that — so they answer it from one
           place.
         - The solve is CPU-bound and can run for the configured budget, so it is
@@ -157,7 +156,7 @@ class PlanningService:
         Notes:
             Metrics are optional, and a service given none records nothing
             rather than failing. The API constructs one of these per request to
-            answer a read; a registry per request would be six new time series
+            answer a read. A registry per request would be six new time series
             a second, all of them thrown away. Only the worker — which is where
             a run is actually executed — passes one in.
         """
@@ -210,7 +209,7 @@ class PlanningService:
         member_ids = await self.teams.teams.list_member_ids(team_id, MemberKind.HCA)
         if not member_ids:
             self.logger.warning(
-                "Team %s has no assistant on it; its run has nobody to schedule.",
+                "Team %s has no assistant on it. Its run has nobody to schedule.",
                 team_id,
             )
             return []
@@ -302,7 +301,7 @@ class PlanningService:
         claimed = await self.runs.claim(run.id, datetime.now(UTC))
         if claimed is None:
             self.logger.warning(
-                "Planning run %s is already %s; leaving it to whoever holds it.",
+                "Planning run %s is already %s. Leaving it to whoever holds it.",
                 run.id,
                 run.status.value,
             )
@@ -431,7 +430,7 @@ class PlanningService:
               stays untouched, exactly as before.
             - The report is grouped by **quote**, not by visit. A quote is
               what the agency sold and what an operator has in front of them
-              when the customer telephones; a flat list of visits is a list of
+              when the customer telephones. A flat list of visits is a list of
               symptoms.
         """
         if solution.is_feasible and not solution.unassigned_requirement_ids:
@@ -505,7 +504,7 @@ class PlanningService:
                 if quote is None or quote.id is None:
                     self.logger.error(
                         "Quote %s could not be found to return it for "
-                        "validation; its work stays unplanned and nobody has "
+                        "validation. Its work stays unplanned and nobody has "
                         "been asked to decide.",
                         entry.quote_reference,
                     )
@@ -555,7 +554,7 @@ class PlanningService:
               losing the report itself, which names what went wrong, because a
               search for extras raised would be a bad trade.
         """
-        finder = SlotFinder(settings, logger=self.logger)
+        finder = SlotFinder(settings)
         by_id = {item.id: item for item in requirements}
         days = sorted({item.day for item in requirements})
         offered: List[UnplacedQuote] = []
@@ -693,7 +692,7 @@ class PlanningService:
 
         Notes:
             - **``INFEASIBLE`` and ``UNKNOWN`` are different answers and used to
-              read identically.** The first is a proof that no plan exists; the
+              read identically.** The first is a proof that no plan exists. The
               second means the search stopped — on the deterministic budget or
               the wall-clock net — having proved nothing. Reporting both as "77
               visits could not be scheduled, travel and lunch left no room"
@@ -1264,7 +1263,7 @@ class PlanningService:
               take the free lunch. So every test below repeats a ban already
               applied by :meth:`_add_availability`,
               :meth:`_add_certifications`, :meth:`_add_skills` or
-              :meth:`_add_radius`; nothing new is decided here.
+              :meth:`_add_radius`. Nothing new is decided here.
             - The bans themselves stay where they are. This does not replace
               them — it avoids building the pairwise ordering and travel
               structure around literals they have already pinned, which is
@@ -1367,7 +1366,7 @@ class PlanningService:
             requirements (List[InterventionRequirement]): The work.
 
         Notes:
-            - The window on a requirement comes from the customer; this is the
+            - The window on a requirement comes from the customer. This is the
               agency's own rule — nothing before the day starts, nothing after it
               ends — and it applies on top.
             - **The bounds come from the stored settings, not the configuration
@@ -1412,7 +1411,7 @@ class PlanningService:
         for assistant in assistants:
             if not assistant.address.is_geocoded():
                 self.logger.warning(
-                    "Assistant %s has no resolved home address; they cannot be "
+                    "Assistant %s has no resolved home address. They cannot be "
                     "routed and will be given no work.",
                     assistant.id,
                 )
@@ -1581,7 +1580,7 @@ class PlanningService:
               kilometres from home.
             - Expressed by fixing the assignment literal to zero rather than by
               penalising distance in the objective. A penalty is a preference and
-              can be outweighed; this is a limit, and a plan that breaks it is not
+              can be outweighed. This is a limit, and a plan that breaks it is not
               a worse plan but an invalid one.
             - An assistant whose home never resolved is excluded from every
               requirement. Their distance is unknowable, and assuming it is within
@@ -1630,7 +1629,7 @@ class PlanningService:
         Notes:
             - **This constraint spans assistants, which is why it cannot ride on
               the per-assistant no-overlap.** That one stops one assistant being
-              in two places; nothing in it stops two *different* assistants being
+              in two places. Nothing in it stops two *different* assistants being
               sent to the same customer's living room at the same hour. For a
               home-care agency that is the visible failure: the customer opens the
               door twice, and one of the two visits was never needed.
@@ -1795,7 +1794,7 @@ class PlanningService:
         home = assistant.address.to_geo_point()
         if not routable or home is None:
             self.logger.warning(
-                "No travel information for assistant %s; their round is being "
+                "No travel information for assistant %s. Their round is being "
                 "planned with no travel time at all.",
                 assistant.id,
             )
@@ -2080,7 +2079,7 @@ class PlanningService:
             if solver.value(literal):
                 return hca_id
         self.logger.error(
-            "Requirement %s is neither assigned nor unassigned; the "
+            "Requirement %s is neither assigned nor unassigned. The "
             "exactly-one constraint did not hold.",
             requirement.id,
         )
@@ -2249,7 +2248,7 @@ class PlanningService:
             requirements, self.config.solver_deterministic_budget, "feasibility"
         )
         if not placed.is_feasible or placed.unassigned_requirement_ids:
-            self.logger.info("%s was not fully placed; not optimising its rounds.", day)
+            self.logger.info("%s was not fully placed. Not optimising its rounds.", day)
             return placed
 
         self._minimise_travel(placed)
@@ -2260,7 +2259,7 @@ class PlanningService:
             self.logger.error(
                 "The optimisation pass for %s returned %s though the "
                 "feasibility pass had already placed every visit. Keeping the "
-                "unoptimised plan; this is a model-construction fault.",
+                "unoptimised plan. This is a model-construction fault.",
                 day,
                 shortened.status_name,
             )
@@ -2313,7 +2312,7 @@ class PlanningService:
             proved = any(item.status_name == "INFEASIBLE" for item in failed)
             status = "INFEASIBLE" if proved else "UNKNOWN"
             self.logger.error(
-                "%d of %d day(s) produced no plan; the period is %s.",
+                "%d of %d day(s) produced no plan. The period is %s.",
                 len(failed),
                 len(solutions),
                 status,
@@ -2360,7 +2359,7 @@ class PlanningService:
             customer — there is no number that is correct for an axis rather
             than a rung — and the refusal surfaces as a 422 whose body discusses
             role ladders. A household reaching a staff route is not sending a
-            malformed request; it is asking for something that is not theirs.
+            malformed request. It is asking for something that is not theirs.
             That is a 403, and this is what makes it one. The same reasoning,
             and the same ordering, as
             :func:`~api.dependencies.get_manager_user`.
@@ -2391,7 +2390,7 @@ class PlanningService:
               own, which the caller has already proved.
             - An assistant on **no team at all** is refused rather than allowed
               through. A record nobody is responsible for is not one every
-              manager may read; it is one somebody has to place on a team first.
+              manager may read. It is one somebody has to place on a team first.
             - The membership is looked up rather than read off the visits. A
               diary that is empty for the period still belongs to somebody, and
               deciding by the visits would make an assistant on holiday readable
@@ -2451,7 +2450,7 @@ class PlanningService:
 
         Notes:
             - **The intersection, not the site's roster.** An administrator gets
-              every team at the site; a manager gets the ones they run *there*.
+              every team at the site. A manager gets the ones they run *there*.
               Handing a manager the whole site would make a branch office a way
               to rebuild a colleague's week without ever naming their team.
             - A manager who runs nothing at the named site gets an empty list
@@ -2470,7 +2469,7 @@ class PlanningService:
         allowed = [team_id for team_id in at_site if team_id in readable]
         if not allowed:
             self.logger.warning(
-                "Account %s runs none of the %d team(s) at site %s; there is "
+                "Account %s runs none of the %d team(s) at site %s. There is "
                 "nothing to plan.",
                 caller.id,
                 len(at_site),
@@ -2505,7 +2504,7 @@ class PlanningService:
 
         Notes:
             - **The scoping is the statement, not a filter afterwards.** A
-              manager gets the households with work in the period; an assistant
+              manager gets the households with work in the period. An assistant
               gets their portfolio, which the customer repository already
               defines as "households I visit, union households I quoted". A list
               built wide and narrowed in Python has already read records the
@@ -2570,7 +2569,7 @@ class PlanningService:
               alone was not enough** — that was tried first and still gave
               502, 495, 502 minutes across three runs of one input.
               ``random_seed`` fixes the tie-breaking; ``num_search_workers``
-              of one stops parallel workers racing to the incumbent; and
+              of one stops parallel workers racing to the incumbent. And
               ``max_deterministic_time`` is what actually stops the search at
               the same place every time. A wall-clock budget cannot: it halts
               wherever elapsed time happens to land, so a loaded machine
@@ -2578,7 +2577,7 @@ class PlanningService:
             - The wall-clock limit is kept as a **safety net, not a budget**.
               Deterministic time is a measure of work rather than of seconds,
               so a pathological instance could grind for a very long time
-              inside its allowance; the clock bounds that. If it ever fires
+              inside its allowance. The clock bounds that. If it ever fires
               the run is no longer reproducible, and it says so at WARNING —
               a plan that silently stopped being comparable is worse than one
               that admits it.
@@ -2602,7 +2601,7 @@ class PlanningService:
         if solver.wall_time >= self.config.solver_time_limit_seconds:
             self.logger.warning(
                 "The solve hit its %.1fs wall-clock safety net rather than its "  # noqa: E501
-                "deterministic budget; this plan is not reproducible, and the "
+                "deterministic budget. This plan is not reproducible, and the "
                 "same week may plan differently next time.",
                 self.config.solver_time_limit_seconds,
             )
@@ -2610,7 +2609,7 @@ class PlanningService:
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             if status == cp_model.INFEASIBLE:
                 self.logger.error(
-                    "The solver proved no plan exists (%s); the constraints are "  # noqa: E501
+                    "The solver proved no plan exists (%s). The constraints are "  # noqa: E501
                     "contradictory rather than merely tight.",
                     status_name,
                 )
@@ -2678,14 +2677,14 @@ class PlanningService:
             home = assistant.address.to_geo_point()
             if home is None:
                 self.logger.warning(
-                    "Assistant %s (%s) has no resolved home address (%s); they "
+                    "Assistant %s (%s) has no resolved home address (%s). They "
                     "cannot be routed and will be given no work.",
                     assistant.id,
                     assistant.full_name(),
                     assistant.address.geocoding_error,
                 )
                 continue
-            speed = self.config.speed_for(assistant.can_drive())
+            speed = self.config.speed(assistant.can_drive())
             if speed <= 0:
                 self.logger.error(
                     "Refusing to build a travel table for assistant %s at %r km/h.",
@@ -2708,7 +2707,7 @@ class PlanningService:
             routable.append(assistant.id)
         if not routable:
             self.logger.error(
-                "No assistant has a resolved home address; nothing can be "
+                "No assistant has a resolved home address. Nothing can be "
                 "planned until at least one does."
             )
         else:
@@ -2764,7 +2763,7 @@ class PlanningService:
         )
         if seeded is None:
             self.logger.error(
-                "The planning settings could not be seeded; the planner has no "
+                "The planning settings could not be seeded. The planner has no "
                 "rules to work from."
             )
             raise MTPlanningSettingsUnavailable(
@@ -2864,7 +2863,7 @@ class PlanningService:
             - The solver can only report *that* something did not fit. This
               works out *why*, by testing the specific reasons in order of how
               actionable they are — a manager told "no assistant lives within
-              30 km of Mme Durand" can widen the radius or hire; a manager told
+              30 km of Mme Durand" can widen the radius or hire. A manager told
               "INFEASIBLE" can do nothing.
             - This runs **after** a failed solve, never before one. It is a
               diagnosis, not a pre-flight gate: the tests here are necessary
@@ -2960,10 +2959,10 @@ class PlanningService:
         Notes:
             - **One run per team**, because a run rewrites one team's week. A
               deleted household may hold work with two teams and a cancelled
-              visit with exactly one; the caller resolves which, and this
+              visit with exactly one. The caller resolves which, and this
               queues a run for each.
             - **Recorded before queued.** A caller handed a 202 must get back
-              identifiers that are already real; a run published first and
+              identifiers that are already real. A run published first and
               stored second could be picked up by a worker before the row it
               names exists.
             - A broker that will not take a message is an ``ERROR`` and not a
@@ -3042,7 +3041,7 @@ class PlanningService:
 
         Notes:
             - **A route guard cannot do this.** It proves the caller is a
-              manager; it cannot stop manager A naming manager B's team, and a
+              manager. It cannot stop manager A naming manager B's team, and a
               run against that team would rewrite a colleague's week.
             - **Three scopes, narrowest first: a team, a site, the company.** A
               team is what a manager owns and a site is the level above it, so
@@ -3089,7 +3088,7 @@ class PlanningService:
         identifiers = await self._team_ids(caller.company_id)
         if not identifiers:
             self.logger.warning(
-                "Company %s has no team; there is nothing to plan.",
+                "Company %s has no team. There is nothing to plan.",
                 caller.company_id,
             )
         else:
@@ -3257,7 +3256,7 @@ class PlanningService:
         """
         return await self._get_run(run_id)
 
-    async def run_for(self, run_id: str, caller: User) -> PlanningRun:
+    async def run(self, run_id: str, caller: User) -> PlanningRun:
         """Return a run, if it belongs to a team the caller may read.
 
         Args:
@@ -3322,7 +3321,7 @@ class PlanningService:
             size=size,
         )
 
-    async def planning_for(
+    async def planning(
         self, hca_id: str, caller: User, period_start: date, period_end: date
     ) -> HcaPlanning:
         """Return one assistant's diary, if the caller may see it.
@@ -3341,11 +3340,11 @@ class PlanningService:
 
         Notes:
             - **This is the row-level check.** A route guard proves only that
-              the caller is *an* assistant; it cannot stop assistant A passing
+              the caller is *an* assistant. It cannot stop assistant A passing
               assistant B's identifier, nor manager A passing an assistant of
               manager B's team.
             - Two checks, not one, because they answer different questions. An
-              assistant may read **their own** diary; a manager may read
+              assistant may read **their own** diary. A manager may read
               **their teams'**. An administrator passes both, and is the only
               caller who reads any diary in the company.
         """
@@ -3417,7 +3416,7 @@ class PlanningService:
                 caller.hca_id,
             )
             return [
-                await self.planning_for(caller.hca_id, caller, period_start, period_end)  # noqa: E501
+                await self.planning(caller.hca_id, caller, period_start, period_end)  # noqa: E501
             ]
         hca_ids = await self.interventions.list_hca_ids_for_period(
             period_start, period_end, await self.teams.readable_team_ids(caller)
@@ -3431,7 +3430,7 @@ class PlanningService:
         plannings: List[HcaPlanning] = []
         for hca_id in hca_ids:
             plannings.append(
-                await self.planning_for(hca_id, caller, period_start, period_end)  # noqa: E501
+                await self.planning(hca_id, caller, period_start, period_end)  # noqa: E501
             )
         return plannings
 
@@ -3542,7 +3541,7 @@ class PlanningService:
               eight hundred round trips, on the screen an assistant now lands on
               every morning.
             - The batched read is contractually the same as the per-household
-              one; the repository documents that and a test asserts it. Without
+              one. The repository documents that and a test asserts it. Without
               that equivalence the batching would quietly break the agreement
               with the portal, which is the one property this feature exists to
               have.
@@ -3624,12 +3623,12 @@ class PlanningService:
               again here means the rule holds however this is called.
             - **A customer who may not be scheduled contributes nothing either,
               however good their quote is.** A prospect may hold accepted,
-              priced, in-period, perfectly routable work; the agency has not
+              priced, in-period, perfectly routable work. The agency has not
               agreed to deliver it, and sending somebody to a door nobody has
               agreed to knock on is the error. See
               :meth:`~models.enums.RegistrationStatus.can_be_scheduled`.
             - This is **not** the "partial plan" the run refuses elsewhere. That
-              rule is about placeable work being quietly dropped; this work was
+              rule is about placeable work being quietly dropped. This work was
               never in scope, so excluding it is the correct plan rather than an
               incomplete one. What keeps it from being silent is the counter and
               the ``WARNING`` naming the quote — a manager reading the log finds
@@ -3716,7 +3715,7 @@ class PlanningService:
                 if entry is None:
                     self.logger.warning(
                         "Quote %s line %r names catalog entry %s, which is not "
-                        "loaded; it is planned as requiring no qualification.",
+                        "loaded. It is planned as requiring no qualification.",
                         quote.reference,
                         line.name,
                         line.intervention_type_id,
@@ -3778,7 +3777,7 @@ class PlanningService:
             )
         return requirements
 
-    def travel_index_for(self, hca_id: str, point: GeoPoint) -> int:
+    def travel_index(self, hca_id: str, point: GeoPoint) -> int:
         """Return the index a place has in one assistant's travel table.
 
         Args:
@@ -3832,8 +3831,8 @@ class PlanningService:
         """
         return self.travel_between(
             hca_id,
-            self.travel_index_for(hca_id, origin),
-            self.travel_index_for(hca_id, destination),
+            self.travel_index(hca_id, origin),
+            self.travel_index(hca_id, destination),
         )
 
     def solve(

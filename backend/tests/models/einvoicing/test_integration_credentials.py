@@ -217,7 +217,7 @@ class TestKeepingTheSecretOutOfTheLogs:
         """It is persisted in a field that refuses anything key-sized.
 
         Notes:
-            The two bounds are in different classes and must agree; this is
+            The two bounds are in different classes and must agree. This is
             where they are checked against each other.
         """
         credentials = IntegrationCredentials(api_key="k" * 512)

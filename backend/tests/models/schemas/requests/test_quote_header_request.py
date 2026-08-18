@@ -63,7 +63,7 @@ class TestAcceptingAHeaderEdit:
         assert payload.customer_id == "c-1"
 
     def test_auto_renew_defaults_to_off(self) -> None:
-        """Renewing by itself is opt-in; an omitted flag must not commit."""
+        """Renewing by itself is opt-in. An omitted flag must not commit."""
         payload = QuoteHeaderRequest(reference="D-1", customer_id="c-1")
 
         assert payload.auto_renew is False

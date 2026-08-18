@@ -23,7 +23,7 @@ much is enough on a first pass.
 | 12 | [Conventions](12-conventions.md) | The house style, and the rules a change is reviewed against |
 | 13 | [Kubernetes](13-kubernetes.md) | How it scales, which autoscaler watches what, and the ceilings that were measured |
 | 14 | [Observability](14-observability.md) | What it reports about itself, what is alerted on, and where LangChain will fit |
-| 15 | [Electronic invoicing](15-electronic-invoicing.md) | What the French e-invoicing reform asks of this agency, why most of its revenue falls under e-reporting instead, and what has to change first, with the developer documentation of every approved platform worth calling — **design; the document builders are under way** |
+| 15 | [Electronic invoicing](15-electronic-invoicing.md) | What the French e-invoicing reform asks of this agency, why most of its revenue falls under e-reporting instead, and what has to change first, with the developer documentation of every approved platform worth calling — **design. The document builders are under way** |
 
 ---
 
@@ -72,7 +72,7 @@ These come up repeatedly, and each is explained where it belongs.
   [05](05-events-and-notifications.md)
 
 - **The broker being down never fails a request.** A quote is submitted whether
-  or not the event could be published; the manager's queue is a database query,
+  or not the event could be published. The manager's queue is a database query,
   not a message. → [05](05-events-and-notifications.md)
 
 - **Row-level checks live in the service, not the route.** A guard proves the

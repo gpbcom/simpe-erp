@@ -30,7 +30,7 @@ class InterventionService:
 
     Notes:
         - **Every edit here is really an edit to a quote line.** A visit is not
-          a record anybody authored; it is what the solver made of a line
+          a record anybody authored. It is what the solver made of a line
           somebody sold. Deleting the visit alone would last until the next
           planning run rebuilt the period from the lines and put it straight
           back, and changing its service alone would bill the customer for work
@@ -112,7 +112,7 @@ class InterventionService:
             )
             raise MTInterventionNotQuoted(
                 f"The line intervention {intervention.id!r} was scheduled from "
-                f"no longer exists; it cannot be edited from the calendar."
+                f"no longer exists. It cannot be edited from the calendar."
             ) from None
 
     def _line_of(self, quote: Quote, line_id: str) -> QuoteLine:
@@ -167,7 +167,7 @@ class InterventionService:
               two.
             - A quote whose last line is removed is **deleted** rather than
               left standing empty. An empty quote cannot be priced, cannot be
-              validated and cannot be printed; keeping the header would leave a
+              validated and cannot be printed. Keeping the header would leave a
               record whose only future is an error message.
             - **The team comes back with the quote**, and it is read from the
               visit before anything is removed. A cancellation ends in a replan
@@ -225,7 +225,7 @@ class InterventionService:
               is where somebody who knows whether *this customer's* hours fall
               under a care plan does that work.
             - The visit's label follows the type only when nobody had written
-              their own. A manager who typed "Toilette — étage" keeps it; a
+              their own. A manager who typed "Toilette — étage" keeps it. A
               line still carrying the catalog wording gets the new wording,
               rather than a calendar block that names the service it used to
               be.

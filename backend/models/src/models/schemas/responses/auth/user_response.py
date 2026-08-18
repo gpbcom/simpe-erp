@@ -48,7 +48,7 @@ class UserResponse(BaseModel):
 
     Notes:
         - There is no ``hashed_password`` field, and that is the point. The
-          credential used to be dropped by a dump that excluded it by name; a
+          credential used to be dropped by a dump that excluded it by name. A
           field that does not exist cannot be leaked by an endpoint that forgets
           to exclude it, or re-added by a dump that stops excluding it.
         - Built through :meth:`from_user` rather than by spreading the domain

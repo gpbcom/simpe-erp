@@ -35,9 +35,9 @@ from models.schemas.responses.auth.temporary_credentials_response import (
 from service.auth.auth import AuthService
 from service.auth.exceptions import MTAuthCustomerAlreadyHasAccount
 from service.customers.customers import CustomerService
-from service.organisation.teams import TeamService
 from service.customers.exceptions import MTCustomerNotPromotable
 from service.messaging.publisher import EventPublisher
+from service.organisation.teams import TeamService
 from service.planning.plannings import PlanningService
 
 logger: Logger = getLogger(__name__)
@@ -64,7 +64,7 @@ async def create_customer(
     Notes:
         The address resolves its own coordinate while the payload is validated,
         so this call may wait on the geocoding service. A street the map does
-        not know is still accepted; the failure is recorded on the address.
+        not know is still accepted. The failure is recorded on the address.
     """
     logger.info("Creating a customer.")
     return await service.create(customer)
@@ -94,7 +94,7 @@ async def list_customers(
         List[Customer]: The matching households of the caller's teams.
 
     Raises:
-        MTInvalidCustomerFilterException: If a filter is malformed; answered as
+        MTInvalidCustomerFilterException: If a filter is malformed. Answered as
             a 422.
 
     Notes:
@@ -113,7 +113,7 @@ async def list_customers(
         - ``?search=`` and ``?status=`` keep the names and meanings they had, so
           nothing that called this before has to change.
         - Filtering happens **here**, not in the browser. The grid asks for one
-          page; a client-side filter would search only the rows it happens to
+          page. A client-side filter would search only the rows it happens to
           hold and silently miss the rest of the book.
         - **A manager sees the households their teams hold quotes for**, and an
           administrator sees the whole book. The scope comes from the *quotes*
@@ -127,7 +127,7 @@ async def list_customers(
         customer_filter.model_dump(exclude_none=True),
     )
     if customer_filter.is_empty():
-        logger.debug("No filter was sent; listing the whole book.")
+        logger.debug("No filter was sent. Listing the whole book.")
     if size >= 200:
         # The screen asks for 200. Anything at or above that is a page nobody
         # reads to the end of, and it scans the whole table to build.
@@ -166,7 +166,7 @@ async def get_customer(
         Customer: The customer.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
     """
     logger.debug("Reading customer %s.", customer_id)
     return await service.get(customer_id)
@@ -191,7 +191,7 @@ async def update_customer(
         Customer: The updated customer.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
 
     Notes:
         The path identifier wins over anything in the body — a payload naming a
@@ -221,7 +221,7 @@ async def set_customer_status(
         Customer: The updated customer.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
 
     Notes:
         A single-field payload rather than a full customer: this is the one
@@ -254,9 +254,9 @@ async def set_customer_billing_periodicity(
         Customer: The updated customer.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
         MTInvalidBillingPeriodicityRequestException: If the periodicity is not
-            a known one; answered as a 422.
+            a known one. Answered as a 422.
 
     Notes:
         - **Manager access, which is manager and administrator**, because the
@@ -272,7 +272,7 @@ async def set_customer_billing_periodicity(
           is a PATCH with an optional field rather than a DELETE of an override
           nobody would think to look for.
         - It re-issues nothing. The change decides what the *next* run bills
-          them over; an invoice already written keeps its period.
+          them over. An invoice already written keeps its period.
     """
     logger.info(
         "%s is setting the billing periodicity of customer %s to %s.",
@@ -321,9 +321,9 @@ async def create_customer_account(
         TemporaryCredentialsResponse: The account, and the one-time password.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
-        MTAuthCustomerAlreadyHasAccount: If they already have one; a 409.
-        MTAuthEmailAlreadyRegistered: If the address is in use; a 409.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
+        MTAuthCustomerAlreadyHasAccount: If they already have one. A 409.
+        MTAuthEmailAlreadyRegistered: If the address is in use. A 409.
 
     Notes:
         - **The household comes from the path and is resolved before anything
@@ -384,13 +384,13 @@ async def promote_customer(
         Customer: The promoted customer.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
-        MTCustomerNotPromotable: If they are not a prospect; answered as a 409.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
+        MTCustomerNotPromotable: If they are not a prospect. Answered as a 409.
 
     Notes:
         - **The act that puts a customer into the planning.** A prospect may
           already hold accepted, priced work that every run has deliberately
-          left out; this is what enters it into the next one. A named route
+          left out. This is what enters it into the next one. A named route
           rather than one value among three on ``PATCH /{id}/status``, so the
           rule that only a prospect may be promoted lives in one place and the
           log line says *promoted* rather than *status changed*.
@@ -409,7 +409,7 @@ async def promote_customer(
         # A 409, and worth a line of its own: it is what two managers pressing
         # the button at once looks like, and it is the only failure here that
         # is nobody's mistake.
-        logger.warning("Customer %s was not a prospect; nothing changed.", customer_id)
+        logger.warning("Customer %s was not a prospect. Nothing changed.", customer_id)
         raise
     except SQLAlchemyError:
         logger.error("Writing the promotion of customer %s failed.", customer_id)
@@ -434,10 +434,10 @@ async def list_customer_quotes(
         List[Quote]: Their quotes.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
     """
     logger.debug("Listing the quotes of customer %s.", customer_id)
-    return await service.quotes_for(customer_id)
+    return await service.quotes(customer_id)
 
 
 @router.delete(
@@ -471,14 +471,14 @@ async def delete_customer(
         customer had no future visits at all.
 
     Raises:
-        MTCustomerNotFound: If no such customer exists; answered as a 404.
+        MTCustomerNotFound: If no such customer exists. Answered as a 404.
         MTCustomerHasQuotes: If a quote of theirs cannot be identified and so
-            cannot be removed with them; answered as a 409.
+            cannot be removed with them. Answered as a 409.
 
     Notes:
         - **This destroys billing history**, and the screen offering it says
           how much before asking. Stopping a customer remains the right answer
-          for one who was really served and has really left; this is for a
+          for one who was really served and has really left. This is for a
           household entered by mistake, and for the fixtures a test campaign
           removes after itself.
         - **The period is measured before the delete.** Their visits go with
@@ -492,7 +492,7 @@ async def delete_customer(
     logger.info("%s deleted customer %s.", caller.email, customer_id)
     if period is None:
         logger.info(
-            "Customer %s had no future visit; no replan is queued.", customer_id
+            "Customer %s had no future visit. No replan is queued.", customer_id
         )
         response.status_code = status.HTTP_204_NO_CONTENT
         return None

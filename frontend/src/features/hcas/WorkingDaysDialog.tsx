@@ -39,7 +39,7 @@ interface WorkingDaysDialogProps {
  *
  * The rules are the assistant's own screen's, deliberately: the whole week is
  * submitted rather than the day that was clicked, so two tabs cannot race into
- * a week nobody chose; and a week with no day is refused here rather than sent
+ * a week nobody chose. And a week with no day is refused here rather than sent
  * and rejected, because clearing every chip is a statement whose two readings
  * are opposites.
  */

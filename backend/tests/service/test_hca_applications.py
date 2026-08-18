@@ -354,7 +354,7 @@ class TestApproval:
     async def test_the_chosen_password_carries_onto_the_account(
         self, service: HcaService, users: AsyncMock
     ) -> None:
-        """The hash moves across; nothing is re-hashed or regenerated."""
+        """The hash moves across. Nothing is re-hashed or regenerated."""
         await service.approve("application-1", _user(), ContractType.CDI)
 
         assert users.create.await_args.args[0].hashed_password == HASH
@@ -362,7 +362,7 @@ class TestApproval:
     async def test_the_contract_comes_from_the_approver(
         self, service: HcaService, hcas: AsyncMock
     ) -> None:
-        """An applicant states a hope; the agency states the terms.
+        """An applicant states a hope. The agency states the terms.
 
         Notes:
             Reading it off the application would let an unauthenticated payload
@@ -428,7 +428,7 @@ class TestDecisionAuthority:
 
         Notes:
             **Row-level, like every rule of this shape here.** A route guard
-            proves the caller is a manager; it cannot tell whose queue the
+            proves the caller is a manager. It cannot tell whose queue the
             identifier in the path belongs to.
         """
         with pytest.raises(MTApplicationForbidden):

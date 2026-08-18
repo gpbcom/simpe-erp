@@ -97,7 +97,7 @@ class TestReadingAnAgencyAsAManager:
     """Tests for what a manager is allowed to see of an agency."""
 
     def test_the_account_is_masked(self, service: MagicMock) -> None:
-        """**A manager runs the week; they do not need the bank account.**
+        """**A manager runs the week. They do not need the bank account.**
 
         Args:
             service (MagicMock): The company service double.

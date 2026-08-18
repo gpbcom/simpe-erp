@@ -138,7 +138,7 @@ class EventConsumer:
             handler = self.handlers.get(envelope.routing_key)
             if handler is None:
                 self.logger.warning(
-                    "No handler for %s; the message is discarded.",
+                    "No handler for %s. The message is discarded.",
                     envelope.routing_key,
                 )
                 self._record(envelope.routing_key, "unhandled", monotonic() - started)
@@ -177,7 +177,7 @@ class EventConsumer:
         Notes:
             Separated from binding a queue because an agency can be founded
             while this process is running. The connection, the channel and the
-            exchanges are per-process; the queues are per-agency and arrive one
+            exchanges are per-process. The queues are per-agency and arrive one
             at a time.
         """
         self.connection = await aio_pika.connect_robust(self.config.build_url())  # noqa: E501
@@ -217,7 +217,7 @@ class EventConsumer:
               worker had given up on what. The agency is still the last field of
               every key, so one agency's failures remain one selector away.
             - Classic and durable rather than quorum. It holds a handful of
-              messages that are read by a person, so replication buys little; and
+              messages that are read by a person, so replication buys little. And
               the whole point of consolidating it was to stop paying for a Raft
               cluster per agency.
         """

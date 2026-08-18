@@ -32,7 +32,7 @@ class CredentialCipher:
     Notes:
         - **Reversible on purpose, which is the whole reason this class exists
           rather than reusing what hashes passwords.** ``bcrypt`` is correct for
-          a password because nothing ever needs it back; a connector must
+          a password because nothing ever needs it back. A connector must
           present the platform's API key on every call, so the stored form has
           to open. That makes the key material, not the algorithm, the thing
           protecting these rows.
@@ -51,7 +51,7 @@ class CredentialCipher:
           oversight.** A per-deployment salt is itself a secret to store,
           restore and lose, and the threat this design actually guards against
           is an attacker holding a database dump *without* the environment. The
-          derivation is defence in depth; the environment is the control.
+          derivation is defence in depth. The environment is the control.
         - **Derived once.** The class is built behind an ``lru_cache``-d
           factory, so the iteration count is paid at start-up rather than per
           request. Constructing one of these per call would put a third of a
@@ -84,7 +84,7 @@ class CredentialCipher:
         secret = config.get_credential_key()
         if len(secret) < self.MIN_SECRET_LENGTH:
             self.logger.error(
-                "The credential encryption secret in %r is %d characters; at "
+                "The credential encryption secret in %r is %d characters. At "
                 "least %d are required.",
                 config.credential_key_env,
                 len(secret),

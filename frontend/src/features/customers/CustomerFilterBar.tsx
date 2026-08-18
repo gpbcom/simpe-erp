@@ -22,7 +22,7 @@ const TABS: { key: string; status?: RegistrationStatus }[] = [
   { key: 'stopped', status: 'stopped' },
 ];
 
-const DETAILS: { field: CustomerTextField; label: string }[] = [
+const DETAILS: { field: CustomerTextField. Label: string }[] = [
   { field: 'city', label: 'customer.city' },
   { field: 'postal_code', label: 'customer.postalCode' },
   { field: 'email', label: 'customer.email' },
@@ -46,7 +46,7 @@ interface CustomerFilterBarProps {
  * the only thing that changes it is a manager finding them.
  *
  * The four detail filters are folded away. Six boxes open at once say the
- * screen is complicated; the two that get used every day — the search and the
+ * screen is complicated. The two that get used every day — the search and the
  * status — stay in the open, and the button says how many of the others are on
  * so a folded filter can never narrow the book invisibly.
  *

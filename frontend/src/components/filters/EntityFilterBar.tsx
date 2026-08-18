@@ -32,7 +32,7 @@ export interface FilterDetail {
    * differently per field: *located* and *not located* says more than *true*
    * and *false* on an address that failed to geocode.
    */
-  options?: { value: string; label: string }[];
+  options?: { value: string. Label: string }[];
 }
 
 interface EntityFilterBarProps {
@@ -53,11 +53,11 @@ interface EntityFilterBarProps {
  * @remarks
  * **One bar for seven screens, because the gesture is the same everywhere.** A
  * manager narrowing a list of assistants is doing what they do to the customer
- * book; two screens that answer the same question with differently-shaped
+ * book. Two screens that answer the same question with differently-shaped
  * controls are two screens somebody has to learn.
  *
  * The detail filters are folded away. Six boxes open at once say the screen is
- * complicated; the one or two used every day stay in the open, and the button
+ * complicated. The one or two used every day stay in the open, and the button
  * says how many of the others are on — so a folded filter can never narrow a
  * list invisibly.
  *

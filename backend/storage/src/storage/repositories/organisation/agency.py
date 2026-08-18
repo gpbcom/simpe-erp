@@ -151,7 +151,7 @@ class AgencyRepository(BaseRepository[AgencyRow]):
         self.logger.debug("Company %s has %d agency(ies).", company_id, total)
         return total
 
-    async def headquarters_for(self, company_id: str) -> Optional[Agency]:
+    async def headquarters(self, company_id: str) -> Optional[Agency]:
         """Return a company's head office, if it has one.
 
         Args:
@@ -229,7 +229,7 @@ class AgencyRepository(BaseRepository[AgencyRow]):
         Notes:
             A unique index refuses somebody who already belongs to a site, so
             moving a person is a remove and an add rather than an insert that
-            quietly wins. The service does the removal deliberately; letting an
+            quietly wins. The service does the removal deliberately. Letting an
             insert overwrite would make "which site is this person at?" depend
             on which form was saved last.
         """

@@ -8,16 +8,17 @@ from typing import List, Optional, Tuple
 # Third-party imports
 from sqlalchemy.exc import SQLAlchemyError
 
+from models.billing.bill import Bill
+
 # First-party imports
 from models.enums import Language, QuoteStatus
 from models.people.customer import Customer
 from models.planning.intervention.intervention import Intervention
 from models.quoting.quote import Quote
+from models.schemas.requests.billing.bill_filter import BillFilter
 from models.schemas.requests.customers.customer_profile_update_request import (
     CustomerProfileUpdateRequest,
 )
-from models.billing.bill import Bill
-from models.schemas.requests.billing.bill_filter import BillFilter
 from service.billing.billings import BillingService
 from service.customers.customers import CustomerService
 from service.customers.exceptions import MTCustomerNotFound
@@ -176,13 +177,13 @@ class CustomerPortalService:
         if existing is None:
             self.logger.error(
                 "Quote %s vanished while it was being sent back for "
-                "validation; the visit changed but the offer did not.",
+                "validation. The visit changed but the offer did not.",
                 quote_id,
             )
             return
         if existing.status is QuoteStatus.PENDING_VALIDATION:
             self.logger.debug(
-                "Quote %s already awaits validation; nothing to move.",
+                "Quote %s already awaits validation. Nothing to move.",
                 existing.reference,
             )
             return
@@ -219,7 +220,7 @@ class CustomerPortalService:
             raise
         if not customer.address.is_geocoded():
             self.logger.warning(
-                "Household %s has no coordinate; nothing can be planned for "
+                "Household %s has no coordinate. Nothing can be planned for "
                 "them until the address resolves.",
                 customer_id,
             )
@@ -308,7 +309,7 @@ class CustomerPortalService:
         )
         if period_end < period_start:
             self.logger.error(
-                "Household %s asked for %s to %s, which is backwards; no visit "
+                "Household %s asked for %s to %s, which is backwards. No visit "
                 "can fall inside it.",
                 customer_id,
                 period_start,
@@ -329,7 +330,7 @@ class CustomerPortalService:
         )
         return visits
 
-    async def quotes_for(self, customer_id: str) -> List[Quote]:
+    async def quotes(self, customer_id: str) -> List[Quote]:
         """Return every quote written for the household.
 
         Args:
@@ -343,7 +344,7 @@ class CustomerPortalService:
         """
         self.logger.debug("Reading the quotes of household %s.", customer_id)
         try:
-            quotes = await self.customers.quotes_for(customer_id)
+            quotes = await self.customers.quotes(customer_id)
         except SQLAlchemyError:
             self.logger.error("Reading quotes of household %s failed.", customer_id)
             raise
@@ -393,7 +394,7 @@ class CustomerPortalService:
             raise
         if quote is None or quote.id is None:
             self.logger.info(
-                "The cancelled visit was the last on its quote; the quote went "
+                "The cancelled visit was the last on its quote. The quote went "
                 "with it and there is nothing to re-validate."
             )
             return quote
@@ -427,7 +428,7 @@ class CustomerPortalService:
 
         Notes:
             - **It reprices.** A visit moved onto a Sunday or a public holiday
-              costs more; the surcharge is a property of the day. The household
+              costs more. The surcharge is a property of the day. The household
               therefore cannot move work without the agency seeing the new
               price, which is a second reason the quote returns to validation.
             - The move itself is
@@ -463,13 +464,13 @@ class CustomerPortalService:
             if refreshed is not None:
                 return refreshed
         self.logger.error(
-            "Quote %s carries no identifier after the move; its status could "
+            "Quote %s carries no identifier after the move. Its status could "
             "not be sent back for validation.",
             quote.reference,
         )
         return quote
 
-    async def bills_for(self, customer_id: str, company_id: str) -> List[Bill]:
+    async def bills(self, customer_id: str, company_id: str) -> List[Bill]:
         """Return every invoice issued to the household.
 
         Args:
@@ -527,7 +528,7 @@ class CustomerPortalService:
         """
         self.logger.debug("Household %s asked for invoice %s.", customer_id, bill_id)
         if self.bills is None:
-            self.logger.error("No billing service is wired in; invoice refused.")
+            self.logger.error("No billing service is wired in. Invoice refused.")
             raise MTCustomerNotFound(f"No invoice {bill_id!r} exists.")
         invoice = await self.bills.get(bill_id)
         if invoice.customer_id != customer_id:

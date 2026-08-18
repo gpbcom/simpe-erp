@@ -376,7 +376,7 @@ class TestInterventionRepository:
 
         Notes:
             **The agency test one level down, and now the likelier of the two.**
-            Two agencies replanning the same days is a coincidence; two teams of
+            Two agencies replanning the same days is a coincidence. Two teams of
             the same agency doing it is an ordinary Monday, because each team's
             manager re-plans their own week. Without the team in the delete, the
             second manager to press the button would blank the first one's
@@ -660,7 +660,7 @@ class TestInterventionRepository:
 
         Notes:
             This is the storage half of the confidentiality rule. The service
-            decides *whether* a caller may read a diary; the repository decides
+            decides *whether* a caller may read a diary. The repository decides
             *what is in it*, and a missing filter here would leak regardless of
             how well the service guards the route.
         """
@@ -959,7 +959,7 @@ class TestReadingSeveralHouseholdsAtOnce:
 
         Notes:
             The staff screen reads every household in one statement rather than
-            one at a time; the household's own portal reads its calendar through
+            one at a time. The household's own portal reads its calendar through
             the single-household method. That optimisation is only safe while
             the two return the same visits in the same order — otherwise the
             agency and the family are looking at different weeks, which is the

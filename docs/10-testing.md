@@ -56,7 +56,7 @@ precisely because the credentials have already been accepted — it discloses
 nothing an attacker could not learn by signing in.
 
 **Why two customers and not forty.** One is `active` with accepted work, so the
-portal opens on a calendar with visits on it and quotes to download; the other
+portal opens on a calendar with visits on it and quotes to download. The other
 is a `prospect`, so every empty state is reachable without editing seeded data —
 a household who has been quoted but whose work no planning run will touch until
 a manager promotes them. A stack where every household could sign in would say
@@ -198,7 +198,7 @@ robot --outputdir qa/results qa/robot/suites
 | 13 portfolio | Cards, search, scoping asserted as a number |
 | 14 account form | Every field, save, re-geocoding, locked fields preserved |
 | 15 company registration | Signing an agency up from the public form |
-| 16 quote creation | Writing a quote; the server prices what the screen sent |
+| 16 quote creation | Writing a quote. The server prices what the screen sent |
 | 17 team planning | The manager's who-and-when view: everybody, then one assistant, and that the narrowing really hides the others |
 | 18 promotion | Granting an assistant an account, and taking it back |
 | 19 planning computation | The solver run, end to end |
@@ -282,7 +282,7 @@ Ten jobs in `.github/workflows/ci.yml`, all parallel except the two needing
 built artefacts. Beyond the obvious, two are worth knowing:
 
 - **`openapi-drift`** regenerates the schema and fails if it differs from the
-  committed copy. The front-end's types are hand-written; this is the other half
+  committed copy. The front-end's types are hand-written. This is the other half
   of that trade.
 - **`e2e-robot`** brings up the real stack, seeds it, runs the campaign, then
   **runs it again without resetting** — the only honest proof of idempotency —

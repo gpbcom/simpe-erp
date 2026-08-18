@@ -32,7 +32,7 @@ class MTCompanyInvalidLegalForm(MTInvalidCompanyException):
     Notes:
         Free text rather than an enumeration, and refused only for being
         unusable. French home care is delivered by SARLs, SAS, associations,
-        CCAS, mutuelles and sole traders alike; a closed list would lock out a
+        CCAS, mutuelles and sole traders alike. A closed list would lock out a
         provider whose form nobody thought of, on a field that only ever gets
         printed.
     """

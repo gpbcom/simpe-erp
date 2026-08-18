@@ -42,7 +42,7 @@ class CompanyRegistrationRequest(BaseModel):
           decided by the route, not by the caller.
         - The password rules match :class:`RegisterRequest` exactly. bcrypt
           silently ignores anything past 72 bytes, so a longer password would
-          appear accepted while only its first 72 bytes ever mattered; the
+          appear accepted while only its first 72 bytes ever mattered. The
           limit is measured in **bytes** because an accented or emoji-bearing
           password reaches it sooner than its length suggests.
         - No address is taken. Founding an agency should cost one screen, and
@@ -184,6 +184,6 @@ class CompanyRegistrationRequest(BaseModel):
         if len(value.encode("utf-8")) > cls.MAX_PASSWORD_BYTES:
             raise MTCompanyRegistrationRequestInvalidPassword(
                 f"Invalid password. Must be at most {cls.MAX_PASSWORD_BYTES} "
-                f"bytes once encoded; anything beyond that is silently ignored."
+                f"bytes once encoded. Anything beyond that is silently ignored."
             )
         return value

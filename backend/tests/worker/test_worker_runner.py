@@ -252,7 +252,7 @@ class TestStartup:
 
         Notes:
             Overlapping the two is safe because :meth:`WorkerRunner.serve` is
-            idempotent; leaving a gap is not.
+            idempotent. Leaving a gap is not.
         """
         await runner.start()
 

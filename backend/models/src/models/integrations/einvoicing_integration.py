@@ -164,7 +164,7 @@ class EInvoicingIntegration(BaseModel):
 
         Notes:
             There is no default. Every other field here describes *how* an
-            integration is configured; this one says which platform the
+            integration is configured. This one says which platform the
             credentials belong to, and guessing it would send an agency's
             invoices to a company it has no contract with.
         """

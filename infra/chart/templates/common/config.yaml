@@ -73,7 +73,7 @@ data:
       # logged that the plan was not reproducible. Sized in values.yaml.
       solver_deterministic_budget: {{ .Values.workerPlanning.solverDeterministicBudget }}
       solver_optimisation_budget: {{ .Values.workerPlanning.solverOptimisationBudget }}
-      # A safety net, not a budget. It bounds a pathological instance; a solve
+      # A safety net, not a budget. It bounds a pathological instance. A solve
       # that reaches it has stopped being reproducible and says so at WARNING.
       solver_time_limit_seconds: {{ .Values.workerPlanning.solverTimeLimitSeconds }}
       solver_seed: {{ .Values.workerPlanning.solverSeed }}
@@ -114,7 +114,7 @@ data:
       exchange: simple-erp
       publish_timeout_seconds: 5.0
       # One at a time. The heaviest consumer pins its cores for a thirty-second
-      # budget; taking a second message would not make the first finish sooner.
+      # budget. Taking a second message would not make the first finish sooner.
       prefetch: 1
 
     email:
@@ -138,7 +138,7 @@ data:
       # pod, and the two things that depend on them silently did not happen: an
       # approved invoice was never emailed to its customer, and a collected one
       # was never transmitted to the certified platform. The compose stack has
-      # carried the block since the webhook was written; the chart did not.
+      # carried the block since the webhook was written. The chart did not.
       enabled: {{ .Values.billingWebhook.enabled }}
       # The in-cluster Service, not the ingress. This is the application calling
       # itself, and routing it out through the ingress and back would put a

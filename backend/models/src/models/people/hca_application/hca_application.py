@@ -41,7 +41,7 @@ class HcaApplication(Person):
         last_name (str): Family name.
         phone_number (PhoneNumber): Contact telephone number.
         email (EmailStr): The address that will become their sign-in.
-        address (PostalAddress): Where they live; the start of every round.
+        address (PostalAddress): Where they live. The start of every round.
         contract_type (Optional[ContractType]): The contract they are applying
             for, if the company asked.
         hashed_password (str): The credential they chose, already hashed.
@@ -71,7 +71,7 @@ class HcaApplication(Person):
     # Which exception each rule inherited from ``Person`` raises.
     INVALID_ID: ClassVar[Type[MTInvalidPersonException]] = MTHcaApplicationInvalidId
     # Both names share one exception here, unlike the other people models. An
-    # applicant fills a single form and a manager reads a single refusal; the
+    # applicant fills a single form and a manager reads a single refusal. The
     # per-field split those two keep buys nothing on a screen nobody staffs.
     INVALID_FIRST_NAME: ClassVar[Type[MTInvalidPersonException]] = (
         MTHcaApplicationInvalidName
@@ -225,7 +225,7 @@ class HcaApplication(Person):
             The value is never logged, echoed or compared here — only its
             presence is checked. What this field must never hold is a plain
             password, and the caller hashing before construction is what
-            guarantees that; a validator cannot tell the two apart.
+            guarantees that. A validator cannot tell the two apart.
         """
         if not isinstance(value, str) or not value.strip():
             raise MTHcaApplicationInvalidPasswordHash(

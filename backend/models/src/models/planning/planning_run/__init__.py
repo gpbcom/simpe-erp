@@ -1,7 +1,7 @@
 """One computation of the planning, and what it produced.
 
-The run is the record an administrator polls; the solution is what the
-solver returned; an unplaced requirement is the explanation attached to
+The run is the record an administrator polls. The solution is what the
+solver returned. An unplaced requirement is the explanation attached to
 work that could not be fitted in, grouped by the quote it was sold on.
 """
 

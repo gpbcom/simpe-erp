@@ -56,7 +56,7 @@ class BillRecipient(BaseModel):
           ship-to party, while this is the party it is *billed* to.
         - **Denormalised onto the invoice, like the customer's own name.** An
           invoice is a legal document that must reprint identically for ten
-          years; a payer who is renamed or moves must not retroactively change
+          years. A payer who is renamed or moves must not retroactively change
           who last quarter's invoice was addressed to. That is the same trade
           :class:`~models.planning.intervention.Intervention` makes with the
           assistant's name.
@@ -211,7 +211,7 @@ class BillRecipient(BaseModel):
         Notes:
             - Separators are stripped before checking, because these get typed
               by hand off a letterhead and the spacing varies by who is reading.
-            - **The Luhn check is the point.** Nine digits is a shape; the
+            - **The Luhn check is the point.** Nine digits is a shape. The
               checksum is what catches the transposed pair, and catching it here
               means the failure is a 422 naming the field rather than a platform
               rejecting the invoice after a number has been drawn from a series

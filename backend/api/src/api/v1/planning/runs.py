@@ -59,12 +59,12 @@ async def start_planning_run(
         poll. Empty when the scope holds no team.
 
     Raises:
-        MTPlanningPeriodTooLong: When the period runs backwards; answered as a
+        MTPlanningPeriodTooLong: When the period runs backwards. Answered as a
             422 by the central handler.
         MTPlanningTeamForbidden: When the named team is not one the caller
-            runs; answered as a 403.
+            runs. Answered as a 403.
         MTPlanningScopeForbidden: When a manager names no scope at all, which
-            is a request to rebuild the whole company; answered as a 403.
+            is a request to rebuild the whole company. Answered as a 403.
 
     Notes:
         - **Manager, not administrator, and that is the point of the change.** A
@@ -74,7 +74,7 @@ async def start_planning_run(
           *row-level* check — that this particular team is theirs — is in the
           service, because a route guard can only prove a rank.
         - **Three scopes, narrowest first: a team, a site, the company.** A team
-          is named by ``team_id`` and a site by ``agency_id``; naming neither is
+          is named by ``team_id`` and a site by ``agency_id``. Naming neither is
           the whole company, and that is an administrator's act because it
           rewrites the calendar of every assistant the company employs. A
           manager who names neither is refused rather than quietly given their
@@ -113,7 +113,7 @@ async def start_planning_run(
     if not teams:
         logger.warning(
             "%s asked for a planning of team=%s site=%s, which holds no team "
-            "they run; nothing was queued.",
+            "they run. Nothing was queued.",
             caller.email,
             team_id,
             agency_id,
@@ -184,7 +184,7 @@ async def get_planning_run(
         PlanningRun: The run.
 
     Raises:
-        MTPlanningRunNotFound: If no such run exists; answered as a 404.
+        MTPlanningRunNotFound: If no such run exists. Answered as a 404.
         MTPlanningForbidden: If it rebuilt a team the caller may not read;
             answered as a 403.
 
@@ -197,4 +197,4 @@ async def get_planning_run(
           one; without the check they could poll a colleague's and learn how
           much of that team's week would not fit.
     """
-    return await service.run_for(run_id, caller)
+    return await service.run(run_id, caller)

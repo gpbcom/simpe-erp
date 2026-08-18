@@ -442,7 +442,7 @@ class TestPortalDocuments:
         """**The same offer, two readers.**
 
         Notes:
-            A manager downloading it gets their own language; the household gets
+            A manager downloading it gets their own language. The household gets
             theirs. The language comes from the credential, so there is no
             parameter to disagree about it.
         """

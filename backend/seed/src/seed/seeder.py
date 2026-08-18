@@ -14,11 +14,6 @@ from models.auth.user import User
 from models.catalog.certification_type import CertificationType
 from models.catalog.intervention_type import InterventionType
 from models.catalog.skill_type import SkillType
-from models.organisation.agency.agency import Agency
-from models.organisation.agency.agency_member import AgencyMember
-from models.organisation.companies.company import Company
-from models.organisation.team.team import Team
-from models.organisation.team.team_member import TeamMember
 from models.enums import (
     AccountOrigin,
     MemberKind,
@@ -27,6 +22,11 @@ from models.enums import (
     UserRole,
 )
 from models.geo.postal_address import PostalAddress
+from models.organisation.agency.agency import Agency
+from models.organisation.agency.agency_member import AgencyMember
+from models.organisation.companies.company import Company
+from models.organisation.team.team import Team
+from models.organisation.team.team_member import TeamMember
 from models.people.customer import Customer
 from models.people.hca import Hca
 from models.people.hca.certification import Certification
@@ -55,10 +55,10 @@ from storage.repositories.catalog.intervention_type import (
 )
 from storage.repositories.catalog.skill_type import SkillTypeRepository
 from storage.repositories.companies.company import CompanyRepository
-from storage.repositories.people.customer import CustomerRepository
-from storage.repositories.people.hca import HcaRepository
 from storage.repositories.organisation.agency import AgencyRepository
 from storage.repositories.organisation.team import TeamRepository
+from storage.repositories.people.customer import CustomerRepository
+from storage.repositories.people.hca import HcaRepository
 from storage.repositories.quoting.quote import QuoteRepository
 
 
@@ -80,7 +80,7 @@ class Seeder:
           ``compose up`` without a developer having to remember whether they
           have already done it.
         - It writes through the **repositories**, not raw SQL. The point of
-          seeded data is to exercise the same validation the application does; a
+          seeded data is to exercise the same validation the application does. A
           fixture inserted behind the models' backs is exactly the fixture that
           turns out to be impossible to create through the UI.
         - Nothing here geocodes. Every address carries its coordinates, because
@@ -450,7 +450,7 @@ class Seeder:
         full_name = f"{first} {last}"
         self.logger.debug("Choosing a registration status for %s.", full_name)
         if not self.data.PROSPECTS:
-            self.logger.error("The dataset names no prospects; none will be seeded.")
+            self.logger.error("The dataset names no prospects. None will be seeded.")
         elif full_name in self.data.PROSPECTS:
             self.logger.warning(
                 "%s is seeded as a prospect: their work is quotable but nothing "
@@ -516,7 +516,7 @@ class Seeder:
                         code=code,
                         description=f"{name} au domicile du beneficiaire.",
                         service_category=category,
-                        base_hourly_rate_ht=self.data.rate_for(code),
+                        base_hourly_rate_ht=self.data.rate(code),
                         is_active=True,
                     )
                 )
@@ -675,7 +675,7 @@ class Seeder:
         ]
         if not schedulable:
             self.logger.error(
-                "Not one seeded customer can be scheduled; no planning run will "
+                "Not one seeded customer can be scheduled. No planning run will "
                 "place anything."
             )
         elif len(schedulable) < len(stored) // 2:
@@ -705,7 +705,7 @@ class Seeder:
             - Every account gets the same, known password, and
               ``must_change_password`` is left **false**. A demonstration stack
               whose accounts all demand a password change before showing a single
-              screen is a demonstration nobody gets through; the production path
+              screen is a demonstration nobody gets through. The production path
               for a staff-created account still sets the flag.
             - One assistant is seeded **as a manager rather than as an
               assistant** — see
@@ -789,7 +789,7 @@ class Seeder:
               silently changes what you sign in with.
             - ``must_change_password`` is left **false**, like every other
               seeded account. A real invitation sets it, and
-              ``POST /customers/{id}/account`` still does; a demonstration stack
+              ``POST /customers/{id}/account`` still does. A demonstration stack
               that demands a password change before showing a single screen is
               a demonstration nobody finishes.
             - Two households rather than all of them, named in
@@ -802,7 +802,7 @@ class Seeder:
         self.logger.debug("Seeding portal access for %s.", sorted(wanted))
         if not wanted:
             self.logger.error(
-                "No household is named for portal access; the customer space "
+                "No household is named for portal access. The customer space "
                 "will be unreachable on this stack."
             )
             return created
@@ -840,7 +840,7 @@ class Seeder:
         if missing:
             self.logger.error(
                 "PORTAL_CUSTOMERS names %s, which the customer dataset does "
-                "not contain; those households get no sign-in.",
+                "not contain. Those households get no sign-in.",
                 sorted(missing),
             )
         self.logger.info("Seeded %d customer account(s).", len(created))
@@ -913,7 +913,7 @@ class Seeder:
 
         if not head_office_id:
             self.logger.error(
-                "No head office is declared in the dataset; nothing can be "
+                "No head office is declared in the dataset. Nothing can be "
                 "attached and no team can be formed."
             )
             return head_office_id
@@ -962,7 +962,7 @@ class Seeder:
         Notes:
             - **One team, holding everybody.** A second seeded team would be
               more realistic and would break every count the test campaign
-              asserts; a suite that wants to watch the manager narrowing bite
+              asserts. A suite that wants to watch the manager narrowing bite
               forms its own and removes it afterwards.
             - The team is written **through the repository rather than through
               the service**, like every other seeded record: the service's
@@ -976,7 +976,7 @@ class Seeder:
         manager = await self.users.get_by_email(self.data.TEAM_MANAGER_EMAIL)
         if manager is None:
             self.logger.error(
-                "No account %s exists to run the seeded team; it cannot be "
+                "No account %s exists to run the seeded team. It cannot be "
                 "formed and no quote can be attributed.",
                 self.data.TEAM_MANAGER_EMAIL,
             )
@@ -1068,7 +1068,7 @@ class Seeder:
         self.logger.info("Seeded %d new quote(s).", written)
         return written
 
-    def account_ids_for(self, assistants: List[Hca]) -> List[str]:
+    def account_ids(self, assistants: List[Hca]) -> List[str]:
         """Return the account identifiers behind the seeded assistants.
 
         Args:

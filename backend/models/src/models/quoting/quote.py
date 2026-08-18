@@ -67,7 +67,7 @@ class Quote(BaseModel):
           composed and a rejected one was declined, so scheduling either would
           commit assistants to work nobody agreed to.
         - ``aggregates`` is derived from ``lines`` but stored alongside them.
-          Recomputing on read would be cheap; the reason to store it is that a
+          Recomputing on read would be cheap. The reason to store it is that a
           reprinted quote must show the figures it showed when it was issued,
           even after a type is renamed or repriced.
         - The four authorship fields exist because a quote is now written by one
@@ -466,7 +466,7 @@ class Quote(BaseModel):
             - An interruption before the first service would silence the whole
               quote while leaving it accepted and priced — a quote that costs
               nothing, delivers nothing and still reads as live. Deleting it or
-              rejecting it says that; an end date in the past does not.
+              rejecting it says that. An end date in the past does not.
             - An interruption *after* the last service is allowed and does
               nothing. That is a real thing to record: an arrangement given a
               closing date the work already happens to fit inside.

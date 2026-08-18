@@ -150,7 +150,7 @@ Work Nobody Is Qualified For Fails The Whole Run
     [Tags]    smoke    certifications    planning
     ${orphan}=    A Code Nobody Holds
     Skip If    '${orphan}' == '${EMPTY}'
-    ...    Every catalogue qualification is held by somebody; the failure path is unreachable.
+    ...    Every catalogue qualification is held by somebody. The failure path is unreachable.
 
     Require The Orphan Code On This Run's Service    ${orphan}
     Sell This Run's Service To A Customer
@@ -192,7 +192,7 @@ The Failed Run Leaves The Existing Plan Alone
     ...    msg=A failed run wrote visits.
 
 A Qualified Workforce Is Left To The Solver
-    [Documentation]    The constraint narrows the pool; it does not empty it.
+    [Documentation]    The constraint narrows the pool. It does not empty it.
     ...
     ...    The counterpart to the failure above, and the reason the gate is
     ...    worth having: when somebody *does* hold the qualification, the work
@@ -200,7 +200,7 @@ A Qualified Workforce Is Left To The Solver
     [Tags]    certifications    planning
     ${holders}=    Assistants Holding The Requirement
     Should Not Be Empty    ${holders}
-    ...    msg=No seeded assistant holds ${QA_CERT_CODE}; the constraint cannot be observed.
+    ...    msg=No seeded assistant holds ${QA_CERT_CODE}. The constraint cannot be observed.
     ${workforce}=    The Whole Workforce
     Should Be True    ${{ len($holders) }} < ${{ len($workforce) }}
     ...    msg=Everybody holds ${QA_CERT_CODE}, so the requirement narrows nothing.

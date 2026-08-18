@@ -168,7 +168,7 @@ class BillLine(BaseModel):
 
         Notes:
             Required, unlike ``intervention_id``. Every charge comes from
-            something that was sold; a line naming no origin could not be
+            something that was sold. A line naming no origin could not be
             defended if a customer disputed it.
         """
         if not isinstance(value, str) or not value.strip():

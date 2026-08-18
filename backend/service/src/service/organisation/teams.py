@@ -213,7 +213,7 @@ class TeamService(AbstractOrganisationService[Team, TeamView]):
               :meth:`~models.enums.UserRole.rank` refuses to rank a customer —
               there is no rung that is correct for an axis — so asking
               ``is_manager()`` first would raise where the honest answer is simply
-              "no team". Nothing routes a household here today; this is what keeps
+              "no team". Nothing routes a household here today. This is what keeps
               that true if something ever does.
         """
         if not caller.role.is_staff():
@@ -597,7 +597,7 @@ class TeamService(AbstractOrganisationService[Team, TeamView]):
         )
         if existing is not None and existing.id == team_id:
             self.logger.debug(
-                "%s %s is already on team %s; nothing to move.",
+                "%s %s is already on team %s. Nothing to move.",
                 member.member_kind.value,
                 member.member_id,
                 team_id,
@@ -732,7 +732,7 @@ class TeamService(AbstractOrganisationService[Team, TeamView]):
             )
         else:
             self.logger.debug(
-                "%s %s was on no team; nothing to detach.",
+                "%s %s was on no team. Nothing to detach.",
                 member_kind.value,
                 member_id,
             )
@@ -770,7 +770,7 @@ class TeamService(AbstractOrganisationService[Team, TeamView]):
         candidates = await self.teams.list_with_coordinates(company_id)
         if not candidates:
             self.logger.warning(
-                "Company %s has no team; a quote cannot be attributed.",
+                "Company %s has no team. A quote cannot be attributed.",
                 company_id,  # noqa: E501
             )
             return None

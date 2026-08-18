@@ -110,7 +110,7 @@ class CompanyService:
             return
         if not removed:
             self.logger.warning(
-                "The object store declined to remove %s; it is not a logo it "
+                "The object store declined to remove %s. It is not a logo it "
                 "owns. The record is correct either way.",
                 previous_url,
             )
@@ -136,7 +136,7 @@ class CompanyService:
                 "A logo operation was attempted on a deployment with no bucket."
             )
             self.logger.error(
-                "No object store is configured; the logo operation cannot proceed."
+                "No object store is configured. The logo operation cannot proceed."
             )
             raise MTCompanyLogoStorageUnavailable(
                 "This deployment has no object store, so logos cannot be stored."
@@ -235,7 +235,7 @@ class CompanyService:
         self.logger.info("Offering %d company choice(s) to applicants.", len(companies))  # noqa: E501
         if not companies:
             self.logger.warning(
-                "No company is accepting applications; the public list is empty."
+                "No company is accepting applications. The public list is empty."
             )
         return [company.to_public_choice() for company in companies]
 
@@ -304,7 +304,7 @@ class CompanyService:
             raise MTCompanyNotFound(f"No company {company_id!r} exists.")
         if not is_accepting:
             self.logger.warning(
-                "Company %s no longer appears to applicants; its pending "
+                "Company %s no longer appears to applicants. Its pending "
                 "applications still need deciding.",
                 company_id,
             )
@@ -345,7 +345,7 @@ class CompanyService:
         )
         if not payload:
             self.logger.warning(
-                "Company %s sent an empty logo; the object store will refuse it.",
+                "Company %s sent an empty logo. The object store will refuse it.",
                 company_id,
             )
         self.logger.info(
@@ -355,7 +355,7 @@ class CompanyService:
         updated = await self.companies.set_logo_url(company_id, logo_url)
         if updated is None:
             self.logger.error(
-                "Company %s vanished while its logo was uploading; the object "
+                "Company %s vanished while its logo was uploading. The object "
                 "at %s is now orphaned.",
                 company_id,
                 logo_url,
@@ -391,7 +391,7 @@ class CompanyService:
         self.logger.debug("Clearing the logo of company %s.", company_id)
         if previous_url is None:
             self.logger.warning(
-                "Company %s has no logo to clear; the record is written anyway "
+                "Company %s has no logo to clear. The record is written anyway "
                 "so the caller's screen agrees with the store.",
                 company_id,
             )

@@ -87,7 +87,7 @@ Every Control On A Line Is Actually Usable
     ...    new-quote-date-0    new-quote-minutes-0
         ${box}=    Get BoundingBox    [data-testid="${field}"]
         Should Be True    ${box}[width] > 60
-        ...    msg=${field} is only ${box}[width]px wide; it has collapsed.
+        ...    msg=${field} is only ${box}[width]px wide. It has collapsed.
         Append To List    ${boxes}    ${box}
     END
 

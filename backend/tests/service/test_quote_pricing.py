@@ -254,7 +254,7 @@ class TestLinePricing:
         """**The change this test exists to lock in.**
 
         Notes:
-            The catalog entry says comfort; the line says necessity. The line
+            The catalog entry says comfort. The line says necessity. The line
             wins, because which it is depends on the customer rather than on
             the service: help with washing under a care plan is billed at the
             reduced rate, and the same hour arranged privately is not.

@@ -61,7 +61,7 @@ class TestBillingPeriodicity:
             off-by-one at either bound would bill a visit twice, once at the end
             of a week and again at the start of the next.
         """
-        assert BillingPeriodicity.WEEKLY.window_for(day) == expected
+        assert BillingPeriodicity.WEEKLY.window(day) == expected
 
     ############################
     # Monthly                  #
@@ -105,7 +105,7 @@ class TestBillingPeriodicity:
             next month, minus one day", and that is the one month whose next
             month is in another year.
         """
-        assert BillingPeriodicity.MONTHLY.window_for(day) == expected
+        assert BillingPeriodicity.MONTHLY.window(day) == expected
 
     ############################
     # Yearly                   #
@@ -121,7 +121,7 @@ class TestBillingPeriodicity:
     )
     def test_yearly_window(self, day: date) -> None:
         """A yearly window is 1 January to 31 December inclusive."""
-        assert BillingPeriodicity.YEARLY.window_for(day) == (
+        assert BillingPeriodicity.YEARLY.window(day) == (
             date(2026, 1, 1),
             date(2026, 12, 31),
         )
@@ -143,10 +143,10 @@ class TestBillingPeriodicity:
             ``QuoteRepository.list_schedulable`` and ``Quote.covers``, and the
             symptom would be a day's care silently unbilled every period.
         """
-        start, end = periodicity.window_for(date(2026, 5, 20))
+        start, end = periodicity.window(date(2026, 5, 20))
         assert start <= end
-        assert periodicity.window_for(start) == (start, end)
-        assert periodicity.window_for(end) == (start, end)
+        assert periodicity.window(start) == (start, end)
+        assert periodicity.window(end) == (start, end)
 
     ############################
     # Previous window          #
@@ -198,7 +198,7 @@ class TestBillingPeriodicity:
 
     def test_previous_window_abuts_the_current_one(self) -> None:
         """No day falls between a window and its predecessor."""
-        current = BillingPeriodicity.MONTHLY.window_for(date(2026, 6, 10))
+        current = BillingPeriodicity.MONTHLY.window(date(2026, 6, 10))
         previous = BillingPeriodicity.MONTHLY.previous_window(date(2026, 6, 10))
         assert (current[0] - previous[1]).days == 1
 
@@ -208,7 +208,7 @@ class TestBillingPeriodicity:
 
     def test_a_datetime_is_accepted_as_its_day(self) -> None:
         """A moment resolves to the window holding its date."""
-        assert BillingPeriodicity.MONTHLY.window_for(datetime(2026, 3, 9, 14, 30)) == (
+        assert BillingPeriodicity.MONTHLY.window(datetime(2026, 3, 9, 14, 30)) == (
             date(2026, 3, 1),
             date(2026, 3, 31),
         )
@@ -233,7 +233,7 @@ class TestBillingPeriodicity:
             day would bill the wrong month with nothing looking wrong.
         """
         with pytest.raises(MTInvalidBillingPeriodicity):
-            BillingPeriodicity.MONTHLY.window_for(value)
+            BillingPeriodicity.MONTHLY.window(value)
 
 
 class TestBillStatus:
@@ -396,7 +396,7 @@ class TestBillingRunStatus:
         """A partial run is finished, so a client must stop polling it.
 
         Notes:
-            The bills that could be written are written; nothing more will
+            The bills that could be written are written. Nothing more will
             happen to the run, and a client that kept polling would wait
             forever.
         """

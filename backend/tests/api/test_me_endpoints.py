@@ -447,7 +447,7 @@ class TestMyAccount:
         assert response.json()["email"] == "user-9@example.com"
 
     def test_the_password_hash_is_never_returned(self) -> None:
-        """The account carries one; the response must not.
+        """The account carries one. The response must not.
 
         Notes:
             Worth asserting rather than assuming. ``UserResponse`` drops it,
@@ -717,7 +717,7 @@ class TestMyAccountPhoto:
 
     @pytest.mark.parametrize("method", ["put", "delete"])
     def test_the_password_hash_is_never_returned(self, method: str) -> None:
-        """Both routes answer with an account; neither may carry a credential.
+        """Both routes answer with an account. Neither may carry a credential.
 
         Args:
             method (str): The verb under test.

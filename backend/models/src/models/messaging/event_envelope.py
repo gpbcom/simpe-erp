@@ -38,7 +38,7 @@ class EventEnvelope(BaseModel):
           that claims a routing key needs to know what is inside ``payload``.
         - The payload carries **identifiers, not records**. A message naming
           quote ``q-1`` is still correct when the consumer reads it a minute
-          later; a message carrying a copy of the quote is a snapshot that may
+          later. A message carrying a copy of the quote is a snapshot that may
           already be wrong, and the consumer would have no way to tell.
         - ``occurred_at`` is when the *event* happened, which is not when the
           message is handled. A queue that backed up overnight must not make
@@ -237,7 +237,7 @@ class EventEnvelope(BaseModel):
         Notes:
             A consumer reads a message it did not build, possibly written by an
             older version of the publisher. Reaching into ``payload`` directly
-            would make every handler responsible for the same three checks; this
+            would make every handler responsible for the same three checks. This
             makes a malformed field indistinguishable from a missing one, which
             is what the handler wants either way.
         """

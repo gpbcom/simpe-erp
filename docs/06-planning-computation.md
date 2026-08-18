@@ -32,8 +32,8 @@ one CP-SAT model per DAY         solved concurrently, one search worker each
 **No constraint links one day to another**, and that is a property worth
 stating plainly because the whole shape of the solve rests on it. A
 requirement belongs to exactly one day; `start` and `end` are minutes from
-midnight with no day offset; the customer no-overlap is keyed by
-`(customer, day)`; no-overlap, lunch and travel are built per (assistant,
+midnight with no day offset. The customer no-overlap is keyed by
+`(customer, day)`. No-overlap, lunch and travel are built per (assistant,
 day). The objective is a plain sum, so the minimum over a week is the sum of
 the daily minima.
 
@@ -42,7 +42,7 @@ heuristic** — it returns the same plan, only sooner. What it buys is search
 space: a week is a set of independent sub-problems that CP-SAT cannot discover
 for itself, so it explores their product. On a measured 150-visit,
 12-assistant, 5-day instance the single model ran past a ten-minute wall-clock
-net without proving anything; the same week now completes in under a minute
+net without proving anything. The same week now completes in under a minute
 with every visit placed.
 
 **Anything that couples two days breaks this.** A weekly hours cap, a rest
@@ -178,7 +178,7 @@ required at every layer now, so the same omission is a `TypeError` rather than
 a wrong row.
 
 The filter is here rather than in the repository on purpose. A manager's
-workforce screen must still show everybody; a query that quietly dropped the
+workforce screen must still show everybody. A query that quietly dropped the
 office staff would make them look dismissed.
 
 An empty pool is a legitimate answer, logged at `WARNING`: every requirement
@@ -218,7 +218,7 @@ thirty unplaced visits says something is wrong; "quote D-2648 for Jeanne
 Vincent, one visit, the day was full" says who to telephone and what about.
 
 No sentence is composed in the backend. `UnplacedQuote` carries the quote, the
-customer and the diagnosed visits; the screen assembles the wording in the
+customer and the diagnosed visits. The screen assembles the wording in the
 reader's own language. A message built server-side would reach an English
 operator in French, which the quote emails already taught this codebase once.
 
@@ -250,7 +250,7 @@ manager to widen a radius that was never the problem. "Nobody here holds DEAES"
 names a hire, a training course, or a requirement that was wrong.
 
 **`missing-skill` follows it, and the order between the two is not
-arbitrary.** A certification is obtained; a skill is merely declared. A visit
+arbitrary.** A certification is obtained. A skill is merely declared. A visit
 blocked by both is reported against the one that takes longer to fix, because
 the other reading would send a manager to chase somebody's profile when the
 real obstacle was a diploma nobody in the agency holds. The skill test runs on
@@ -286,7 +286,7 @@ and they used to read identically:
 
 | Status | What it means | What the run says |
 |---|---|---|
-| `OPTIMAL` | The search looked everywhere; this is the best plan there is | The per-visit reasons, in full |
+| `OPTIMAL` | The search looked everywhere. This is the best plan there is | The per-visit reasons, in full |
 | `FEASIBLE` | A plan was found and the budget ran out before proving it best | The size of the gap, and that it is **not** a proof |
 | `INFEASIBLE` | Proved that no plan satisfies the constraints | Says so, and that it is a proof |
 | `UNKNOWN` | The search stopped having found nothing | Says nothing was established |
@@ -515,7 +515,7 @@ The values in `app.yaml` are a **seed, not a fallback**. Once the row exists,
 editing the file changes nothing. Treating the file as a live fallback would let
 a redeployment silently overwrite a manager's decision.
 
-Changing them does not re-plan anything; they apply to the next run. Silently
+Changing them does not re-plan anything. They apply to the next run. Silently
 recomputing this week because somebody adjusted a radius would move assistants
 who have already been told where to go.
 
@@ -541,7 +541,7 @@ button blanks the first one's calendars and writes none of them back.
 
 The lock stays keyed on the **agency**, not the team. Two teams' runs touch
 disjoint rows, so serialising them costs a moment and keeps the existing
-guarantee unchanged; keying it per team would leave the delete's correctness
+guarantee unchanged. Keying it per team would leave the delete's correctness
 resting on the scoping alone, and the scoping is what this section exists to say
 has been wrong before.
 
@@ -589,7 +589,7 @@ the other's plan.
 
 `PlanningRunRepository.claim` is an `UPDATE … WHERE status = 'pending'`. The
 condition is evaluated by the database, so of two workers handed the same
-message exactly one can match; the other updates no row and is told so.
+message exactly one can match. The other updates no row and is told so.
 
 **Losing is an ordinary outcome, not a failure.** The run is returned untouched
 and the message is acknowledged, because another worker holds it or it has
@@ -676,7 +676,7 @@ no planning, no way to ask for one, and nothing on any screen to say why. The
 team-planning screen now carries the button and, beside it, a **scope picker**
 listing the caller's teams, the sites they run a team at, and — for an
 administrator alone — the whole company. A manager opens on their site, which is
-the widest thing they may ask for; a manager who runs no team anywhere gets a
+the widest thing they may ask for. A manager who runs no team anywhere gets a
 disabled button, because a control that can only answer 403 is worse than one
 that is plainly unavailable.
 

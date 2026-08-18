@@ -394,7 +394,7 @@ class TestCustomerDeletion:
         order: List[str] = []
         quotes.list.return_value = [_quote()]
         # ``append`` answers None, and the service reads a falsy delete as
-        # "nothing matched"; the ``or True`` is what keeps the double honest.
+        # "nothing matched". The ``or True`` is what keeps the double honest.
         quotes.delete.side_effect = lambda quote_id: order.append("quote") or True
         customers.delete.side_effect = (
             lambda customer_id: order.append("customer") or True
@@ -441,4 +441,4 @@ class TestCustomerDeletion:
         customers.get.return_value = None
 
         with pytest.raises(MTCustomerNotFound):
-            await service.quotes_for("ghost")
+            await service.quotes("ghost")

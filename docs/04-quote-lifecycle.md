@@ -34,7 +34,7 @@ it before that change still exist and need a way forward — see
 
 | Transition | Who | From → to | Also requires |
 |---|---|---|---|
-| `submit` | author (assistant) | `draft` → `pending-validation` | priced; the caller wrote it |
+| `submit` | author (assistant) | `draft` → `pending-validation` | priced. The caller wrote it |
 | `validate` | manager | `pending-validation` → `accepted` | priced; stamps the issue dates and the approver as validator |
 | `refuse-validation` | manager | `pending-validation` → `draft` | — |
 | `send` | manager | `draft` → `accepted` | priced; stamps the issue dates and the sender as validator |
@@ -76,7 +76,7 @@ of the two causes applied — an unknown household, or a company with no team.
 Stored unattributed it would be priced, sent, accepted, and then read by no
 planning run: it would go *quiet* rather than wrong, which is the failure mode
 worth refusing for. A household whose address simply has not geocoded is not
-refused; that would let a Nominatim outage stop the business taking work.
+refused. That would let a Nominatim outage stop the business taking work.
 
 Renewals **inherit** the parent's team rather than re-running the rule. The
 household has not moved and the arrangement has not changed; re-attributing
@@ -113,7 +113,7 @@ looked at, and the assistant could edit figures a manager had just signed off.
 
 **The tax is decided when the quote is written, not when the service was
 catalogued.** Each line carries its own `service_category`, and pricing reads it
-from there. `QuoteService.vat_rate_for` takes the *line*; if it ever takes an
+from there. `QuoteService.vat_rate_for` takes the *line*. If it ever takes an
 `InterventionType` again, two customers buying the same service could no longer
 be taxed differently, which is the case the field exists for.
 
@@ -193,7 +193,7 @@ interrupted between the two would otherwise be renewed anyway.
 to call as often as you like; binding it to the worker or a timer is still to do.
 
 **Who may rewrite a quote is a different question from when.** A manager or an
-administrator may edit any quote in the agency; an assistant may edit only the
+administrator may edit any quote in the agency. An assistant may edit only the
 ones they authored. But *both* are held to `EDITABLE_STATUSES`, so neither can
 touch a quote past `draft`: what the customer was sent has to stay what they
 were sent, and one awaiting validation is frozen so a manager rules on the
@@ -364,11 +364,11 @@ quote naming only its recipient is a document the recipient cannot act on: they
 have no way to tell who is offering, under what registered number, or where to
 reply — nor whether it is genuine. The agency comes from the **account that
 issued it**, because neither a customer nor a quote carries a `company_id` of
-its own; the webhook resolves it from the account that requested the planning
+its own. The webhook resolves it from the account that requested the planning
 run, and answers 409 rather than sending a quote with no issuer.
 
 The summary's period comes from the **lines**, not from `issued_on` and
-`valid_until`. Those two describe the offer; a customer asking "when does the
+`valid_until`. Those two describe the offer. A customer asking "when does the
 care run from and to" is asking about the work.
 
 Amounts are written as numbers with a currency format, never as pre-formatted

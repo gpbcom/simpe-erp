@@ -129,7 +129,7 @@ class TestRenewalSweep:
     async def test_the_successor_covers_the_period_that_follows(
         self, service: QuoteService
     ) -> None:
-        """**A renewal continues the arrangement; it does not repeat it.**
+        """**A renewal continues the arrangement. It does not repeat it.**
 
         Notes:
             The services are shifted by the parent's own span, so a four-week

@@ -171,7 +171,7 @@ class BillingService:
         """
         if self.documents is None:
             self.logger.error(
-                "No object store is configured; invoices cannot be issued "
+                "No object store is configured. Invoices cannot be issued "
                 "because there is nowhere to keep their documents."
             )
             raise MTBillDocumentStorageUnavailable(
@@ -200,7 +200,7 @@ class BillingService:
             return await self.documents.fetch_logo(company.logo_url)
         except MTInvalidS3StorageException as exc:
             self.logger.warning(
-                "Could not read the logo of agency %s (%s); the invoice will "
+                "Could not read the logo of agency %s (%s). The invoice will "
                 "print without it.",
                 company.name,
                 exc,
@@ -247,7 +247,7 @@ class BillingService:
             total_ttc=line.total_ttc,
         )
 
-    def _recipient_for(self, customer: Customer) -> BillRecipient:
+    def _recipient(self, customer: Customer) -> BillRecipient:
         """Return the party to bill for a customer's care.
 
         Args:
@@ -376,7 +376,7 @@ class BillingService:
         )
         if not customer_ids:
             self.logger.warning(
-                "No accepted quote of agency %s covers %s..%s; the run will "
+                "No accepted quote of agency %s covers %s..%s. The run will "
                 "issue no invoice.",
                 company_id,
                 period_start,
@@ -414,7 +414,7 @@ class BillingService:
         seeded = await self.settings.seed(self.config.to_settings())
         if seeded is None:
             self.logger.error(
-                "The billing settings could not be seeded; no invoice can "
+                "The billing settings could not be seeded. No invoice can "
                 "state its payment terms."
             )
             raise MTBillingSettingsUnavailable("The billing settings are unavailable.")
@@ -455,7 +455,7 @@ class BillingService:
         )
         return updated
 
-    async def periodicity_for(
+    async def periodicity(
         self, customer_id: Optional[str] = None
     ) -> BillingPeriodicity:
         """Return the rule a customer is invoiced on, or the agency's own.
@@ -496,7 +496,7 @@ class BillingService:
         )
         return periodicity
 
-    async def window_for(
+    async def window(
         self, reference_date: date, customer_id: Optional[str] = None
     ) -> Tuple[date, date]:
         """Return the billing window containing a day.
@@ -518,8 +518,8 @@ class BillingService:
             customer's name — a screen previewing "1–31 July" for somebody
             billed weekly is promising a document they will not receive.
         """
-        periodicity = await self.periodicity_for(customer_id)
-        window = periodicity.window_for(reference_date)
+        periodicity = await self.periodicity(customer_id)
+        window = periodicity.window(reference_date)
         self.logger.debug(
             "%s falls in the %s window %s..%s.",
             reference_date,
@@ -553,7 +553,7 @@ class BillingService:
         settings = await self.current_settings()
         in_use = {settings.periodicity}
         in_use.update(await self.customers.list_billing_periodicities())
-        windows = [periodicity.window_for(reference_date) for periodicity in in_use]
+        windows = [periodicity.window(reference_date) for periodicity in in_use]
         span = (
             min(window[0] for window in windows),
             max(window[1] for window in windows),
@@ -594,13 +594,13 @@ class BillingService:
             - **The window recorded on the run is the agency's own**, and it is
               what the run is *called*, not what every customer is charged over.
               A customer with a granularity of their own is billed across their
-              window, which is recorded on their invoice; the run keeps the
+              window, which is recorded on their invoice. The run keeps the
               period a manager asked for, because "bill July" is the request and
               a run labelled with the widest window it happened to touch would
               answer a question nobody asked.
         """
         settings = await self.current_settings()
-        period_start, period_end = settings.window_for(reference_date)
+        period_start, period_end = settings.window(reference_date)
         today = datetime.now(UTC).date()
         if period_end >= today:
             self.logger.warning(
@@ -658,7 +658,7 @@ class BillingService:
               line can straddle a period boundary, so "only the part inside the
               window is billed" reduces to a date filter and **no fractional
               amount is computed anywhere**. Lines dated after the window are
-              simply absent; the next period has a different window and picks
+              simply absent. The next period has a different window and picks
               them up unchanged. A quote running March to June under monthly
               billing produces four invoices whose totals sum to the quote's.
             - ``effective_lines`` supplies the other half for free: it drops
@@ -698,7 +698,7 @@ class BillingService:
                 if not line.is_priced():
                     self.logger.error(
                         "Quote %s line %s (%s on %s) has no price and cannot "
-                        "be billed; it is left off the invoice.",
+                        "be billed. It is left off the invoice.",
                         quote.reference,
                         line.id,
                         line.name,
@@ -788,12 +788,12 @@ class BillingService:
             )
 
         periodicity = customer.effective_periodicity(settings.periodicity)
-        period_start, period_end = periodicity.window_for(reference_date)
+        period_start, period_end = periodicity.window(reference_date)
         issued_on = datetime.now(UTC).date()
         if period_end >= issued_on:
             self.logger.warning(
                 "Customer %s is billed %s, so %s falls in the open period "
-                "%s..%s; they are passed over until it ends.",
+                "%s..%s. They are passed over until it ends.",
                 customer_id,
                 periodicity.value,
                 reference_date,
@@ -819,7 +819,7 @@ class BillingService:
         )
         if not charges:
             self.logger.info(
-                "Customer %s owes nothing for %s..%s; no invoice is issued.",
+                "Customer %s owes nothing for %s..%s. No invoice is issued.",
                 customer_id,
                 period_start,
                 period_end,
@@ -838,10 +838,10 @@ class BillingService:
             period_start=period_start,
             period_end=period_end,
             issued_on=issued_on,
-            due_on=settings.due_date_for(issued_on),
+            due_on=settings.due_date(issued_on),
             customer_full_name=customer.full_name(),
             customer_address=customer.address,
-            recipient=self._recipient_for(customer),
+            recipient=self._recipient(customer),
             lines=charges,
             total_ht=sum((line.total_ht for line in charges), Decimal("0.00")),
             total_vat=sum((line.vat_amount for line in charges), Decimal("0.00")),  # noqa: E501
@@ -857,7 +857,7 @@ class BillingService:
             )
         except IntegrityError:
             self.logger.warning(
-                "Another run billed customer %s for %s..%s first; keeping "
+                "Another run billed customer %s for %s..%s first. Keeping "
                 "theirs and discarding %s.",
                 customer_id,
                 period_start,
@@ -905,7 +905,7 @@ class BillingService:
             raise MTBillingRunNotFound(f"No billing run {run_id!r}.")
         span_start, span_end = await self.spanned_window(run.reference_date)
         self.logger.info(
-            "Executing billing run %s around %s; the agency's own window is "
+            "Executing billing run %s around %s. The agency's own window is "
             "%s..%s and customers are looked for across %s..%s.",
             run_id,
             run.reference_date,
@@ -1197,14 +1197,14 @@ class BillingService:
             - The one path where an empty period and an already-billed one are
               **errors** rather than customers to pass over. A run over
               everybody skips both silently, because most customers have no work
-              in most weeks; a caller who named one customer asked a question
+              in most weeks. A caller who named one customer asked a question
               and is owed an answer.
             - The window is **this customer's**, not the agency's. Billing one
               person is exactly where a granularity of their own has to be
               honoured, and where the difference is visible: the period named in
               the refusal is the one they would actually have been charged for.
         """
-        period_start, period_end = await self.window_for(reference_date, customer_id)
+        period_start, period_end = await self.window(reference_date, customer_id)
         today = datetime.now(UTC).date()
         if period_end >= today:
             self.logger.warning(

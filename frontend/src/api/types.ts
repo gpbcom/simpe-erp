@@ -22,7 +22,7 @@
  *
  * So `hasAtLeast` is **never** called with `'customer'`: below the ladder it
  * would be satisfied by every employee, admitting staff to a household's
- * private space; above it, a customer would satisfy the manager checks. The
+ * private space. Above it, a customer would satisfy the manager checks. The
  * portal sits behind `CustomerRoute`, which compares by identity. The server
  * enforces the same rule by refusing to rank a customer at all — see
  * `docs/11-security.md`.
@@ -313,7 +313,7 @@ export interface Hca {
    *
    * @remarks
    * The one planner-visible field its owner writes. A certification is
-   * recorded by a manager; a skill is a claim about what somebody can do, so
+   * recorded by a manager. A skill is a claim about what somebody can do, so
    * they enter it themselves and every supervisor is notified.
    */
   skills: Skill[];
@@ -480,7 +480,7 @@ export interface QuoteLine {
    *
    * @remarks
    * Three states, and the third is why it is nullable. `null` means "whatever
-   * the catalogue entry requires"; an array means "these, instead"; and an
+   * the catalogue entry requires". An array means "these, instead". And an
    * **empty** array means "this hour needs no qualification at all", which is
    * a real answer when the catalogue's default is wrong for one customer.
    */
@@ -897,7 +897,7 @@ export interface InterventionTypeUpdate {
    * The qualifications this service requires.
    *
    * @remarks
-   * Omitted means "leave them alone"; an empty array means "require nothing
+   * Omitted means "leave them alone". An empty array means "require nothing
    * from now on". The two are different requests, which is why every field
    * here is optional and the caller sends only what it changed.
    */
@@ -906,7 +906,7 @@ export interface InterventionTypeUpdate {
    * The skills this service requires.
    *
    * @remarks
-   * Omitted means "leave them alone"; an empty array means "require nothing
+   * Omitted means "leave them alone". An empty array means "require nothing
    * from now on", exactly as for the qualifications above.
    */
   required_skill_codes?: string[];
@@ -960,7 +960,7 @@ export interface NewQuoteLine {
   name: string;
   /** The catalogue entry it bills against. */
   intervention_type_id: string;
-  /** Which VAT rate it is billed at; decided per customer, not per service. */
+  /** Which VAT rate it is billed at. Decided per customer, not per service. */
   service_category: 'necessity' | 'comfort';
   /** The day the visit happens. */
   service_date: string;
@@ -1079,7 +1079,7 @@ export interface BillLine {
  *
  * @remarks
  * **This decides the regulatory regime, not merely the wording.** An
- * `individual` is *reported* to the tax authority; a `business` or a `public`
+ * `individual` is *reported* to the tax authority. A `business` or a `public`
  * body is *transmitted* as a structured document through a platform.
  */
 export type RecipientKind = 'individual' | 'business' | 'public';

@@ -67,7 +67,7 @@ urls:  ## Print the addresses the stack publishes
 #  Data
 # ---------------------------------------------------------------------------
 
-seed:  ## Re-run the seeder; it upserts, so this is always safe
+seed:  ## Re-run the seeder. It upserts, so this is always safe
 	$(COMPOSE) run --rm seed
 
 clean:  ## Destroy the containers AND the data volumes, then rebuild from nothing

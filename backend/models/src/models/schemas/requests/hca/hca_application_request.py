@@ -44,7 +44,7 @@ class HcaApplicationRequest(BaseModel):
         accepted while only its first 72 bytes ever mattered.
 
         There is no ``role`` field. An application produces an assistant
-        account and nothing else; a role in the payload would be an unauthenticated
+        account and nothing else. A role in the payload would be an unauthenticated
         caller asking to be an administrator.
     """
 
@@ -128,7 +128,7 @@ class HcaApplicationRequest(BaseModel):
 
         Notes:
             Never stripped, and never echoed into an error message. One would
-            change the stored credential; the other would put it in the logs.
+            change the stored credential. The other would put it in the logs.
         """
         if not isinstance(value, str):
             raise MTHcaApplicationRequestInvalidPassword(
@@ -142,6 +142,6 @@ class HcaApplicationRequest(BaseModel):
         if len(value.encode("utf-8")) > cls.MAX_PASSWORD_BYTES:
             raise MTHcaApplicationRequestInvalidPassword(
                 f"Invalid password. Must be at most {cls.MAX_PASSWORD_BYTES} "
-                f"bytes once encoded; anything beyond that is silently ignored."
+                f"bytes once encoded. Anything beyond that is silently ignored."
             )
         return value

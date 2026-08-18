@@ -67,7 +67,7 @@ class _Repository:
         """Return every stored integration.
 
         Args:
-            company_id (str): Ignored; the fake holds one agency.
+            company_id (str): Ignored. The fake holds one agency.
 
         Returns:
             List[EInvoicingIntegration]: What is stored.
@@ -310,7 +310,7 @@ class _Factory(ConnectorFactory):
             provider (EInvoicingProvider): The platform.
             credentials (IntegrationCredentials): What it authenticates on.
             timeout_seconds (float): How long to wait on it.
-            client (Optional[httpx.AsyncClient]): Ignored; the injected one wins.
+            client (Optional[httpx.AsyncClient]): Ignored. The injected one wins.
 
         Returns:
             InvoicingConnector: The connector.
@@ -506,7 +506,7 @@ class TestTransmittingASettledInvoice:
             (RecipientKind.PUBLIC, TransmissionKind.CHORUS_PRO),
         ],
     )
-    async def test_it_transmits_what_the_recipient_calls_for(
+    async def test_it_transmits_what_the_recipient_calls(
         self,
         cipher: CredentialCipher,
         kind: RecipientKind,

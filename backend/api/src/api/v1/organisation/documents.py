@@ -111,7 +111,7 @@ async def upload_team_document(
     Raises:
         MTTeamNotFound: If no such team exists, or the caller is not on it; 404.
         MTTeamDocumentStorageUnavailable: If no object store is configured; 503.
-        MTS3EmptyPayload: If the file carries no bytes; answered as a 422.
+        MTS3EmptyPayload: If the file carries no bytes. Answered as a 422.
         MTS3UnsupportedContentType: If it is not a shareable type; 415.
         MTS3PayloadTooLarge: If it exceeds the configured limit; 413.
 
@@ -126,7 +126,7 @@ async def upload_team_document(
           real type and size are known before an object exists. The size is
           bounded by the configured limit, so one request cannot exhaust the
           process.
-        - The declared ``Content-Type`` is ignored; the store decides from the
+        - The declared ``Content-Type`` is ignored. The store decides from the
           file's own leading bytes, for the same reason the photograph route
           does.
     """
@@ -164,7 +164,7 @@ async def download_team_document(
     Raises:
         MTTeamNotFound: If no such team exists, or the caller is not on it; 404.
         MTTeamDocumentNotFound: If no such document exists, or the object behind
-            it could not be read; answered as a 404.
+            it could not be read. Answered as a 404.
         MTTeamDocumentStorageUnavailable: If no object store is configured; 503.
 
     Notes:
@@ -206,9 +206,9 @@ async def delete_team_document(
 
     Raises:
         MTTeamNotFound: If no such team exists, or the caller is not on it; 404.
-        MTTeamDocumentNotFound: If no such document exists; answered as a 404.
+        MTTeamDocumentNotFound: If no such document exists. Answered as a 404.
         MTTeamDocumentForbidden: If the caller neither uploaded it, runs the
-            team, nor is an administrator; answered as a 403.
+            team, nor is an administrator. Answered as a 403.
         MTTeamDocumentStorageUnavailable: If no object store is configured; 503.
 
     Notes:

@@ -61,7 +61,7 @@ class QuoteRenderer:
           being an offer rather than a record:
 
           - *The totals are summed here.* A :class:`~models.quoting.quote.Quote`
-            carries no totals of its own; the amounts live on its lines. A bill
+            carries no totals of its own. The amounts live on its lines. A bill
             stores its own, because an invoice must reproduce exactly what was
             charged even if the lines are later re-costed.
           - *The customer is read live.* A bill copies the name and address at
@@ -201,13 +201,13 @@ class QuoteRenderer:
         for line in quote.lines:
             if line.total_ht is None or line.total_ttc is None:
                 self.logger.error(
-                    "Quote %s carries a line (%s) with no amount; it has not "
+                    "Quote %s carries a line (%s) with no amount. It has not "
                     "been priced and cannot be printed.",
                     quote.reference,
                     line.name,
                 )
                 raise MTQuoteNotPriced(
-                    f"Quote {quote.reference!r} has not been priced; the line "
+                    f"Quote {quote.reference!r} has not been priced. The line "
                     f"{line.name!r} carries no amount."
                 )
             untaxed += line.total_ht
@@ -237,13 +237,13 @@ class QuoteRenderer:
             was never produced is a download button that answers an error.
         """
         if not logo:
-            self.logger.debug("No logo was supplied; the quote prints without one.")
+            self.logger.debug("No logo was supplied. The quote prints without one.")
             return None
         try:
             return Image(BytesIO(logo), width=self.LOGO_WIDTH, height=self.LOGO_HEIGHT)
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
             self.logger.warning(
-                "Could not draw the agency's logo (%s); the quote prints without it.",
+                "Could not draw the agency's logo (%s). The quote prints without it.",
                 exc,
             )
             return None
@@ -284,7 +284,7 @@ class QuoteRenderer:
         )
         if quote.valid_until is None:
             self.logger.warning(
-                "Quote %s has no validity date; the document says so rather "
+                "Quote %s has no validity date. The document says so rather "
                 "than leaving the field blank.",
                 quote.reference,
             )
@@ -307,7 +307,7 @@ class QuoteRenderer:
         if not identity:
             self.logger.warning(
                 "Quote %s is being issued by an agency with no address, "
-                "registration number or contact details; the document will not "
+                "registration number or contact details. The document will not "
                 "identify its issuer.",
                 quote.reference,
             )
@@ -325,7 +325,7 @@ class QuoteRenderer:
 
         Notes:
             Read from the **live** record, unlike an invoice, which prints its
-            own copies. A quote is an offer that has not been agreed; if the
+            own copies. A quote is an offer that has not been agreed. If the
             household has moved since it was written, the offer is for the
             address they live at now.
         """
@@ -356,7 +356,7 @@ class QuoteRenderer:
         rows: List[List[str]] = [list(headers)]
         if not quote.lines:
             self.logger.warning(
-                "Quote %s carries no line; the document says so.", quote.reference
+                "Quote %s carries no line. The document says so.", quote.reference
             )
             rows.append([self.LABELS[language]["no_line"], "", "", "", ""])
         for line in quote.lines:

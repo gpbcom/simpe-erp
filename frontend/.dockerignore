@@ -12,7 +12,7 @@
 # Size: `node_modules` is ~389 MB and `dist` ~9 MB, so this takes a ~399 MB
 # context down to under a megabyte.
 
-# Installed by `npm ci` inside the image; never copied in.
+# Installed by `npm ci` inside the image. Never copied in.
 node_modules/
 
 # Build output — the `build` stage produces its own.

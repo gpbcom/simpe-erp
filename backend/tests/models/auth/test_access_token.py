@@ -63,7 +63,7 @@ class TestAccessToken:
             AccessToken(access_token=invalid_token, expires_in=60)
 
     def test_the_token_is_not_stripped(self) -> None:
-        """A signed value is opaque; altering it would break the signature."""
+        """A signed value is opaque. Altering it would break the signature."""
         token = AccessToken(access_token=" abc ", expires_in=60)
         assert token.access_token == " abc "
 

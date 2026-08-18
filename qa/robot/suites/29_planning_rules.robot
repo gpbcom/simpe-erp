@@ -8,7 +8,7 @@ Documentation    When work may happen, and which days each assistant works.
 ...              arrangement, set by them and visible to their manager.
 ...
 ...              Both used to be out of reach. The hours lived in ``app.yaml``,
-...              so moving the day to 08:00 meant a deployment; the days did
+...              so moving the day to 08:00 meant a deployment. The days did
 ...              not exist at all, so "I never work Wednesdays" had to be filed
 ...              as one absence per Wednesday, forever. The tests here are
 ...              written against that: each one asserts a value reaching the
@@ -104,7 +104,7 @@ A Manager Moves The Working Day And The Server Keeps It
 A Manager Moves The Lunch Window And The Server Keeps It
     [Documentation]    The break's length and its window are both configurable.
     ...
-    ...    The length was already stored; the window was not, so a manager
+    ...    The length was already stored. The window was not, so a manager
     ...    could lengthen the break but not say when it might fall.
     [Tags]    planning-settings
     Sign In As    ${MANAGER_EMAIL}
@@ -166,7 +166,7 @@ A Lunch Window Too Narrow For The Break Cannot Be Saved
     [Teardown]    Reload And Sign Out
 
 The Server Refuses An Unworkable Day Sent By Hand
-    [Documentation]    The screen's check is a courtesy; this is the control.
+    [Documentation]    The screen's check is a courtesy. This is the control.
     ...
     ...    Sent past the form entirely, because a disabled button guards only
     ...    the people using the button.
@@ -187,7 +187,7 @@ The Server Refuses An Unworkable Day Sent By Hand
 An Assistant Cannot Reach The Planning Rules
     [Documentation]    Who may work is not the same as when work may happen.
     ...
-    ...    An assistant sets their own days; the agency's hours are a manager's
+    ...    An assistant sets their own days. The agency's hours are a manager's
     ...    decision. Asserted on where they *do* land, because waiting for a
     ...    screen that is expected never to appear proves nothing until the
     ...    timeout expires.

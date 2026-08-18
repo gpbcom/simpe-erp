@@ -20,7 +20,7 @@ class PlanningWebhook:
 
     Notes:
         - **This is the only thing that makes the dispatch automatic.** A
-          planning run rewrites the week; the documents that follow it — every
+          planning run rewrites the week. The documents that follow it — every
           assistant's diary, every accepted quote — go out because this call is
           made. Without it the endpoint exists and nothing ever reaches it, and
           the failure is silent in both directions: no error is logged, and no
@@ -32,7 +32,7 @@ class PlanningWebhook:
           copy means the token, the timeout and the swallowing rule cannot
           drift between the two.
         - A failure is **logged and swallowed**. The planning succeeded and is
-          already stored; an unreachable mailer must not turn a good run into a
+          already stored. An unreachable mailer must not turn a good run into a
           failed one, and the endpoint can be called by hand afterwards.
     """
 
@@ -68,13 +68,13 @@ class PlanningWebhook:
 
         Notes:
             The two "off" cases are reported differently on purpose. Disabled
-            is a decision and logs at debug; a secret that was never set is a
+            is a decision and logs at debug. A secret that was never set is a
             misconfiguration — somebody switched the webhook on and stopped
             there — and says so at warning, naming the variable to set.
         """
         if not self.config.enabled:
             self.logger.debug(
-                "The planning webhook is disabled; not announcing %s.", run_id
+                "The planning webhook is disabled. Not announcing %s.", run_id
             )
             return False
         token = self.config.get_token()
@@ -99,7 +99,7 @@ class PlanningWebhook:
             self.logger.error("Could not announce planning run %s: %s", run_id, exc)
             return False
         self.logger.info(
-            "Planning run %s announced; the dispatcher answered %d.",
+            "Planning run %s announced. The dispatcher answered %d.",
             run_id,
             response.status_code,
         )

@@ -60,7 +60,7 @@ services:
           # **Keep equal to planning.solver_workers in conf/app.docker.yaml.**
           # The chart fails to render when the two disagree; compose has no
           # such check, so the same mistake is silent here. Too many threads
-          # and the kernel throttles the whole cgroup; too few, and a core is
+          # and the kernel throttles the whole cgroup. Too few, and a core is
           # paid for and never used while visits go unplaced for want of
           # search.
           #

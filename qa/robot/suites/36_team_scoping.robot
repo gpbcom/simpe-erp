@@ -147,7 +147,7 @@ A Manager Sees Only Their Teams' Households
 A Manager Cannot Plan A Team They Do Not Run
     [Documentation]    **The refusal a screen would never send.**
     ...
-    ...    A route guard proves the caller is a manager; it cannot stop manager
+    ...    A route guard proves the caller is a manager. It cannot stop manager
     ...    A naming manager B's team, and a run against that team rewrites a
     ...    colleague's whole week. So the request is made by hand, exactly as
     ...    somebody with the URL would make it.

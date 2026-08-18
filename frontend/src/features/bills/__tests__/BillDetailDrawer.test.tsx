@@ -138,7 +138,7 @@ describe('BillDetailDrawer', () => {
 
   it('names no quote anywhere on the screen', () => {
     // **Requirement 9, made testable.** `quote_line_id` is stored on every
-    // charge so a disputed line can be traced in a support conversation; a
+    // charge so a disputed line can be traced in a support conversation. A
     // manager reading it off the screen and quoting it to a customer would be
     // reading from a document the customer does not hold.
     render(<BillDetailDrawer selected={aBill()} onClose={vi.fn()} />);
@@ -204,7 +204,7 @@ describe('BillDetailDrawer', () => {
   });
 
   it('offers a way back from every status past the first', () => {
-    // A manager who marked the wrong row needs it; an irreversible status
+    // A manager who marked the wrong row needs it. An irreversible status
     // would leave them editing the database.
     render(
       <BillDetailDrawer selected={aBill({ status: 'accepted' })} onClose={vi.fn()} />,

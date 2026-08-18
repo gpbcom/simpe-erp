@@ -42,7 +42,7 @@ class UnplacedQuote(BaseModel):
           agency sold, and it is the quote that has to be renegotiated,
           rescheduled or staffed.
         - No sentence is built here. The screen assembles one from these fields
-          in the reader's own language; a message composed in the backend would
+          in the reader's own language. A message composed in the backend would
           arrive in French for an English operator, and the quote emails already
           taught this codebase that lesson once.
     """

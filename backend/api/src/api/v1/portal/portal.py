@@ -17,9 +17,9 @@ from api.dependencies import (
     get_planning_service,
 )
 from models.auth.user import User
+from models.billing.bill import Bill
 from models.people.customer import Customer
 from models.planning.intervention.intervention import Intervention
-from models.billing.bill import Bill
 from models.quoting.quote import Quote
 from models.schemas.requests.customers.customer_profile_update_request import (
     CustomerProfileUpdateRequest,
@@ -74,7 +74,7 @@ async def _queue_replan(
     """
     if period is None:
         logger.info(
-            "Household %s had no future visit; no replan is queued.",
+            "Household %s had no future visit. No replan is queued.",
             caller.customer_id,
         )
         return
@@ -97,7 +97,7 @@ async def _queue_replan(
         )
     except Exception:  # noqa: BLE001 - reported, never fatal to the household
         logger.error(
-            "Could not queue a replan after household %s %s; their calendar "
+            "Could not queue a replan after household %s %s. Their calendar "
             "still shows the old arrangement until a run is started by hand.",
             caller.customer_id,
             reason,
@@ -121,7 +121,7 @@ async def read_profile(
         Customer: Their record.
 
     Raises:
-        MTCustomerNotFound: If the linked record no longer exists; a 404.
+        MTCustomerNotFound: If the linked record no longer exists. A 404.
 
     Notes:
         **The household comes from the credential**, never from a path or a
@@ -149,8 +149,8 @@ async def update_profile(
         Customer: The updated record.
 
     Raises:
-        MTCustomerNotFound: If the linked record no longer exists; a 404.
-        MTInvalidCustomerProfileUpdateRequestException: If a name is empty; a
+        MTCustomerNotFound: If the linked record no longer exists. A 404.
+        MTInvalidCustomerProfileUpdateRequestException: If a name is empty. A
             422.
 
     Notes:
@@ -220,7 +220,7 @@ async def read_quotes(
         List[Quote]: Their quotes, newest first.
 
     Raises:
-        MTCustomerNotFound: If the linked record no longer exists; a 404.
+        MTCustomerNotFound: If the linked record no longer exists. A 404.
 
     Notes:
         Unfiltered, including refused and expired ones. A household asking "what
@@ -228,7 +228,7 @@ async def read_quotes(
         narrowed to what is live answers a different question without saying so.
     """
     logger.debug("Household %s is reading their quotes.", caller.customer_id)
-    return await service.quotes_for(str(caller.customer_id))
+    return await service.quotes(str(caller.customer_id))
 
 
 @router.post("/interventions/{intervention_id}/cancel", response_model=Quote)
@@ -253,7 +253,7 @@ async def cancel_visit(
 
     Raises:
         MTCustomerNotFound: If the visit does not exist, or belongs to another
-            household; a **404 in both cases**, deliberately.
+            household. A **404 in both cases**, deliberately.
 
     Notes:
         - **The quote goes back to `pending-validation`.** The household has
@@ -272,7 +272,7 @@ async def cancel_visit(
           cancellation, because afterwards the visit is gone and there is
           nothing left to measure.
         - The run identifier is not returned. A household is not polling a
-          planning run; they are told their change is with the agency.
+          planning run. They are told their change is with the agency.
     """
     logger.info(
         "Household %s is cancelling visit %s.", caller.customer_id, intervention_id
@@ -312,9 +312,9 @@ async def reschedule_visit(
     Raises:
         MTCustomerNotFound: If the visit does not exist, or is not theirs; 404.
         MTInvalidInterventionRescheduleRequestException: If the window is
-            empty or outside the day; a 422.
+            empty or outside the day. A 422.
         MTQuoteLineWindowTooShort: If the window is narrower than the work
-            takes; a 422.
+            takes. A 422.
 
     Notes:
         - **A window, not a time.** The household says when they are available;
@@ -373,11 +373,11 @@ async def download_quote(
     Raises:
         MTCustomerNotFound: If the quote is not theirs, or does not exist —
             **the same 404 for both**, so nobody can walk the identifier space.
-        MTQuoteNotPriced: If it has never been priced; a 422.
+        MTQuoteNotPriced: If it has never been priced. A 422.
 
     Notes:
         Written in the **household's** language. The same offer downloaded by a
-        manager comes out in theirs; it is one document with two readers.
+        manager comes out in theirs. It is one document with two readers.
     """
     logger.info("Household %s is downloading quote %s.", caller.customer_id, quote_id)
     payload, filename = await service.quote_document(
@@ -410,7 +410,7 @@ async def read_bills(
         for their care.
     """
     logger.debug("Household %s is reading their invoices.", caller.customer_id)
-    return await service.bills_for(str(caller.customer_id), caller.company_id)
+    return await service.bills(str(caller.customer_id), caller.company_id)
 
 
 @router.get(
@@ -441,7 +441,7 @@ async def download_bill(
     Notes:
         **Streamed through this endpoint rather than served from the bucket**,
         exactly as the manager's download is. The objects sit under a private
-        prefix precisely so the bearer guard is the only way to them; a
+        prefix precisely so the bearer guard is the only way to them. A
         presigned URL would put a household's invoice outside it.
     """
     logger.info("Household %s is downloading invoice %s.", caller.customer_id, bill_id)

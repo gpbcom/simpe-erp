@@ -244,7 +244,7 @@ class ScenarioCatalogue:
         Notes:
             Two visits fifteen kilometres either side of home, both inside the
             same two-hour window, one assistant. Each is well within the
-            radius and needs nothing; the hour of driving between them is what
+            radius and needs nothing. The hour of driving between them is what
             makes the second impossible.
         """
         north = GeoPoint(

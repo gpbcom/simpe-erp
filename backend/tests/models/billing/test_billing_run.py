@@ -63,7 +63,7 @@ class TestBillingRunIdentity:
             BillingRun(**a_run(company_id=None))
 
     def test_the_requester_is_optional_but_never_blank(self) -> None:
-        """A run may be triggered by a schedule; a blank actor is a lost one."""
+        """A run may be triggered by a schedule. A blank actor is a lost one."""
         assert BillingRun(**a_run(requested_by=None)).requested_by is None
         with pytest.raises(MTBillingRunInvalidId):
             BillingRun(**a_run(requested_by="  "))

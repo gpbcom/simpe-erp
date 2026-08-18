@@ -28,7 +28,7 @@ class MTCiiRecipientNotIdentified(MTInvalidCiiInvoiceException):
 
     Notes:
         The buyer's legal identifier is what the invoice is delivered on. The
-        model already refuses a professional without one; this catches the case
+        model already refuses a professional without one. This catches the case
         where a record predating that rule reaches the builder.
     """
 

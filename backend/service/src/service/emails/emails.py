@@ -50,7 +50,7 @@ class EmailService:
         - The document is built by
           :class:`~service.utils.formatter.Formatter` and attached, never
           inlined. A planning pasted into a message body is unreadable on a
-          phone and unusable on a desk; a spreadsheet is both.
+          phone and unusable on a desk. A spreadsheet is both.
         - Nothing here decides *who* gets what. The recipient is the
           assistant's or the customer's own stored address, so an email cannot
           be redirected by anything the caller passes in.
@@ -169,7 +169,7 @@ class EmailService:
         Notes:
             The two MIME arguments are **defaulted to the spreadsheet pair**, so
             adding invoices did not touch a single existing call site. A mail
-            client decides whether it can open an attachment from these; a PDF
+            client decides whether it can open an attachment from these. A PDF
             announced as a workbook is a file the recipient is told to download
             rather than one they can read.
         """
@@ -346,7 +346,7 @@ class EmailService:
         """
         if self.logos is None or not company.logo_url:
             self.logger.debug(
-                "No letterhead for company %s; the quote prints without one.",
+                "No letterhead for company %s. The quote prints without one.",
                 company.name,
             )
             return None
@@ -363,7 +363,7 @@ class EmailService:
             return None
         if payload is None:
             self.logger.warning(
-                "Company %s has a logo at %s that could not be read; the quote "
+                "Company %s has a logo at %s that could not be read. The quote "
                 "goes out without it.",
                 company.name,
                 company.logo_url,
@@ -409,7 +409,7 @@ class EmailService:
             body=(
                 f"Hello {planning.hca_full_name},\n\n"
                 f"Your planning for {planning.period_start} to "
-                f"{planning.period_end} is attached; it lists "
+                f"{planning.period_end} is attached. It lists "
                 f"{len(planning.interventions)} intervention(s).\n\n"
                 f"This message was sent automatically when the planning was "
                 f"computed.\n"
@@ -612,7 +612,7 @@ class EmailService:
               rounds of emails, each covering one Monday-to-Sunday week, rather
               than one document nobody can read at a glance.
             - **Two audiences, two documents.** An assistant receives their own
-              week and nothing else; a manager receives every assistant's week,
+              week and nothing else. A manager receives every assistant's week,
               a sheet each. Neither is a filtered view of the other — the
               assistant's copy is built from a single diary, so there is no
               arrangement in which somebody else's round can reach it.

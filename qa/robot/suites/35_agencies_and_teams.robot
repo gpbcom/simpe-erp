@@ -197,7 +197,7 @@ Attaching Somebody To A Site Moves Them Off The Old One
     ...    expected_status=200
     ${old_ids}=    Evaluate    [m["member_id"] for m in $previous.json()]
     Should Not Contain    ${old_ids}    ${account}
-    ...    msg=The old membership survived the transfer; they are on two sites.
+    ...    msg=The old membership survived the transfer. They are on two sites.
 
     Put The Account Back At The Head Office    ${account}
 

@@ -101,7 +101,7 @@ class BillRow(Base):
           intervention copies the one it is delivered at. A customer who moves
           must not retroactively change where last quarter's invoice was sent.
         - **Two flattened addresses, and they are not redundant.** The first is
-          where the care was delivered; the ``recipient_*`` block is who was
+          where the care was delivered. The ``recipient_*`` block is who was
           billed for it. They hold the same values for a household paying its
           own invoices — most of them — and they diverge on exactly the
           arrangement that made the columns necessary: a conseil départemental

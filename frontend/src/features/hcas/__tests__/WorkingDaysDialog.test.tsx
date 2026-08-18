@@ -107,7 +107,7 @@ describe('WorkingDaysDialog', () => {
     await userEvent.click(screen.getByTestId('save-rota'));
 
     // Not `['saturday']`. A delta would let two tabs race into a week nobody
-    // chose; last-write-wins on a whole week is at least somebody's week.
+    // chose. Last-write-wins on a whole week is at least somebody's week.
     expect(mutate).toHaveBeenCalledWith(['monday', 'saturday'], expect.anything());
   });
 

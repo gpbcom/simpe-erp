@@ -1,5 +1,5 @@
 # The defaults. Every environment overrides some of these in its own values
-# file; nothing here is a secret, and nothing here is environment-specific
+# file. Nothing here is a secret, and nothing here is environment-specific
 # except by being overridden.
 global:
   image:
@@ -24,7 +24,7 @@ global:
 secrets:
   name: simple-erp
   # Where ESO reads them from. A SecretStore is a cluster-level object the
-  # bootstrap installs; this only names it.
+  # bootstrap installs. This only names it.
   storeName: ""
   storeKind: ClusterSecretStore
   refreshInterval: 1h
@@ -101,13 +101,13 @@ workerPlanning:
   # solverWorkers, and the guard checks that product against the limit above.
   solverDayConcurrency: 8
   # The reproducible search budget, in solver work units, **spent once per
-  # day**. It was 150.0 when one model covered the whole period; left there,
+  # day**. It was 150.0 when one model covered the whole period. Left there,
   # a five-day week cost five times 150. Keep it in step with
   # backend/conf/app.yaml, which carries the sizing measurements.
   solverDeterministicBudget: 5.0
   # The second pass's budget: shortening the rounds once everything is
   # placed. Spending it without proving the travel minimal keeps the
-  # plan and records it as unoptimised; nothing goes unscheduled.
+  # plan and records it as unoptimised. Nothing goes unscheduled.
   solverOptimisationBudget: 5.0
   # The wall-clock safety net for **one day**. It must stay above what the
   # budget above actually costs, or every solve is truncated at the net
@@ -120,7 +120,7 @@ workerPlanning:
   # Kubernetes would SIGKILL mid-solve on every scale-down.
   terminationGracePeriodSeconds: 90
   # A thirty-second core-pinning solve next to the API destroys its tail
-  # latency. The node pool is created by Terraform; this is what attracts pods
+  # latency. The node pool is created by Terraform. This is what attracts pods
   # to it.
   nodeSelector: {}
   tolerations: []

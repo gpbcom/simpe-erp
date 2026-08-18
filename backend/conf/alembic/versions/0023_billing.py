@@ -21,7 +21,7 @@ Notes:
     nobody can explain.
 
     **Nothing is backfilled, and there is nothing to backfill.** An agency
-    starts invoicing from its first run; there is no historic invoice to
+    starts invoicing from its first run. There is no historic invoice to
     reconstruct, and inventing one would put a document into a legal series
     that never issued it. ``billing_settings`` is deliberately left empty too —
     the row is seeded from ``app.yaml`` the first time it is read, exactly as

@@ -100,7 +100,7 @@ export function customerFilterParams(filter: CustomerFilter): URLSearchParams {
  * same thing lives in a `useState`.
  *
  * Two speeds, because the controls are two different gestures. Typing settles
- * for {@link SETTLE_MS} before the URL moves; a status tab or a flag applies at
+ * for {@link SETTLE_MS} before the URL moves. A status tab or a flag applies at
  * once, since a click is already a finished decision and delaying it reads as
  * the control not working.
  *

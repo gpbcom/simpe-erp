@@ -254,7 +254,7 @@ describe('IntegrationsGallery', () => {
     });
 
     it('shows the masked tail of a key already stored, never the key', async () => {
-      // The server has no endpoint that returns the secret; this is the most
+      // The server has no endpoint that returns the secret. This is the most
       // a screen can honestly show.
       cards = [card({ configured: true, credential_hint: '…cdef' }), ...FOUR.slice(1)];
       const user = userEvent.setup();

@@ -75,17 +75,17 @@ async def get_planning(
     Raises:
         MTPlanningForbidden: If an assistant asks for somebody else's diary;
             answered as a 403.
-        MTPlanningRunNotFound: If no planning covers the assistant; answered
+        MTPlanningRunNotFound: If no planning covers the assistant. Answered
             as a 404.
 
     Notes:
         **The row-level check lives in the service, not in a guard here.** A
-        guard can only establish that the caller is an assistant; it cannot
+        guard can only establish that the caller is an assistant. It cannot
         stop assistant A putting assistant B's identifier in the path. The
         service compares the requested assistant against the caller's own
         record, which is the only place that comparison can be made.
     """
-    return await service.planning_for(hca_id, caller, period_start, period_end)
+    return await service.planning(hca_id, caller, period_start, period_end)
 
 
 @router.get("/customers", response_model=List[CustomerPlanning])
@@ -110,7 +110,7 @@ async def list_customer_plannings(
 
     Raises:
         MTPlanningForbidden: If a household reaches this route, or an assistant
-            account names no assistant record; answered as a 403.
+            account names no assistant record. Answered as a 403.
 
     Notes:
         - **The same visits as ``/hcas``, grouped by the other party.** An
@@ -122,7 +122,7 @@ async def list_customer_plannings(
           agency and the family are looking at one query, not two that happen to
           agree.
         - The narrowing happens in the service. A route guard proves only that
-          the caller is signed in; it cannot express "the households this
+          the caller is signed in. It cannot express "the households this
           assistant visits", which is a row-level question.
     """
     logger.debug(
@@ -155,10 +155,10 @@ async def get_customer_planning(
         CustomerPlanning: The household's visits over the period.
 
     Raises:
-        MTPlanningForbidden: If a household reaches this route; answered as a
+        MTPlanningForbidden: If a household reaches this route. Answered as a
             403.
         MTPlanningCustomerNotFound: If the household does not exist or is not in
-            the asking assistant's portfolio; answered as a **404** either way.
+            the asking assistant's portfolio. Answered as a **404** either way.
 
     Notes:
         Declared **after** ``/customers`` so the literal path is matched first.

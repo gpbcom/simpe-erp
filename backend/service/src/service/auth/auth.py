@@ -17,12 +17,13 @@ from sqlalchemy.exc import IntegrityError
 # First-party imports
 from models.auth.access_token import AccessToken
 from models.auth.user import User
-from models.people.customer import Customer
 from models.configuration.auth_config import AuthConfig
 from models.configuration.exceptions import MTAuthConfigMissingSecret
 from models.enums import AccountOrigin, Language, UserRole
+from models.people.customer import Customer
 from service.auth.exceptions import (
     MTAuthCompanyRequired,
+    MTAuthCustomerAlreadyHasAccount,
     MTAuthEmailAlreadyRegistered,
     MTAuthHcaLinkRequired,
     MTAuthInvalidCredentials,
@@ -32,13 +33,12 @@ from service.auth.exceptions import (
     MTAuthPasswordChangeRequired,
     MTAuthSamePassword,
     MTAuthUnknownAccount,
-    MTAuthCustomerAlreadyHasAccount,
     MTAuthUnknownCustomer,
     MTAuthUnknownHca,
     MTAuthUserInactive,
 )
-from storage.repositories.people.hca import HcaRepository
 from storage.repositories.auth.user import UserRepository
+from storage.repositories.people.hca import HcaRepository
 from storage.s3.exceptions import MTS3DeleteFailed
 from storage.s3.s3_storage import S3Storage
 
@@ -160,7 +160,7 @@ class AuthService:
         """
         if not user.id:
             self.logger.error(
-                "Account %s carries no identifier; it cannot own a portrait.",
+                "Account %s carries no identifier. It cannot own a portrait.",
                 user.email,
             )
             raise MTAuthUnknownAccount("The account has not been stored yet.")
@@ -184,14 +184,14 @@ class AuthService:
         """
         if not user.hca_id:
             self.logger.debug(
-                "Account %s is bound to no assistant record; its portrait is "
+                "Account %s is bound to no assistant record. Its portrait is "
                 "not mirrored.",
                 user.id,
             )
             return
         if await self.hcas.set_photo_url(user.hca_id, photo_url) is None:
             self.logger.error(
-                "Account %s names assistant %s, which does not exist; the map "
+                "Account %s names assistant %s, which does not exist. The map "
                 "pin still shows the previous portrait.",
                 user.id,
                 user.hca_id,
@@ -283,7 +283,7 @@ class AuthService:
         updated = await self.users.set_photo_url(account_id, photo_url)
         if updated is None:
             self.logger.error(
-                "Account %s vanished while its portrait was uploading; the "
+                "Account %s vanished while its portrait was uploading. The "
                 "object at %s is now orphaned.",
                 account_id,
                 photo_url,
@@ -388,7 +388,7 @@ class AuthService:
                 email,
             )
             raise MTAuthCompanyRequired(
-                f"An account must belong to an agency; none was resolved for {email!r}."
+                f"An account must belong to an agency. None was resolved for {email!r}."
             )
         user = User(
             email=email,
@@ -466,7 +466,7 @@ class AuthService:
                 email,
             )
             raise MTAuthCompanyRequired(
-                f"An account must belong to an agency; none was resolved for {email!r}."
+                f"An account must belong to an agency. None was resolved for {email!r}."
             )
 
         temporary_password = self.generate_temporary_password()
@@ -534,7 +534,7 @@ class AuthService:
               unlike quotes, planning runs and interventions, which were scoped
               by migration 0016. So the only agency available is the caller's.
               That is correct today, when a manager only ever sees their own
-              agency's book; it becomes wrong the day customers gain a tenant
+              agency's book. It becomes wrong the day customers gain a tenant
               column and the two can disagree. When that migration lands, this
               argument should be dropped and the value read off the customer.
         """
@@ -546,7 +546,7 @@ class AuthService:
                 email,
             )
             raise MTAuthCompanyRequired(
-                f"An account must belong to an agency; none was resolved for {email!r}."
+                f"An account must belong to an agency. None was resolved for {email!r}."
             )
         if customer.id is None:
             self.logger.error(
@@ -662,7 +662,7 @@ class AuthService:
             )
             raise MTAuthInvalidCredentials("The account no longer exists.")
         self.logger.info(
-            "Account %s changed its password; it is now fully usable.",
+            "Account %s changed its password. It is now fully usable.",
             updated.id,
         )
         return updated
@@ -740,7 +740,7 @@ class AuthService:
             )
             raise MTAuthUnknownAccount("The account no longer exists.")
         self.logger.info(
-            "Account %s updated its own details; documents in %s.",
+            "Account %s updated its own details. Documents in %s.",
             updated.id,
             updated.language.value,
         )
@@ -887,7 +887,7 @@ class AuthService:
             raise MTAuthLastAdmin("An administrator may not delete their own account.")
         existing = await self.users.get(user_id)
         if existing is None:
-            self.logger.warning("Account %s does not exist; nothing deleted.", user_id)  # noqa: E501
+            self.logger.warning("Account %s does not exist. Nothing deleted.", user_id)  # noqa: E501
             raise MTAuthUnknownAccount(f"No account {user_id!r} exists.")
         if existing.role is UserRole.ADMIN and await self.users.count_admins() <= 1:  # noqa: E501
             self.logger.warning(
@@ -895,7 +895,7 @@ class AuthService:
                 existing.email,
             )
             raise MTAuthLastAdmin(
-                "The last administrator cannot be deleted; there would be "
+                "The last administrator cannot be deleted. There would be "
                 "nobody able to appoint another."
             )
         await self.users.delete(user_id)

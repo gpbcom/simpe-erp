@@ -153,7 +153,7 @@ class PlanningConfig(BaseModel):
 
         Notes:
             One validator covers the four minute-of-day fields because the
-            bound is identical for all of them; the ordering between them is
+            bound is identical for all of them. The ordering between them is
             checked by :meth:`check_bounds`, which can name the specific pair
             that is inconsistent.
         """
@@ -411,7 +411,7 @@ class PlanningConfig(BaseModel):
 
         Notes:
             Objective terms are integers because the solver's objective is
-            integral; a fractional weight would be silently truncated.
+            integral. A fractional weight would be silently truncated.
         """
         if isinstance(value, bool) or not isinstance(value, int):
             raise MTPlanningConfigInvalidPenalty(
@@ -497,7 +497,7 @@ class PlanningConfig(BaseModel):
             minute=self.day_end_minute % 60,
         )
 
-    def speed_for(self, has_driving_license: bool) -> float:
+    def speed(self, has_driving_license: bool) -> float:
         """Return the average travel speed to assume for an assistant.
 
         Args:

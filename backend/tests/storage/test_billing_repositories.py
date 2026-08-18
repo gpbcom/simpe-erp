@@ -326,7 +326,7 @@ class TestBillIdempotency:
         Notes:
             Two runs waking together both pass ``find_overlapping`` and both
             attempt the insert. This index is what stops the customer receiving
-            two invoices for one month; the service catches the failure and
+            two invoices for one month. The service catches the failure and
             re-reads the winner.
         """
         repository = BillRepository(session)

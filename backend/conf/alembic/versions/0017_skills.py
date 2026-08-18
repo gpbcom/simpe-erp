@@ -129,7 +129,7 @@ def downgrade() -> None:
 
     Notes:
         **This loses data, and there is nowhere to put it.** Every skill
-        anybody declared and every requirement naming one is discarded; none of
+        anybody declared and every requirement naming one is discarded. None of
         them existed before this revision, so no earlier column can hold them.
         Downgrading and upgrading again leaves every service requiring no skill
         and every assistant having declared none, which is the state this

@@ -84,7 +84,7 @@ a restart, not a rebuild.
 | `VITE_API_BASE_URL` | — | front-end **build** |
 
 **`EINVOICING_CREDENTIAL_KEY` is the one that cannot be replaced.** Every other
-variable here is a credential for something that can be issued again; this one
+variable here is a credential for something that can be issued again. This one
 is the only thing that can read an agency's stored platform credentials back, so
 losing it means every agency must re-enter its certified platform's API key. It
 belongs in the same backup discipline as the database, and it is read by the API
@@ -111,7 +111,7 @@ than a flag and a debugging session.
 
 **`service_name` is the application's, and each entry point adds what it is** —
 `simple-erp-api`, `simple-erp-worker-planning`. Four processes share one image
-and one configuration file; naming each in the file would mean four files, or
+and one configuration file. Naming each in the file would mean four files, or
 one file each process had to ignore most of. The *environment* is a label the
 deployment adds: putting it here would make "API latency across staging and
 production" two series that cannot be compared.
@@ -122,7 +122,7 @@ readiness probe — so Kubernetes reported it Ready the instant the process
 started, before it had a database, a broker connection or a single queue bound.
 
 **There is no sampling rate.** It belongs to the collector, which sees every
-service's traffic and can decide consistently; a rate set per process produces
+service's traffic and can decide consistently. A rate set per process produces
 traces that are complete for one hop and missing the next, which looks like the
 missing service never ran. → [14](14-observability.md)
 

@@ -38,7 +38,7 @@ class SuggestedSlot(BaseModel):
           call.
         - The assistant is named because "Tuesday at 14:00" is only useful if
           somebody can be asked whether that works. Which of the offered slots
-          is *best* is not decided here either; the agency knows things about its
+          is *best* is not decided here either. The agency knows things about its
           own customers that the solver does not.
     """
 

@@ -159,7 +159,7 @@ export function isStaff(role: UserRole | undefined): role is StaffRole {
  * is true for every employee, which admits staff to a household's private
  * space. Typing the parameter makes the call a **compile error** rather than a
  * silent privilege bug. The portal uses `CustomerRoute`, which compares by
- * identity; the server refuses to rank a customer at all.
+ * identity. The server refuses to rank a customer at all.
  *
  * A customer *holding* the role answers `false` for every staff check, which is
  * the right answer to "may they see the agency's screens".

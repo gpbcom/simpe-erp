@@ -61,7 +61,7 @@ const TILE_COLOURS: Record<string, string> = {
  *   which platforms reach Chorus Pro *before* it picks one.
  *
  * **Pagination renders only when there is more than one page.** With four
- * platforms it never appears; the component is already right if the list grows.
+ * platforms it never appears. The component is already right if the list grows.
  *
  * The whole screen is about two clicks: a card opens the dialog, and the dialog
  * saves. Switching platform is the same two, because enabling one disables the

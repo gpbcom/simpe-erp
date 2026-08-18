@@ -28,7 +28,7 @@ class GeocodingConfig(BaseModel):
     Notes:
         - Nominatim's usage policy requires a genuine identifying User-Agent and,
           on the public instance, at most one request per second. The User-Agent
-          is configured and sent; the **rate is not throttled by this
+          is configured and sent. The **rate is not throttled by this
           application**. A deployment that enters addresses in bulk should point
           ``base_url`` at its own Nominatim instance, or it risks having its
           address blocked by the public one.

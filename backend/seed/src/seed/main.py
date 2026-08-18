@@ -46,7 +46,7 @@ async def _announce(company_id: str, config: AppConfig) -> None:
           Serving an agency is idempotent, so a re-seed against a worker that is
           already bound costs one ignored message.
         - A broker that cannot be reached is **logged and passed over**. Seeding a
-          database must not require a broker; a developer who has started only
+          database must not require a broker. A developer who has started only
           PostgreSQL still gets their data, and the worker will enumerate the
           agency for itself the next time it starts.
     """
@@ -119,7 +119,7 @@ async def run() -> None:
             head_office_id = await seeder.seed_agencies(company_id)
             team_id = await seeder.seed_teams(company_id, head_office_id)
 
-            author_ids = seeder.account_ids_for(assistants)
+            author_ids = seeder.account_ids(assistants)
             await seeder.seed_quotes(
                 company_id, team_id, customers, catalog, author_ids
             )

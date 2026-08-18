@@ -67,7 +67,7 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
         Notes:
             **``is_active`` wins over ``include_inactive`` when it is set.**
             The older switch has two states and no way to ask for the retired
-            entries *on their own*; the filter has three. Unset, the switch
+            entries *on their own*. The filter has three. Unset, the switch
             still decides, so every caller that predates the filter behaves
             exactly as it did.
         """
@@ -82,7 +82,7 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
             if include_inactive and applied.is_active:
                 self.logger.warning(
                     "include_inactive asked for the retired entries and the "
-                    "filter asked for the active ones; the filter wins."
+                    "filter asked for the active ones. The filter wins."
                 )
             statement = statement.where(SkillTypeRow.is_active.is_(applied.is_active))
         elif not include_inactive:
@@ -196,7 +196,7 @@ class SkillTypeRepository(BaseRepository[SkillTypeRow]):
         self.logger.debug("The skill catalogue offers %d code(s).", len(codes))
         if not codes:
             self.logger.warning(
-                "The skill catalogue is empty; any requirement naming a code "
+                "The skill catalogue is empty. Any requirement naming a code "
                 "will be refused."
             )
         return codes

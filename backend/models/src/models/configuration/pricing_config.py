@@ -203,7 +203,7 @@ class PricingConfig(BaseModel):
     # Publicly Exposed Methods #
     ############################
 
-    def surcharge_for(self, service_date: date) -> Decimal:
+    def surcharge(self, service_date: date) -> Decimal:
         """Return the largest surcharge applying to a date.
 
         Args:
@@ -227,7 +227,7 @@ class PricingConfig(BaseModel):
                 applicable.append(holiday.surcharge)
         return max(applicable)
 
-    def multiplier_for(self, service_date: date) -> Decimal:
+    def multiplier(self, service_date: date) -> Decimal:
         """Return the hourly-rate multiplier applying to a date.
 
         Args:
@@ -238,4 +238,4 @@ class PricingConfig(BaseModel):
             ``Decimal("1.25")`` on a surcharged Sunday, ``Decimal("1.50")`` on
             Christmas Day or New Year's Day.
         """
-        return Decimal("1") + self.surcharge_for(service_date)
+        return Decimal("1") + self.surcharge(service_date)

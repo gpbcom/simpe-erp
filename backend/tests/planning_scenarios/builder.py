@@ -32,7 +32,7 @@ class ScenarioBuilder:
     Notes:
         - **Every default here is taken from the seeded agency**, not invented.
           The service windows are
-          :attr:`~seed.dataset.Dataset.SERVICE_WINDOWS`; the coordinates are
+          :attr:`~seed.dataset.Dataset.SERVICE_WINDOWS`. The coordinates are
           central Paris, a few hundred metres apart, like the seeded customers.
           That matters more than it looks: a visit whose window is the whole
           working day is a far harder search than any real one, and an instance

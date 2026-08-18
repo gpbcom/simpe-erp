@@ -216,7 +216,7 @@ class TestDecidingWhetherToTransmit:
     Notes:
         ``enabled`` and ``last_check_error`` are two different facts, and
         ``is_usable`` is where they meet. Disabling is a manager's decision and
-        survives; a failed check is a fact about the last attempt that the next
+        survives. A failed check is a fact about the last attempt that the next
         one may overturn.
     """
 

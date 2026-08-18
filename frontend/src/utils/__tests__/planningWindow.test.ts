@@ -44,7 +44,7 @@ describe('customerPlanningWindow', () => {
 
   it('is not the staff window', () => {
     // **The two answer different questions and share no number.** A household's
-    // arrangement is measured in months; a scheduler works to a fortnight. What
+    // arrangement is measured in months. A scheduler works to a fortnight. What
     // they share is that each is defined exactly once.
     expect(customerPlanningWindow()).not.toEqual(planningWindow());
   });

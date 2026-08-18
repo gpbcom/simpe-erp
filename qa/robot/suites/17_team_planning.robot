@@ -70,7 +70,7 @@ The Shared Grid Carries Several Assistants At Once
     Show A Calendar Month That Has Visits
     ${busy}=    Assistants With Visits
     Skip If    len($busy) < 2
-    ...    Fewer than two assistants have work in the window; nothing to merge.
+    ...    Fewer than two assistants have work in the window. Nothing to merge.
     ${named}=    Assistants Named In The Grid    ${busy}
     Should Be True    len($named) >= 2
     ...    msg=The shared grid names ${named}, so it is not showing everybody.
@@ -84,7 +84,7 @@ Choosing One Assistant Hides Everybody Else
     [Tags]    smoke    planning
     ${busy}=    Assistants With Visits
     Skip If    len($busy) < 2
-    ...    Fewer than two assistants have work in the window; nothing to hide.
+    ...    Fewer than two assistants have work in the window. Nothing to hide.
     ${chosen}=    Set Variable    ${busy}[0]
     Click    [data-testid="planning-hca-${chosen}[id]"]
     Wait For Elements State
@@ -211,10 +211,10 @@ A Household's Visit Cannot Be Edited From Here
     Open The First Visit
     ${selector}=    Get Element Count    [data-testid="intervention-type-select"]
     Should Be Equal As Integers    ${selector}    0
-    ...    msg=The households lens offers a service change; it is read-only.
+    ...    msg=The households lens offers a service change. It is read-only.
     ${delete}=    Get Element Count    [data-testid="delete-intervention"]
     Should Be Equal As Integers    ${delete}    0
-    ...    msg=The households lens offers a delete; it is read-only.
+    ...    msg=The households lens offers a delete. It is read-only.
     [Teardown]    Close The Drawer And Show The Assistants
 
 An Assistant Reaches Only The Households Planning

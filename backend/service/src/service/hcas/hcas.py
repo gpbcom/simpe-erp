@@ -149,7 +149,7 @@ class HcaService:
         """
         if self.users is None or self.auth is None:
             self.logger.debug(
-                "No account store is wired in; assistant %s is removed alone.",
+                "No account store is wired in. Assistant %s is removed alone.",
                 hca_id,
             )
             return
@@ -212,7 +212,7 @@ class HcaService:
 
         Notes:
             - **The comparison can only be made here.** A route guard proves the
-              caller holds the assistant role; nothing at the routing layer stops
+              caller holds the assistant role. Nothing at the routing layer stops
               assistant A putting assistant B's identifier in the path, and an
               absence filed against a colleague would take them off the rota.
             - Managers and administrators pass: filing an absence for somebody
@@ -262,7 +262,7 @@ class HcaService:
 
         Notes:
             - **Row-level, like every other rule of this shape here.** A route
-              guard proves the caller is a manager; it cannot tell whether the
+              guard proves the caller is a manager. It cannot tell whether the
               application identifier in the path belongs to their agency.
             - There used to be an exemption here: an administrator belonging to
               no company was treated as system-wide, so that the first agency
@@ -337,7 +337,7 @@ class HcaService:
         stored = await self.hcas.create(hca)
         if not stored.address.is_geocoded():
             self.logger.warning(
-                "Assistant %s has an unresolved address (%s); they cannot be "
+                "Assistant %s has an unresolved address (%s). They cannot be "
                 "routed until it geocodes.",
                 stored.id,
                 stored.address.geocoding_error,
@@ -380,7 +380,7 @@ class HcaService:
             contract_type (Optional[ContractType]): Restrict to one contract.
             hca_filter (Optional[HcaFilter]): The screen's filter.
             hca_ids (Optional[List[str]]): The assistants the caller may read.
-                ``None`` means every assistant; an empty list means none.
+                ``None`` means every assistant. An empty list means none.
 
         Returns:
             List[Hca]: The matching assistants.
@@ -489,7 +489,7 @@ class HcaService:
             - The declaration takes effect immediately. Making it wait for
               approval would mean somebody who can already do the work is left
               off the visit that needs it, which is the failure this whole
-              field exists to prevent; the supervisors are told instead, and
+              field exists to prevent. The supervisors are told instead, and
               can withdraw it.
             - Announcing that is the **caller's** job, not this method's. The
               publish happens in the route, after the request's transaction has
@@ -527,7 +527,7 @@ class HcaService:
             - **Three people may do this**, and the check that decides is the
               one already used for an absence: the owner, a manager, or an
               administrator. A skill is somebody's own claim, so they may take
-              it back; it also decides who gets sent where, so a supervisor who
+              it back. It also decides who gets sent where, so a supervisor who
               believes it is wrong must be able to remove it without waiting.
             - The assistant is part of the lookup, so knowing a skill
               identifier is not enough to strip a colleague of one.
@@ -751,7 +751,7 @@ class HcaService:
             raise MTHcaNotFound(f"No assistant {hca_id!r} exists.")
         if address.geocoding_error:
             self.logger.warning(
-                "Assistant %s saved an address that did not resolve (%s); they "
+                "Assistant %s saved an address that did not resolve (%s). They "
                 "cannot be routed until it does.",
                 hca_id,
                 address.geocoding_error,
@@ -795,7 +795,7 @@ class HcaService:
         updated = await self.hcas.set_photo_url(hca_id, photo_url)
         if updated is None:
             self.logger.error(
-                "Assistant %s vanished while its photograph was uploading; the "
+                "Assistant %s vanished while its photograph was uploading. The "
                 "object at %s is now orphaned.",
                 hca_id,
                 photo_url,
@@ -1115,7 +1115,7 @@ class HcaService:
             )
             raise MTApplicationNotFound(f"No application {application_id!r} exists.")
         self.logger.info(
-            "Application %s approved; assistant %s can now sign in.",
+            "Application %s approved. Assistant %s can now sign in.",
             application_id,
             assistant.id,
         )
@@ -1167,7 +1167,7 @@ class HcaService:
             )
             raise MTApplicationNotFound(f"No application {application_id!r} exists.")
         self.logger.warning(
-            "Application %s from %s was declined; no account was created.",
+            "Application %s from %s was declined. No account was created.",
             application_id,
             application.email,
         )

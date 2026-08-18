@@ -8,7 +8,7 @@ Documentation    Merge every suite's raw coverage into one report.
 ...              the question "what does the campaign cover".
 ...
 ...              **This suite never fails the run.** A coverage collector that
-...              could not read its input is a reporting problem; the functional
+...              could not read its input is a reporting problem. The functional
 ...              suites are the deliverable, and turning them red because a
 ...              report did not render would be reporting the wrong failure.
 ...              A missing report is visible in CI as a missing artefact.
@@ -25,7 +25,7 @@ Merge The Coverage Recorded By Every Suite
     ${exists}=    Run Keyword And Return Status
     ...    Directory Should Exist    ${COVERAGE_RAW_DIR}
     Skip If    not ${exists}
-    ...    No raw coverage was recorded; the browsers may not be installed.
+    ...    No raw coverage was recorded. The browsers may not be installed.
 
     ${status}    ${result}=    Run Keyword And Ignore Error
     ...    Merge Coverage Reports

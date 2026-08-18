@@ -45,7 +45,7 @@ Mon Compte Is In The Navigation For Every Role
     ...    The account entry was marked assistant-only, so a manager and an
     ...    administrator saw a "Mon compte" heading with only "Mes devis" under
     ...    it — a section named after a screen it did not contain. The page
-    ...    itself had already been fixed; the door to it had not, which made the
+    ...    itself had already been fixed. The door to it had not, which made the
     ...    fix invisible to exactly the people it was for.
     [Tags]    smoke    navigation    account
     FOR    ${email}    IN    ${ASSISTANT_EMAIL}    ${MANAGER_EMAIL}    ${ADMIN_EMAIL}
@@ -108,7 +108,7 @@ A Manager Sees The Catalogue But Not The Agency
     [Teardown]    Sign Out
 
 A Manager Typing The Agency Address Is Turned Away
-    [Documentation]    Hiding the entry is a courtesy; this is the control.
+    [Documentation]    Hiding the entry is a courtesy. This is the control.
     ...
     ...    Asserted on where they *do* land rather than on a three-second wait
     ...    for the agency screen that is expected to time out. Waiting for an
@@ -484,7 +484,7 @@ A Manager Reads The Agency's Account Masked
     [Documentation]    **The account number is the one field a leak can spend.**
     ...
     ...    A manager runs the agency's work and needs its address, telephone
-    ...    number and registration; they have no reason to hold the account it
+    ...    number and registration. They have no reason to hold the account it
     ...    is paid into. The agency-wide routes hand back a masked projection,
     ...    and an administrator reads theirs whole at /me/company.
     [Tags]    smoke    company    banking    access

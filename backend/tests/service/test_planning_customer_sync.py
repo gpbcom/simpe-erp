@@ -225,7 +225,7 @@ class TestTheAgencyAndTheHouseholdSeeTheSameCare:
 
         Notes:
             This is the structural half of the guarantee. The test above would
-            still pass if one side started post-filtering a wider read; this one
+            still pass if one side started post-filtering a wider read. This one
             pins the read itself, so a second query introduced on either side is
             a failure here rather than a discrepancy somebody notices on the
             telephone.
@@ -245,7 +245,7 @@ class TestTheAgencyAndTheHouseholdSeeTheSameCare:
         """**A cancelled visit is a fact both parties need.**
 
         Notes:
-            A family rings about a visit that did not happen; a manager who
+            A family rings about a visit that did not happen. A manager who
             cannot see it on the same screen cannot answer. Neither side filters
             on status, and this is where that stays true — the fixture carries a
             cancelled and a completed visit precisely so a status filter added

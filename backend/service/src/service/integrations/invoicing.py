@@ -348,7 +348,7 @@ class InvoicingService:
         checked = await self.integrations.record_check(company_id, provider, failure)  # noqa: E501
         return checked if checked is not None else stored
 
-    async def connector_for(
+    async def connector(
         self, company_id: str, provider: EInvoicingProvider
     ) -> InvoicingConnector:
         """Return a connector built on an agency's stored credentials.
@@ -433,7 +433,7 @@ class InvoicingService:
             active.provider.value,
         )
         try:
-            connector = await self.connector_for(bill.company_id, active.provider)  # noqa: E501
+            connector = await self.connector(bill.company_id, active.provider)  # noqa: E501
         except MTCredentialCipherUnreadable as error:
             self.logger.error(
                 "Invoice %s could not be transmitted: agency %s's stored "

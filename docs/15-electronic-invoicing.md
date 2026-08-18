@@ -60,7 +60,7 @@ because this is a supply of *services*, where VAT falls due on collection rather
 than on delivery — also reports **when it was paid**.
 
 The B2G line is the uncomfortable one. If the agency invoices a conseil
-départemental for APA, that obligation is not coming in 2026; it arrived in
+départemental for APA, that obligation is not coming in 2026. It arrived in
 2020. It should be checked before anything in this chapter is scheduled.
 
 ## The calendar
@@ -193,7 +193,7 @@ consumed a number from a series that cannot have gaps.
 
 Formats: 22+, including Factur-X/ZUGFeRD, UBL, CII, EDIFACT, FatturaPA and
 XRechnung, converted between on the way through. Networks: **Chorus Pro** and
-FACe for public bodies, Peppol, SDI, ESPAP. Webhooks are documented; a sandbox
+FACe for public bodies, Peppol, SDI, ESPAP. Webhooks are documented. A sandbox
 runs on the same base URL under a test key, which is worth noting — there is no
 separate host to configure, only a different secret.
 
@@ -249,7 +249,7 @@ Spanish, developer-first, built around an open format. Registered 15/01/26 (p.2)
 | Docs | `https://docs.invopop.com` |
 | French guide | `https://docs.invopop.com/guides/fr-pa` |
 | Machine-readable index | `https://docs.invopop.com/llms.txt` |
-| Auth | API key from the console; application credentials carry an owner id |
+| Auth | API key from the console. Application credentials carry an owner id |
 
 The API is five services rather than one surface:
 
@@ -338,7 +338,7 @@ believing either.
 carelessly, that says `FacturXBuilder` was wasted
 work. It was not, and the reason is in its own docstring:
 *"what the reform adds on top — routing, lifecycle, transmission — is not in
-this file at all; it belongs to the platform."*
+this file at all. It belongs to the platform."*
 
 Each candidate offers **two doors**, and they are a real architectural choice:
 
@@ -578,7 +578,7 @@ worse than not running it.** The European rules that check the totals add up and
 that every mandatory term is present live in a Schematron requiring an XSLT 2.0
 engine — in practice a Saxon service on `localhost:5000`, which this deployment
 does not run. Called without one, the reference library **returns success
-without checking anything**; that was verified by feeding it an invoice with a
+without checking anything**. That was verified by feeding it an invoice with a
 deliberately wrong grand total, which it accepted. So it is not called at all.
 
 What stands in for it is narrower but real: the schema check above, and
@@ -636,7 +636,7 @@ delete is not a guarantee.
 | 2 | **Recipient and payer share** — the model change | ✅ **built** (migration 0026) | **No** | The deepest change. Everything B2B and B2G is blocked on it, and it fixes an APA gap that predates the reform. The share is modelled and **refused by the structured builder** until the split shape is settled. |
 | 3 | **Chorus Pro** for the départements | ❌ not started | No — Chorus Pro *is* the platform | Already mandatory. Ahead of the 2027 work, not behind it. |
 | 4 | **Object-lock and retention** on the invoice prefix | ❌ not started | **No** | Configuration. Do it now. |
-| 5 | **Factur-X**: CII XML + PDF/A-3 + validator in the test campaign | ⚠️ **built, with two gaps** | Partly — the profile is fixed by the platform | The long pole. The schema check and the embedded fonts are in; the output intent and the Schematron are not — see §*The two gaps*. |
+| 5 | **Factur-X**: CII XML + PDF/A-3 + validator in the test campaign | ⚠️ **built, with two gaps** | Partly — the profile is fixed by the platform | The long pole. The schema check and the embedded fonts are in. The output intent and the Schematron are not — see §*The two gaps*. |
 | 6 | ~~**`InvoiceTransmission`** + the platform connector + inbound statuses~~ **Built** | **Yes** | Four connectors behind one `InvoicingConnector`; credentials sealed with Fernet; routed by `TransmissionKind.for_recipient`. Inbound statuses are still outstanding — what exists is the outbound half. |
 | 7 | **E-reporting** aggregates, transaction and payment | **Yes** | Partly: flux 10.4 is declared per settled invoice as it happens. The *periodic aggregate* over a VAT window is not built. |
 

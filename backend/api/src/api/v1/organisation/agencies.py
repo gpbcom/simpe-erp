@@ -51,7 +51,7 @@ async def create_agency(
     Notes:
         - Administrator-only, as the requirement states. A site decides where
           teams are based and therefore which household's work each team is
-          given; a manager able to open one could create a place that quietly
+          given. A manager able to open one could create a place that quietly
           takes work away from theirs.
         - The counts are passed as zero rather than queried. A site that has
           just been created has neither members nor teams, and reading the
@@ -109,8 +109,8 @@ async def get_agency(
         AgencyView: The site and its two counts.
 
     Raises:
-        MTAgencyNotFound: If no such site exists; answered as a 404.
-        MTAgencyForbidden: If it belongs to another company; answered as a 403.
+        MTAgencyNotFound: If no such site exists. Answered as a 404.
+        MTAgencyForbidden: If it belongs to another company. Answered as a 403.
     """
     logger.debug("Reading site %s for %s.", agency_id, caller.email)
     return await service.view(agency_id, caller)
@@ -135,11 +135,11 @@ async def update_agency(
         AgencyView: The updated site.
 
     Raises:
-        MTAgencyNotFound: If no such site exists; answered as a 404.
-        MTAgencyForbidden: If it belongs to another company; answered as a 403.
+        MTAgencyNotFound: If no such site exists. Answered as a 404.
+        MTAgencyForbidden: If it belongs to another company. Answered as a 403.
         MTAgencyNameTaken: If another site already uses the name; 409.
         MTAgencyHeadquartersProtected: If the change would move or duplicate the
-            head office; answered as a 409.
+            head office. Answered as a 409.
     """
     logger.info("Updating site %s at the request of %s.", agency_id, caller.email)
     await service.update(payload.to_agency(agency_id, caller.company_id), caller)
@@ -160,11 +160,11 @@ async def delete_agency(
         caller (User): The authenticated caller; enforces administrator access.
 
     Raises:
-        MTAgencyNotFound: If no such site exists; answered as a 404.
-        MTAgencyForbidden: If it belongs to another company; answered as a 403.
+        MTAgencyNotFound: If no such site exists. Answered as a 404.
+        MTAgencyForbidden: If it belongs to another company. Answered as a 403.
         MTAgencyNotEmpty: If teams or people are still attached; 409.
         MTAgencyHeadquartersProtected: If it is the head office and the company
-            still operates from elsewhere; answered as a 409.
+            still operates from elsewhere. Answered as a 409.
     """
     logger.info("Closing site %s at the request of %s.", agency_id, caller.email)
     await service.delete(agency_id, caller)
@@ -187,8 +187,8 @@ async def list_agency_members(
         List[AgencyMember]: The memberships, each a kind and an identifier.
 
     Raises:
-        MTAgencyNotFound: If no such site exists; answered as a 404.
-        MTAgencyForbidden: If it belongs to another company; answered as a 403.
+        MTAgencyNotFound: If no such site exists. Answered as a 404.
+        MTAgencyForbidden: If it belongs to another company. Answered as a 403.
 
     Notes:
         A membership carries no name, telephone number or address — only which
@@ -223,16 +223,16 @@ async def add_agency_member(
         AgencyMember: The stored membership.
 
     Raises:
-        MTAgencyNotFound: If no such site exists; answered as a 404.
-        MTAgencyForbidden: If it belongs to another company; answered as a 403.
+        MTAgencyNotFound: If no such site exists. Answered as a 404.
+        MTAgencyForbidden: If it belongs to another company. Answered as a 403.
         MTAgencyMemberRunsATeam: If they run a team based at the site they are
-            leaving; answered as a 409.
+            leaving. Answered as a 409.
 
     Notes:
         - **A transfer, in one call.** Somebody moving site does it once, on one
           screen; requiring a detach first would be two forms for one act, and
           the state in between — a person attached to no site — is one nothing
-          else expects. Everybody belongs to exactly one site either way; the
+          else expects. Everybody belongs to exactly one site either way. The
           only question was whether the operator had to do the removal by hand.
         - Their **team goes with the old site**, because a team is people at a
           place and the planner measures every round from it. The one refusal
@@ -277,8 +277,8 @@ async def remove_agency_member(
 
     Raises:
         MTAgencyNotFound: If no such site exists, or the person is not attached
-            to it; answered as a 404.
-        MTAgencyForbidden: If it belongs to another company; answered as a 403.
+            to it. Answered as a 404.
+        MTAgencyForbidden: If it belongs to another company. Answered as a 403.
 
     Notes:
         The kind is in the path rather than the query string because it is half

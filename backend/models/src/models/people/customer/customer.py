@@ -72,7 +72,7 @@ class Customer(Person):
           argument instead of the record carrying a copy of it.
         - The address is where interventions actually take place, so it is the
           coordinate the planner routes to. A customer whose address never
-          geocodes cannot be scheduled; that surfaces as an unassigned
+          geocodes cannot be scheduled. That surfaces as an unassigned
           requirement rather than as a validation error here, because a quote
           must still be printable for an address the geocoder does not know.
     """

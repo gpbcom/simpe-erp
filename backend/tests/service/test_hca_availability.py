@@ -159,7 +159,7 @@ class TestAvailabilityConfidentiality:
 
         Notes:
             **This is the test the rule rests on.** A route guard proves only
-            that the caller is an assistant; nothing at the routing layer stops
+            that the caller is an assistant. Nothing at the routing layer stops
             assistant A putting assistant B's identifier in the path, and an
             absence filed against B takes them off the rota.
         """

@@ -110,7 +110,7 @@ class TestMigrateEntrypoint:
         Notes:
             **Nothing is caught and turned into a warning here.** A migration
             that could not be applied and a deployment that carried on is the
-            pairing this entry point exists to prevent; the log line names the
+            pairing this entry point exists to prevent. The log line names the
             revision, and then the exception ends the process.
         """
         with patch("storage.migrate.command") as alembic:

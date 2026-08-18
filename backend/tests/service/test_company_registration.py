@@ -164,7 +164,7 @@ class TestFoundingAnAgency:
     async def test_the_founder_is_not_asked_to_change_their_password(
         self, service: CompanyRegistrationService, auth: MagicMock
     ) -> None:
-        """They chose it a moment ago; there is nothing to protect against."""
+        """They chose it a moment ago. There is nothing to protect against."""
         await service.register(
             company_name="Aide et Presence Lyon",
             full_name="Camille Fournier",

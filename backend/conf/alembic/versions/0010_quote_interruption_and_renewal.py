@@ -52,7 +52,7 @@ def upgrade() -> None:
     op.add_column(
         "quotes", sa.Column("renewed_from_id", sa.String(length=36), nullable=True)
     )
-    # The server default did its job on the existing rows; dropping it now means
+    # The server default did its job on the existing rows. Dropping it now means
     # the application must state the flag on every insert, which is what the ORM
     # does. A default left in place is a default somebody eventually relies on
     # without noticing which value it is.

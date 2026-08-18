@@ -78,7 +78,7 @@ class HcaRepository(BaseRepository[HcaRow]):
                 and ``contract_type`` win over the two positional arguments
                 when both are given.
             hca_ids (Optional[List[str]]): The assistants the caller may read.
-                ``None`` means every assistant; an **empty list means none**.
+                ``None`` means every assistant. An **empty list means none**.
 
         Returns:
             Select[tuple[HcaRow]]: The filtered statement, without ordering or pagination.
@@ -106,7 +106,7 @@ class HcaRepository(BaseRepository[HcaRow]):
             # Both were given and they disagree. The filter wins, so say which
             # fragment actually ran rather than leaving the caller to wonder.
             self.logger.warning(
-                "Two searches were passed (%r and %r); the filter's %r is used.",
+                "Two searches were passed (%r and %r). The filter's %r is used.",
                 search,
                 applied.search,
                 applied.search,
@@ -114,13 +114,13 @@ class HcaRepository(BaseRepository[HcaRow]):
         search = applied.search or search
         contract_type = applied.contract_type or contract_type
         if applied.is_empty() and search is None and contract_type is None:
-            self.logger.info("No filter was given; the query is every assistant.")
+            self.logger.info("No filter was given. The query is every assistant.")
 
         statement = select(HcaRow)
         if hca_ids is not None:
             if not hca_ids:
                 self.logger.warning(
-                    "The caller may read no assistant; the query matches nothing."
+                    "The caller may read no assistant. The query matches nothing."
                 )
             statement = statement.where(HcaRow.id.in_(hca_ids))
         if contract_type is not None:
@@ -155,7 +155,7 @@ class HcaRepository(BaseRepository[HcaRow]):
                 # `LIKE '%%'` — every assistant, under a filter that says it is
                 # narrowing by telephone number.
                 self.logger.error(
-                    "Telephone filter %r holds no digit; it is dropped rather "
+                    "Telephone filter %r holds no digit. It is dropped rather "
                     "than matched as a wildcard.",
                     applied.phone,
                 )
@@ -324,7 +324,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         )
         if row.field_employee and not field_employee:
             self.logger.warning(
-                "Assistant %s is no longer a field employee; they will be "
+                "Assistant %s is no longer a field employee. They will be "
                 "left out of every planning run from now on.",
                 hca_id,
             )
@@ -386,7 +386,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         )
         if dropped:
             self.logger.warning(
-                "Assistant %s no longer works %s; they will be left out of "
+                "Assistant %s no longer works %s. They will be left out of "
                 "every planning run on those days.",
                 hca_id,
                 ", ".join(day.value for day in dropped),
@@ -416,7 +416,7 @@ class HcaRepository(BaseRepository[HcaRow]):
             SQLAlchemyError: If the insert fails.
 
         Notes:
-            - **Appends; it does not replace.** This is the opposite of
+            - **Appends. It does not replace.** This is the opposite of
               :meth:`set_employment`, and deliberately so: a manager sends the
               whole certification list because they are editing a form, while
               an assistant declares one skill at a time from their own screen.
@@ -443,7 +443,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         )
         if skill.code is None:
             self.logger.warning(
-                "Skill %s for hca %s carries no catalogue code; the planner "
+                "Skill %s for hca %s carries no catalogue code. The planner "
                 "cannot match any requirement against it.",
                 skill_id,
                 hca_id,
@@ -499,7 +499,7 @@ class HcaRepository(BaseRepository[HcaRow]):
             return False
         if skill_row.code is not None:
             self.logger.warning(
-                "Withdrawing skill %s (%s) from hca %s; they will no longer be "
+                "Withdrawing skill %s (%s) from hca %s. They will no longer be "
                 "eligible for work requiring it.",
                 skill_id,
                 skill_row.code,
@@ -671,7 +671,7 @@ class HcaRepository(BaseRepository[HcaRow]):
             contract_type (Optional[ContractType]): Restrict to one contract.
             hca_filter (Optional[HcaFilter]): The screen's filter.
             hca_ids (Optional[List[str]]): The assistants the caller may read.
-                ``None`` means every assistant; an empty list means none.
+                ``None`` means every assistant. An empty list means none.
 
         Returns:
             List[Hca]: The matching assistants, ordered by family name.
@@ -737,7 +737,7 @@ class HcaRepository(BaseRepository[HcaRow]):
               sequence or produce different plans from identical inputs.
             - An empty argument returns an empty list without a statement. It
               means a team with nobody on it, which is a legitimate state the
-              caller reports; issuing ``IN ()`` to find that out would be a
+              caller reports. Issuing ``IN ()`` to find that out would be a
               round trip for an answer already known.
             - Identifiers naming no record are **silently absent** rather than
               an error. A membership outliving the assistant it names is
@@ -746,7 +746,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         """
         if not hca_ids:
             self.logger.warning(
-                "No assistant identifier was given; this team has nobody to schedule."
+                "No assistant identifier was given. This team has nobody to schedule."
             )
             return []
         self.logger.debug("Loading %d named assistant(s).", len(hca_ids))
@@ -759,7 +759,7 @@ class HcaRepository(BaseRepository[HcaRow]):
         if len(rows) != len(set(hca_ids)):
             self.logger.error(
                 "%d assistant identifier(s) were asked for but %d record(s) "
-                "exist; a membership names somebody who has been deleted.",
+                "exist. A membership names somebody who has been deleted.",
                 len(set(hca_ids)),
                 len(rows),
             )

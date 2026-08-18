@@ -43,7 +43,7 @@ async def get_billing_settings(
 
     Raises:
         MTBillingSettingsUnavailable: When the rules can neither be read nor
-            seeded; answered as a 503 by the central handler.
+            seeded. Answered as a 503 by the central handler.
 
     Notes:
         Seeds the row from ``app.yaml`` on the first read, the way the planning
@@ -70,7 +70,7 @@ async def update_billing_settings(
         BillingSettings: The stored rules.
 
     Raises:
-        MTBillingSettingsUnavailable: When the rules are not seeded; answered
+        MTBillingSettingsUnavailable: When the rules are not seeded. Answered
             as a 503 by the central handler.
 
     Notes:

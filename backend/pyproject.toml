@@ -125,7 +125,7 @@ markers = [
     "integration: exercises a real external service rather than a stub",
     # Minutes of CPU rather than milliseconds, so excluded from the default run
     # and selected with `-m performance`. These time the solver on week-sized
-    # instances; they are measurements first and assertions second.
+    # instances. They are measurements first and assertions second.
     "performance: times the solver on a week-sized instance",
 ]
 
@@ -168,7 +168,7 @@ exclude = [".venv", "conf/alembic/versions", "tests"]
 # the ninety call sites. BaseMapper is generic over ModelType/RowType and reads
 # `model.id`, `row.created_at` and `row.updated_at` — attributes every persisted
 # model has, and that the `BaseModel`/`Base` bounds cannot express. The class
-# docstring says so explicitly; this is that decision, told to the checker.
+# docstring says so explicitly. This is that decision, told to the checker.
 #
 # Scoped to a warning rather than ignored outright, so a *genuine* missing
 # attribute elsewhere still shows up in the output — it simply does not fail
